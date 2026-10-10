@@ -7,9 +7,11 @@ import Foundation
     private final class Provider: TelegramUploadProvider {
         let accountID: Int64 = 1
         var calls = 0
+        var submissions: [(UUID, TelegramFormattedText)] = []
         var callback: (@MainActor (TelegramUploadEvent) -> Void)?
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText,
                     receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
+            submissions.append((preparationID, caption))
             calls += 1; callback = receive; return Lease()
         }
     }
@@ -22,17 +24,21 @@ import Foundation
         var holdCancel = false
         var holdPrepare = false, holdSubmission = false, failPrepare = false, failAccepted = false
         var prepares = 0
+        var preparedIDs: [UUID] = []
+        var savedIDs: [UUID] = []
         var saves: [(TelegramComposerInput, TelegramPendingUploadDisposition)] = []
         func load(chatID: Int64) async throws -> TelegramPendingUploadDraft? { nil }
         func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile { throw Failure.synthetic }
         func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                      captionInput: TelegramComposerInput, originalDraft: TelegramComposerDraft?) async throws {
+            preparedIDs.append(preparationID)
             prepares += 1
             if failPrepare { throw Failure.synthetic }
             if holdPrepare { try await withCheckedThrowingContinuation { prepareGate = $0 } }
         }
         func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput,
                   disposition: TelegramPendingUploadDisposition) async throws {
+            savedIDs.append(preparationID)
             saves.append((captionInput, disposition))
             if case .cancelled = disposition, holdCancel {
                 try await withCheckedThrowingContinuation { cancelGate = $0 }
@@ -57,6 +63,9 @@ import Foundation
     func testInitialPersistenceAndLatestCaptionSubmissionGateProvider() async throws {
         let store = Store(); store.holdPrepare = true; store.holdSubmission = true
         let (controller, provider) = setup(store: store)
+        let preparationID = try XCTUnwrap(controller.preparationContextID)
+        controller.send(contextID: UUID())
+        XCTAssertEqual(provider.calls, 0)
         await drain(); XCTAssertNotNil(store.prepareGate)
         controller.send(); XCTAssertEqual(provider.calls, 0); XCTAssertFalse(controller.canSend)
         controller.caption = "latest 😀"
@@ -68,6 +77,39 @@ import Foundation
         XCTAssertEqual(store.saves.last?.0.formattedText.text, "latest 😀")
         store.saveGate?.resume(); store.saveGate = nil
         await drain(); XCTAssertEqual(provider.calls, 1)
+        XCTAssertEqual(store.preparedIDs, [preparationID])
+        XCTAssertTrue(store.savedIDs.allSatisfy { $0 == preparationID })
+        XCTAssertEqual(provider.submissions.first?.0, preparationID)
+        XCTAssertEqual(provider.submissions.first?.1.text, "latest 😀")
+        store.failAccepted = true
+        provider.callback?(.committing); provider.callback?(.accepted("receipt"))
+        await drain()
+        store.failAccepted = false; controller.retryRecovery(); await drain()
+        XCTAssertEqual(provider.submissions.count, 1, "Accepted marker retry never resubmits")
+        XCTAssertTrue(store.savedIDs.allSatisfy { $0 == preparationID })
+    }
+    func testRebindWhileSubmissionMarkerPendingNeverDispatchesOldPreparation() async throws {
+        let store = Store(); store.holdSubmission = true
+        let (controller, provider) = setup(store: store)
+        await drain()
+        let oldID = try XCTUnwrap(controller.preparationContextID)
+        controller.send(contextID: oldID); await drain()
+        XCTAssertNotNil(store.saveGate)
+        let nextStore = Store(), nextProvider = Provider()
+        controller.bind(provider: nextProvider, recoveryStore: nextStore, requiresRecovery: true)
+        controller.prepare(source: URL(fileURLWithPath: "/synthetic/new"), mode: .file, target: target, caption: "new")
+        await drain()
+        let newID = try XCTUnwrap(controller.preparationContextID)
+        XCTAssertNotEqual(oldID, newID)
+        store.saveGate?.resume(); store.saveGate = nil
+        await drain()
+        controller.send(contextID: oldID)
+        XCTAssertEqual(provider.calls, 0); XCTAssertEqual(nextProvider.calls, 0)
+        controller.send(contextID: newID); await drain()
+        XCTAssertEqual(nextProvider.submissions.first?.0, newID)
+        XCTAssertEqual(nextProvider.submissions.first?.1.text, "new")
+        XCTAssertEqual(nextStore.preparedIDs, [newID])
+        XCTAssertTrue(nextStore.savedIDs.allSatisfy { $0 == newID })
     }
     func testPrepareFailureBlocksAndAcceptedSaveFailureNeverResubmits() async {
         let store = Store(); store.failPrepare = true

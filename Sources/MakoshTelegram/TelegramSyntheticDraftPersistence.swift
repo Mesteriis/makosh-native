@@ -55,7 +55,9 @@ extension TelegramModel {
             guard let self else { throw TelegramUploadFileError.unavailable }
             return try self.archive.files.pendingUploadFiles()
         })
-        upload.bind(provider: TelegramSyntheticUploadProvider(), recoveryStore: store, requiresRecovery: true)
+        upload.bind(provider: TelegramSyntheticUploadProvider(postbox: postbox,
+            loseAcknowledgement: ProcessInfo.processInfo.arguments.contains("--telegram-pending-upload-ack-loss-qa")),
+            recoveryStore: store, requiresRecovery: true)
         bindPendingUploadRecovery(store, replyProvider: TelegramSyntheticComposerReplyProvider())
     }
 }

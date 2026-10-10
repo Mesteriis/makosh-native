@@ -80,11 +80,19 @@
    save блокирует отправку; latest caption + submissionStarted сохраняются до
    provider, accepted — до ACK исходной revision. Prepared reply разрешается
    заново; восстановление/ошибка блокируют обычную отправку и действия. Неизвестный
-   результат восстанавливается без автоматической отправки; reconciliation с
-   живой очередью ещё впереди. Нативно проверены file/photo restart, rich caption/
+   результат восстанавливается без автоматической отправки. Recipe 6 проверяет
+   owned pointer перед native enqueue и сохраняет accepted receipt в той же
+   Postbox transaction, что и сообщение. Receipt требует существующее outgoing
+   Local сообщение с точной подписью/entities. Потерянный UI callback восстанавливается
+   по receipt без повторного enqueue. Старые submissionStarted не сопоставляются
+   по тексту; live local-to-cloud reconciliation ещё впереди.
+   Нативно проверены file/photo restart, rich caption/
    selection, отмена без resurrection, synthetic ACK и переключатель сервисов.
    Failed cancellation имеет видимый storage-only retry; отмена сохраняет
-   immutable S3 copy. Native fault injection, inline media, albums и premium
+   immutable S3 copy. Дополнительно проверены synthetic lost-ACK modal без Send,
+   restart с тем же Postbox/receipt, отсутствие повторного modal и сохранение
+   нового черновика при следующем restart. Account/server, power-loss и disk-failure
+   acceptance, inline media, albums и premium
    caption limits остаются открытыми.
    Индикаторы отправки/ошибки и одна/две галочки рядом со временем следуют
    `ChatRightView`; прочтение берётся из native history entry. Видимая граница

@@ -1,6 +1,63 @@
 # Development status — 2026-10-11
 
-## Current stage: pending attachment recovery in the shared workspace
+## Current stage: atomic queue receipt for pending attachments
+
+Telegram remains inside the shared native service-selector/list/conversation
+window. New file/photo submissions pass their exact preparation UUID to the
+provider. Preparation recipe 6 adds hash-checked optional admission/commit hooks
+to the pinned native enqueue API; its original media transformation and default
+callers remain intact. The owned pointer is checked before enqueue, and accepted
+receipt is written beside the queue message in the same Postbox transaction.
+Receipt requires one existing outgoing Local message in the captured chat with
+exact UTF8 caption/native entities. Scoped pending metadata, original draft,
+selection/reply and archived file survive unchanged. Hook construction is
+nonisolated; only UI observations return to MainActor.
+
+After a lost UI callback, restart can read the committed receipt and acknowledge
+only the original draft revision without resubmitting. Duplicate/stale/foreign/
+malformed/cancelled pointers refuse admission. Unexpected nonempty IDs or a
+receipt refusal after addMessages remain uncertain, without a rollback claim.
+Older submissionStarted records remain uncertain: the pinned engine's
+correlation-to-sent-ID mapping lives in process memory and is not restart proof.
+No server delivery/read or power-loss/fsync guarantee follows from queue admission.
+
+Current gates: `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh`
+and strict deep signature verification exit 0. **422 XCTest (359 Telegram +
+63 core), zero failures; 26 Python regressions**. Three new encrypted Postbox
+tests cover queue/receipt reopen before UI ACK, duplicate refusal, scope/state/
+caption/reply/file checks, orphan/incoming/wrong-content messages and malformed
+native results without fabricated ACK. A controller regression covers stale
+preparation during rebind; expanded assertions verify frozen UUID/input and
+storage retries without resubmission. Two new Python checks pin the adaptation
+and reject changed source. The full suite prints 46 upstream SQL t19 teardown
+diagnostics; no test failure or trap occurred in this run.
+
+Actual native AX/screenshots used the same explicitly owned synthetic Postbox
+and isolated PostgreSQL/S3. The QA executable's unsigned payload matches the
+built app and strict signatures pass. The explicit DEBUG lost-ACK fixture
+commits a synthetic StoreMessage/receipt, then hides acceptance from the UI.
+Verified: edited/bold caption with immutable original, uncertain modal without
+Send, process stop/relaunch, no recovered resend modal, original revision
+cleared, newer draft surviving a second restart and Mail → Telegram in the same
+window. No personal account, Keychain, Telegram network or actual send was used.
+The synthetic transaction does not execute a live Account's queue algorithm.
+
+Root verified eight worker source/test hashes and the final eleven-file readonly
+review. Two source findings (orphan-message acceptance and UI-actor hook creation)
+were corrected before the full run. Review gates remain SKIP for workers; runtime
+model/provider/usage are unknown. Engine refresh exits 0, 721 files/686 code;
+actual hook/reference queries were confirmed against pinned source. Prior head
+5304893 passed both hosted PR/push CI runs. Live queue/cloud-ID reconciliation,
+other Telegram parity, later channels, backups and standalone packaging remain
+open in [migration-plan.md](migration-plan.md). The full migration goal is active.
+
+Final project refresh exits 0: 243 files, 213/213 classified code files, with
+source-confirmed receipt/provider queries. Project, engine and reference content
+freshness checks exit 0; mutable status remains outside the index. Publication
+audit checked 248 publishable files and the private PR body against five selected
+local credential fields, with zero matches.
+
+## Historical pending attachment runtime — 2026-10-11
 
 Telegram's runtime now saves an owned pending file/photo to encrypted S3 with
 PostgreSQL metadata, then keeps caption/entities/selection, original revision,

@@ -106,7 +106,7 @@ import SwiftSignalKit
     private final class Provider: TelegramUploadProvider {
         let accountID: Int64 = -1
         var submissions = 0
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText, receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease { submissions += 1; return Lease() }
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease { submissions += 1; return Lease() }
     }
     func testPreparedAndUnknownSubmissionRestoreWithoutAutomaticSendOrNewerDraftOverwrite() async throws {
         for unknown in [false, true] {

@@ -39,27 +39,29 @@ private func decodePendingUpload(_ data: Data, accountID: Int64, chatID: Int64) 
           value.isValid, value.accountID == accountID, value.chatID == chatID else { return nil }
     return value
 }
+nonisolated func telegramPendingUploadRead(transaction: Transaction, accountID: Int64, chatID: Int64) -> Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError> {
+    guard let entry = transaction.getPreferencesEntry(key: telegramPendingUploadKey(accountID: accountID, chatID: chatID)) else { return .success(nil) }
+    guard let draft = decodePendingUpload(entry.data, accountID: accountID, chatID: chatID) else { return .failure(.incompatibleData) }
+    return .success(draft)
+}
+nonisolated func telegramPendingUploadWrite(transaction: Transaction, accountID: Int64, draft: TelegramPendingUploadDraft, expectedRevision: UUID?) -> Result<Void, TelegramPendingUploadPersistenceError> {
+    guard draft.isValid, draft.accountID == accountID else { return .failure(.incompatibleData) }
+    guard let encoded = encodePendingUpload(draft) else { return .failure(.incompatibleData) }
+    let key = telegramPendingUploadKey(accountID: accountID, chatID: draft.chatID)
+    if let entry = transaction.getPreferencesEntry(key: key) {
+        guard let current = decodePendingUpload(entry.data, accountID: accountID, chatID: draft.chatID) else { return .failure(.incompatibleData) }
+        // JSON bytes preserve opaque strings exactly, unlike canonical String equality.
+        if encodePendingUpload(current) == encoded { return .success(()) }
+        guard current.revision == expectedRevision, draft.revision != current.revision else { return .failure(.conflict) }
+    } else if expectedRevision != nil { return .failure(.conflict) }
+    transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: pendingUploadMarker + encoded))
+    return .success(())
+}
 private nonisolated func pendingUploadLoad(postbox: Postbox, accountID: Int64, chatID: Int64) -> Signal<Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>, NoError> {
-    postbox.transaction { transaction in
-        guard let entry = transaction.getPreferencesEntry(key: telegramPendingUploadKey(accountID: accountID, chatID: chatID)) else { return .success(nil) }
-        guard let draft = decodePendingUpload(entry.data, accountID: accountID, chatID: chatID) else { return .failure(.incompatibleData) }
-        return .success(draft)
-    }
+    postbox.transaction { telegramPendingUploadRead(transaction: $0, accountID: accountID, chatID: chatID) }
 }
 private nonisolated func pendingUploadSave(postbox: Postbox, accountID: Int64, draft: TelegramPendingUploadDraft, expectedRevision: UUID?) -> Signal<Result<Void, TelegramPendingUploadPersistenceError>, NoError> {
-    postbox.transaction { transaction in
-        guard draft.isValid, draft.accountID == accountID else { return .failure(.incompatibleData) }
-        guard let encoded = encodePendingUpload(draft) else { return .failure(.incompatibleData) }
-        let key = telegramPendingUploadKey(accountID: accountID, chatID: draft.chatID)
-        if let entry = transaction.getPreferencesEntry(key: key) {
-            guard let current = decodePendingUpload(entry.data, accountID: accountID, chatID: draft.chatID) else { return .failure(.incompatibleData) }
-            // JSON bytes preserve opaque strings exactly, unlike canonical String equality.
-            if encodePendingUpload(current) == encoded { return .success(()) }
-            guard current.revision == expectedRevision, draft.revision != current.revision else { return .failure(.conflict) }
-        } else if expectedRevision != nil { return .failure(.conflict) }
-        transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: pendingUploadMarker + encoded))
-        return .success(())
-    }
+    postbox.transaction { telegramPendingUploadWrite(transaction: $0, accountID: accountID, draft: draft, expectedRevision: expectedRevision) }
 }
 @MainActor internal final class TelegramPostboxPendingUploadRepository: TelegramPendingUploadRepository {
     let accountID: Int64

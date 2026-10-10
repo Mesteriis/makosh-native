@@ -32,7 +32,7 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
     var accountID: Int64 { account.peerId.toInt64() }
     init(account: Account) { self.account = account }
 
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = EngineUploadLease(receive: receive)
         let peerID = PeerId(target.chatID)
@@ -63,11 +63,19 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
                     lease.committing = true
                     lease.receive(.committing)
                     guard !lease.stopped else { return }
-                    lease.enqueue.set((enqueueMessages(account: account, peerId: peerID, messages: [message])
-                    |> deliverOnMainQueue).start(next: { [weak lease, account] ids in
+                    let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
+                        target: target, file: file, caption: caption)
+                    lease.enqueue.set((enqueueUploadWithReceipt(account: account, peerID: peerID,
+                        message: message, receipt: receipt)
+                    |> deliverOnMainQueue).start(next: { [weak lease, account] admission in
                         guard let lease, !lease.stopped, !lease.accepted else { return }
-                        guard let id = ids.first.flatMap({ $0 }) else {
+                        let id: MessageId
+                        switch admission {
+                        case .rejected:
                             lease.receive(.rejected); lease.stop(); return
+                        case .uncertain:
+                            lease.receive(.uncertain); lease.stop(); return
+                        case .accepted(let value): id = value
                         }
                         lease.accepted = true
                         lease.receive(.accepted("\(id.peerId.toInt64()):\(id.namespace):\(id.id)"))
@@ -93,6 +101,25 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
             }))
         return lease
     }
+}
+
+private enum TelegramEngineUploadAdmission { case rejected, uncertain, accepted(MessageId) }
+
+/// Postbox invokes these hooks on its own queue. Construct them outside the
+/// MainActor provider so the callbacks never inherit UI actor isolation.
+private nonisolated func enqueueUploadWithReceipt(account: Account, peerID: PeerId, message: EnqueueMessage,
+                                                 receipt: TelegramPendingUploadEnqueueReceipt) -> Signal<TelegramEngineUploadAdmission, NoError> {
+    let receiptSaved = Atomic<Bool>(value: false)
+    return enqueueMessages(account: account, peerId: peerID, messages: [message],
+        transactionAdmission: { receipt.validate(transaction: $0) },
+        transactionCommit: { transaction, ids in
+            _ = receiptSaved.swap(receipt.acknowledge(transaction: transaction, messageIDs: ids))
+        }) |> map { ids in
+            guard !ids.isEmpty else { return .rejected }
+            // An unexpected result after enqueue cannot prove rejection.
+            guard ids.count == 1, let id = ids[0], receiptSaved.with({ $0 }) else { return .uncertain }
+            return .accepted(id)
+        }
 }
 
 /// A failed reply preflight must never degrade into an ordinary media message.

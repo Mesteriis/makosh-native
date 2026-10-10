@@ -288,7 +288,9 @@ made by an older recipe. Preserve `.local/telegram-engine` under an unused backu
 directory name, then rerun `scripts/build-app.sh` or `scripts/test.sh`; the locked
 source/compiler caches can be reused. Do not edit the generated engine or remove
 the application-support session directory, PostgreSQL volume or Keychain items.
-Fresh checkouts prepare recipe 5 directly, retaining the recipe-4 journal.
+Fresh checkouts prepare recipe 6 directly, retaining the recipe-4 journal and
+recipe-5 read scan. Preserve older prepared source under an unused ignored backup
+name before preparing recipe 6.
 
 Archive tables share the configured PostgreSQL service/schema, without changing
 the contact aggregate. AES-GCM encrypts text and metadata with separate HKDF
@@ -468,10 +470,25 @@ an fsync or disk-full guarantee.
 `TelegramPendingUploadSession` serializes writes on its captured account repository.
 Initial storage must succeed before send. Caption changes are saved; send freezes
 and persists the latest full input with `submissionStarted` before calling the
-provider. Local acceptance is saved as `.accepted` before exact original-draft
-ACK. Storage-only retries never call submit. Restored `submissionStarted` stays
+provider with the exact preparation UUID. Recipe 6 adds optional admission/commit
+hooks to the native enqueue API, preserving its media transformation and all nil
+default callers. The admission hook checks the scoped `submissionStarted` pointer,
+preparation, caption/entities, reply target and file metadata before queue creation.
+The commit hook writes `.accepted` in that same Postbox transaction. It requires
+exactly one existing outgoing Local message in the captured chat, with exact UTF8
+caption and native entities. Hook closures are built outside MainActor; UI events
+return through `deliverOnMainQueue`. The later storage ACK remains idempotent and
+precedes exact original-draft ACK. Storage-only retries never call submit.
+After a lost UI callback, restart reads the already persisted receipt. This
+proves local queue admission, not server delivery, read status or fsync. An
+unexpected nonempty native result/failed receipt leaves an uncertain outcome;
+Postbox does not roll back an already added message on that refusal.
+Restored `submissionStarted` stays
 uncertain, preserves the marker on observation close and never sends automatically;
-reconciliation with the actual engine queue remains open. Cancellation is ordered
+older uncertain records are not guessed from matching content. The pinned
+`PendingMessageManager` correlation-to-sent-ID mapping is process memory, so it
+cannot establish an older record's outcome after restart. Live local-to-cloud
+reconciliation remains open. Cancellation is ordered
 after an in-flight initial write, including failed acknowledgements. Its failure
 and storage-only retry remain visible outside a dismissed preview. Rebinding
 preserves stored state and rejects stale UI callbacks. Recovery load/error blocks
@@ -480,9 +497,15 @@ pointer. Unknown/foreign schemas are preserved.
 
 Native synthetic acceptance verified file and normalized-photo restart recovery,
 rich caption/selection, cancellation/original restoration, accepted ACK restart
-and the shared channel selector. Unknown-result restoration and cancellation/
-acceptance faults have regression coverage, but no native fault-injection or live
-account acceptance is claimed. QA requires explicit synthetic Postbox, isolated
+and the shared channel selector. An explicit DEBUG-only
+`--telegram-pending-upload-ack-loss-qa` additionally drops the UI acceptance event
+after a synthetic StoreMessage and receipt commit. Actual native acceptance used
+the same owned Postbox: uncertain modal without Send, process stop/relaunch,
+no recovered resend modal and exact original draft cleared; a newer draft then
+survived a second restart and the Mail → Telegram switch. This fixture uses the
+receipt helper and a synthetic queue, not an Account or server send. Cancellation/
+acceptance faults also have regression coverage. Live account, power-loss and
+disk-failure acceptance remain unverified. QA requires explicit synthetic Postbox, isolated
 PostgreSQL configuration and S3 configuration; it never opens personal sessions.
 
 Forward requires explicit selection among loaded dialogs in the same account;

@@ -55,6 +55,12 @@ Build adaptations in the generated copy:
   exact integer peer keys. The GPL-3.0-or-later patch context is tracked in
   `scripts/telegram_read_adaptation.py` with exact input/output SHA256 checks.
   No database schema change or source-cache dependency is introduced.
+- Add optional admission/commit hooks to the ordinary outgoing enqueue API.
+  Recipe 6 keeps the upstream media transformation and queue algorithm, while
+  allowing Makosh to validate its pending pointer before enqueue and save its
+  receipt in the same Postbox transaction. Existing callers use nil defaults.
+  The GPL-3.0-or-later patch in `scripts/telegram_enqueue_adaptation.py` checks
+  exact input/output SHA256; no generated engine source is edited by hand.
 - Link OpenSSLEncryptionProvider explicitly to Homebrew OpenSSL 3, using its
   Apache-2.0 implementation rather than the upstream Bazel BoringSSL target.
 - Generate FlatSerialization using official `flatc 24.12.23`; source archive

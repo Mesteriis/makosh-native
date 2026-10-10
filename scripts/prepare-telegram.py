@@ -16,6 +16,7 @@ import tempfile
 from telegram_search_adaptation import adapt_search_source
 from telegram_retention_adaptation import POSTBOX, HISTORY, adapt_retention_source, journal_source
 from telegram_read_adaptation import READ_SYNC, adapt_read_source
+from telegram_enqueue_adaptation import ENQUEUE, adapt_enqueue_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -28,7 +29,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 5
+RECIPE = 6
 
 
 def run(*args):
@@ -154,6 +155,8 @@ def main():
     (DEST / "submodules/Postbox/Sources/MakoshMessageJournal.swift").write_text(journal_source())
     read_sync = DEST / READ_SYNC
     read_sync.write_text(adapt_read_source(read_sync.read_text()))
+    enqueue = DEST / ENQUEUE
+    enqueue.write_text(adapt_enqueue_source(enqueue.read_text()))
     replace_exact(DEST / "submodules/ManagedFile/Package.swift",
                   '../../submodules/telegram-ios/submodules/SSignalKit', '../SSignalKit')
     replace_exact(DEST / "submodules/TelegramCore/Sources/Account/Account.swift",
@@ -214,6 +217,7 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
                         "Message search reports RPC failure without consuming either history cursor",
                         "Postbox records message snapshots before overwrite/removal in a durable same-transaction archive journal",
                         "Postbox restores all pending read synchronization operations using an integer-key table scan",
+                        "Outgoing queue admission and owned pending-upload receipt share one Postbox transaction",
                         "FlatSerialization generated with pinned official flatc 24.12.23"]}, indent=2) + "\n")
     print(f"Telegram engine: prepared {len(packages)} pinned packages in ignored local storage")
 

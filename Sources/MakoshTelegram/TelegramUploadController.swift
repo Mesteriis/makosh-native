@@ -23,7 +23,7 @@ public enum TelegramUploadPhase: Equatable, Sendable {
 @MainActor protocol TelegramUploadLease: AnyObject { func stop() }
 @MainActor protocol TelegramUploadProvider: AnyObject {
     var accountID: Int64 { get }
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease
 }
 enum TelegramUploadEvent {
@@ -199,6 +199,7 @@ enum TelegramUploadEvent {
     }
 
     private func dispatch(provider: any TelegramUploadProvider, file: TelegramUploadFile, target: TelegramUploadTarget, frozen: TelegramComposerInput) {
+        guard let preparationID else { return }
         let request = UUID(); token = request; sentInput = frozen; sentCaption = frozen.formattedText; committed = false
         phase = .storing; error = nil
         deadline = Task { [weak self] in
@@ -208,7 +209,7 @@ enum TelegramUploadEvent {
         }
         willSubmit?(target, sentCaption)
         guard token == request, phase == .storing else { return }
-        let returned = provider.submit(file: file, target: target, caption: sentCaption) { [weak self] event in
+        let returned = provider.submit(file: file, target: target, preparationID: preparationID, caption: sentCaption) { [weak self] event in
             guard let self, self.token == request else { return }
             self.receive(event)
         }

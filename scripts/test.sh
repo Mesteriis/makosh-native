@@ -7,6 +7,7 @@ python3 scripts/test-telegram-preparation.py
 python3 scripts/test-telegram-search-adaptation.py
 python3 scripts/test-telegram-retention-adaptation.py
 python3 scripts/test-telegram-read-adaptation.py
+python3 scripts/test-telegram-enqueue-adaptation.py
 python3 - "$@" <<'PYTHON'
 import json
 import os

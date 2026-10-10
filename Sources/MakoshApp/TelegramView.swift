@@ -83,6 +83,8 @@ struct TelegramDetailView: View {
     @State private var replyRequest: TelegramMessageActionRequest?
     @State private var editRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
+    @State private var messageSearchPresented = false
+    @FocusState private var messageSearchFocused: Bool
     private let dossier: WorkspaceModel?
     private let openDossier: (UUID) -> Void
     init(model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in }) {
@@ -137,7 +139,10 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.media.saved")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
-            .onChange(of: model.selectedChatID) { _, _ in attachmentActions.cancel(); replyRequest = nil; editRequest = nil; profilePresented = false }
+            .onChange(of: model.selectedChatID) { _, _ in
+                attachmentActions.cancel(); replyRequest = nil; editRequest = nil; profilePresented = false
+                closeMessageSearch()
+            }
             .onChange(of: model.messageActionContextID) { _, _ in replyRequest = nil; editRequest = nil; messageActionRequest = nil; profilePresented = false }
             .onChange(of: messageActions.phase) { _, phase in
                 if phase == .queued, let replyRequest, messageActions.source == replyRequest.source,
@@ -150,7 +155,10 @@ struct TelegramDetailView: View {
             }
             .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
-            .onChange(of: search.messageQuery) { _, _ in attachmentActions.cancel(); playback.stop() }
+            .onChange(of: search.messageQuery) { _, _ in
+                attachmentActions.cancel(); playback.stop()
+                if search.hasMessageQuery { messageSearchPresented = true }
+            }
             .onDisappear { attachmentActions.cancel(); model.cancelMediaLoads() }
             .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
@@ -224,10 +232,28 @@ struct TelegramDetailView: View {
                     }.buttonStyle(.plain).help("Открыть карточку собеседника")
                         .accessibilityLabel("Карточка собеседника: \(chat.title)").accessibilityIdentifier("telegram.profile.open")
                     Spacer()
-                    TextField("Поиск сообщений в диалоге", text: $search.messageQuery)
-                        .textFieldStyle(.roundedBorder).frame(maxWidth: 300).accessibilityIdentifier("telegram.messageSearch")
+                    Button {
+                        if messageSearchPresented { closeMessageSearch() }
+                        else { openMessageSearch() }
+                    } label: {
+                        Image(systemName: "magnifyingglass").frame(width: 28, height: 28)
+                    }.buttonStyle(.plain).foregroundStyle(messageSearchPresented ? Color.accentColor : Color.secondary)
+                        .help("Поиск сообщений (⌘F)").accessibilityLabel("Поиск сообщений в диалоге")
+                        .accessibilityIdentifier("telegram.messageSearch.toggle")
                 }.padding(.horizontal, 16).padding(.vertical, 10)
                 Divider()
+                if messageSearchPresented {
+                    HStack(spacing: 12) {
+                        TextField("Поиск сообщений в диалоге", text: $search.messageQuery)
+                            .textFieldStyle(.roundedBorder).focused($messageSearchFocused)
+                            .accessibilityIdentifier("telegram.messageSearch")
+                            .onExitCommand(perform: closeMessageSearch)
+                        Button(action: closeMessageSearch) { Image(systemName: "xmark").frame(width: 24, height: 24) }
+                            .buttonStyle(.plain).help("Закрыть поиск")
+                            .accessibilityLabel("Закрыть поиск").accessibilityIdentifier("telegram.messageSearch.close")
+                    }.padding(.horizontal, 16).frame(height: 44)
+                    Divider()
+                }
                 if search.hasMessageQuery {
                     messageSearchResults
                 } else {
@@ -319,7 +345,7 @@ struct TelegramDetailView: View {
                     Text("Синтетическая проверка: действия имитируются, отправки в Telegram нет.")
                         .font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
                 }
-            }
+            }.focusedSceneValue(\.findTelegramMessage, openMessageSearch)
         } else {
             ContentUnavailableView("Выберите диалог", systemImage: "bubble.left.and.bubble.right", description: Text("Здесь будет история выбранного диалога Telegram.")).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -330,7 +356,6 @@ struct TelegramDetailView: View {
             HStack {
                 Text("Найдено: \(search.totalMessages). Показано: \(search.messages.count)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Закрыть поиск") { search.messageQuery = "" }.accessibilityIdentifier("telegram.messageSearch.close")
             }.padding(.horizontal, 16).padding(.top, 12)
             TelegramSearchStatusView(status: search.messageStatus, retry: search.retryMessages).padding(.horizontal, 16)
             if search.messages.isEmpty {
@@ -370,6 +395,17 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.messageSearch.more")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func openMessageSearch() {
+        messageSearchPresented = true
+        messageSearchFocused = true
+    }
+
+    private func closeMessageSearch() {
+        messageSearchFocused = false
+        messageSearchPresented = false
+        search.messageQuery = ""
     }
 
     @ViewBuilder private func messageActionItems(_ item: TelegramMessage) -> some View {

@@ -37,5 +37,6 @@ struct MakoshApp: App {
             #endif
         }
             .defaultSize(width: 1200, height: 800)
+            .commands { TelegramSearchCommands() }
     }
 }

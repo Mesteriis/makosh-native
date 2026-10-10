@@ -1145,3 +1145,51 @@ Preceding composer head `05217cf64add1b0e78ec5e34a7a9f46813fd7cc5` passed
 [PR CI 38073276605](https://github.com/Mesteriis/makosh-native/actions/runs/38073276605)
 and [push CI 38073273655](https://github.com/Mesteriis/makosh-native/actions/runs/38073273655).
 Hosted CI for the later message-status change is tracked after publication.
+
+## Telegram reference header search — 2026-10-10
+
+The selected references remain the UI specification; this constraint is now
+explicit in AGENTS.md. Telegram's permanent header search field was a confirmed
+difference. Own SwiftUI code now follows TelegramSwift's right-hand search icon,
+separate 44-point search row and cancellation that clears the query. A focused
+scene command follows the reference's distinct Cmd-F behavior: open/focus the
+field without erasing the query. The command is unavailable without a selected
+Telegram chat. Search closes on chat change. No upstream UI code/assets copied.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0. Final `scripts/test.sh`: exit 0,
+  **293 XCTest (230 Telegram + 63 core), 0 failures**, plus **22 Python tests**.
+  Eighteen existing upstream t19 fixture-teardown diagnostics remain after the
+  passing Telegram suite. The initial attempt stopped at compile errors in
+  unfinished, unpublished history-read tests. Those files were preserved outside
+  build/test sources while prioritizing this UI correction; they are not part
+  of the delivered change or claimed as an integrated read-receipt feature.
+- Final `scripts/build-app.sh`: exit 0; ad-hoc signature verified. The final
+  focused-scene command correction followed the full test run; the subsequent
+  final build and native QA exercised that UI-only change.
+- A separate synthetic QA bundle's unsigned executable payload matched the
+  final built app. Native accessibility and screenshots verified collapsed
+  initial search, mouse opening with focus, actual fixture results, Cmd-F
+  opening/focusing, repeated Cmd-F preserving the query, Escape and mouse close
+  returning to history, a result's In History action, and chat switching clearing
+  the old search. Cmd-F without a selected chat did not open search. Ten focused
+  checks passed. No personal account, Keychain or Telegram network was used.
+- Two bounded read-only source reviews found no confirmed issue in the final
+  three UI files; root verified their hashes and owns runtime evidence. Worker
+  model/provider/usage metadata are unavailable, and no quorum was used.
+- Final project XERJ refresh/check passed: **176 files, 146/146 code**;
+  TelegramSwift's locked reference fingerprint also passed. Actual title-bar
+  and own focused-command queries were checked against source. The publication
+  audit found zero matches for four selected local secret fields in 181 files.
+
+This is a corrected reference workflow, not full visual parity. Sidebar/header
+chrome, archive-state placement, themes/avatars, upstream search author/date
+filters and result navigation, incoming mark-read, live-account acceptance,
+earlier dossier GUI acceptance and later channels remain open. The sequential
+migration goal remains active.
+
+The preceding message-status head `4847417f7b351a9042fdcc4ced706bde88d2dd07`
+passed [PR CI 38074067211](https://github.com/Mesteriis/makosh-native/actions/runs/38074067211)
+and [push CI 38074063471](https://github.com/Mesteriis/makosh-native/actions/runs/38074063471).
+Hosted CI for this header correction is tracked after publication.

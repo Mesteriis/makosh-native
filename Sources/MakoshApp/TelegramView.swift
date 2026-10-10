@@ -9,6 +9,7 @@ struct TelegramDetailView: View {
     @ObservedObject private var playback: TelegramPlaybackController
     @ObservedObject private var messageActions: TelegramMessageActionsController
     @ObservedObject private var peerStatus: TelegramPeerStatusController
+    @ObservedObject private var messageSelection: TelegramMessageSelectionController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
@@ -20,6 +21,7 @@ struct TelegramDetailView: View {
         self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload
         self.playback = model.playback; self.messageActions = model.messageActions
         self.peerStatus = model.peerStatus
+        self.messageSelection = model.messageSelection
         self.dossier = dossier; self.openDossier = openDossier
     }
     @State private var apiID = ""
@@ -76,7 +78,7 @@ struct TelegramDetailView: View {
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
             .onChange(of: search.messageQuery) { _, _ in
                 attachmentActions.cancel(); playback.stop()
-                if search.hasMessageQuery { messageSearchPresented = true }
+                if search.hasMessageQuery { closeMessageSelection(); messageSearchPresented = true }
             }
             .onAppear { peerStatus.setVisible(true) }
             .onDisappear {
@@ -202,6 +204,15 @@ struct TelegramDetailView: View {
                                 // layout keeps quote heights and AX scrolling consistent.
                                 VStack(alignment: .leading, spacing: 8) {
                                     ForEach(model.messages) { item in
+                                        let contextID = model.messageActionContextID
+                                        let windowID = model.historyWindowID
+                                        let selectionID = messageSelection.session?.id
+                                        TelegramSelectableHistoryRow(selection: messageSelection, message: item, source: model.actionSource(for: item)) {
+                                            if let windowID, let selectionID {
+                                                _ = model.toggleMessageSelection(messageID: item.id, sessionID: selectionID,
+                                                    contextID: contextID, windowID: windowID)
+                                            }
+                                        } content: {
                                         HStack(alignment: .top) {
                                             if item.isOutgoing { Spacer(minLength: 44) }
                                             Grid(alignment: .leading, verticalSpacing: 7) {
@@ -228,10 +239,11 @@ struct TelegramDetailView: View {
                                                 }
                                             }.padding(11).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                                             if !item.isOutgoing { Spacer(minLength: 44) }
-                                        }.id(item.id).accessibilityElement(children: .contain)
+                                        }.accessibilityElement(children: .contain)
                                             .accessibilityIdentifier("telegram.message.\(item.id)")
                                             .contextMenu { messageActionItems(item) }
                                             .background(TelegramHistoryReadRow(id: item.id, context: model.historyReadContext))
+                                        }.id(item.id)
                                     }
                                 }.padding(.horizontal, 16).padding(.vertical, 12)
                             }.id(model.historyWindowID).defaultScrollAnchor(model.historyPage.isAtLatest ? .bottom : .top)
@@ -247,7 +259,13 @@ struct TelegramDetailView: View {
                     }
                 }
                 Divider()
-                if let session = model.messageEditSession {
+                if messageSelection.session != nil {
+                    TelegramMessageSelectionPanel(model: model) { session in
+                        guard let source = session.sources.first else { return }
+                        messageActionRequest = TelegramMessageActionRequest(source: source, author: "", contextID: session.contextID,
+                            mode: .forward, selection: session)
+                    }
+                } else if let session = model.messageEditSession {
                     TelegramInlineEditView(model: model, session: session)
                         .id(session.id)
                 } else {
@@ -315,6 +333,7 @@ struct TelegramDetailView: View {
     }
 
     private func openMessageSearch() {
+        closeMessageSelection()
         messageSearchPresented = true
         messageSearchFocused = true
     }
@@ -325,10 +344,19 @@ struct TelegramDetailView: View {
         search.messageQuery = ""
     }
 
+    private func closeMessageSelection() {
+        if let session = messageSelection.session {
+            model.cancelMessageSelection(sessionID: session.id, contextID: session.contextID)
+        }
+    }
+
     @ViewBuilder private func messageActionItems(_ item: TelegramMessage) -> some View {
         if let source = model.actionSource(for: item) {
-            TelegramMessageActionsItems(source: source, disabled: model.isBusy || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil || model.isForwardComposerLocked || upload.phase != .idle || messageActions.isBusy || messageActions.phase == .uncertain) { mode in
-                let request = TelegramMessageActionRequest(source: source, author: item.author, contextID: model.messageActionContextID, mode: mode)
+            let contextID = model.messageActionContextID
+            let windowID = model.historyWindowID
+            let disabled = model.isBusy || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil || model.isForwardComposerLocked || upload.phase != .idle || messageActions.isBusy || messageActions.phase == .uncertain
+            TelegramMessageActionsItems(source: source, disabled: disabled) { mode in
+                let request = TelegramMessageActionRequest(source: source, author: item.author, contextID: contextID, mode: mode)
                 switch mode {
                 case .reply:
                     _ = model.beginReply(to: item, contextID: request.contextID)
@@ -337,6 +365,11 @@ struct TelegramDetailView: View {
                 case .forward, .delete: messageActionRequest = request
                 }
             }
+            Divider()
+            Button("Выбрать", systemImage: "checkmark.circle") {
+                if let windowID { _ = model.beginMessageSelection(messageID: item.id, contextID: contextID, windowID: windowID) }
+            }.disabled(disabled || windowID == nil || search.hasMessageQuery || !TelegramComposerForwardSource(source: source).isValid)
+                .accessibilityIdentifier("telegram.selection.begin.\(item.id)")
         }
     }
 }

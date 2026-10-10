@@ -1,6 +1,66 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram recipient composer and forward receipt
+## Current stage: Telegram history selection and batch forwarding
+
+Telegram remains inside the shared service-selector/list/conversation window.
+The history context menu now starts selection of up to 100 typed native IDs.
+A count/cancel/forward panel replaces the ordinary composer without changing its
+input/reply or active edit. Frozen sources retain native MessageId order across
+pagination; a non-forwardable or visibly changed source blocks the whole batch.
+The recipient picker captures the selection revision and refuses stale snapshots.
+Accepting it clears selection and stages the existing recipient composer without
+sending. Ordinary/reply/edit state stays independent. Selection survives service
+switches; Cancel/Escape, search, actual chat/account change clear it. Restart
+resets selection. Chat-change reset is an explicit bounded lifecycle adaptation,
+not a claim that the reference always clears on controller disappearance.
+
+`scripts/dev-db.sh up`, focused and full `scripts/test.sh`, `scripts/build-app.sh`
+and strict deep signature verification exit 0: **474 XCTest (411 Telegram +
+63 core), zero failures; 26 Python regressions**. The focused run has 23 passing
+cases. Thirteen new selection/model tests cover native ordering/100 limit, typed
+scope/session/window/revision guards, page absence, sticky changed versions,
+protected whole-batch refusal and ordinary/reply/edit preservation. Two additional
+presentation regressions cover spoiler surrogates/source preservation and safe
+unavailable-format fallback. The first selection focused run failed one fixture
+case (three assertions): it chose id25 outside the preceding 31–80 page. Correcting
+the fixture to id40 retains both stale-window rejection and off-page preservation;
+final tests pass. The full run prints 66 upstream t19 teardown diagnostics without
+failure/trap. Earlier unrelated cleanup/SQLite failures remain recorded below.
+
+Actual native AX/screenshots verified context-menu selection, count/row toggles,
+selection across previous/latest history pages and Mail → Telegram, protected
+source disabling the entire forward, and Escape returning the original draft/reply.
+Picker cancellation retained selection; acceptance navigated to the recipient
+with two sources and no send. The selected batch/comment restored after process
+restart; explicit Command-Enter synthetic acceptance cleared the exact forward.
+The source ordinary draft/reply survived. A separate restart during active row
+selection reset that temporary selection and retained ordinary/reply. QA used the
+same explicitly owned encrypted synthetic Postbox and isolated PostgreSQL/S3,
+matching unsigned executable payload and strict signatures. No personal account,
+Keychain, Telegram network or server send was used. The synthetic provider does
+not execute a live Account's native enqueue algorithm.
+
+Readonly review found a P2: the new row's accessibility label used raw text,
+exposing an unrevealed spoiler. Root changed it to the existing default masked
+presentation with a safe unavailable-format fallback, added regressions, and
+verified masked AX/screenshot output. Corrected review hashes match current
+source; no further confirmed scoped findings remain. Worker runtime gates were
+SKIP; root performed integration gates/native QA. Observed model/provider/usage
+remain unknown. Shift-range, album individual/group selection, selected copy/
+delete, Saved Messages immediate exception and live-account acceptance remain
+open. An existing edit takes precedence over a staged forward accessory until
+finished/cancelled; no reference evidence justifies silently discarding that edit.
+Other Telegram parity, later channels, backups and standalone packaging remain
+open; the full sequential migration goal stays active. Prior head `0d32197` passed
+both hosted PR/push CI runs; this slice's hosted CI is separate.
+
+Final project XERJ refresh exits 0: 262 files, 232/232 classified code. Current
+selection/staging/presentation queries were confirmed against source; project,
+engine and TelegramSwift freshness checks exit 0. Publication audit checked
+267 publishable files and the private PR body against five selected credential
+fields, with zero matches. Runtime configuration and QA artifacts stay ignored.
+
+## Historical Telegram recipient composer and forward receipt
 
 Telegram stays inside the shared service-selector/list/conversation window.
 Forward now follows the reference's normal recipient-picker → recipient chat →

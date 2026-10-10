@@ -19,6 +19,12 @@ service switches and restart; cancelling the forward keeps the comment/reply.
 Unavailable or changed sources block sending. An uncertain submission is retained
 without automatic resend; a local queue receipt can be checked after restart.
 
+Use **Выбрать** in a history message's context menu to select up to 100 messages
+for one forward. The selection survives history pagination and switching services
+in the same window. Cancel returns to the ordinary draft/reply or active edit;
+choosing a recipient stages the selected batch without sending it. Shift-range,
+album grouping and selection copy/delete actions remain unfinished.
+
 Received Telegram text has a separate encrypted, append-only PostgreSQL archive,
 accessible through **Локальный архив** even while disconnected. Stored versions
 survive edits and removal from Telegram's cache. A durable same-transaction

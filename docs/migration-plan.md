@@ -62,7 +62,7 @@
    Typed reply target сохраняется с полным input одной revision, включая
    reply-only draft, и заново разрешается из текущего Postbox. Недоступный
    источник блокирует отправку до retry/явной отмены; поздний ACK не очищает
-   новый target, форматирование или выделение. Schema 3 читает legacy 1/2;
+   новый target, форматирование или выделение. Schema 4 читает legacy 1/2/3;
    native undo/redo и rich input/reply проверены в общем окне после restart.
    Ordinary/reply отправка передаёт native entities и проверяет text mentions
    по текущему Postbox; inline custom emoji требует отдельного media registry.
@@ -137,7 +137,7 @@
    независимо заранее; переключение на следующий сервис не закрывает пробелы
    Telegram и не меняет общий порядок.
 
-## Текущий участок: пересылка в composer
+## Пересылка в composer
 
 Пересылка теперь проходит через выбор получателя и его обычный composer в общем
 окне. Сохраняются rich comment/selection/reply, source IDs/fingerprints и опции;
@@ -146,5 +146,17 @@ comment+forwards проходит повторную transaction admission; ло
 receipt и storage-only consume защищают от автоматического resend после restart.
 Неизвестный исход и недоступный источник сохраняют черновик. Новое вложение при
 активной пересылке пока явно недоступно. Saved Messages immediate exception,
-multi-selection UI, темы, paid/secret и live-account acceptance остаются впереди.
+остальные selection actions, темы, paid/secret и live-account acceptance остаются впереди.
 Окончание этого участка не завершает Telegram или общий последовательный перенос.
+
+## Текущий участок: выбор нескольких сообщений
+
+Меню «Выбрать» включает typed selection до 100 сообщений. Панель count/cancel/forward
+временно заменяет composer без изменения ordinary/reply/edit; выбор переживает
+пагинацию и переключение сервисов в общем окне. Пересылка фиксирует revision,
+native порядок и все source fingerprints; picker только открывает recipient
+composer с batch. Защищённый или изменённый source блокирует весь batch. Cancel,
+поиск, смена чата/account очищают выбор; restart его не сохраняет. AX использует
+маскирование spoilers и безопасный fallback при недоступном formatting.
+Shift-range, album individual/group selection, copy/delete выбранных сообщений
+и Saved Messages immediate exception ещё впереди. Общий порядок переноса сохранён.

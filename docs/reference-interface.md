@@ -27,6 +27,7 @@ reply/edit/caption и newline/undo. Return и keypad Enter проверены н
 
 | Подтверждено в TelegramSwift | Реализация Макоша |
 | --- | --- |
+| `ChatMessageMenuItems.swift:1005–1011`; `ChatPresentationInterfaceState.swift:1684–1694,1702–1718`; `ChatController.swift:9753–9788`; `ChatInputView.swift:638–658`; `MessageActionsPanelView.swift:61–118`; `SenderController.swift:492–523`: меню Select, native IDs, лимит 100, панель вместо input, AND разрешений и native порядок пересылки | Собственные typed frozen selection/revision, строки с индикатором, count/cancel/forward вместо composer. Пагинация и смена сервиса сохраняют выбор; Cancel возвращает ordinary/reply/edit без изменения. Picker фиксирует revision и только staging recipient composer. Chat/account change очищает выбор — ограниченная адаптация lifecycle. AX маскирует spoilers и не использует raw fallback. Shift-range, album selection, selected copy/delete и Saved Messages exception ещё открыты |
 | `GeneralSettingsViewController.swift:234–241,419–422`: две selectable строки; `FastSettings.swift:246–280`: app-wide Enter/⌘Enter, default Enter; `ObjcUtils.m:1329–1341`: обе Return-клавиши и modifier predicate | Native Settings с двумя взаимоисключающими вариантами; собственный `TelegramSendKey`, `@AppStorage` и существующий AppKit editor. Ordinary/reply, edit и caption явно передают guarded submit; rejected Command/Shift Return вставляет newline. Marked text остаётся в native input; реальный IME пока не принят |
 | `PeersListController.swift:1864–1879`: заголовок 50 и дополнительная строка поиска 40; `1725–1731`: отступ поиска 10; `834–917`: названия «Диалоги»/«Архив» | Компактный заголовок и поиск этих размеров вместо большой панели Telegram, segmented picker и постоянного footer подключения |
 | `PeersListController.swift:3278–3279`: архив открывается из строки списка; `1326–1337`: возврат отменяет поиск | «Архив» — первая прокручиваемая строка inbox; отдельный заголовок архива с возвратом, который очищает запрос. Пустой inbox также оставляет доступ к архиву |
@@ -59,7 +60,7 @@ reply/edit/caption и newline/undo. Return и keypad Enter проверены н
 сохраняет комментарий в исходном чате. Native enqueue содержит comment + forwards
 одним batch с полной повторной transaction admission и accepted receipt — это
 собственная адаптация, тогда как reference отправляет их последовательными
-операциями. Saved Messages immediate exception, multi-selection UI, темы,
+операциями. Saved Messages immediate exception, остальные selection actions, темы,
 paid/secret и совмещение нового вложения с forward ещё открыты.
 
 Telegram находится внутри общего `WorkspaceView`: выбор сервисов слева, список

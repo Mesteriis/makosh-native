@@ -892,6 +892,31 @@ Reference evidence: ShareModalController.swift:1296-1359; ChatInputAccessory.swi
 227-302; ChatInterfaceState.swift:1172-1180,1304-1320; SenderController.swift:492-523.
 No outer GPLv2 serializer/UI was copied. Makosh's atomic batch/receipt is an owned
 adaptation; the reference chains comment and forward separately. Saved Messages'
-immediate-picker exception, multi-message selection UI, topics, paid/secret-chat
+immediate-picker exception, remaining selection actions, topics, paid/secret-chat
 forwarding and live-account acceptance remain open. A new attachment cannot be
 combined with a staged forward yet; its attach button is disabled explicitly.
+
+## History message selection
+
+The history context menu's **Выбрать** enters an in-process selection mode. A
+compact count/cancel/forward panel replaces the composer without modifying its
+ordinary input/reply or active edit. Row clicks toggle typed native identities;
+up to 100 frozen sources are ordered by native MessageId, matching the reference's
+sorted-then-reversed enqueue order. Protected messages can be selected, but any
+non-forwardable or visibly changed source blocks the complete forward batch.
+The recipient picker captures the selection revision and refuses stale snapshots.
+Accepting it stages the existing recipient composer; it never submits automatically.
+
+Pagination does not prune off-page selection, and the shared model retains it
+across service switches. Explicit Cancel/Escape, search opening, actual chat
+change or account stop clear it; restart does not persist selection. Clearing on
+chat change is Makosh's bounded lifecycle adaptation: the reference's selection
+belongs to a chat controller, whose disappearance alone does not clear it.
+Selection accessibility labels use the same default spoiler mask as the reader;
+unavailable formatting never falls back to raw source text.
+
+Reference evidence: ChatMessageMenuItems.swift:1005-1011; ChatPresentationInterfaceState.swift:
+1684-1694,1702-1718; ChatController.swift:9753-9788; ChatInputView.swift:638-658;
+MessageActionsPanelView.swift:61-118; SenderController.swift:492-523. No GPLv2 UI
+source was copied. Shift-range selection, album individual/group selection,
+selected copy/delete and Saved Messages' immediate-forward exception remain open.

@@ -3,6 +3,38 @@ import AppKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramMessagePresentationTests: XCTestCase {
+    func testSelectionLabelMasksSpoilerSurrogatesWithoutChangingSource() throws {
+        let text = "Visible SECRET😀"
+        let range = (text as NSString).range(of: "SECRET😀")
+        let value = try TelegramFormattedText(text: text, entities: [
+            .init(offset: range.location, length: range.length, kind: .spoiler),
+            .init(offset: range.location, length: range.length, kind: .bold)])
+        let message = TelegramMessage(id: "selection", date: Date(timeIntervalSince1970: 0), text: text,
+            author: "Synthetic author", isOutgoing: false, delivery: .none,
+            actionMetadata: .init(peerID: 7, namespace: 0, messageID: 1, fingerprint: "version", text: text,
+                authorID: 8, canReply: true, canEdit: false, canForward: true,
+                canDeleteLocally: true, canDeleteForEveryone: false, formattedText: value))
+        let label = TelegramMessagePresentation.selectionLabel(for: message)
+        XCTAssertEqual(label, "Synthetic author: Visible " + String(repeating: "█", count: range.length))
+        XCTAssertFalse(label.contains("SECRET")); XCTAssertFalse(label.contains("😀"))
+        XCTAssertEqual(message.formattedTextForDisplay, value); XCTAssertEqual(message.text, text)
+    }
+    func testSelectionLabelDoesNotFallBackToRawTextWhenFormattingIsUnavailable() throws {
+        var message = TelegramMessage(id: "selection", date: Date(timeIntervalSince1970: 0), text: "SECRET",
+            author: "Synthetic author", isOutgoing: false, delivery: .none)
+        for value in [nil, try TelegramFormattedText(text: "different")] as [TelegramFormattedText?] {
+            message.actionMetadata = .init(peerID: 7, namespace: 0, messageID: 1, fingerprint: "version", text: message.text,
+                authorID: 8, canReply: true, canEdit: false, canForward: true,
+                canDeleteLocally: true, canDeleteForEveryone: false, formattedText: value)
+            XCTAssertNil(message.formattedTextForDisplay)
+            XCTAssertEqual(TelegramMessagePresentation.selectionLabel(for: message),
+                "Synthetic author: Форматирование сообщения недоступно")
+        }
+        let attachment = TelegramMessage(id: "attachment", date: message.date, text: "",
+            author: message.author, isOutgoing: false, delivery: .none)
+        XCTAssertEqual(TelegramMessagePresentation.selectionLabel(for: attachment), "Synthetic author: Сообщение с вложением")
+    }
+
     func testRevealKeyRejectsChangedVersionContextAndUnicodeBytes() throws {
         let original = try TelegramFormattedText(text: "é", entities: [.init(offset: 0, length: 1, kind: .spoiler)])
         let key = TelegramMessagePresentationKey(context: "account:chat:message", value: original)

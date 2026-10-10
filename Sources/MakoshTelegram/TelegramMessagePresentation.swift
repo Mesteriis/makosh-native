@@ -49,6 +49,19 @@ public struct TelegramMessagePresentationKey: Equatable, Sendable {
         }
         return String(decoding: units, as: UTF16.self)
     }
+
+    /// Selection hides the child text view from accessibility. Its replacement
+    /// label must retain the same spoiler masking and unavailable-format fallback.
+    public static func selectionLabel(for message: TelegramMessage) -> String {
+        let detail: String
+        if let value = message.formattedTextForDisplay {
+            detail = value.text.isEmpty ? "Сообщение с вложением" : plainText(value)
+        } else {
+            detail = "Форматирование сообщения недоступно"
+        }
+        return "\(message.author): \(detail)"
+    }
+
     public static func attributedString(_ value: TelegramFormattedText, revealingSpoilers: Bool = false) -> NSAttributedString {
         let font = NSFont.systemFont(ofSize: 14)
         let hidden = revealingSpoilers ? [] : mergedSpoilers(value.entities)

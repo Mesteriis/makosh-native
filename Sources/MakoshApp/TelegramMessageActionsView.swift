@@ -8,6 +8,7 @@ struct TelegramMessageActionRequest: Identifiable {
     let author: String
     let contextID: UUID
     let mode: Mode
+    var selection: TelegramMessageSelectionSession? = nil
 }
 
 struct TelegramMessageActionsItems: View {
@@ -56,6 +57,7 @@ struct TelegramMessageActionsStatus: View {
 struct TelegramMessageActionSheet: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var controller: TelegramMessageActionsController
+    @ObservedObject private var selection: TelegramMessageSelectionController
     let request: TelegramMessageActionRequest
     @Environment(\.dismiss) private var dismiss
     @State private var destination: Int64?
@@ -65,11 +67,13 @@ struct TelegramMessageActionSheet: View {
     @State private var validationFailed = false
     init(model: TelegramModel, request: TelegramMessageActionRequest) {
         self.model = model; self.controller = model.messageActions; self.request = request
+        self.selection = model.messageSelection
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(title).font(.title2.weight(.semibold))
-            Text(request.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(request.selection.map { "Выбрано сообщений: \($0.count)" } ?? request.author)
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             Group {
                 if request.source.canCopy {
                     Text(request.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(request.source)).textSelection(.enabled)
@@ -126,7 +130,12 @@ struct TelegramMessageActionSheet: View {
             .onChange(of: model.messageActionContextID) { _, _ in dismiss() }
     }
     private var title: String {
-        switch request.mode { case .edit: "Изменить сообщение"; case .forward: "Переслать сообщение"; case .delete: "Удалить в Telegram"; case .reply: "Ответить" }
+        switch request.mode {
+        case .edit: "Изменить сообщение"
+        case .forward: request.selection == nil ? "Переслать сообщение" : "Переслать выбранные сообщения"
+        case .delete: "Удалить в Telegram"
+        case .reply: "Ответить"
+        }
     }
     private var confirmTitle: String {
         switch request.mode {
@@ -141,7 +150,13 @@ struct TelegramMessageActionSheet: View {
               model.messageActionContextID == request.contextID else { return false }
         switch request.mode {
         case .edit: return false
-        case .forward: return destination != nil
+        case .forward:
+            if let selection = request.selection {
+                guard self.selection.session?.id == selection.id,
+                      self.selection.session?.revision == selection.revision,
+                      self.selection.session?.canForward == true else { return false }
+            }
+            return destination != nil
         case .delete: return deleteForEveryone != nil
         case .reply: return false
         }
@@ -152,7 +167,13 @@ struct TelegramMessageActionSheet: View {
         case .edit: return
         case .forward:
             guard let destination else { return }
-            let staged = model.stageMessageForward(source: request.source, destinationChatID: destination, contextID: request.contextID)
+            let staged: Bool
+            if let selection = request.selection {
+                staged = model.stageSelectedMessagesForward(destinationChatID: destination, sessionID: selection.id,
+                    contextID: request.contextID, expectedRevision: selection.revision)
+            } else {
+                staged = model.stageMessageForward(source: request.source, destinationChatID: destination, contextID: request.contextID)
+            }
             validationFailed = !staged
             if staged { dismiss() }
             return

@@ -79,6 +79,7 @@ public final class TelegramModel: ObservableObject {
     public let messageActions = TelegramMessageActionsController()
     public let composerReply = TelegramComposerReplyController()
     public let composerForward = TelegramComposerForwardController()
+    public let messageSelection = TelegramMessageSelectionController()
     @Published public private(set) var composerForwardIntent: TelegramComposerForwardIntent?
     @Published public private(set) var composerForwardDisposition: TelegramComposerForwardDisposition?
     @Published public private(set) var isRestoringComposerDraft = false
@@ -139,6 +140,7 @@ public final class TelegramModel: ObservableObject {
     @Published public var selectedChatID: Int64? {
         didSet {
             guard oldValue != selectedChatID else { return }
+            messageSelection.cancel()
             cancelContactProfile()
             playback.stop()
             if let id = selectedChatID, let found = search.chats.first(where: { $0.id == id }) { knownChats[id] = found }
@@ -171,7 +173,7 @@ public final class TelegramModel: ObservableObject {
         }
     }
     public var composerCanSend: Bool {
-        guard !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil, pendingUploadRecoveryError == nil else { return false }
+        guard messageSelection.session == nil, !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil, pendingUploadRecoveryError == nil else { return false }
         if composerForwardIntent != nil {
             guard !isForwardComposerLocked, composerForward.phase == .ready,
                   composerInput.formattedText.text.isEmpty || telegramFormattedTextCanSend(composerInput.formattedText),
@@ -558,20 +560,62 @@ public final class TelegramModel: ObservableObject {
     /// Staging navigates to the recipient; it never enqueues a message.
     @discardableResult
     public func stageMessageForward(source: TelegramMessageActionSource, destinationChatID: Int64, contextID: UUID) -> Bool {
+        stageMessageForwards(sources: [source], destinationChatID: destinationChatID, contextID: contextID)
+    }
+
+    @discardableResult
+    public func stageMessageForwards(sources: [TelegramMessageActionSource], destinationChatID: Int64, contextID: UUID) -> Bool {
         guard contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
               !isRestoringComposerDraft, composerDraftRecoveryError == nil,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain,
-              source.accountID == draftAccountID, source.chatID == selectedChatID, source.canForward,
-              knownChats[source.chatID] != nil,
+              !sources.isEmpty, sources.allSatisfy({ $0.accountID == draftAccountID && $0.chatID == selectedChatID && $0.canForward }),
+              let chatID = selectedChatID, knownChats[chatID] != nil,
               let destination = forwardDestinations.first(where: { $0.id == destinationChatID }) else { return false }
-        let intent = TelegramComposerForwardIntent(sources: [.init(source: source)])
+        let intent = TelegramComposerForwardIntent(sources: sources.map(TelegramComposerForwardSource.init(source:)))
         guard intent.isValid else { return false }
         knownChats[destinationChatID] = destination
         pendingForwardStage = (contextID, destinationChatID, intent, nil)
         selectedChatID = destinationChatID
         applyPendingForwardStage()
+        messageSelection.cancel()
         return true
+    }
+
+    private var canChangeMessageSelection: Bool {
+        phase == .ready && !isBusy && !historyPage.isLoading && !historyPage.timedOut && !search.hasMessageQuery &&
+        !isRestoringComposerDraft && composerDraftRecoveryError == nil && !isForwardComposerLocked &&
+        !isRestoringPendingUpload && pendingUploadRecoveryError == nil && upload.phase == .idle &&
+        !messageActions.isBusy && messageActions.phase != .uncertain
+    }
+
+    @discardableResult
+    public func beginMessageSelection(messageID: String, contextID: UUID, windowID: UUID) -> Bool {
+        guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
+              messageSelection.session == nil, let message = messages.first(where: { $0.id == messageID }),
+              let source = actionSource(for: message) else { return false }
+        return messageSelection.begin(source: source, contextID: contextID)
+    }
+
+    @discardableResult
+    public func toggleMessageSelection(messageID: String, sessionID: UUID, contextID: UUID, windowID: UUID) -> Bool {
+        guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
+              let message = messages.first(where: { $0.id == messageID }), let source = actionSource(for: message) else { return false }
+        return messageSelection.toggle(source: source, sessionID: sessionID, contextID: contextID)
+    }
+
+    public func cancelMessageSelection(sessionID: UUID, contextID: UUID) {
+        guard contextID == accountGeneration, messageSelection.session?.id == sessionID else { return }
+        messageSelection.cancel()
+    }
+
+    @discardableResult
+    public func stageSelectedMessagesForward(destinationChatID: Int64, sessionID: UUID, contextID: UUID, expectedRevision: UUID? = nil) -> Bool {
+        guard contextID == accountGeneration, let session = messageSelection.session,
+              session.id == sessionID, session.contextID == contextID, session.accountID == draftAccountID,
+              session.chatID == selectedChatID, session.canForward,
+              expectedRevision == nil || expectedRevision == session.revision else { return false }
+        return stageMessageForwards(sources: session.sources, destinationChatID: destinationChatID, contextID: contextID)
     }
 
     private func applyPendingForwardStage() {
@@ -645,7 +689,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func beginReply(to message: TelegramMessage, contextID: UUID) -> Bool {
-        guard !isRestoringPendingUpload, composerDraftRecoveryError == nil,
+        guard messageSelection.session == nil, !isRestoringPendingUpload, composerDraftRecoveryError == nil,
               !isForwardComposerLocked, contextID == accountGeneration, !isBusy, upload.phase == .idle,
               let source = actionSource(for: message), source.canReply, !source.fingerprint.isEmpty,
               source.chatID == source.peerID || source.metadata.migrationChatID == source.chatID else { return false }
@@ -742,7 +786,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func beginMessageEdit(source: TelegramMessageActionSource, author: String, contextID: UUID) -> Bool {
-        guard contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
+        guard messageSelection.session == nil, contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
               composerDraftRecoveryError == nil,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain,
@@ -814,7 +858,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func performMessageAction(_ action: TelegramMessageAction, source: TelegramMessageActionSource, contextID: UUID) -> Bool {
-        guard !isRestoringPendingUpload, composerDraftRecoveryError == nil,
+        guard messageSelection.session == nil, !isRestoringPendingUpload, composerDraftRecoveryError == nil,
               !isForwardComposerLocked, pendingUploadRecoveryError == nil,
               contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain,
@@ -857,7 +901,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID) {
-        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
+        guard messageSelection.session == nil, !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
               drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.forwardIntent == nil,
               selectedChatID != target.chatID || composerDraftRecoveryError == nil,
               target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
@@ -1094,7 +1138,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func sendMessage(_ formatted: TelegramFormattedText) -> Bool {
-        guard !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil,
+        guard messageSelection.session == nil, !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil,
               composerForwardIntent == nil, pendingUploadRecoveryError == nil,
               let draftAccountID, let chatID = selectedChatID,
               drafts.snapshot(accountID: draftAccountID, chatID: chatID)?.replyTarget == nil else { return false }
@@ -1213,6 +1257,7 @@ public final class TelegramModel: ObservableObject {
         messageActions.bind(provider: nil)
         composerReply.bind(nil)
         composerForward.bind(nil)
+        messageSelection.cancel()
         pendingForwardStage = nil
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
@@ -1407,6 +1452,9 @@ public final class TelegramModel: ObservableObject {
         historyPage = historyPages.navigation
         updateHistoryDeadline(requestID: requestID)
         if !items.isEmpty || !isLoading { messages = items }
+        if let chatID = selectedChatID {
+            messageSelection.observe(sources: items.compactMap(actionSource), contextID: accountGeneration, chatID: chatID)
+        }
         refreshMediaSources()
     }
 

@@ -75,6 +75,9 @@ public final class TelegramModel: ObservableObject {
     public let messageActions = TelegramMessageActionsController()
     public var uploadContextID: UUID { accountGeneration }
     public var messageActionContextID: UUID { accountGeneration }
+    public var contactProfileContextID: UUID { accountGeneration }
+    @Published public private(set) var contactProfileState: TelegramContactProfileState = .idle
+    var contactProfileRequestID: UUID?
     public var forwardDestinations: [TelegramChat] {
         var destinations = knownChats
         for chat in search.chats { destinations[chat.id] = chat }
@@ -110,6 +113,7 @@ public final class TelegramModel: ObservableObject {
     @Published public var selectedChatID: Int64? {
         didSet {
             guard oldValue != selectedChatID else { return }
+            cancelContactProfile()
             playback.stop()
             if let id = selectedChatID, let found = search.chats.first(where: { $0.id == id }) { knownChats[id] = found }
             if let accountID = draftAccountID {
@@ -148,6 +152,7 @@ public final class TelegramModel: ObservableObject {
     private var openingTimeout: Task<Void, Never>?
     private var chatPageTimeout: Task<Void, Never>?
     private var historyPageTimeout: Task<Void, Never>?
+    private var contactProfileTimeout: Task<Void, Never>?
     #if DEBUG
     private var preview: TelegramSyntheticPages?
     #endif
@@ -162,6 +167,7 @@ public final class TelegramModel: ObservableObject {
     private let history = MetaDisposable()
     private let connection = MetaDisposable()
     private let outgoing = MetaDisposable()
+    private let contactProfileSubscription = MetaDisposable()
 
     public init() {
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
@@ -182,6 +188,65 @@ public final class TelegramModel: ObservableObject {
             let key = EditDraftKey(source)
             if let submitted, self.editDrafts[key] == submitted { self.editDrafts[key] = nil }
         }
+    }
+
+    /// Explicit profile opening reads only the selected account's local peer.
+    /// The timestamp records this cache observation, not a fresh server fetch.
+    public func loadContactProfile() {
+        cancelContactProfile()
+        guard phase == .ready, let chat = selectedChat, let accountID = draftAccountID else { return }
+        let requestID = UUID(), contextID = accountGeneration
+        contactProfileRequestID = requestID
+        contactProfileState = .loading
+        #if DEBUG
+        if isSyntheticPreview {
+            receiveContactProfile(TelegramContactProfile(accountID: accountID, peerID: chat.id,
+                displayName: chat.title, username: "synthetic_\(chat.id)", phone: "10000000000",
+                isBot: false, observedAt: Date()), requestID: requestID,
+                contextID: contextID, accountID: accountID, chatID: chat.id)
+            return
+        }
+        #endif
+        guard let account else { cancelContactProfile(); return }
+        contactProfileTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            guard let self, self.contactProfileRequestID == requestID else { return }
+            self.contactProfileSubscription.set(nil)
+            self.contactProfileRequestID = nil
+            self.contactProfileTimeout = nil
+            self.contactProfileState = .unavailable("Карточка пока не загрузилась. Повторите запрос.")
+        }
+        contactProfileSubscription.set((telegramContactProfilePeer(postbox: account.postbox, peerID: chat.id)
+            |> deliverOnMainQueue).start(next: { [weak self] peer in
+            MainActor.assumeIsolated {
+                self?.receiveContactProfile(peer.flatMap { telegramContactProfile(peer: $0,
+                    accountID: accountID, observedAt: Date()) }, requestID: requestID,
+                    contextID: contextID, accountID: accountID, chatID: chat.id)
+            }
+        }))
+    }
+
+    func receiveContactProfile(_ profile: TelegramContactProfile?, requestID: UUID,
+                               contextID: UUID, accountID: Int64, chatID: Int64) {
+        guard phase == .ready, requestID == contactProfileRequestID, contextID == accountGeneration,
+              accountID == draftAccountID, chatID == selectedChatID,
+              profile == nil || (profile?.accountID == accountID && profile?.peerID == chatID) else { return }
+        contactProfileTimeout?.cancel(); contactProfileTimeout = nil
+        contactProfileRequestID = nil
+        contactProfileState = profile.map(TelegramContactProfileState.ready)
+            ?? .unavailable("Карточка человека недоступна. Группы, каналы и секретные чаты пока не поддерживаются.")
+    }
+
+    public func isCurrentContactProfile(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
+        phase == .ready && contextID == accountGeneration && profile.accountID == draftAccountID
+            && profile.peerID == selectedChatID && contactProfileState == .ready(profile)
+    }
+
+    public func cancelContactProfile() {
+        contactProfileSubscription.set(nil)
+        contactProfileTimeout?.cancel(); contactProfileTimeout = nil
+        contactProfileRequestID = nil
+        contactProfileState = .idle
     }
 
     public func messageEditDraft(for source: TelegramMessageActionSource) -> String {
@@ -261,10 +326,11 @@ public final class TelegramModel: ObservableObject {
         openingTimeout?.cancel()
         chatPageTimeout?.cancel()
         historyPageTimeout?.cancel()
+        contactProfileTimeout?.cancel()
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
         account?.network.shouldKeepConnection.set(.single(false))
-        for disposable in [session, authState, action, chatList, history, connection, outgoing] { disposable.dispose() }
+        for disposable in [session, authState, action, chatList, history, connection, outgoing, contactProfileSubscription] { disposable.dispose() }
     }
 
     public func connect(apiID: String, apiHash: String) {
@@ -484,6 +550,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        cancelContactProfile()
         archive.bind(journal: nil)
         playback.stop()
         upload.bind(provider: nil)

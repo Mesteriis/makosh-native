@@ -872,3 +872,78 @@ also passed. Actual reveal-key and masked-preview query hits were checked agains
 current source. Credential-match audit of **161 publishable files** found zero
 matches to the selected local credential fields. Private QA, raw logs, worker
 records, indexes and configuration remain ignored.
+
+
+## Telegram reference peer profile and dossier linking — 2026-10-10
+
+The conversation header now opens peer information, preserving TelegramSwift's
+confirmed title-bar entry and profile → phone/username ordering. The independently
+written native view reads only the selected account's cached TelegramUser after
+explicit opening. It adds an explicit new/existing PostgreSQL dossier action,
+source refresh and the existing dossier navigation; it does not introduce a
+second dossier renderer. Photos/presence/about and other reference profile
+features remain unfinished. Group/channel/secret-chat profiles, bot person
+linking and linking a nameless profile are outside this slice.
+
+Identity attachment is one row-locked PostgreSQL mutation. It preserves manual
+fields, notes, source observations and identity history, reuses an existing
+owner, rejects another owner's identity or a missing explicit target without
+partial writes, and never silently merges/moves contacts. Repeated snapshots
+are idempotent; stale source data cannot overwrite newer observations. Link and
+source changes advance revisions to block stale merge undo. Username is shown
+in the profile but is not stored in an unrelated dossier field. The timestamp
+records a local cache observation, not server freshness.
+
+Actual evidence:
+
+- `scripts/dev-db.sh up`: exit 0; existing PostgreSQL and S3 containers healthy.
+- Focused initial run: 14 XCTest tests, exit 0. Final `scripts/test.sh`: exit 0,
+  **259 XCTest tests (196 Telegram + 63 core), 0 failures**, plus **22 Python
+  regressions**. Eight new real-PostgreSQL tests cover attachment/restart,
+  account/service/exact-UTF8 isolation, idempotence/stale source data, rollback,
+  corruption, concurrent connections and merge/reimport/undo guards. Six new
+  profile/model tests cover actual TelegramUser mapping and stale callbacks.
+  A seventh profile test exercises the production peer reader on an actual
+  encrypted synthetic Postbox, including a missing peer.
+- A scoped review found an inherited-MainActor risk in the first Postbox read.
+  Moving its transaction body to a nonisolated signal builder and adding the
+  actual Postbox regression resolved that finding. Database integration review
+  found no additional confirmed defect. Reviewers did not independently rerun
+  runtime gates; observed model/provider/usage metadata are unavailable.
+- One intermediate full run exited 1 during an existing retention test's
+  temporary-directory teardown (Cocoa 513/EPERM); its journal assertions had
+  completed. The isolated test and subsequent full runs exited 0. The failed
+  log is preserved; no production or old-test fix is claimed for that transient
+  cleanup failure. New fixture cleanup waits for both MediaBox stores to finish
+  initialization and reports cleanup errors. Upstream t19 diagnostics after
+  completed Postbox tests remain separately recorded, not treated as assertions.
+- `scripts/build-app.sh`: exit 0; native executable/bundle built, ad-hoc signed
+  and strictly verified. A separate source copy also built and passed all 259
+  XCTest/22 Python tests with research/source-cache directories absent and
+  network proxy endpoints closed. Its original source cache was restored.
+- Actual isolated native QA, with executable payload matched to the built app:
+  opening the header displayed profile/phone/username; new dossier creation
+  showed the linked state. Choosing an existing contact was disabled until an
+  explicit target; a changed search cleared the target and disabled linking.
+  Native actions produced two synthetic contacts with four Telegram identities,
+  confirmed directly in PostgreSQL. A restart visibly rediscovered a saved
+  identity owner. Explicit refresh showed the linked state without creating
+  another contact or identity. Manual-override preservation and conflicting-owner rollback
+  are established by core tests, not asserted as GUI acceptance.
+- Clicking Open Dossier again caused the computer-use bridge to report
+  `Sky Computer Use native pipe closed before response`; screenshot observation
+  also failed. Restarting only the task-owned synthetic app restored the bridge.
+  Full-dossier navigation/edit/note acceptance therefore remains open. No real
+  account login, private data access, network profile fetch or Telegram send was
+  performed.
+
+The new DEBUG QA branch requires an explicit private database configuration and
+an isolated `qa_telegram_dossier_…` schema; ordinary configuration fallback and
+normal archive setup are disabled. Account/chat/request guards and cancellation
+protect profile results and writes. The overall sequential migration remains
+active; this entry does not mark Telegram or later services complete.
+
+The preceding reading head `d9fb0fe6a97cd3505776e9617f3bfb331a4f356b`
+passed [PR CI 38069901169](https://github.com/Mesteriis/makosh-native/actions/runs/38069901169)
+and [push CI 38069899225](https://github.com/Mesteriis/makosh-native/actions/runs/38069899225).
+Those results do not establish hosted CI for the later dossier change.

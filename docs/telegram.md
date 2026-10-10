@@ -364,6 +364,47 @@ activation path. These are native reading controls, without a browser renderer
 or remote preview fetch. The synthetic QA exercised confirmation and Cancel;
 opening an external application was deliberately not tested.
 
+## Peer profile and explicit dossier linking
+
+Click the conversation header to open the person's profile, following
+TelegramSwift's title-bar entry and profile/phone/username ordering. This slice
+reads the selected account's cached `TelegramUser` only after that action. Its
+observation timestamp describes the local cache read, not a fresh server fetch.
+No contact-list scan, system Contacts access or extra profile network request is
+performed. Group/channel/secret-chat profiles and bots as person dossiers are
+not supported here. A profile without a name can be viewed but not linked yet.
+Photos, presence, about text and other reference profile actions remain open.
+
+The profile offers explicit creation of a new dossier or selection of an existing
+PostgreSQL contact. Existing-source ownership opens that dossier or permits an
+explicit refresh. Identity uses the exact `(telegram, accountID, native peerID)`
+tuple; username remains display data because the current dossier schema has no
+username field. Name and available phone observations retain the source and
+cache-read time. Manual fields, notes and source history survive attachment.
+The operation never silently merges contacts or moves an identity owned by
+another contact. The database checks ownership and target existence atomically
+under its row lock, including concurrent app instances. Duplicate snapshots are
+idempotent; older snapshots cannot replace newer source data. New observations
+and attachments advance revisions so stale merge undo stops.
+
+Profile requests have account/chat/request guards and a 30-second deadline.
+Closing the profile, changing the chat or stopping the account cancels the read;
+the same context is checked immediately before a dossier write. The Postbox
+transaction body is built outside MainActor and tested against an actual
+encrypted synthetic Postbox. A known committed write disables repeat linking
+even if refreshing the workspace fails afterwards.
+
+The DEBUG-only `--telegram-dossier-synthetic-preview` branch exercises the real
+workspace/profile controls with in-memory Telegram fixtures and PostgreSQL.
+It requires an explicit `--database-config PATH` whose schema starts with
+`qa_telegram_dossier_`; it refuses the ordinary configuration fallback. Create
+that configuration privately from your local database settings with a fresh
+isolated schema. No API settings, Keychain, real account/session, Telegram
+network, real sending or normal archive configuration are opened in this branch.
+Release builds exclude it. Native create/link/persistence checks passed;
+opening the full dossier still has the UI-automation limitation recorded in
+`development-status.md` and is not claimed accepted.
+
 ## Offline navigation UI check
 
 After a debug build, launch the explicit synthetic view:

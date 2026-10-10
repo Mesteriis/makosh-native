@@ -24,7 +24,7 @@ final class WorkspaceModel: ObservableObject {
             schema = try values.decodeIfPresent(String.self, forKey: .schema) ?? "makosh"
         }
     }
-    init() {
+    init(requireExplicitDatabaseConfiguration: Bool = false) {
         let setupMessage = "Не удалось открыть PostgreSQL. Запустите scripts/dev-db.sh up и scripts/run.sh. Проверьте файл конфигурации базы данных."
         do {
             let args = CommandLine.arguments
@@ -36,10 +36,18 @@ final class WorkspaceModel: ObservableObject {
                 }
                 configURL = URL(fileURLWithPath: args[index + 1])
             } else {
+                guard !requireExplicitDatabaseConfiguration else {
+                    self.error = "Синтетическая проверка требует --database-config с отдельной тестовой схемой."
+                    return
+                }
                 configURL = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
                     .appendingPathComponent("Makosh/database.json")
             }
             let configuration = try JSONDecoder().decode(DatabaseConfiguration.self, from: Data(contentsOf: configURL))
+            guard !requireExplicitDatabaseConfiguration || configuration.schema.hasPrefix("qa_telegram_dossier_") else {
+                self.error = "Для этой проверки нужна отдельная схема qa_telegram_dossier_…"
+                return
+            }
             guard !configuration.connectionString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 self.error = setupMessage; return
             }
@@ -77,6 +85,31 @@ final class WorkspaceModel: ObservableObject {
             if let id { try store.updateContact(id: id, draft: draft); selectedID = id }
             else { selectedID = try store.createContact(draft: draft) }
         }
+    }
+    func linkTelegramProfile(_ profile: TelegramContactProfile, telegram: TelegramModel,
+                             contextID: UUID, contactID: UUID?) -> UUID? {
+        guard telegram.isCurrentContactProfile(profile, contextID: contextID), !profile.isBot else {
+            error = "Карточка собеседника изменилась. Откройте её заново."
+            return nil
+        }
+        var linkedID: UUID?
+        let committed = perform {
+            guard let store else { throw StoreError.invalid("Хранилище недоступно.") }
+            linkedID = try store.linkImportedContact(profile.dossierImport,
+                source: ImportSource(service: profile.dossierIdentity.service, accountID: profile.dossierIdentity.accountID),
+                fetchedAt: profile.observedAt, contactID: contactID)
+        }
+        return committed ? linkedID : nil
+    }
+    func selectContact(_ id: UUID) -> Bool {
+        do {
+            try reload()
+            guard contacts.contains(where: { $0.id == id }) else {
+                throw StoreError.invalid("Досье изменилось. Откройте карточку собеседника заново.")
+            }
+            selectedID = id
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func perform(_ operation: () throws -> Void) -> Bool {
         do { try operation() }
@@ -125,12 +158,23 @@ private struct EditorSelection: Identifiable { let id = UUID(); let contact: Con
 
 struct WorkspaceView: View {
     @Environment(\.colorScheme) private var colorScheme
-    @StateObject private var model = WorkspaceModel()
-    @StateObject private var telegram = TelegramModel()
+    @StateObject private var model: WorkspaceModel
+    @StateObject private var telegram: TelegramModel
     @State private var destination: Destination? = .contacts
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
+    init() {
+        _model = StateObject(wrappedValue: WorkspaceModel())
+        _telegram = StateObject(wrappedValue: TelegramModel())
+    }
+    #if DEBUG
+    init(syntheticTelegram: TelegramModel) {
+        _model = StateObject(wrappedValue: WorkspaceModel(requireExplicitDatabaseConfiguration: true))
+        _telegram = StateObject(wrappedValue: syntheticTelegram)
+        _destination = State(initialValue: .telegram)
+    }
+    #endif
     private var accent: Color {
         colorScheme == .dark ? Color(red: 0.72, green: 0.68, blue: 0.98) : Color(red: 0.35, green: 0.32, blue: 0.72)
     }
@@ -187,12 +231,16 @@ struct WorkspaceView: View {
             if destination == .contacts {
                 if let contact = model.selected { DossierView(contact: contact, model: model) { editor = EditorSelection(contact: contact) } }
                 else { ContentUnavailableView("Всё о человеке — рядом", systemImage: "person.text.rectangle", description: Text("Выберите контакт, чтобы открыть досье, заметки и источники.")) }
-            } else if destination == .telegram { TelegramDetailView(model: telegram) }
+            } else if destination == .telegram {
+                TelegramDetailView(model: telegram, dossier: model) { id in
+                    if model.selectContact(id) { destination = .contacts }
+                }
+            }
             else if destination == .meetings { MeetingsView() }
             else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
         }
         .tint(accent).background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { model.configureArchive(telegram.archive) }
+        .onAppear { if !telegram.isSyntheticPreview { model.configureArchive(telegram.archive) } }
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model) }
         .sheet(isPresented: $review) { MergeReviewView(model: model) }
         .alert("Макош", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("Понятно", role: .cancel) { model.error = nil } } message: { Text(model.error ?? "") }

@@ -163,6 +163,56 @@ public final class ContactStore {
             return result
         }
     }
+    /// Explicitly attaches a source identity without moving it between contacts.
+    @discardableResult
+    public func linkImportedContact(_ incoming: ImportedContact, source: ImportSource,
+                                    fetchedAt: Date, contactID: UUID?) throws -> UUID {
+        guard !trimmed(source.service).isEmpty, !trimmed(source.accountID).isEmpty,
+              !trimmed(incoming.externalID).isEmpty, fetchedAt.timeIntervalSince1970.isFinite else {
+            throw StoreError.invalid("Некорректные данные привязки контакта.")
+        }
+        try validate(ContactDraft(displayName: incoming.displayName))
+        let identity = ServiceIdentity(service: source.service, accountID: source.accountID, externalID: incoming.externalID)
+        return try mutate { state in
+            let owners = state.contacts.indices.filter { state.contacts[$0].identities.contains(identity) }
+            guard owners.count <= 1,
+                  owners.allSatisfy({ state.contacts[$0].identities.filter { $0 == identity }.count == 1 }) else {
+                throw StoreError.invalid("Неоднозначная привязка источника контакта.")
+            }
+            let index: Int?
+            if let contactID {
+                guard let target = state.contacts.firstIndex(where: { $0.id == contactID }),
+                      owners.first == nil || owners.first == target else {
+                    throw StoreError.invalid("Не удалось привязать источник к выбранному контакту.")
+                }
+                index = target
+            } else { index = owners.first }
+            var contact = index.map { state.contacts[$0] } ?? Contact(displayName: trimmed(incoming.displayName))
+            let before = contact
+            let attached = !contact.identities.contains(identity)
+            if attached { contact.identities.append(identity) }
+            let previousFetched = state.fetched[identity.id]
+            let stale = previousFetched.map { fetchedAt < $0 } ?? false
+            if !stale {
+                absorb(incoming, source: SourceStamp(identity: identity, fetchedAt: fetchedAt), into: &contact)
+                state.fetched[identity.id] = max(previousFetched ?? fetchedAt, fetchedAt)
+            }
+            let sourceChanged = state.fetched[identity.id] != previousFetched
+            if attached {
+                contact.events.append(ContactEvent(date: fetchedAt, kind: "identityLink", detail: "Привязан источник контакта"))
+            } else if contentWithoutFetchDates(contact) != contentWithoutFetchDates(before) {
+                contact.events.append(ContactEvent(date: fetchedAt, kind: "import", detail: "Обновлено из источника контакта"))
+            }
+            if let index {
+                if contact != before || sourceChanged {
+                    contact.revision += 1
+                    state.contacts[index] = contact
+                }
+            } else { state.contacts.append(contact) }
+            return contact.id
+        }
+    }
+
     public func duplicateCandidates() throws -> [DuplicateCandidate] {
         let all = try contacts()
         var result: [DuplicateCandidate] = []

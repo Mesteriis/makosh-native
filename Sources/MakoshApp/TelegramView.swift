@@ -82,7 +82,14 @@ struct TelegramDetailView: View {
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var replyRequest: TelegramMessageActionRequest?
     @State private var editRequest: TelegramMessageActionRequest?
-    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload; self.playback = model.playback; self.messageActions = model.messageActions }
+    @State private var profilePresented = false
+    private let dossier: WorkspaceModel?
+    private let openDossier: (UUID) -> Void
+    init(model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in }) {
+        self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload
+        self.playback = model.playback; self.messageActions = model.messageActions
+        self.dossier = dossier; self.openDossier = openDossier
+    }
     @State private var apiID = ""
     @State private var apiHash = ""
     @State private var phone = ""
@@ -123,8 +130,8 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.media.saved")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
-            .onChange(of: model.selectedChatID) { _, _ in attachmentActions.cancel(); replyRequest = nil; editRequest = nil }
-            .onChange(of: model.messageActionContextID) { _, _ in replyRequest = nil; editRequest = nil; messageActionRequest = nil }
+            .onChange(of: model.selectedChatID) { _, _ in attachmentActions.cancel(); replyRequest = nil; editRequest = nil; profilePresented = false }
+            .onChange(of: model.messageActionContextID) { _, _ in replyRequest = nil; editRequest = nil; messageActionRequest = nil; profilePresented = false }
             .onChange(of: messageActions.phase) { _, phase in
                 if phase == .queued, let replyRequest, messageActions.source == replyRequest.source,
                    case .reply = messageActions.action { self.replyRequest = nil }
@@ -139,6 +146,10 @@ struct TelegramDetailView: View {
             .onChange(of: search.messageQuery) { _, _ in attachmentActions.cancel(); playback.stop() }
             .onDisappear { attachmentActions.cancel(); model.cancelMediaLoads() }
             .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
+            .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
+                TelegramContactProfileView(model: model, dossier: dossier,
+                    contextID: model.contactProfileContextID, openDossier: openDossier)
+            }
             .sheet(isPresented: Binding(get: { attachmentActions.preview != nil }, set: { if !$0 { attachmentActions.preview = nil } })) {
                 VStack(spacing: 16) {
                     if let preview = attachmentActions.preview {
@@ -196,8 +207,15 @@ struct TelegramDetailView: View {
         if let chat = model.selectedChat {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    TelegramChatAvatar(title: chat.title, size: 36)
-                    VStack(alignment: .leading, spacing: 3) { Text(chat.title).font(.headline); Text(model.connectionDescription).font(.caption).foregroundStyle(.secondary) }
+                    Button {
+                        model.loadContactProfile(); profilePresented = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            TelegramChatAvatar(title: chat.title, size: 36)
+                            VStack(alignment: .leading, spacing: 3) { Text(chat.title).font(.headline); Text(model.connectionDescription).font(.caption).foregroundStyle(.secondary) }
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.plain).help("Открыть карточку собеседника")
+                        .accessibilityLabel("Карточка собеседника: \(chat.title)").accessibilityIdentifier("telegram.profile.open")
                     Spacer()
                     TextField("Поиск сообщений в диалоге", text: $search.messageQuery)
                         .textFieldStyle(.roundedBorder).frame(maxWidth: 300).accessibilityIdentifier("telegram.messageSearch")
@@ -364,7 +382,7 @@ struct TelegramSyntheticPreviewView: View {
 }
 #endif
 
-private struct TelegramChatAvatar: View {
+struct TelegramChatAvatar: View {
     let title: String
     let size: CGFloat
     private var initials: String {

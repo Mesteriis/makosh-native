@@ -1,0 +1,15 @@
+# Public source and docs only. Machine-local data is never indexed.
+.references/
+.local/
+.build/
+.swiftpm/
+.serena/
+docs/development-status.md
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.png
+*.jpg
+*.icns
+*.pdf

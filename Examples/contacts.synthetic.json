@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "source": {"service": "demo-json", "accountID": "synthetic-work"},
+  "fetchedAt": "2026-10-10T10:00:00Z",
+  "contacts": [
+    {
+      "externalID": "demo-alex-work",
+      "displayName": "Алексей Примеров",
+      "organization": "Синтетическая студия",
+      "jobTitle": "Дизайнер",
+      "phones": ["+1 202 555 0101"],
+      "emails": ["alex@example.invalid"],
+      "tags": ["Синтетические данные", "Дизайн"],
+      "notes": ["Вымышленный контакт для проверки импорта."]
+    },
+    {
+      "externalID": "demo-alex-personal",
+      "displayName": "Алексей П.",
+      "organization": "Пример бюро",
+      "jobTitle": "Консультант",
+      "phones": ["+1 (202) 555-0101", "+1 202 555 0102"],
+      "emails": ["alex@example.invalid", "alex.personal@example.invalid"],
+      "tags": ["Синтетические данные", "Личный"],
+      "notes": ["Вторая вымышленная карточка: объединяйте только после проверки."]
+    },
+    {
+      "externalID": "demo-alex-other-person",
+      "displayName": "Алексей Примеров",
+      "organization": "Другая синтетическая компания",
+      "phones": ["+1 202 555 0103"],
+      "emails": ["another.alex@example.invalid"],
+      "tags": ["Синтетические данные"],
+      "notes": ["Тёзка; совпадение имени не означает одного человека."]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+# Макош / Makosh
+
+Native macOS workspace for a unified contact dossier and future communications adapters. The first stage is a contact book backed by a local PostgreSQL service: create/edit/search, multiple phones/emails, organization, role, tags, notes, source-scoped identities, JSON import, duplicate review, transactional merge and guarded undo.
+
+Telegram, Mail, WhatsApp and Teams are visible as disconnected sections. Meetings can open an official Telemost link in the browser; no meeting API account is connected. This release does not synchronize messages, mail or accounts. It does not read macOS Contacts or existing mail/session databases. All included examples are synthetic.
+
+## Requirements and run
+
+Apple Silicon, macOS 26+, Xcode 26+ with Swift 6.0+, Docker with Compose, and Homebrew `libpq`/`pkg-config`. First local verification uses Xcode 27 / Swift 6.4 on macOS 27.0.1; macOS 26 is the configured minimum and CI target, not a claim of a full OS/device matrix. Intel and older macOS are unverified.
+
+```sh
+brew install libpq pkg-config
+./scripts/dev-db.sh up
+./scripts/test.sh
+./scripts/run.sh
+```
+
+The scripts supply Homebrew libpq's `PKG_CONFIG_PATH`. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and needs that library on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
+
+The development service uses PostgreSQL 18.6, binds only `127.0.0.1:55439`, and persists data in a Docker named volume mounted at `/var/lib/postgresql` (the PostgreSQL 18 layout). `./scripts/dev-db.sh down` stops the service while preserving its data. Do not remove the volume to upgrade or reset a test.
+
+Development scripts use ignored `.local/postgres-app.json`. Its object has `connectionString` and optional `schema` (default `makosh`); never commit this file or its password. To choose another configuration, run `./scripts/run.sh --database-config /path/to/database.json`. A direct app launch without this argument reads `~/Library/Application Support/Makosh/database.json`. A missing or invalid configuration shows a setup error; there is no embedded database fallback. Use a separate database/schema and configuration for isolated synthetic testing. Start with one app window for editing; transactional writes keep the latest database state across store instances, but an already-open editor does not offer field-level conflict resolution for competing edits of the same card.
+
+## Try the first stage
+
+1. Create a contact; edit phones, email, organization and tags; add a note in its dossier.
+2. Import `Examples/contacts.synthetic.json` through **Импорт JSON**. Import it again: no duplicate cards or notes should appear.
+3. Open **Объединения**, inspect the matched email/phone, select the survivor and confirm the merge.
+4. Use **История объединений** in that panel to undo. Try editing the survivor before undo: a conflict must stop undo and preserve the edit.
+5. Quit and reopen with the same database configuration and schema to verify persistence. Same-name sample people remain separate.
+
+See the [import schema](docs/import-format.md), [architecture](docs/architecture.md), [roadmap](docs/roadmap.md) and [current verification status](docs/development-status.md). Undo stores snapshots in PostgreSQL, not a separate backup; no delete/contact backup/export feature is provided yet. For large datasets, the single-row JSONB aggregate in PostgreSQL and pairwise duplicate scan need measured scaling work.
+
+## References and source research
+
+The eight selected references are pinned in `references.lock.json`; clones live in ignored `.references/`. No reference application source or assets are included in the product. Our independent code is MIT. Upstream licenses and unresolved integration conditions remain separate; TelegramSwift GPL-2.0 and 900CRM Apache-2.0 must not be assumed compatible.
+
+Read [XERJ workflow](docs/xerj.md) and the CRM, communications, UI/meetings research documents. Indexes, journals, raw local reports and machine configuration are excluded from Git. Reference research does not claim their applications build or their live integrations work.
+
+CI builds/tests on the documented GitHub `macos-26` arm64 runner. Its actual run state is recorded in the development status; merely adding a workflow is not a successful CI result.

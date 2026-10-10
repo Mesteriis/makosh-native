@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "references": [
+    {
+      "name": "TelegramSwift",
+      "url": "https://github.com/overtake/TelegramSwift",
+      "path": ".references/TelegramSwift",
+      "sha": "579cebbf0c01fd41b712eff3647fa7f69db9665d",
+      "license": "GPL-2.0; exact or-later grant unresolved",
+      "purpose": "Telegram full-client integration reference",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-com-telegram",
+        "stateName": "TelegramSwift",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/",
+          "submodules/"
+        ]
+      }
+    },
+    {
+      "name": "MMail",
+      "url": "https://github.com/moerdowo/MMail",
+      "path": ".references/MMail",
+      "sha": "69bf8c9b2436d7d000652f41362f8fdebf406599",
+      "license": "MIT",
+      "purpose": "Selected mail functional basis",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-com-mail",
+        "stateName": "MMail",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/"
+        ]
+      }
+    },
+    {
+      "name": "aether-courier",
+      "url": "https://github.com/ic3y808/aether-courier",
+      "path": ".references/aether-courier",
+      "sha": "8ab37e1da22363744be5d7b019f4300d8238d625",
+      "license": "MIT",
+      "purpose": "Mail UX and visual reference",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-ui-aether",
+        "stateName": "aether",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/"
+        ]
+      }
+    },
+    {
+      "name": "whatsapp-zen",
+      "url": "https://github.com/mdenizay/whatsapp-zen",
+      "path": ".references/whatsapp-zen",
+      "sha": "790066aa411d395562a572101a74057147af67db",
+      "license": "MIT; transitive license review still required",
+      "purpose": "Selected WhatsApp Swift/Rust basis",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-com-whatsapp",
+        "stateName": "whatsapp-zen",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/"
+        ]
+      }
+    },
+    {
+      "name": "teams-cli",
+      "url": "https://github.com/rvben/teams-cli",
+      "path": ".references/teams-cli",
+      "sha": "9c8a72c32369f9d9bd15b793099522a80070a063",
+      "license": "MIT",
+      "purpose": "Selected Microsoft Graph integration basis",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-com-teams",
+        "stateName": "teams-cli",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/"
+        ]
+      }
+    },
+    {
+      "name": "yandex-messenger-native",
+      "url": "https://github.com/Bezooom/yandex-messenger-native",
+      "path": ".references/yandex-messenger-native",
+      "sha": "f0a237c6016088a8e3816dde2e56c06e4a47c5eb",
+      "license": "MIT",
+      "purpose": "Linux Telemost second-stage research reference",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-meetings-yandex",
+        "stateName": "yandex",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/"
+        ]
+      }
+    },
+    {
+      "name": "900CRM",
+      "url": "https://github.com/900Labs/900CRM",
+      "path": ".references/900CRM",
+      "sha": "f49ef2207998c9d97f1201cde56da4b11ce47c90",
+      "license": "Apache-2.0",
+      "purpose": "Rust CRM core feasibility; approach-only in first stage",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-crm-900",
+        "stateName": "900CRM",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/"
+        ]
+      }
+    },
+    {
+      "name": "orbit",
+      "url": "https://github.com/moritzWa/orbit",
+      "path": ".references/orbit",
+      "sha": "a7c8a12297a83a71dac47c32d2521e7de594b77d",
+      "license": "No root license; client ISC; server unspecified",
+      "purpose": "Contact source/import/merge approach-only reference",
+      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "xerj": {
+        "prefix": "mk-crm-orbit",
+        "stateName": "orbit",
+        "status": "Indexed; see docs/xerj.md for counts, skips and supplementary coverage",
+        "exclusions": [
+          ".git/",
+          "*.db",
+          "*.sqlite*",
+          "build/",
+          "dist/",
+          "target/",
+          "private/",
+          "*.png",
+          "*.jpg",
+          "*.xcassets/"
+        ]
+      }
+    }
+  ]
+}

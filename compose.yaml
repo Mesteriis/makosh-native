@@ -1,0 +1,21 @@
+name: makosh-native-dev
+services:
+  postgres:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_DB: makosh
+      POSTGRES_USER: makosh
+      POSTGRES_PASSWORD: ${MAKOSH_POSTGRES_PASSWORD:?Run scripts/dev-db.sh up}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    ports:
+      - "127.0.0.1:55439:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U makosh -d makosh"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+volumes:
+  postgres-data:

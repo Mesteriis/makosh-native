@@ -50,6 +50,11 @@ Build adaptations in the generated copy:
   `scripts/telegram_retention_adaptation.py`. Both are GPL-3.0-or-later engine
   adaptations. Exact-sequence acknowledgement follows independent archive commit;
   this does not claim capture of updates optimized before Postbox or media bytes.
+- Restore pending read-state synchronization after reopening Postbox. Recipe 5
+  replaces the full-table `0...-1` signed SQLite range with `scanInt64`, preserving
+  exact integer peer keys. The GPL-3.0-or-later patch context is tracked in
+  `scripts/telegram_read_adaptation.py` with exact input/output SHA256 checks.
+  No database schema change or source-cache dependency is introduced.
 - Link OpenSSLEncryptionProvider explicitly to Homebrew OpenSSL 3, using its
   Apache-2.0 implementation rather than the upstream Bazel BoringSSL target.
 - Generate FlatSerialization using official `flatc 24.12.23`; source archive

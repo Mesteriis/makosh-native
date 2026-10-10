@@ -112,7 +112,8 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   Selected chat and draft survive list/folder changes. Empty loading snapshots
   retain displayed data; stable empty snapshots clear it. A 30-second deadline
   offers an explicit retry, keeps the subscription alive and permits later recovery.
-  Secret-chat UI, replies and read receipts are not implemented. Unknown media
+  Secret-chat UI and its read handling remain unsupported; ordinary cloud
+  replies and visible-history read marking are described below. Unknown media
   and paid/locked content show an unsupported label and offer no download.
 - Chat search reads all known Postbox peers in the selected main/archive list,
   independently of the visible page. It does not discover remote peers and may
@@ -198,12 +199,52 @@ UI checks are distinct from real authorization, incoming sync, sending,
 reconnect or cache-corruption acceptance. See [`development-status.md`](development-status.md)
 for actual completed checks and outstanding runtime limits.
 
+## Visible-history read marking
+
+The common workspace marks an ordinary cloud conversation through its latest
+actually visible stored message, following TelegramSwift's visible-height
+tolerance of 10 points. A stored outgoing row also advances preceding incoming
+messages. Merely loading a 50-message window does not mark the entire window.
+Search results supply no read indexes. Loading/timed-out history, pending or
+failed outgoing rows, secret chats and scheduled/local messages cannot supply
+the boundary. Dedicated topic/thread read handling remains future work.
+
+SwiftUI supplies row/viewport geometry. A narrow AppKit view checks its current
+window immediately before admission: the app must be active and the window key,
+visible, unminimized and unoccluded, without an attached sheet or application
+modal window. Detach/dismantle invalidate the weak eligibility callback. Account,
+chat, account generation and history-request guards reject stale observations.
+The guarded native history may include an associated old peer after a group
+migration; its original message/peer index is retained. No selected-chat index
+is manufactured. Repeated/lower boundaries are deduplicated per peer/namespace.
+
+The provider uses the engine's `applyMaxReadIndexInteractively`. Completion means
+the local Postbox transaction completed, not that Telegram acknowledged a server
+read receipt. An accepted operation retains its original account after UI
+unbinding. Native tests verify unchanged message content/version and retention
+journal while read state changes.
+
+Preparation recipe 5 repairs the pending-read table's reopen scan: the pinned
+SQLite implementation's signed `key > 0 AND key < -1` range loaded no rows.
+The exact-source, hash-checked GPLv3 adaptation uses `scanInt64`, without changing
+the schema. An encrypted Postbox regression verifies both read state and pending
+push synchronization survive release and reopen; it does not authenticate or
+claim a successful network receipt. Preserve an older prepared engine under an
+unused ignored backup name before preparing recipe 5; never edit generated files
+or remove account/session storage to update it.
+
+The DEBUG-only `--telegram-history-read-synthetic-preview` route uses the same
+common workspace and isolated database requirements as the dossier QA route
+below. It starts in search with zero local read admissions. A synthetic-only
+footer exposes actual viewport admissions/window eligibility. No real account,
+Keychain or Telegram network is opened. Runtime results and remaining acceptance
+limits are recorded in `development-status.md`.
+
 ## Reference message status indicators
 
 History retains the engine's `MessageHistoryEntry.isRead` when projecting a
-message. Read-state-only emissions update the existing guarded history window;
-the adapter does not calculate its own read maximum or mark incoming messages
-read. Search receives bare messages and therefore never invents a remote read
+message. Read-state-only emissions update the existing guarded history window.
+Search receives bare messages and therefore never invents a remote read
 receipt from a missing history context.
 
 Own SwiftUI rendering follows the confirmed `ChatRightView` arrangement: time
@@ -247,7 +288,7 @@ made by an older recipe. Preserve `.local/telegram-engine` under an unused backu
 directory name, then rerun `scripts/build-app.sh` or `scripts/test.sh`; the locked
 source/compiler caches can be reused. Do not edit the generated engine or remove
 the application-support session directory, PostgreSQL volume or Keychain items.
-Fresh checkouts prepare recipe 4 directly.
+Fresh checkouts prepare recipe 5 directly, retaining the recipe-4 journal.
 
 Archive tables share the configured PostgreSQL service/schema, without changing
 the contact aggregate. AES-GCM encrypts text and metadata with separate HKDF

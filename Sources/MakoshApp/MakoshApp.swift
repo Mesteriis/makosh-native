@@ -19,8 +19,9 @@ struct MakoshApp: App {
             #if DEBUG
             if CommandLine.arguments.contains("--telegram-drafts-synthetic-preview") {
                 TelegramDraftsSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
-            } else if CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") {
-                WorkspaceView(syntheticTelegram: .syntheticPreview())
+            } else if CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") || CommandLine.arguments.contains("--telegram-history-read-synthetic-preview") {
+                WorkspaceView(syntheticTelegram: CommandLine.arguments.contains("--telegram-history-read-synthetic-preview")
+                    ? .syntheticHistoryReadPreview() : .syntheticPreview())
                     .toolbar {
                         ToolbarItem(placement: .primaryAction) {
                             Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2")

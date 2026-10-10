@@ -1253,3 +1253,85 @@ The preceding search head `d8214b3b291baead91929fdaf028c54bce38fd84` passed
 [PR CI 38074869238](https://github.com/Mesteriis/makosh-native/actions/runs/38074869238)
 and [push CI 38074866782](https://github.com/Mesteriis/makosh-native/actions/runs/38074866782).
 Hosted CI for this shared-sidebar change is tracked after publication.
+
+## Telegram visible-history reads and durable pending sync — 2026-10-10
+
+The common workspace now applies native interactive read through an actually
+visible stored cloud message. Own geometry follows the reference's 10-point
+visible-height tolerance; stored outgoing rows can read preceding incoming
+messages. Search, loading/timed-out pages, pending/failed/local/scheduled rows
+and stale account/chat/request observations cannot supply the boundary. Native
+peer identity is preserved for associated old history in a migrated group.
+The AppKit bridge checks current window eligibility immediately before the
+MainActor model call. Weak callbacks expire on detach/dismantle, and a mount
+token republishes eligibility after returning to Telegram without update loops.
+
+An encrypted Postbox reopen regression exposed a pinned-engine defect: a signed
+SQLite full-table range `key > 0 AND key < -1` reloaded no pending read operations.
+Preparation recipe 5 uses a hash-checked integer-key scan. The failing reopen
+assertion was retained and now passes; no database schema or account data is
+changed. The engine pin, reference-folder independence and license boundary
+remain unchanged. Local transaction completion is not a server read receipt.
+
+Actual evidence:
+
+- `scripts/dev-db.sh up`: exit 0, PostgreSQL/S3 healthy. Recipe-5 preparation:
+  exit 0, 21 packages; the verified recipe-4 generated directory was preserved
+  under an unused ignored backup name before rebuilding from the locked source.
+- Final `scripts/test.sh`: exit 0, **305 XCTest (242 Telegram + 63 core),
+  0 failures**, plus **24 Python regressions**. Twelve new Swift tests cover
+  geometric admission, full MessageIndex ordering, pending/rebind callbacks,
+  stale/model/search boundaries, migrated-peer identity and real encrypted
+  Postbox read-state/pending-push persistence after release/reopen. Read marking
+  preserves content/version and journal events; native cross-namespace timestamp
+  behavior and the untouched other peer are checked. Twenty upstream t19
+  fixture-teardown diagnostics follow the passing Telegram suite.
+- Intermediate failures remain private: the original pending-push reopen
+  assertion, an absent outer-reference MessageIndex initializer, and a new
+  test incorrectly passing the synthetic account sentinel into native PeerId
+  mapping. The fixture now maps with a valid ordinary cloud identity while
+  retaining its synthetic model/provider context. None is relabeled a pass.
+- Final `scripts/build-app.sh`: exit 0; ad-hoc signing and strict verification
+  passed. The full suite preceded the final UI-only remount correction;
+  subsequent final build and native QA cover that correction. Temporary boolean
+  diagnostics were removed and the reviewed source hash restored before the
+  final build. No diagnostic flag or logging was added to product source.
+- Final synthetic QA executable payload matched the built app; exact process
+  arguments and isolated PostgreSQL configuration were verified. Native AX and
+  screenshots established **12 focused conditions**: shared service selector,
+  initial/query search with zero read admissions, active history admission,
+  exact draft input, honest unconnected mail, restored active observer on return,
+  retained selection/draft, no duplicate boundary, profile sheet opening/return
+  and cleared synthetic draft. In History selected message 81 in window 32...81.
+  That fixture does not prove a visible boundary below the loaded window's end;
+  bounded admission is covered by the separate model/geometry regressions.
+- A temporary private boolean trace on synthetic UI confirmed key=false and
+  attachedSheet=true produce inactive admission, and closing it restores active
+  reading. Source review also found/fixed a stale cached eligibility race and
+  missing republish after remount. Final source review found no further confirmed
+  issue; workers did not run root runtime gates. Model/provider/usage metadata
+  remain unknown; no quorum was used.
+- The computer-use secondary-action route restarted a QA app without its
+  parameters and reached a database setup error; those runs were discarded.
+  Unique fixture identities and direct executable launch with explicit synthetic
+  arguments resolved process attribution. A capture error during search was
+  followed by AX confirmation of the exact query/result. Coordinate focusing
+  remains unavailable. No personal account, Keychain, private Telegram content
+  or Telegram network/send was used.
+- Final project XERJ refresh/check: exit 0, **186 files, 156/156 code**;
+  prepared recipe-5 engine and locked TelegramSwift freshness passed. Actual
+  context/admission/window-gate queries were checked against source; sibling
+  Postbox remains directly audited, outside the TelegramCore index scope. Root
+  verified all fourteen reviewed source hashes. The publication audit checked
+  four selected local secret fields against **191 publishable files** and the
+  private PR body, with zero matches.
+
+Secret/topic read handling and live server receipts remain unimplemented or
+unverified. Minimize/hide/occlusion matrices, remaining reference screens,
+archive file opening/backup, earlier dossier GUI acceptance and later channels
+remain open. The sequential migration goal remains active.
+
+The shared-sidebar head `027e5baa4c940503dd56ff45493f8c04b5ff0bbb` passed
+[PR CI 38075646435](https://github.com/Mesteriis/makosh-native/actions/runs/38075646435)
+and [push CI 38075644661](https://github.com/Mesteriis/makosh-native/actions/runs/38075644661).
+Hosted CI for this read-marking change is tracked after publication.

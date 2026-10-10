@@ -103,6 +103,20 @@ public final class TelegramModel: ObservableObject {
         return TelegramUploadTarget(accountID: accountID, chatID: chat.id, title: chat.title)
     }
     public var historyWindowID: UUID? { historyPages.requestID }
+    public var historyReadContext: TelegramHistoryReadContext? {
+        guard phase == .ready, !search.hasMessageQuery, !historyPage.isLoading, !historyPage.timedOut,
+              let accountID = draftAccountID, let chatID = selectedChatID,
+              let windowID = historyWindowID else { return nil }
+        return TelegramHistoryReadContext(accountID: accountID, chatID: chatID,
+            accountContextID: accountGeneration, historyWindowID: windowID)
+    }
+    let historyRead = TelegramHistoryReadController()
+    var historyReadIndexes: [String: MessageIndex] = [:]
+    #if DEBUG
+    @Published public internal(set) var syntheticHistoryReadCount = 0
+    @Published public internal(set) var syntheticHistoryReadLastMessage: Int32?
+    @Published public internal(set) var syntheticHistoryReadWindowActive = false
+    #endif
     @Published public private(set) var historyFocusID: String?
     public var readyHistoryFocusID: String? {
         guard !historyPage.isLoading, !historyPage.timedOut,
@@ -651,6 +665,7 @@ public final class TelegramModel: ObservableObject {
         media.bind(provider: mediaProvider)
         upload.bind(provider: TelegramEngineUploadProvider(account: account))
         messageActions.bind(provider: TelegramEngineMessageActionsProvider(account: account))
+        historyRead.bind(TelegramEngineHistoryReadProvider(account: account))
         search.bind(account: account)
         search.setFolder(chatFolder)
         let accountToken = accountGeneration
@@ -673,6 +688,8 @@ public final class TelegramModel: ObservableObject {
 
     private func stopAuthorizedAccount() {
         cancelContactProfile()
+        historyRead.bind(nil)
+        historyReadIndexes = [:]
         archive.bind(journal: nil)
         playback.stop()
         upload.bind(provider: nil)
@@ -805,6 +822,7 @@ public final class TelegramModel: ObservableObject {
 
     private func loadHistory(anchor: MessageIndex? = nil, clear: Bool = true, focusID: String? = nil) {
         playback.stop()
+        historyReadIndexes = [:]
         historyFocusID = focusID
         history.set(nil)
         historyPageTimeout?.cancel(); historyPageTimeout = nil
@@ -813,6 +831,7 @@ public final class TelegramModel: ObservableObject {
         if let preview, let selectedChatID, knownChats[selectedChatID] != nil {
             let requestID = historyPages.begin(anchor: anchor)
             let page = preview.messages(chatID: selectedChatID, anchor: anchor)
+            prepareSyntheticHistoryReadIndexes(page.items)
             receiveMessages(page.items, requestID: requestID, previous: page.previous, next: page.next, isLoading: false)
             return
         }
@@ -838,6 +857,7 @@ public final class TelegramModel: ObservableObject {
                 let messages = view.entries.map { TelegramMessage($0, accountID: account.peerId.toInt64()) }
                 if !messages.isEmpty || !waiting {
                     self.historyMediaSources = view.entries.flatMap { telegramAttachments($0.message) }
+                    self.prepareHistoryReadIndexes(view.entries)
                 }
                 self.receiveMessages(messages, requestID: requestID, previous: view.earlierId,
                     next: view.laterId, isLoading: waiting, hasPreviousGap: view.holeEarlier, hasNextGap: view.holeLater)
@@ -898,6 +918,7 @@ public final class TelegramModel: ObservableObject {
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
+        model.bindSyntheticHistoryRead()
         model.isSyntheticPreview = true
         model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)
         model.phase = .ready

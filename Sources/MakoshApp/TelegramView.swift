@@ -230,10 +230,12 @@ struct TelegramDetailView: View {
                                         }.id(item.id).accessibilityElement(children: .contain)
                                             .accessibilityIdentifier("telegram.message.\(item.id)")
                                             .contextMenu { messageActionItems(item) }
+                                            .background(TelegramHistoryReadRow(id: item.id, context: model.historyReadContext))
                                     }
                                 }.padding(.horizontal, 16).padding(.vertical, 12)
                             }.id(model.historyWindowID).defaultScrollAnchor(model.historyPage.isAtLatest ? .bottom : .top)
                                 .accessibilityIdentifier("telegram.messages")
+                                .modifier(TelegramHistoryReadViewport(model: model, context: model.historyReadContext))
                                 .onChange(of: model.readyHistoryFocusID, initial: true) { _, focusID in
                                     if let id = focusID {
                                         proxy.scrollTo(id, anchor: .center)
@@ -272,6 +274,11 @@ struct TelegramDetailView: View {
                 if model.isSyntheticPreview {
                     Text("Синтетическая проверка: действия имитируются, отправки в Telegram нет.")
                         .font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
+                    #if DEBUG
+                    Text("Чтение окна: \(model.syntheticHistoryReadWindowActive ? "активно" : "приостановлено"); локальных отметок: \(model.syntheticHistoryReadCount); граница: \(model.syntheticHistoryReadLastMessage.map(String.init) ?? "нет")")
+                        .font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
+                        .accessibilityIdentifier("telegram.synthetic.historyRead")
+                    #endif
                 }
             }.focusedSceneValue(\.findTelegramMessage, openMessageSearch)
         } else {

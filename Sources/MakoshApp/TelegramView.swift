@@ -87,7 +87,7 @@ struct TelegramDetailView: View {
         }
     }
     private var codeForm: some View {
-        authForm(title: "Код входа", detail: "Введите код, полученный от Telegram. Не передавайте его другим людям.") {
+        authForm(title: "Код входа", detail: model.codeExplanation) {
             SecureField("Код", text: $code).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.code")
             Button("Продолжить") { model.submitCode(code); code = "" }.buttonStyle(.borderedProminent).disabled(model.isBusy || code.isEmpty).accessibilityIdentifier("telegram.code.submit")
         }

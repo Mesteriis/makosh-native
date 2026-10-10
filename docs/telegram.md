@@ -90,8 +90,11 @@ Destroying the model also shuts down subscriptions through isolated deinit.
 - Existing-account phone → code → optional password authorization calls real
   TelegramCore APIs. Code/password requests time out after 30 seconds; local
   session opening reports a problem after 45 seconds. There is no automatic
-  retry of auth or sending. Registration, password recovery/reset, payment and
-  unsupported verification flows show an explanation instead of fake success.
+  retry of auth or sending. Email codes use the distinct email-verification
+  payload; phone/session/SMS/call/word/phrase codes use the phone-code payload.
+  Email setup, Firebase, Fragment and flash/missed-call verification show an
+  explanation instead of submitting an incompatible phone code. Registration,
+  password recovery/reset and payment are also unsupported.
 - The main chat list shows up to 50 dialogs; selected history shows up to 50
   entries. No older-history pagination, archived-chat list, search, media
   download/upload, secret-chat UI, replies or read receipts are implemented.

@@ -63,8 +63,8 @@ Actual checks:
   committed-source-only extraction, pinned official FlatBuffers 24.12.23 built
   locally, generated serialization sources, exact prepared file-set/checksum
   verification on reuse. Session data is untouched by preparation.
-- `scripts/test.sh`: exit 0, **41 XCTest tests, 0 failures**: 24 contact tests
-  against real PostgreSQL plus 17 Telegram configuration, draft, crypto,
+- `scripts/test.sh`: exit 0, **43 XCTest tests, 0 failures**: 24 contact tests
+  against real PostgreSQL plus 19 Telegram configuration, challenge mapping, draft, crypto,
   logging and credential-file tests. Genuine OpenSSL provider modular arithmetic
   and binary roundtrip tests execute successfully. Synthetic file tests reject
   permissive modes, symlinks, invalid/oversize JSON, directories and FIFOs.
@@ -87,7 +87,7 @@ Actual checks:
   runtime auth acceptance.
 - Final engine XERJ scope: exit 0, 721 files, 686/686 classified code; actual auth
   queries resolve to current `Authorization.swift`. Source preparation and index
-  freshness were checked. The original project prefix refused the new license notice schema (exit 1); a separate `mk-own-v2` refresh then completed with exit 0, 60 indexed files and 35/35 classified code files. Actual own-source queries resolved the credential loader, explicit saved-data action, lifecycle cleanup and draft acknowledgement. All ten fingerprints (own project, engine, eight references) are current. The mutable status ledger is deliberately outside its scope.
+  freshness were checked. The original project prefix refused the new license notice schema (exit 1); a separate `mk-own-v2` refresh then completed with exit 0, 62 indexed files and 37/37 classified code files. Actual own-source queries resolved the credential loader, explicit saved-data action, lifecycle cleanup and draft acknowledgement. All ten fingerprints (own project, engine, eight references) are current. The mutable status ledger is deliberately outside its scope.
 
 Runtime limits remain explicit: login, incoming sync, server delivery, reconnect,
 real cache-corruption handling, 2FA and account-state transitions require a

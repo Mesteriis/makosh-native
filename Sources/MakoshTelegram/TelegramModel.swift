@@ -75,10 +75,12 @@ public final class TelegramModel: ObservableObject {
         }
     }
     @Published public var draft = ""
+    @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
     private var configuration: TelegramAPIConfiguration?
     private var manager: AccountManager<TelegramAccountManagerTypes>?
     private var unauthorized: UnauthorizedAccount?
+    private var challenge: TelegramAuthorizationChallenge = .phoneCode
     private var account: Account?
     private var generation = UUID()
     private var accountGeneration = UUID()
@@ -198,11 +200,12 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func submitCode(_ code: String) {
-        guard !isBusy, phase == .code, !code.isEmpty, let manager, let unauthorized else { return }
+        guard !isBusy, phase == .code, !code.isEmpty, let manager, let unauthorized,
+              let authorizationCode = challenge.authorizationCode(code) else { return }
         isBusy = true; error = nil
         let token = generation
         let authToken = authorizationGeneration
-        action.set((authorizeWithCode(accountManager: manager, account: unauthorized, code: .phoneCode(code), termsOfService: nil, forcedPasswordSetupNotice: { _ in nil })
+        action.set((authorizeWithCode(accountManager: manager, account: unauthorized, code: authorizationCode, termsOfService: nil, forcedPasswordSetupNotice: { _ in nil })
             |> timeout(30, queue: .mainQueue(), alternate: .fail(.generic))
             |> deliverOnMainQueue).start(next: { [weak self] result in
                 guard let self, self.generation == token, self.authorizationGeneration == authToken else { return }
@@ -275,7 +278,10 @@ public final class TelegramModel: ObservableObject {
             guard let self, self.generation == token, self.authorizationGeneration == authToken, let state = view.state as? UnauthorizedAccountState else { return }
             switch state.contents {
             case .empty, .phoneEntry: self.phase = .phone
-            case .confirmationCodeEntry: self.phase = .code
+            case let .confirmationCodeEntry(_, type, _, _, _, _, _, _):
+                self.challenge = TelegramAuthorizationChallenge(type: type)
+                self.codeExplanation = self.challenge.explanation
+                self.phase = self.challenge.phase
             case .passwordEntry(let hint, _, _, _, _): self.phase = .password(hint: hint)
             case .signUp: self.phase = .unsupported("Регистрация нового аккаунта не реализована.")
             case .passwordRecovery, .awaitingAccountReset: self.phase = .unsupported("Восстановление и сброс аккаунта выполняйте в официальном клиенте Telegram.")

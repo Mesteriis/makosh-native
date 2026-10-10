@@ -14,7 +14,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct MakoshApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene {
-        WindowGroup("Макош") { WorkspaceView().frame(minWidth: 1000, minHeight: 640) }
+        WindowGroup("Макош") {
+            #if DEBUG
+            if CommandLine.arguments.contains("--telegram-synthetic-preview") {
+                TelegramSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
+            } else {
+                WorkspaceView().frame(minWidth: 1000, minHeight: 640)
+            }
+            #else
+            WorkspaceView().frame(minWidth: 1000, minHeight: 640)
+            #endif
+        }
             .defaultSize(width: 1200, height: 800)
     }
 }

@@ -103,10 +103,17 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   Email setup, Firebase, Fragment and flash/missed-call verification show an
   explanation instead of submitting an incompatible phone code. Registration,
   password recovery/reset and payment are also unsupported.
-- The main chat list shows up to 50 dialogs; selected history shows up to 50
-  entries. No older-history pagination, archived-chat list, search, media
-  download/upload, secret-chat UI, replies or read receipts are implemented.
-  Non-text entries show an explicit attachment/service-message label.
+- Main and archived dialogs and selected history use live cursor-based windows.
+  **Старее**, **Новее** and **Последние** replace the active window; 50 is the
+  engine's requested batch size, not a total-history limit. Around-anchor windows
+  may overlap and include entries on both sides of the anchor. Actual Postbox
+  boundary indexes drive navigation. Edits/deletions in the active window remain
+  observable; older windows are not accumulated into a stale second cache.
+  Selected chat and draft survive list/folder changes. Empty loading snapshots
+  retain displayed data; stable empty snapshots clear it. A 30-second deadline
+  offers an explicit retry, keeps the subscription alive and permits later recovery.
+  Search, media download/upload, secret-chat UI, replies and read receipts are
+  not implemented. Non-text entries show an attachment/service-message label.
 - Text sending uses TelegramCore's genuine durable local outbox. Captured
   account/recipient identity is retained across selection changes. The draft
   clears only after enqueue acknowledgement; pending/failed flags are shown in
@@ -122,3 +129,19 @@ real OpenSSL modular arithmetic/binary roundtrips. Build, tests and native setup
 UI checks are distinct from real authorization, incoming sync, sending,
 reconnect or cache-corruption acceptance. See [`development-status.md`](development-status.md)
 for actual completed checks and outstanding runtime limits.
+
+## Offline navigation UI check
+
+After a debug build, launch the explicit synthetic view:
+
+```sh
+open -n .build/Makosh.app --args --telegram-synthetic-preview
+```
+
+This DEBUG-only branch uses the real Telegram views, navigation and snapshot
+receivers with fixed in-memory data (125 main dialogs, 65 archive dialogs and
+130 messages per dialog). It bypasses the contact workspace and opens no
+PostgreSQL, API file, Keychain, account/session or network. Sending and connection
+are blocked in the model as well as the UI. It is visibly labeled synthetic and
+does not prove server pagination or hole filling. The branch and fixture are
+excluded from release builds; regular launch still starts disconnected.

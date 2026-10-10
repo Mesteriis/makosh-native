@@ -141,3 +141,58 @@ Actual checks:
 CI now explicitly checks that `.references/` is absent before/after the cold
 build and after tests, and verifies the separate bare source cache. Adding these
 gates does not itself establish a hosted pass; consult this change's PR check.
+
+The independent-build head `25e05c04b86ba46e1e20c53c78b14c763bc3472a`
+subsequently passed [PR CI 38055123194](https://github.com/Mesteriis/makosh-native/actions/runs/38055123194):
+cold build without `.references/`, 43 XCTest tests and 15 Python regressions.
+
+## Telegram pagination and archive — 2026-10-10
+
+Dialogs, archive and message history now use live Postbox cursor windows with
+older/newer/latest controls. The requested batch size is 50; around-anchor
+windows can overlap and contain entries on both sides. No fixed first-50 limit
+remains in the adapter. Selected chat and account/chat drafts survive list-page
+and folder changes. Each replaced request has a fresh token; account/chat
+generations and token checks reject delayed emissions, including same-anchor
+retries. Empty loading snapshots retain displayed data, stable empty snapshots
+clear it, and each loading period has a 30-second UI deadline. A timeout keeps
+the live subscription and permits explicit retry or subsequent recovery.
+
+Source inspection for the next media stage also found the missing
+`setupAccount(account)` call. It now installs TelegramCore's built-in MediaBox
+fetcher on the authorized account. Its defaults do not supply cached image
+transformations; no media UI or successful download is claimed here.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; healthy existing PostgreSQL Docker service.
+- `scripts/test.sh`: exit 0, **54 XCTest tests, 0 failures** (24 real-PostgreSQL
+  contacts + 30 Telegram), plus **15 Python regressions**. Eleven new tests cover
+  cursor boundaries/duplicate anchors, stale callbacks/reset, loading/timeout
+  recovery, independent windows, traversal beyond 50, archive, selection/drafts,
+  stable-empty versus loading-empty data, and synthetic isolation.
+- `scripts/build-app.sh`: exit 0, complete app built and strict ad-hoc signature
+  verification passed. The first pagination build failed Swift 6 concurrency
+  checking for a non-Sendable static navigation value; adding Sendable to the
+  immutable value fixed it. Failed and successful logs remain local.
+- Actual separate native QA bundle visibly showed a synthetic badge, main list
+  beginning at dialog 51 after paging, archive ending at dialogs 51–65 with
+  older disabled, history moving from messages 120–130 to 31–41 then 1–11,
+  older disabled at the beginning, newer and latest restoring later windows.
+  A selected dialog/history and entered draft remained when the list moved to
+  a page without that row. Sending and account connection were disabled. The
+  preview bypasses the PostgreSQL workspace and uses only in-memory data.
+- Two scoped same-model read-only reviews checked engine cursor/holes/lifecycle
+  and preview isolation/tests. A release-test compilation gap was found and
+  fixed by guarding DEBUG-only fixture tests with DEBUG. Other reviewed paths
+  had no confirmed findings. Root confirmed the engine source and owns build,
+  test and GUI evidence; observed worker provider/model/usage remain unknown.
+- Final project XERJ refresh: exit 0, 69 indexed files, 42/42 classified code.
+  Current receiver/deadline/fixture query results were confirmed against source;
+  project and engine scope fingerprint checks passed.
+
+The preview, fixture and its model tests are DEBUG-only. A release build was not
+run. Real account authorization, server-side pagination/hole filling, incoming
+sync, delivery and media remain unverified. Search, media/file UI, message
+actions, dossier linking and the other service transfers remain open in
+`migration-plan.md`; this slice does not complete the user's active goal.

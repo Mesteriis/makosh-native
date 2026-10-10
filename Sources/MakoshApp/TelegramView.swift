@@ -11,8 +11,17 @@ struct TelegramSidebarView: View {
                 Text("Неофициальный канал Макош").font(.caption).foregroundStyle(.secondary)
             }.padding(20)
             Divider()
+            if model.phase == .ready {
+                Picker("Список диалогов", selection: $model.chatFolder) {
+                    ForEach(TelegramChatFolder.allCases) { folder in Text(folder.title).tag(folder) }
+                }.pickerStyle(.segmented).padding(12).accessibilityIdentifier("telegram.folder")
+            }
             if model.chats.isEmpty {
-                ContentUnavailableView("Нет загруженных диалогов", systemImage: "bubble.left.and.bubble.right", description: Text("Диалоги появятся после подключения вашего отдельного сеанса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+                if model.chatPage.isLoading {
+                    ProgressView("Загрузка диалогов…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ContentUnavailableView(model.chatFolder == .archive ? "Нет загруженных архивных диалогов" : "Нет загруженных диалогов", systemImage: "bubble.left.and.bubble.right", description: Text(model.phase == .ready ? "В этом списке пока нет диалогов. Можно обновить загрузку." : "Диалоги появятся после подключения вашего отдельного сеанса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 List(selection: $model.selectedChatID) {
                     ForEach(model.chats) { chat in
@@ -26,10 +35,16 @@ struct TelegramSidebarView: View {
                     }
                 }.listStyle(.inset).accessibilityIdentifier("telegram.chats")
             }
+            if model.phase == .ready {
+                TelegramPaginationBar(page: model.chatPage, prefix: "telegram.chatPage",
+                    previous: model.loadOlderChats, next: model.loadNewerChats,
+                    latest: model.showLatestChats, retry: model.retryChatPage)
+                    .padding(12)
+            }
             Divider()
             Button("Остановить подключение") { model.disconnect() }
                 .help("Останавливает локальное подключение и сохраняет кэш. Не завершает сеанс на серверах Telegram.")
-                .accessibilityIdentifier("telegram.disconnect").padding(16)
+                .disabled(model.isSyntheticPreview).accessibilityIdentifier("telegram.disconnect").padding(16)
         }.frame(maxHeight: .infinity, alignment: .top)
     }
 }
@@ -103,12 +118,19 @@ struct TelegramDetailView: View {
             .padding(32).frame(maxWidth: 600, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
     @ViewBuilder private var conversation: some View {
-        if let chatID = model.selectedChatID, let chat = model.chats.first(where: { $0.id == chatID }) {
+        if let chat = model.selectedChat {
             VStack(spacing: 0) {
                 HStack { VStack(alignment: .leading, spacing: 4) { Text(chat.title).font(.title2.bold()); Text(model.connectionDescription).font(.caption).foregroundStyle(.secondary) }; Spacer() }.padding(20)
                 Divider()
+                TelegramPaginationBar(page: model.historyPage, prefix: "telegram.historyPage",
+                    previous: model.loadOlderMessages, next: model.loadNewerMessages,
+                    latest: model.showLatestMessages, retry: model.retryHistoryPage).padding(12)
                 if model.messages.isEmpty {
-                    ContentUnavailableView("Сообщений пока нет", systemImage: "text.bubble", description: Text("История этого диалога ещё не загружена или пуста.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if model.historyPage.isLoading {
+                        ProgressView("Загрузка истории…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ContentUnavailableView("Нет загруженных сообщений", systemImage: "text.bubble", description: Text(model.historyPage.timedOut ? "Telegram пока не завершил загрузку. Можно повторить запрос этой страницы." : "В этом окне истории пока нет сообщений.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 16) {
@@ -125,17 +147,67 @@ struct TelegramDetailView: View {
                                 }.accessibilityIdentifier("telegram.message.\(item.id)")
                             }
                         }.padding(22)
-                    }.accessibilityIdentifier("telegram.messages")
+                    }.id(model.historyWindowID).defaultScrollAnchor(model.historyPage.isAtLatest ? .bottom : .top)
+                        .accessibilityIdentifier("telegram.messages")
                 }
                 Divider()
                 HStack(alignment: .bottom, spacing: 12) {
                     TextField("Сообщение в Telegram", text: $model.draft, axis: .vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.composer")
-                    Button("Отправить") { _ = model.sendMessage(model.draft) }.buttonStyle(.borderedProminent).disabled(model.isBusy || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.send")
+                    Button("Отправить") { _ = model.sendMessage(model.draft) }.buttonStyle(.borderedProminent).disabled(model.isSyntheticPreview || model.isBusy || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.send")
                 }.padding(16)
-                Text("Кнопка отправляет сообщение в выбранный диалог Telegram.").font(.caption).foregroundStyle(.secondary).padding(.bottom, 12)
+                Text(model.isSyntheticPreview ? "Синтетическая проверка: отправка отключена." : "Кнопка отправляет сообщение в выбранный диалог Telegram.").font(.caption).foregroundStyle(.secondary).padding(.bottom, 12)
             }
         } else {
             ContentUnavailableView("Выберите диалог", systemImage: "bubble.left.and.bubble.right", description: Text("Здесь будет история выбранного диалога Telegram.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+#if DEBUG
+struct TelegramSyntheticPreviewView: View {
+    @StateObject private var model = TelegramModel.syntheticPreview()
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("СИНТЕТИЧЕСКАЯ ПРОВЕРКА • личные аккаунты, база данных, сеть и отправка не используются")
+                .font(.caption.bold()).padding(10).frame(maxWidth: .infinity).background(.yellow.opacity(0.15))
+            HStack(spacing: 0) {
+                TelegramSidebarView(model: model).frame(width: 320)
+                Divider()
+                TelegramDetailView(model: model)
+            }
+        }
+    }
+}
+#endif
+
+private struct TelegramPaginationBar: View {
+    let page: TelegramPageNavigation
+    let prefix: String
+    let previous: () -> Void
+    let next: () -> Void
+    let latest: () -> Void
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Button(action: previous) { Label("Старее", systemImage: "chevron.left") }
+                    .disabled(!page.canLoadPrevious).accessibilityIdentifier(prefix + ".older")
+                Button(action: next) { Label("Новее", systemImage: "chevron.right") }
+                    .disabled(!page.canLoadNext).accessibilityIdentifier(prefix + ".newer")
+                Spacer(minLength: 4)
+                Button("Последние", action: latest).disabled(page.isLoading || page.isAtLatest)
+                    .accessibilityIdentifier(prefix + ".latest")
+            }.controlSize(.small)
+            if page.isLoading {
+                HStack { ProgressView().controlSize(.mini); Text("Загрузка из Telegram…").font(.caption).foregroundStyle(.secondary) }
+            }
+            if page.timedOut {
+                HStack(alignment: .top) {
+                    Text("Загрузка занимает больше времени. Показанные данные сохранены.").font(.caption).foregroundStyle(.secondary)
+                    Button("Повторить", action: retry).controlSize(.small).accessibilityIdentifier(prefix + ".retry")
+                }
+            }
         }
     }
 }

@@ -30,6 +30,8 @@ TelegramSwift remains the chosen Telegram direction, MMail the functional mail b
 
 Aether Courier's indexed `RootView`/`ReadingPaneView` and inspected `docs/screenshot.png` informed the sidebar → list → dossier hierarchy, violet emphasis, compact caption metadata and separate reading panel. Makosh uses original SwiftUI; no assets or code were copied. See `research-ui-meetings.md` for pinned evidence and queries.
 
+SwiftUI owns workspace and sheet state; AppKit provides the JSON file panel. On the local macOS 27 build, SwiftUI's importer left a valid JSON selection unavailable. The explicit `NSOpenPanel` sets file-selection flags after allowed types, as the macOS 27 SDK requires when those flags must be preserved. Merge review uses an item-driven sheet and requires an explicit survivor selection before enabling confirmation. System background colors and an appearance-aware accent support the observed dark appearance.
+
 Adapters will expose source-scoped identities and timestamped import observations to the core. Do not build a general plugin framework. Swift/Rust FFI is deferred until a real service needs it; WhatsApp Zen's C/JSON boundary is a concrete precedent, not yet a Makosh dependency.
 
 Telemost first-stage UI opens a supplied official HTTPS meeting URL in the browser. The [official REST API](https://yandex.ru/dev/telemost/doc/ru/) is limited to Yandex 360 for Business organization-domain accounts. No account was authorized in this task, so no API calls or private meeting discovery are performed. The Linux GTK/GStreamer reference explicitly labels its reverse-engineered endpoint mapping unconfirmed against a live server; native WebRTC remains a separate investigation.

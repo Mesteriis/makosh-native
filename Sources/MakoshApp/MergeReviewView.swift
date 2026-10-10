@@ -6,7 +6,6 @@ struct MergeReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedCandidate: DuplicateCandidate?
     @State private var survivor: UUID?
-    @State private var confirmation = false
     @State private var error: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -20,7 +19,7 @@ struct MergeReviewView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("\(model.name(candidate.firstID))  ↔  \(model.name(candidate.secondID))").font(.headline)
                                 ForEach(candidate.reasons, id: \.self) { reason in Text(reason).font(.callout).foregroundStyle(.secondary) }
-                                Button("Проверить и объединить") { selectedCandidate = candidate; survivor = candidate.firstID; confirmation = true }.accessibilityIdentifier("merge.review.\(candidate.id)")
+                                Button("Проверить и объединить") { error = nil; survivor = nil; selectedCandidate = candidate }.accessibilityIdentifier("merge.review.\(candidate.id)")
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                         }
                     }
@@ -38,10 +37,10 @@ struct MergeReviewView: View {
                 }.padding(4)
             }
         }.padding(26).frame(width: 690, height: 560)
-        .sheet(isPresented: $confirmation) {
-            if let candidate = selectedCandidate {
+        .sheet(item: $selectedCandidate) { candidate in
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Какую карточку сохранить?").font(.title2.bold())
+                    Text("Выберите основную карточку ниже, затем подтвердите объединение.").font(.callout).foregroundStyle(.secondary)
                     Text("Вторая карточка будет объединена с выбранной. При разных именах, компаниях и должностях останутся значения основной карточки; все исходные значения сохранятся в источниках. Заметки и история сохранятся. Если данные после объединения не менялись, действие можно отменить.").foregroundStyle(.secondary)
                     ScrollView {
                         HStack(alignment: .top, spacing: 12) {
@@ -53,12 +52,11 @@ struct MergeReviewView: View {
                         Text(model.name(candidate.firstID)).tag(Optional(candidate.firstID))
                         Text(model.name(candidate.secondID)).tag(Optional(candidate.secondID))
                     }.pickerStyle(.radioGroup).accessibilityIdentifier("merge.survivor")
-                    HStack { Button("Отмена") { confirmation = false }; Spacer(); Button("Подтвердить объединение") { if let survivor, model.merge(candidate, survivor: survivor) { confirmation = false } else { error = model.error; model.error = nil } }.buttonStyle(.borderedProminent).accessibilityIdentifier("merge.confirm") }
+                    HStack { Button("Отмена") { selectedCandidate = nil }; Spacer(); Button("Подтвердить объединение") { if let survivor, model.merge(candidate, survivor: survivor) { selectedCandidate = nil } else { error = model.error; model.error = nil } }.buttonStyle(.borderedProminent).disabled(survivor == nil).accessibilityIdentifier("merge.confirm") }
                     if let error { Text(error).foregroundStyle(.red) }
                 }.padding(28).frame(width: 720)
-            }
         }
-        .alert("Объединение не изменено", isPresented: Binding(get: { error != nil && !confirmation }, set: { if !$0 { error = nil } })) { Button("Понятно") { error = nil } } message: { Text(error ?? "") }
+        .alert("Макош", isPresented: Binding(get: { error != nil && selectedCandidate == nil }, set: { if !$0 { error = nil } })) { Button("Понятно") { error = nil } } message: { Text(error ?? "") }
     }
     @ViewBuilder private func reviewCard(_ id: UUID) -> some View {
         if let contact = model.contacts.first(where: { $0.id == id }) {

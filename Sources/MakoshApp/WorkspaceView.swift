@@ -109,13 +109,15 @@ private enum Destination: String, CaseIterable, Identifiable {
 private struct EditorSelection: Identifiable { let id = UUID(); let contact: Contact? }
 
 struct WorkspaceView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var model = WorkspaceModel()
     @State private var destination: Destination? = .contacts
     @State private var search = ""
     @State private var editor: EditorSelection?
-    @State private var importer = false
     @State private var review = false
-    private let accent = Color(red: 0.35, green: 0.32, blue: 0.72)
+    private var accent: Color {
+        colorScheme == .dark ? Color(red: 0.72, green: 0.68, blue: 0.98) : Color(red: 0.35, green: 0.32, blue: 0.72)
+    }
     var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 20) {
@@ -138,7 +140,7 @@ struct WorkspaceView: View {
                     TextField("Поиск по имени, компании, почте", text: $search).textFieldStyle(.roundedBorder).padding(.horizontal, 16).padding(.bottom, 12).accessibilityIdentifier("contacts.search")
                     Divider()
                     if model.contacts.isEmpty {
-                        ContentUnavailableView("Пока нет контактов", systemImage: "person.crop.rectangle.stack", description: Text("Создайте контакт или импортируйте JSON-файл.")).padding()
+                        ContentUnavailableView("Пока нет контактов", systemImage: "person.crop.rectangle.stack", description: Text("Создайте контакт или импортируйте JSON-файл.")).frame(maxWidth: .infinity, maxHeight: .infinity).padding()
                     } else {
                         List(selection: $model.selectedID) {
                             ForEach(filteredContacts) { contact in
@@ -151,10 +153,10 @@ struct WorkspaceView: View {
                     }
                     Divider()
                     VStack(spacing: 10) {
-                        Button { importer = true } label: { Label("Импортировать JSON", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity) }.accessibilityIdentifier("contacts.import").disabled(!model.ready)
+                        Button(action: chooseImportFile) { Label("Импортировать JSON", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity) }.accessibilityIdentifier("contacts.import").disabled(!model.ready)
                         Button { review = true } label: { Label("Объединения · \(model.duplicates.count)", systemImage: "person.2.badge.gearshape").frame(maxWidth: .infinity) }.accessibilityIdentifier("contacts.duplicates").disabled(!model.ready)
                     }.padding(16)
-                }.navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
+                }.frame(maxHeight: .infinity, alignment: .top).navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
             } else {
                 VStack(alignment: .leading, spacing: 16) {
                     Label(destination?.rawValue ?? "", systemImage: destination?.symbol ?? "square").font(.title2.bold())
@@ -170,12 +172,9 @@ struct WorkspaceView: View {
             } else if destination == .meetings { MeetingsView() }
             else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
         }
-        .tint(accent).background(Color(red: 0.975, green: 0.969, blue: 0.953))
+        .tint(accent).background(Color(nsColor: .windowBackgroundColor))
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model) }
         .sheet(isPresented: $review) { MergeReviewView(model: model) }
-        .fileImporter(isPresented: $importer, allowedContentTypes: [.json]) { result in
-            switch result { case .success(let url): model.importFile(url); case .failure(let error): model.error = error.localizedDescription }
-        }
         .alert("Макош", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("Понятно", role: .cancel) { model.error = nil } } message: { Text(model.error ?? "") }
         .overlay(alignment: .bottomTrailing) {
             if let notice = model.notice { HStack { Text(notice); Button { model.notice = nil } label: { Image(systemName: "xmark") } }.padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)).padding(20) }
@@ -184,6 +183,24 @@ struct WorkspaceView: View {
     private var filteredContacts: [Contact] {
         if search.isEmpty { return model.contacts }
         return model.contacts.filter { [$0.displayName, $0.organization, $0.jobTitle, $0.emails.joined(separator: " "), $0.phones.joined(separator: " ")].joined(separator: " ").localizedCaseInsensitiveContains(search) }
+    }
+    private func chooseImportFile() {
+        guard let window = NSApp.keyWindow else {
+            model.error = "Не удалось открыть диалог импорта. Сделайте окно Макоша активным и повторите."
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.title = "Импорт контактов из JSON"
+        panel.prompt = "Импортировать"
+        panel.allowedContentTypes = [.json]
+        // macOS 27 derives these flags when types change; set them afterwards.
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            model.importFile(url)
+        }
     }
 }
 

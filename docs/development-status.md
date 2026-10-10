@@ -1365,8 +1365,9 @@ Actual checks:
   separately visible after the passing Telegram suite.
 - `scripts/build-app.sh`: exit 0, Debug build and strict ad-hoc signature check.
   The final build includes the additional export cancellation-publication guard;
-  this UI-only guard followed the full test run and was exercised by native
-  Save-panel cancellation. No release-signing/notarization claim is made.
+  this UI-only guard followed the full test run. Native QA confirmed Save-panel
+  cancellation before export, not cancellation after export completes. No
+  release-signing/notarization claim is made.
 - Final native QA used an explicitly isolated synthetic S3/PG fixture, unique
   bundle identifier, exact executable/config flags and verified unsigned payload.
   **14 recorded conditions passed**: Quick Look displayed the exact retained

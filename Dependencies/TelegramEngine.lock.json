@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "sourceURL": "https://github.com/overtake/Telegram-iOS.git",
+  "revision": "a24bbe45f9861f736a79916a50898512f751e0dc",
+  "tree": "0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0",
+  "packageRoots": [
+    "submodules/TelegramCore",
+    "submodules/OpenSSLEncryptionProvider"
+  ]
+}

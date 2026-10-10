@@ -39,3 +39,19 @@ Telemost first-stage UI opens a supplied official HTTPS meeting URL in the brows
 `MakoshTelegram` owns a MainActor lifecycle adapter over genuine TelegramCore/Postbox/SwiftSignalKit and OpenSSLEncryptionProvider. Own SwiftUI handles API setup, phone/code/password, dialogs, recent history and text sending. No account/Keychain/filesystem/network work occurs in model initialization. User Connect begins a separate encrypted cache and own Keychain key; no existing client sessions or system contacts are read. API credentials stay in memory. Required engine logging is registered with output disabled before account initialization.
 
 PostgreSQL remains the dossier database. Postbox/SQLCipher is the engine's encrypted protocol cache, never a replacement for contact persistence. Session open failures preserve data; missing keys fail closed. Stop and model destruction dispose subscriptions, stop service/connection tasks and preserve cache. Server logout clears old previews and account subscriptions; generation guards reject stale callbacks. Text enqueue acknowledgement controls clearing an account/chat-scoped draft and does not claim server delivery. Drafts are in-memory only. First slice is bounded to 50 root chats/history entries and text; actual auth/send/reconnect remains unverified without user-entered credentials. See [Telegram details](telegram.md).
+
+## ADR-006: Build dependencies are independent of research
+
+`Dependencies/TelegramEngine.lock.json` owns the build's source URL, complete
+revision/tree and selected package roots. The audited Telegram revision stays
+the same. Preparation fetches it into `.local/telegram-source.git`, a separate
+bare object cache, and extracts committed regular blobs into the adapted
+`.local/telegram-engine` packages consumed by SwiftPM. Source/tree validation
+precedes publication of a new cache; Git replacement refs are disabled.
+
+The build never reads or creates `.references/` or invokes research preparation.
+A complete verified prepared engine is checked before any source-cache/network
+work, allowing offline repeat builds. Changed prepared input fails closed rather
+than being silently replaced. Research clones/indexes remain optional developer
+tools. Neither source cache nor the installed app depends on a research folder;
+account data and API settings remain outside all dependency caches.

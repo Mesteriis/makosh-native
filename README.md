@@ -15,7 +15,7 @@ brew install libpq pkg-config openssl@3 cmake ninja
 ./scripts/run.sh
 ```
 
-Build/test scripts prepare the pinned Telegram engine and FlatBuffers compiler in ignored local storage, verify their exact source checksums, and supply Homebrew libpq/OpenSSL `PKG_CONFIG_PATH`. The first build requires downloading source and compiling the engine. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and OpenSSL 3 and needs both libraries on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
+Build/test scripts use Makosh's own [Telegram dependency lock](Dependencies/TelegramEngine.lock.json), prepare the engine and FlatBuffers compiler in ignored local storage, verify source checksums, and supply Homebrew libpq/OpenSSL `PKG_CONFIG_PATH`. The first build downloads locked source into `.local/telegram-source.git`; `.references/` is never read or created by the build. A verified prepared engine can be reused without the source cache or network. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and OpenSSL 3 and needs both libraries on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
 
 The development service uses PostgreSQL 18.6, binds only `127.0.0.1:55439`, and persists data in a Docker named volume mounted at `/var/lib/postgresql` (the PostgreSQL 18 layout). `./scripts/dev-db.sh down` stops the service while preserving its data. Do not remove the volume to upgrade or reset a test.
 
@@ -33,7 +33,7 @@ See the [import schema](docs/import-format.md), [architecture](docs/architecture
 
 ## References and source research
 
-The eight selected references are pinned in `references.lock.json`; clones live in ignored `.references/`. The pinned iOS engine gitlink from TelegramSwift is prepared and linked locally; the outer macOS UI and branding assets are excluded. The combined application is **GPLv3**; independently authored Makosh code retains MIT. Exact official-tree equivalence, adaptations, license grants and retained texts are in [third-party notices](THIRD_PARTY_NOTICES.md). No built app or prepared engine is published as a binary release. Other reference applications remain research inputs.
+The eight selected references are pinned in `references.lock.json`; optional research clones live in ignored `.references/`. `scripts/prepare-references.py` is only a research tool, never a build prerequisite. The selected iOS engine revision is independently pinned by Makosh's dependency lock and prepared from its own source cache; the outer macOS UI and branding assets are excluded. The combined application is **GPLv3**; independently authored Makosh code retains MIT. Exact official-tree equivalence, adaptations, license grants and retained texts are in [third-party notices](THIRD_PARTY_NOTICES.md). No built app or prepared engine is published as a binary release. Other reference applications remain research inputs.
 
 Read [XERJ workflow](docs/xerj.md) and the CRM, communications, UI/meetings research documents. Indexes, journals, raw local reports and machine configuration are excluded from Git. Reference research does not claim their applications build or their live integrations work.
 

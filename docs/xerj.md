@@ -17,16 +17,23 @@ python3 scripts/xerj-index.py MMail --check
 xerj search --url http://127.0.0.1:19320 --prefix mk-com-mail 'IMAPSession connectAndLogin' -k 3
 python3 scripts/xerj-index.py project
 python3 scripts/xerj-index.py project --check
-xerj search --url http://127.0.0.1:19320 --prefix mk-own-v2 'undoMerge expectedRevision' -k 3
+xerj search --url http://127.0.0.1:19320 --prefix mk-own-v3 'undoMerge expectedRevision' -k 3
 ```
+
+Reference preparation is optional research work. Application build/run/test uses
+`Dependencies/TelegramEngine.lock.json` and a separate bare source cache; it
+neither requires this research step nor reads/creates `.references/`.
 
 Run the index command for each of the eight lock names. Reuse the same generated `--no-graph` state directory for changes; rc.93 reconciles changed/added/removed files, but preparation still copies the complete scope (O(N)). Do not use `--fresh` as a deletion/reconciliation substitute. Check current content fingerprints and reference SHA before every reuse; a commit SHA alone does not cover uncommitted edits. The script refuses mismatched locked commits and records pre/post content fingerprints plus root and scope ignore rules outside Git. `--record-existing RESULT LOG` is for recording already-completed runs; it validates scope/terminal and records current content, but cannot reconstruct historical file edits. Original clones were checked for source changes separately.
 
 Adding retained `.notice` license files caused the original `mk-own` frozen
 dataset to refuse new text fields (actual exit 1, unsupported schema evolution).
-The current project uses a separate `mk-own-v2` prefix/state, as instructed by
-that diagnostic. The failed run is preserved locally; the old prefix is not
-reused as evidence for current code. Reference/engine scopes are unchanged.
+The separate `mk-own-v2` scope then completed successfully. Adding Makosh's own
+dependency lock later caused v2 to reject the new JSON fields (actual exit 1).
+The current project therefore uses a separate `mk-own-v3` prefix/state, following
+the diagnostic's new-prefix instruction. Both failures remain recorded locally;
+old prefixes are not reused as current evidence. Reference/engine scopes are
+unchanged. The dependency lock stays within the indexed project scope.
 
 Hidden files, `.git`, built-in build/vendor/generated directories and ignore rules are excluded. Communication reference scopes also exclude private/, databases, png/jpg/xcassets; the original TelegramSwift index excludes submodules. Its selected TelegramCore engine is now prepared, audited and indexed separately as described below. The reproducer prepares local `.xerjignore` rules without modifying tracked upstream source. The project excludes `.references`, `.local`, `.build`, databases/images and the mutable development status ledger. Index state, logs, raw query results, machine configuration and fingerprints stay in `.local/` and are ignored. Exit 3 is completed-with-junk, not a clean exit 0; examine skipped paths before claiming coverage.
 
@@ -53,8 +60,9 @@ xerj search --url http://127.0.0.1:19320 --prefix mk-telegram-engine 'sendAuthor
 ```
 
 This separately indexes `.local/telegram-engine/submodules/TelegramCore`, after
-checking the pinned preparation recipe and exact SHA256/file-set record. Its
-scope includes generated FlatSerialization sources and bundled FlatBuffers;
+checking the pinned preparation recipe and exact SHA256/file-set record. The
+build pin comes from Makosh's own dependency lock; reference clones are not used.
+The scope includes generated FlatSerialization sources and bundled FlatBuffers;
 the sibling Postbox/MtProtoKit and other packages were audited/read for build
 and lifecycle integration but are not claimed as indexed by this scope.
 Observed final engine refresh: **exit 0, 721 indexed files, 686/686 classified

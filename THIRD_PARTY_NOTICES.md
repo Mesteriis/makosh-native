@@ -23,10 +23,13 @@ UI is GPL v2 and is **not copied or linked**. No Telegram branding assets,
 embedded API credentials, private configuration or existing account databases
 are imported. Makosh is an unofficial client.
 
-`scripts/prepare-telegram.py` fetches the exact commit, checks SHA/tree, copies
-only committed regular files, adapts a separate ignored working copy and records
-every prepared file's SHA256. Reuse requires an identical file set and content.
-The source checkout is never patched. The preparation record lists all selected
+`Dependencies/TelegramEngine.lock.json` independently pins that same source for
+Makosh builds. `scripts/prepare-telegram.py` fetches the exact commit into its
+own ignored bare Git cache, checks SHA/tree, copies only committed regular files,
+adapts a separate ignored working copy and records every prepared file's SHA256.
+Reuse requires an identical file set, content and full source pin; it needs no
+research checkout or source-cache/network access. The research references are
+never patched or consulted by the build. The preparation record lists all selected
 packages: TelegramCore (including FlatBuffers/FlatSerialization), Postbox,
 SSignalKit, MtProtoKit, TelegramApi, CryptoUtils, NetworkLogging, Reachability/
 LegacyReachability, DarwinDirStat, EncryptionProvider, Emoji, MurMurHash32,

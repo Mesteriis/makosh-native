@@ -33,6 +33,7 @@
         "officialEquivalentSHA": "0699602bbc2756d1feaeb67df485e376dce44ad2",
         "tree": "0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0",
         "preparation": "scripts/prepare-telegram.py",
+        "buildLock": "Dependencies/TelegramEngine.lock.json",
         "xerjPrefix": "mk-telegram-engine"
       }
     },

@@ -20,13 +20,21 @@ source scripts/libpq-env.sh
 swift build --product Makosh -j 4
 ```
 
-Preparation fetches pinned gitlink `a24bbe45f9861f736a79916a50898512f751e0dc`
-and checks official-equivalent tree `0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0`.
+The build reads `Dependencies/TelegramEngine.lock.json`, independently of the
+research lock or checkouts. It fetches revision
+`a24bbe45f9861f736a79916a50898512f751e0dc` into Makosh's own bare Git cache,
+`.local/telegram-source.git`, and checks official-equivalent tree
+`0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0`. No build/run/test script needs or
+creates `.references/`. A failed first fetch/tree check never publishes the
+source cache. Git replacement refs cannot override the pinned source.
 Only committed regular files from the 21 selected packages are extracted.
 Untracked files cannot enter the build; symlinks and archive path traversal are
 refused. The separate `.local/telegram-engine` copy contains reviewed build and
 privacy adaptations and generated FlatBuffers models. Its recipe number,
-complete file set and SHA256 checksums are verified on reuse. The official
+complete file set, SHA256 checksums and full source pin are verified on reuse,
+before opening a source cache or fetching anything. Repeat builds with a valid
+prepared engine therefore work without research clones, the source cache or
+network access; an initial preparation still requires network access. The official
 FlatBuffers 24.12.23 source archive is checksum-pinned and compiled locally.
 
 If preparation detects changed files or an old recipe, it stops. Preserve and

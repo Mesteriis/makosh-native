@@ -18,16 +18,13 @@ def git(*args, cwd=ROOT):
 
 def scope(name):
     if name == "project":
-        return ROOT, "mk-own-v2", "project-v2"
+        return ROOT, "mk-own-v3", "project-v3"
     if name == "telegram-engine":
         spec = importlib.util.spec_from_file_location("telegram_preparation", ROOT / "scripts/prepare-telegram.py")
         preparation = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(preparation)
-        record = json.loads((preparation.DEST / "preparation.json").read_text())
-        if record["source_sha"] != preparation.SHA or record.get("recipe") != preparation.RECIPE:
-            raise ValueError("Telegram engine preparation pin/recipe differs")
-        if preparation.prepared_files(preparation.DEST) != record["prepared_files"]:
-            raise ValueError("Telegram engine preparation changed")
+        if not preparation.verify_prepared():
+            raise ValueError("Telegram engine is not prepared")
         return preparation.DEST / "submodules/TelegramCore", "mk-telegram-engine", "telegram-engine"
     lock = json.loads((ROOT / "references.lock.json").read_text())
     item = next((x for x in lock["references"] if x["name"] == name), None)
@@ -115,7 +112,7 @@ def main():
         print("Source changed while indexing; freshness not recorded"); return 1
     report_path.parent.mkdir(exist_ok=True)
     report = {"name": args.name, "fingerprint": after, "prefix": prefix, "command": command,
-              "source_sha": ("a24bbe45f9861f736a79916a50898512f751e0dc" if args.name == "telegram-engine" else
+              "source_sha": (json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())["revision"] if args.name == "telegram-engine" else
                   git("rev-parse", "HEAD", cwd=path).decode().strip() if args.name != "project" else "see content fingerprint"),
               "exit_code": exit_code, "result": result, "terminal": terminal,
               "result_path": str(result_path.relative_to(ROOT)), "log_path": str(log_path.relative_to(ROOT)),
@@ -128,6 +125,6 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (ValueError, OSError, subprocess.CalledProcessError, KeyError) as error:
+    except (ValueError, OSError, subprocess.CalledProcessError, KeyError, RuntimeError) as error:
         print("XERJ workflow error: " + str(error), file=sys.stderr)
         sys.exit(1)

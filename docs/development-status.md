@@ -95,5 +95,49 @@ user-connected test account and separate live acceptance. Main list/history are
 bounded to 50 entries; pagination/media/secret-chat UI/read receipts and dossier
 identity linking are not implemented. Drafts persist only in this app process.
 See `telegram.md` for actual behavior, local credential configuration and limits.
-Prior contact-only CI is green; the Telegram commit's actual hosted result must
-be checked on its PR/Actions run before claiming hosted acceptance.
+The Telegram head `b6c50add915b07cffd87c751c926f6ea8eccedae` passed actual
+[PR CI 38054159972](https://github.com/Mesteriis/makosh-native/actions/runs/38054159972):
+build, 43 XCTest tests and 8 Python regressions. This is evidence for that head;
+later changes require their own CI result.
+
+## Build independent of research folders — 2026-10-10
+
+Makosh now owns `Dependencies/TelegramEngine.lock.json`, a separate bare source
+cache in `.local/telegram-source.git`, and the adapted SwiftPM engine packages.
+The audited revision/tree and generated engine content are unchanged. Build,
+test and run neither read nor create `.references/`. Research preparation and
+indexes remain optional tools. A verified prepared engine is checked before any
+source-cache/network access; a changed cache fails closed. Account/session data
+and PostgreSQL storage are outside this change.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; existing PostgreSQL development service healthy.
+- `scripts/test.sh`: exit 0, 43 XCTest tests (19 Telegram + 24 real-PostgreSQL
+  contact tests), 0 failures; 15 Python regressions passed. New checks cover
+  independent bare-cache fetch/reuse, tree mismatch, atomic source publication,
+  source symlinks/replacement refs, full prepared pin and offline reuse.
+- A separate source snapshot contained only publishable project files, no
+  `.references/`, prepared engine, source or compiler cache. It downloaded the
+  locked source and compiler itself. Its first preparation exposed a missing
+  marker-variable binding (exit 1); that failed log and unmarked output were
+  preserved. After correcting the producer, build and strict ad-hoc signature
+  verification passed with `.references/` still absent.
+- In that separate copy, the bare source cache was temporarily moved aside and
+  HTTP(S) proxy settings pointed to a closed loopback port. Repeat app build and
+  all 43 XCTest/15 Python tests passed without recreating either `.references/`
+  or the source cache. The preserved source cache was then restored.
+- Prepared file sets/checksums match the prior audited 21-package engine exactly.
+  Binary load commands contain no reference/legacy-directory dependency. Python/
+  shell syntax, build-path exclusion, lock provenance consistency and diff checks
+  passed. No product UI/account flow changed; no account authorization or private
+  message acceptance is inferred from these build results.
+- XERJ v2 rejected the lock file's new JSON fields (actual exit 1, preserved).
+  Following its diagnostic, a separate `mk-own-v3` refresh passed: exit 0,
+  63 indexed files, 37/37 classified code files, including the dependency lock.
+  Current preparation/pin queries were confirmed against source; engine content
+  and its existing scope fingerprint remain unchanged.
+
+CI now explicitly checks that `.references/` is absent before/after the cold
+build and after tests, and verifies the separate bare source cache. Adding these
+gates does not itself establish a hosted pass; consult this change's PR check.

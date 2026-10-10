@@ -33,10 +33,16 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as env:
               env.write(f'MAKOSH_TEST_DATABASE_URL=host=127.0.0.1 port=55439 dbname=postgres user=makosh password={password}\n')
           PYTHON
-      - name: Build
-        run: ./scripts/build-app.sh
+      - name: Build without research checkouts
+        run: |
+          test ! -e .references
+          ./scripts/build-app.sh
+          test ! -e .references
+          test "$(git --git-dir .local/telegram-source.git rev-parse --is-bare-repository)" = true
       - name: Test contact and Telegram invariants
-        run: ./scripts/test.sh
+        run: |
+          ./scripts/test.sh
+          test ! -e .references
       - name: Stop CI PostgreSQL
         if: always()
         run: '"$(brew --prefix postgresql@18)/bin/pg_ctl" -D .local/ci-postgres -m fast -w stop || true'

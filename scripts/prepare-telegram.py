@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Prepare the exact TelegramSwift engine gitlink in ignored local storage.
+"""Prepare Makosh's locked Telegram engine independently of research checkouts.
 
-No upstream installer is executed. Only reviewed SwiftPM packages are copied;
-the original checkout is never patched. No credentials or account data are read.
+No upstream installer is executed. Only committed SwiftPM packages are copied
+from a separate bare source cache. No credentials or account data are read.
 """
 import hashlib
 import io
@@ -12,18 +12,52 @@ import re
 import subprocess
 import sys
 import tarfile
+import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / ".references/TelegramSwift/submodules/telegram-ios"
+LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
+if LOCK["schemaVersion"] != 1:
+    raise RuntimeError("Unsupported Telegram dependency lock version")
+if not all(re.fullmatch(r"[0-9a-f]{40}", LOCK[key]) for key in ("revision", "tree")):
+    raise RuntimeError("Telegram dependency lock needs full commit and tree hashes")
+SOURCE = ROOT / ".local/telegram-source.git"
 DEST = ROOT / ".local/telegram-engine"
-SHA = "a24bbe45f9861f736a79916a50898512f751e0dc"
-URL = "https://github.com/overtake/Telegram-iOS.git"
-TREE = "0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0"
+SHA = LOCK["revision"]
+URL = LOCK["sourceURL"]
+TREE = LOCK["tree"]
 RECIPE = 2
 
 
 def run(*args):
     return subprocess.check_output(args, text=True).strip()
+
+
+def source_git(*args, source=None):
+    return ["git", "--no-replace-objects", "--git-dir", str(source or SOURCE), *args]
+
+
+def verify_source(source):
+    if source.is_symlink() or run(*source_git("rev-parse", "--is-bare-repository", source=source)) != "true":
+        raise RuntimeError("Telegram source cache must be a separate bare repository")
+    if run(*source_git("rev-parse", f"{SHA}^{{tree}}", source=source)) != TREE:
+        raise RuntimeError("Telegram engine tree differs from the locked official-equivalent tree")
+
+
+def prepare_source():
+    if SOURCE.is_symlink():
+        raise RuntimeError("Telegram source cache symlinks are refused")
+    if SOURCE.exists():
+        verify_source(SOURCE)
+        return
+    SOURCE.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="telegram-source-", dir=SOURCE.parent) as staging:
+        source = Path(staging) / "repository.git"
+        run("git", "init", "--bare", "--quiet", "--initial-branch=main", str(source))
+        run(*source_git("fetch", "--depth", "1", "--no-tags", URL, SHA, source=source))
+        if run(*source_git("rev-parse", "FETCH_HEAD", source=source)) != SHA:
+            raise RuntimeError("Fetched Telegram source differs from locked revision")
+        verify_source(source)
+        source.rename(SOURCE)
 
 
 def replace_exact(path, old, new):
@@ -63,32 +97,30 @@ def extract_committed(archive, destination):
                     target.write_bytes(payload.read())
 
 
-def main():
-    if not (SOURCE / ".git").exists():
-        SOURCE.mkdir(parents=True, exist_ok=True)
-        run("git", "init", str(SOURCE))
-        run("git", "-C", str(SOURCE), "remote", "add", "origin", URL)
-        run("git", "-C", str(SOURCE), "fetch", "--depth", "1", "origin", SHA)
-        run("git", "-C", str(SOURCE), "checkout", "--detach", "FETCH_HEAD")
-    if run("git", "-C", str(SOURCE), "rev-parse", "HEAD") != SHA:
-        raise RuntimeError("Telegram engine checkout differs from pinned gitlink")
-    if run("git", "-C", str(SOURCE), "rev-parse", "HEAD^{tree}") != TREE:
-        raise RuntimeError("Telegram engine tree differs from verified official ancestor")
-    if run("git", "-C", str(SOURCE), "status", "--porcelain", "--untracked-files=no"):
-        raise RuntimeError("Telegram engine checkout has tracked modifications")
+def verify_prepared():
+    if DEST.is_symlink():
+        raise RuntimeError("Prepared engine directory symlinks are refused")
+    if not DEST.exists():
+        return False
     marker = DEST / "preparation.json"
-    if DEST.exists():
-        if not marker.exists():
-            raise RuntimeError("Existing engine directory has no preparation record")
-        record = json.loads(marker.read_text())
-        if record["source_sha"] != SHA or record.get("recipe") != RECIPE:
-            raise RuntimeError("Existing engine preparation uses another revision or recipe; preserve/rename it before preparing again")
-        if prepared_files(DEST) != record["prepared_files"]:
-            raise RuntimeError("Prepared engine file set or content changed; preserve it before preparing again")
+    if marker.is_symlink() or not marker.is_file():
+        raise RuntimeError("Existing engine directory has no regular preparation record")
+    record = json.loads(marker.read_text())
+    if (record.get("source_sha"), record.get("source_tree"), record.get("source_url"), record.get("recipe")) != (SHA, TREE, URL, RECIPE):
+        raise RuntimeError("Existing engine preparation uses another pin or recipe; preserve/rename it before preparing again")
+    if prepared_files(DEST) != record["prepared_files"]:
+        raise RuntimeError("Prepared engine file set or content changed; preserve it before preparing again")
+    return True
+
+
+def main():
+    # A verified prepared engine is sufficient for an offline repeat build.
+    if verify_prepared():
         print("Telegram engine: pinned preparation verified")
         return
+    prepare_source()
 
-    pending = ["submodules/TelegramCore", "submodules/OpenSSLEncryptionProvider"]
+    pending = list(LOCK["packageRoots"])
     packages = set()
     pattern = re.compile(r'\.package\(name:\s*"[^"]+",\s*path:\s*"([^"]+)"\)')
     while pending:
@@ -96,7 +128,7 @@ def main():
         if relative in packages:
             continue
         package = SOURCE / relative
-        manifest = run("git", "-C", str(SOURCE), "show", f"HEAD:{relative}/Package.swift")
+        manifest = run(*source_git("show", f"{SHA}:{relative}/Package.swift"))
         active_manifest = "\n".join(line for line in manifest.splitlines() if not line.lstrip().startswith("//"))
         if ".package(url:" in active_manifest:
             raise RuntimeError("Unreviewed remote dependency in engine package")
@@ -109,7 +141,7 @@ def main():
                 raise RuntimeError("Engine dependency escapes pinned checkout")
             pending.append(str(target.relative_to(SOURCE.resolve())))
     DEST.mkdir(parents=True)
-    archive = subprocess.check_output(["git", "-C", str(SOURCE), "archive", "HEAD", *sorted(packages), "README.md"])
+    archive = subprocess.check_output(source_git("archive", SHA, *sorted(packages), "README.md"))
     extract_committed(archive, DEST)
     replace_exact(DEST / "submodules/ManagedFile/Package.swift",
                   '../../submodules/telegram-ios/submodules/SSignalKit', '../SSignalKit')
@@ -163,7 +195,7 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
                     *[str(p) for p in sorted((serialization / "Models").glob("*.fbs"))]], check=True)
     (DEST / "README.md").rename(DEST / "UPSTREAM-README.md")
     files = prepared_files(DEST)
-    marker.write_text(json.dumps({"source_url": URL, "source_sha": SHA, "source_tree": TREE,
+    (DEST / "preparation.json").write_text(json.dumps({"source_url": URL, "source_sha": SHA, "source_tree": TREE,
         "recipe": RECIPE, "packages": sorted(packages), "prepared_files": files,
         "adaptations": ["ManagedFile relative SSignalKit path", "Postbox never deletes session on open failure",
                         "OpenSSLEncryption SwiftPM uses EncryptionProvider and Homebrew OpenSSL 3",

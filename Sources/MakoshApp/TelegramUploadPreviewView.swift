@@ -41,11 +41,19 @@ struct TelegramUploadPreviewView: View {
             if let error = upload.error {
                 Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.error")
             }
+            if let status = upload.recoveryStatus {
+                Text(status).font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("telegram.upload.recoveryStatus")
+            }
             if let captionError { Text(captionError).font(.caption).foregroundStyle(.red) }
             Divider()
             HStack {
                 TelegramUploadStatusView(upload: upload, synthetic: model.isSyntheticPreview)
                 Spacer()
+                if upload.canRetryRecovery {
+                    Button("Повторить сохранение", action: upload.retryRecovery)
+                        .accessibilityIdentifier("telegram.upload.retrySave")
+                }
                 if upload.phase == .uncertain {
                     Button("Закрыть наблюдение") { upload.dismissPreparation(contextID: contextID) }
                         .accessibilityIdentifier("telegram.upload.clear")

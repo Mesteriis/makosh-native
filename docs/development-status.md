@@ -1,6 +1,60 @@
-# Development status — 2026-10-10
+# Development status — 2026-10-11
 
-## Current stage: pending attachment recovery storage
+## Current stage: pending attachment recovery in the shared workspace
+
+Telegram's runtime now saves an owned pending file/photo to encrypted S3 with
+PostgreSQL metadata, then keeps caption/entities/selection, original revision,
+reply target and lifecycle in the account/chat Postbox pointer. Serial writes
+remain bound to the original repository after UI cancellation or account changes.
+Initial storage gates send; the latest caption and `submissionStarted` persist
+before provider admission. Durable `.accepted` gates the original draft ACK.
+A failed acceptance-save retry only saves storage; it never resubmits. Restored
+`submissionStarted` is uncertain and cannot send automatically. A current reply
+source is resolved again before prepared recovery. Ordinary send/actions and
+attachment admission are blocked while recovery is loading or has failed.
+Cancellation tombstones retain archived bytes; a failed cancellation is visible
+outside the dismissed modal and offers a storage-only retry.
+
+Current gates: `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh`
+and strict deep signature verification all exit 0. **418 XCTest (355 Telegram +
+63 core), zero failures; 24 Python regressions**. Thirteen runtime regressions
+cover ordering, cancelled callers, scope/transition refusal, exact original ACK,
+stale account/chat loads, missing reply, prepared/uncertain restoration, failed
+acceptance-save and cancellation retry without resubmission. The passing full
+suite prints 40 upstream SQL t19 teardown diagnostics. Earlier compile failures
+and a staging-cancellation regression were fixed; one full run also trapped at
+upstream `SqliteValueBox.swift:458`. Its six-test retention probe and two subsequent
+full suites passed; the isolated assertion's cause remains unconfirmed.
+
+Native acceptance used the same explicitly owned synthetic Postbox and isolated
+PostgreSQL/S3, with an injected synthetic encryption key. The QA executable's
+unsigned payload matches the built app and both bundles pass strict signatures.
+Actual AX/screenshots verified the shared service selector, native file choice,
+file modal, edited rich caption/selection recovery after process stop/relaunch,
+Escape returning the original draft, no cancelled resurrection after another
+restart, normalized JPEG/preview/caption recovery, synthetic queue ACK clearing
+the original, no accepted recovery modal after restart, and Mail → Telegram in
+the same window. File choice initially left Open disabled; explicitly setting
+allowed content types for both file/photo modes fixed the observed flow.
+No personal account, Keychain, Telegram network or actual send was used.
+Root verified all 12 current worker source/test hashes across bounded handoffs
+and read-only reviews. Two source findings (hidden cancellation error and ordinary
+send bypass during recovery) were fixed and covered; no later scoped findings
+were reported. Workers skipped runtime gates; observed model/provider/usage remain
+unknown. Final project refresh reports 239 files, 209/209 code (exit 0), with
+source-confirmed runtime/reference queries. Mutable status is excluded from indexing.
+Project/reference/engine freshness checks exit 0. Publication audit checked 244
+publishable files and the private PR body against five selected local credential
+fields, with zero matches.
+
+Unit/storage tests establish conservative unknown-result handling; native
+unknown-result/fault-injection and live queue reconciliation remain unverified.
+Transaction completion does not prove fsync, power-loss or disk-full acceptance.
+Other Telegram parity/live-account gaps, later channels, archive/key backup and
+standalone packaging remain open in [migration-plan.md](migration-plan.md).
+The full sequential migration goal remains active.
+
+## Historical pending attachment storage foundation — 2026-10-10
 
 Telegram remains in the shared native workspace. Recovery adapters now preserve
 an owned pending file/photo in encrypted S3 with authenticated PostgreSQL metadata

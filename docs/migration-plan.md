@@ -74,13 +74,18 @@
    или нормализованное фото, переносит полный input/selection и временно скрывает
    ordinary/reply. Cancel/Escape возвращает исходный draft; edited-caption ACK
    очищает только его revision. Durable original переживает завершение процесса.
-   Restart pending-caption/file, inline media, albums и premium caption limits
-   ещё впереди. Для restart готова и проверена storage-основа: точные bytes в
+   Pending-caption/file restart подключён к runtime/UI: точные bytes в
    зашифрованном S3, метаданные в PostgreSQL, typed caption/original/reply/state в
-   отдельном account/chat Postbox key с CAS и cancellation tombstone. Сквозной
-   тест закрывает и заново открывает Postbox и archive repository; runtime/UI,
-   предочередное сохранение и восстановление неопределённого результата ещё
-   не подключены. Отмена сохраняет immutable S3 copy.
+   отдельном account/chat Postbox key с CAS и cancellation tombstone. Initial
+   save блокирует отправку; latest caption + submissionStarted сохраняются до
+   provider, accepted — до ACK исходной revision. Prepared reply разрешается
+   заново; восстановление/ошибка блокируют обычную отправку и действия. Неизвестный
+   результат восстанавливается без автоматической отправки; reconciliation с
+   живой очередью ещё впереди. Нативно проверены file/photo restart, rich caption/
+   selection, отмена без resurrection, synthetic ACK и переключатель сервисов.
+   Failed cancellation имеет видимый storage-only retry; отмена сохраняет
+   immutable S3 copy. Native fault injection, inline media, albums и premium
+   caption limits остаются открытыми.
    Индикаторы отправки/ошибки и одна/две галочки рядом со временем следуют
    `ChatRightView`; прочтение берётся из native history entry. Видимая граница
    обычной cloud-истории отмечается через native interactive read только в

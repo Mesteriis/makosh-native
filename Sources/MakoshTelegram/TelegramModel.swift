@@ -139,7 +139,10 @@ public final class TelegramModel: ObservableObject {
                 displayComposerInput(selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0)?.input } ?? .empty)
             } else { displayComposerInput(.empty) }
             refreshComposerReply()
+            pendingRecoveryAttempt = nil
+            cancelPendingRecovery()
             restoreComposerDraft()
+            restorePendingUpload()
             search.selectChat(selectedChatID)
             peerStatus.selectPeer(selectedChatID)
             loadHistory()
@@ -158,7 +161,9 @@ public final class TelegramModel: ObservableObject {
             setComposerInput(value)
         }
     }
-    public var composerCanSend: Bool { telegramFormattedTextCanSend(composerInput.formattedText) }
+    public var composerCanSend: Bool {
+        !isRestoringPendingUpload && pendingUploadRecoveryError == nil && telegramFormattedTextCanSend(composerInput.formattedText)
+    }
     public var composerSupportsAttachments: Bool { composerInput.formattedText.isEditable }
     @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
@@ -192,6 +197,18 @@ public final class TelegramModel: ObservableObject {
               transfer.draft.chatID == selectedChatID else { return false }
         return drafts.snapshot(accountID: transfer.draft.accountID, chatID: transfer.draft.chatID)?.revision == transfer.draft.revision
     }
+    @Published public private(set) var isRestoringPendingUpload = false
+    @Published public private(set) var pendingUploadRecoveryError: String?
+    #if DEBUG
+    var syntheticPendingPostbox: Postbox?
+    #endif
+    private var pendingRecoveryStore: (any TelegramUploadRecoveryStore)?
+    private var pendingReplyProvider: (any TelegramComposerReplyProvider)?
+    private var pendingRecoveryTask: Task<Void, Never>?
+    private var pendingRecoveryDeadline: Task<Void, Never>?
+    private var pendingRecoveryID = UUID()
+    private var pendingRecoveryAttempt: (account: Int64, chat: Int64)?
+
     private struct EditDraftKey: Hashable {
         let account: Int64, peer: Int64, namespace: Int32, message: Int32
         init(_ source: TelegramMessageActionSource) {
@@ -227,6 +244,20 @@ public final class TelegramModel: ObservableObject {
 
     public init() {
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+        upload.originalDraftForRecovery = { [weak self] _, id in
+            guard let transfer = self?.uploadComposerTransfer, transfer.id == id else { return nil }
+            return transfer.draft
+        }
+        upload.didRestore = { [weak self] target, original, id in
+            guard let self else { return }
+            self.uploadComposerPreparationID = id
+            self.uploadComposerTransfer = nil
+            if let original, original.accountID == target.accountID, original.chatID == target.chatID,
+               self.drafts.snapshot(accountID: original.accountID, chatID: original.chatID)?.revision == original.revision {
+                self.uploadComposerTransfer = (id, original)
+                if self.selectedChatID == target.chatID { self.displayComposerInput(.empty); self.refreshComposerReply() }
+            }
+        }
         upload.didPrepare = { [weak self] target, input, id in self?.suspendUploadComposer(target: target, input: input, id: id) }
         upload.didFinishPreparation = { [weak self] id in self?.finishUploadComposer(id: id) }
         upload.willSubmit = { [weak self] target, caption in self?.captureUploadDraft(target: target, caption: caption) }
@@ -333,6 +364,7 @@ public final class TelegramModel: ObservableObject {
                   self.accountGeneration == accountContext, self.draftAccountID == accountID,
                   self.selectedChatID == chatID else { return }
             self.composerDraftLoadID = nil
+            defer { self.restorePendingUpload() }
             switch result {
             case let .success(snapshot):
                 if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, expectedRevision: nil) {
@@ -344,6 +376,92 @@ public final class TelegramModel: ObservableObject {
             }
         }
         if composerDraftLoadID == requestID { composerDraftLoad.set(disposable) } else { disposable.dispose() }
+    }
+
+    func bindPendingUploadRecovery(_ store: (any TelegramUploadRecoveryStore)?, replyProvider: (any TelegramComposerReplyProvider)?) {
+        cancelPendingRecovery(); pendingRecoveryAttempt = nil
+        pendingRecoveryStore = store; pendingReplyProvider = replyProvider
+        restorePendingUpload()
+    }
+
+    private func cancelPendingRecovery() {
+        pendingRecoveryID = UUID(); pendingRecoveryTask?.cancel(); pendingRecoveryTask = nil
+        pendingRecoveryDeadline?.cancel(); pendingRecoveryDeadline = nil
+        isRestoringPendingUpload = false; pendingUploadRecoveryError = nil
+    }
+
+    public func retryPendingUploadRecovery() {
+        cancelPendingRecovery(); pendingRecoveryAttempt = nil; restorePendingUpload()
+    }
+
+    private func restorePendingUpload() {
+        guard composerDraftLoadID == nil, !isRestoringPendingUpload,
+              let accountID = draftAccountID, let chatID = selectedChatID,
+              let store = pendingRecoveryStore, store.accountID == accountID,
+              upload.phase == .idle,
+              pendingRecoveryAttempt?.account != accountID || pendingRecoveryAttempt?.chat != chatID else { return }
+        pendingRecoveryAttempt = (accountID, chatID)
+        let request = UUID(), context = accountGeneration
+        pendingRecoveryID = request; isRestoringPendingUpload = true; pendingUploadRecoveryError = nil
+        pendingRecoveryDeadline = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            guard let self, self.pendingRecoveryID == request, self.isRestoringPendingUpload else { return }
+            self.cancelPendingRecovery(); self.pendingUploadRecoveryError = "Не удалось открыть подготовленное вложение. Повторите восстановление."
+        }
+        pendingRecoveryTask = Task { [weak self] in
+            guard let self else { return }
+            @MainActor func current() -> Bool { !Task.isCancelled && self.pendingRecoveryID == request && self.accountGeneration == context && self.draftAccountID == accountID && self.selectedChatID == chatID }
+            defer {
+                if self.pendingRecoveryID == request {
+                    self.pendingRecoveryTask = nil; self.pendingRecoveryDeadline?.cancel(); self.pendingRecoveryDeadline = nil
+                    self.isRestoringPendingUpload = false
+                }
+            }
+            do {
+                guard let draft = try await store.load(chatID: chatID), current() else { return }
+                guard draft.isValid, draft.accountID == accountID, draft.chatID == chatID else { throw TelegramUploadFileError.unavailable }
+                switch draft.disposition {
+                case .cancelled: return
+                case .accepted:
+                    if let original = draft.originalDraft { self.acknowledgeComposerDraft(formatted: original.input.formattedText, submitted: original) }
+                    return
+                case .prepared, .submissionStarted: break
+                }
+                var source: TelegramMessageActionSource?
+                if let target = draft.replyTarget {
+                    source = await self.resolvePendingReply(target, chatID: chatID, accountID: accountID)
+                    guard current() else { return }
+                    if source == nil, draft.disposition == .prepared { throw TelegramUploadFileError.unavailable }
+                }
+                let file = try await store.restoreFile(draft: draft)
+                guard current() else { try TelegramUploadFileIO.discard(file); return }
+                let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: draft.title, replySource: source)
+                guard self.upload.restore(draft: draft, file: file, target: target) else {
+                    try TelegramUploadFileIO.discard(file); throw TelegramUploadFileError.unavailable
+                }
+            } catch {
+                if current() { self.pendingUploadRecoveryError = "Не удалось восстановить подготовленное вложение. Черновик сохранён. Повторите восстановление." }
+            }
+        }
+    }
+
+    private func resolvePendingReply(_ target: TelegramComposerReplyTarget, chatID: Int64, accountID: Int64) async -> TelegramMessageActionSource? {
+        guard let provider = pendingReplyProvider, provider.accountID == accountID else { return nil }
+        return await withCheckedContinuation { continuation in
+            let disposable = MetaDisposable()
+            var completed = false
+            let timeout = Task { @MainActor in
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                guard !completed else { return }; completed = true; disposable.dispose(); continuation.resume(returning: nil)
+            }
+            disposable.set(provider.resolve(target: target, chatID: chatID) { value in
+                guard !completed else { return }; completed = true; timeout.cancel(); disposable.dispose()
+                guard let source = value?.source, source.accountID == accountID, source.chatID == chatID,
+                      source.canReply, !source.fingerprint.isEmpty, TelegramComposerReplyTarget(source: source) == target,
+                      (source.peerID == chatID || source.metadata.migrationChatID == chatID) else { continuation.resume(returning: nil); return }
+                continuation.resume(returning: source)
+            })
+        }
     }
 
     private func acknowledgeComposerDraft(formatted: TelegramFormattedText, submitted: TelegramComposerDraft) {
@@ -365,7 +483,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func beginReply(to message: TelegramMessage, contextID: UUID) -> Bool {
-        guard contextID == accountGeneration, !isBusy, upload.phase == .idle,
+        guard !isRestoringPendingUpload, contextID == accountGeneration, !isBusy, upload.phase == .idle,
               let source = actionSource(for: message), source.canReply, !source.fingerprint.isEmpty,
               source.chatID == source.peerID || source.metadata.migrationChatID == source.chatID else { return false }
         let target = TelegramComposerReplyTarget(source: source)
@@ -479,7 +597,8 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func performMessageAction(_ action: TelegramMessageAction, source: TelegramMessageActionSource, contextID: UUID) -> Bool {
-        guard contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
+        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil,
+              contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
               knownChats[source.chatID] != nil else { return false }
@@ -507,13 +626,13 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID) {
-        guard contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
+        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
               target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
         upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput)
     }
 
     public func uploadTarget(replyTo source: TelegramMessageActionSource?, contextID: UUID) -> TelegramUploadTarget? {
-        guard contextID == accountGeneration, composerSupportsAttachments, let target = uploadTarget else { return nil }
+        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, composerSupportsAttachments, let target = uploadTarget else { return nil }
         if let replyTarget = drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.replyTarget {
             guard let source, TelegramComposerReplyTarget(source: source) == replyTarget,
                   composerReply.resolved?.source == source else { return nil }
@@ -597,6 +716,8 @@ public final class TelegramModel: ObservableObject {
         chatPageTimeout?.cancel()
         historyPageTimeout?.cancel()
         contactProfileTimeout?.cancel()
+        pendingRecoveryTask?.cancel()
+        pendingRecoveryDeadline?.cancel()
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
         account?.network.shouldKeepConnection.set(.single(false))
@@ -740,7 +861,8 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func sendMessage(_ formatted: TelegramFormattedText) -> Bool {
-        guard let draftAccountID, let chatID = selectedChatID,
+        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil,
+              let draftAccountID, let chatID = selectedChatID,
               drafts.snapshot(accountID: draftAccountID, chatID: chatID)?.replyTarget == nil else { return false }
         guard !isSyntheticPreview else { error = "Синтетическая проверка: отправка отключена."; return false }
         guard !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, upload.phase == .idle,
@@ -799,7 +921,13 @@ public final class TelegramModel: ObservableObject {
         authorizationGeneration = UUID()
         action.set(nil)
         self.unauthorized = nil; self.account = account
-        composerReply.bind(TelegramPostboxComposerReplyProvider(postbox: account.postbox, accountID: account.peerId.toInt64()))
+        let replyProvider = TelegramPostboxComposerReplyProvider(postbox: account.postbox, accountID: account.peerId.toInt64())
+        composerReply.bind(replyProvider)
+        let recovery = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: account.postbox, accountID: account.peerId.toInt64()), files: { [weak self] in
+            guard let self else { throw TelegramUploadFileError.unavailable }
+            return try self.archive.files.pendingUploadFiles()
+        })
+        pendingRecoveryStore = recovery; pendingReplyProvider = replyProvider
         refreshComposerReply()
         bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: account.postbox, accountID: account.peerId.toInt64()))
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
@@ -812,7 +940,8 @@ public final class TelegramModel: ObservableObject {
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
         media.bind(provider: mediaProvider)
-        upload.bind(provider: TelegramEngineUploadProvider(account: account))
+        upload.bind(provider: TelegramEngineUploadProvider(account: account), recoveryStore: recovery, requiresRecovery: true)
+        restorePendingUpload()
         messageActions.bind(provider: TelegramEngineMessageActionsProvider(account: account))
         historyRead.bind(TelegramEngineHistoryReadProvider(account: account))
         search.bind(account: account)
@@ -843,6 +972,7 @@ public final class TelegramModel: ObservableObject {
         historyReadIndexes = [:]
         archive.bind(journal: nil)
         playback.stop()
+        bindPendingUploadRecovery(nil, replyProvider: nil)
         upload.bind(provider: nil)
         uploadComposerPreparationID = nil; uploadComposerTransfer = nil; uploadComposerSubmission = nil
         messageActions.bind(provider: nil)

@@ -14,6 +14,9 @@ final class WorkspaceModel: ObservableObject {
     @Published var notice: String?
     private var store: ContactStore?
     private var archiveConfiguration: DatabaseConfiguration?
+    #if DEBUG
+    private var pendingUploadQAConfigured = false
+    #endif
     private struct DatabaseConfiguration: Decodable {
         let connectionString: String
         let schema: String
@@ -74,6 +77,28 @@ final class WorkspaceModel: ObservableObject {
         archive.files.configure(connectionString: configuration.connectionString,schema: configuration.schema,
             configurationFile: storage,spoolDirectory: support.appendingPathComponent("FileArchiveQueue",isDirectory: true))
     }
+    #if DEBUG
+    func configurePendingUploadRecoveryQAIfRequested(_ telegram: TelegramModel) {
+        let args = CommandLine.arguments
+        guard args.contains("--telegram-pending-upload-qa"), !pendingUploadQAConfigured else { return }
+        guard telegram.isSyntheticPreview, let configuration = archiveConfiguration,
+              configuration.schema.hasPrefix("qa_telegram_dossier_"),
+              let storageIndex = args.firstIndex(of: "--storage-config"), args.indices.contains(storageIndex + 1),
+              !args[storageIndex + 1].hasPrefix("--"),
+              let draftsIndex = args.firstIndex(of: "--telegram-drafts-synthetic-preview"), args.indices.contains(draftsIndex + 1),
+              !args[draftsIndex + 1].hasPrefix("--") else {
+            error = "Восстановление вложений в синтетической проверке требует явных конфигураций S3, отдельной схемы PostgreSQL и тестового Postbox."
+            return
+        }
+        do {
+            let directory = URL(fileURLWithPath: args[draftsIndex + 1], isDirectory: true)
+            try telegram.configurePendingUploadRecoveryQA(connectionString: configuration.connectionString,
+                schema: configuration.schema, configurationFile: URL(fileURLWithPath: args[storageIndex + 1]),
+                spoolDirectory: directory.appendingPathComponent("PendingUploadArchiveQueue", isDirectory: true))
+            pendingUploadQAConfigured = true
+        } catch { self.error = "Не удалось подготовить отдельное хранилище восстановления синтетических вложений." }
+    }
+    #endif
     func reload() throws {
         guard let store else { throw StoreError.invalid("Хранилище не открыто. Перезапустите приложение после устранения ошибки.") }
         contacts = try store.contacts(); duplicates = try store.duplicateCandidates(); merges = try store.mergeHistory()
@@ -240,7 +265,12 @@ struct WorkspaceView: View {
             else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
         }
         .tint(accent).background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { if !telegram.isSyntheticPreview { model.configureArchive(telegram.archive) } }
+        .onAppear {
+            if !telegram.isSyntheticPreview { model.configureArchive(telegram.archive) }
+            #if DEBUG
+            if telegram.isSyntheticPreview { model.configurePendingUploadRecoveryQAIfRequested(telegram) }
+            #endif
+        }
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model) }
         .sheet(isPresented: $review) { MergeReviewView(model: model) }
         .alert("Макош", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("Понятно", role: .cancel) { model.error = nil } } message: { Text(model.error ?? "") }

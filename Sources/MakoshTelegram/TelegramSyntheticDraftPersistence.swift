@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import MakoshCore
 import Postbox
 import TelegramCore
 import SwiftSignalKit
@@ -33,17 +34,29 @@ extension TelegramModel {
             throw CocoaError(.fileReadNoPermission)
         }
         initializeAccountManagement()
-        let repository: TelegramPostboxComposerDraftRepository = try await withCheckedThrowingContinuation { continuation in
+        let model = syntheticPreview()
+        let _: Void = try await withCheckedThrowingContinuation { continuation in
             let _ = (syntheticComposerPostbox(directory: path) |> deliverOnMainQueue).startStandalone(next: { box in
                 MainActor.assumeIsolated {
-                    if let box { continuation.resume(returning: TelegramPostboxComposerDraftRepository(postbox: box, accountID: -1)) }
-                    else { continuation.resume(throwing: CocoaError(.fileReadCorruptFile)) }
+                    guard let box else { continuation.resume(throwing: CocoaError(.fileReadCorruptFile)); return }
+                    model.syntheticPendingPostbox = box
+                    model.bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: box, accountID: -1))
+                    continuation.resume()
                 }
             })
         }
-        let model = syntheticPreview()
-        model.bindComposerDraftRepository(repository)
         return model
+    }
+    public func configurePendingUploadRecoveryQA(connectionString: String, schema: String, configurationFile: URL, spoolDirectory: URL) throws {
+        guard ProcessInfo.processInfo.arguments.contains("--telegram-pending-upload-qa"), isSyntheticPreview, schema.hasPrefix("qa_telegram_dossier_"),
+              let postbox = syntheticPendingPostbox else { throw MessageArchiveError.invalid }
+        try archive.files.configureSynthetic(connectionString: connectionString, schema: schema, configurationFile: configurationFile, spoolDirectory: spoolDirectory)
+        let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: postbox, accountID: -1), files: { [weak self] in
+            guard let self else { throw TelegramUploadFileError.unavailable }
+            return try self.archive.files.pendingUploadFiles()
+        })
+        upload.bind(provider: TelegramSyntheticUploadProvider(), recoveryStore: store, requiresRecovery: true)
+        bindPendingUploadRecovery(store, replyProvider: TelegramSyntheticComposerReplyProvider())
     }
 }
 #endif

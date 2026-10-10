@@ -19,7 +19,7 @@ import MakoshCore
     init(factory: @escaping () throws -> ArchiveFileRepository) { self.factory = factory }
     #if DEBUG
     func configureSynthetic(connectionString: String,schema: String,configurationFile: URL,spoolDirectory: URL) throws {
-        guard schema.hasPrefix("makosh_qa_"), repository == nil else { throw MessageArchiveError.invalid }
+        guard (schema.hasPrefix("makosh_qa_") || schema.hasPrefix("qa_telegram_dossier_")), repository == nil else { throw MessageArchiveError.invalid }
         let configuration = try S3ConfigurationFile.read(configurationFile)
         guard configuration.endpoint == "http://127.0.0.1:55440" else { throw MessageArchiveError.invalid }
         repository = try ArchiveFileRepository(connectionString: connectionString,schema: schema,configuration: configuration,
@@ -37,6 +37,9 @@ import MakoshCore
         let result = try ArchiveFileRepository(connectionString: configuration.0,schema: configuration.1,
             configuration: S3ConfigurationFile.read(configuration.2),spoolDirectory: configuration.3)
         repository = result; return result
+    }
+    func pendingUploadFiles() throws -> TelegramPendingUploadFiles {
+        TelegramPendingUploadFiles(repository: try open())
     }
     /// Called synchronously at complete-file delivery, before the first suspension.
     func accept(file: URL,byteCount: Int64,identity: MessageArchiveIdentity,attachment: MessageArchiveAttachment) {

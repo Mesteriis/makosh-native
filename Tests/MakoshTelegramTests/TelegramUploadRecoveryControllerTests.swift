@@ -1,0 +1,166 @@
+import XCTest
+import Foundation
+@testable import MakoshTelegram
+
+@MainActor final class TelegramUploadRecoveryControllerTests: XCTestCase {
+    private final class Lease: TelegramUploadLease { func stop() {} }
+    private final class Provider: TelegramUploadProvider {
+        let accountID: Int64 = 1
+        var calls = 0
+        var callback: (@MainActor (TelegramUploadEvent) -> Void)?
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
+                    receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
+            calls += 1; callback = receive; return Lease()
+        }
+    }
+    private enum Failure: Error { case synthetic }
+    private final class Store: TelegramUploadRecoveryStore {
+        let accountID: Int64 = 1
+        var prepareGate: CheckedContinuation<Void, Error>?
+        var saveGate: CheckedContinuation<Void, Error>?
+        var cancelGate: CheckedContinuation<Void, Error>?
+        var holdCancel = false
+        var holdPrepare = false, holdSubmission = false, failPrepare = false, failAccepted = false
+        var prepares = 0
+        var saves: [(TelegramComposerInput, TelegramPendingUploadDisposition)] = []
+        func load(chatID: Int64) async throws -> TelegramPendingUploadDraft? { nil }
+        func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile { throw Failure.synthetic }
+        func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                     captionInput: TelegramComposerInput, originalDraft: TelegramComposerDraft?) async throws {
+            prepares += 1
+            if failPrepare { throw Failure.synthetic }
+            if holdPrepare { try await withCheckedThrowingContinuation { prepareGate = $0 } }
+        }
+        func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput,
+                  disposition: TelegramPendingUploadDisposition) async throws {
+            saves.append((captionInput, disposition))
+            if case .cancelled = disposition, holdCancel {
+                try await withCheckedThrowingContinuation { cancelGate = $0 }
+            }
+            if case .accepted = disposition, failAccepted { throw Failure.synthetic }
+            if case .submissionStarted = disposition, holdSubmission {
+                try await withCheckedThrowingContinuation { saveGate = $0 }
+            }
+        }
+    }
+    private let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic")
+    private func drain() async { for _ in 0..<100 { await Task.yield() } }
+    private func setup(store: Store) -> (TelegramUploadController, Provider) {
+        let controller = TelegramUploadController(), provider = Provider()
+        controller.stage = { _, _ in .init(id: UUID(), name: "synthetic.txt", size: 1, mode: .file,
+            pixelWidth: nil, pixelHeight: nil, url: URL(fileURLWithPath: "/synthetic/payload"), directory: URL(fileURLWithPath: "/synthetic")) }
+        controller.discard = { _ in }
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        controller.prepare(source: URL(fileURLWithPath: "/synthetic/source"), mode: .file, target: target, caption: "original")
+        return (controller, provider)
+    }
+    func testInitialPersistenceAndLatestCaptionSubmissionGateProvider() async throws {
+        let store = Store(); store.holdPrepare = true; store.holdSubmission = true
+        let (controller, provider) = setup(store: store)
+        await drain(); XCTAssertNotNil(store.prepareGate)
+        controller.send(); XCTAssertEqual(provider.calls, 0); XCTAssertFalse(controller.canSend)
+        controller.caption = "latest 😀"
+        store.prepareGate?.resume(); store.prepareGate = nil
+        await drain(); XCTAssertTrue(controller.canSend)
+        controller.send(); await drain()
+        XCTAssertNotNil(store.saveGate); XCTAssertEqual(provider.calls, 0)
+        guard case .submissionStarted = store.saves.last?.1 else { return XCTFail("Marker before provider") }
+        XCTAssertEqual(store.saves.last?.0.formattedText.text, "latest 😀")
+        store.saveGate?.resume(); store.saveGate = nil
+        await drain(); XCTAssertEqual(provider.calls, 1)
+    }
+    func testPrepareFailureBlocksAndAcceptedSaveFailureNeverResubmits() async {
+        let store = Store(); store.failPrepare = true
+        let (controller, provider) = setup(store: store)
+        await drain(); XCTAssertFalse(controller.canSend); XCTAssertTrue(controller.canRetryRecovery)
+        controller.send(); XCTAssertEqual(provider.calls, 0)
+        store.failPrepare = false; controller.retryRecovery(); await drain()
+        XCTAssertTrue(controller.canSend)
+        store.failAccepted = true
+        var queued = 0, finished = 0
+        controller.didQueue = { _, _ in queued += 1 }
+        controller.didFinishPreparation = { _ in finished += 1 }
+        controller.send(); await drain()
+        provider.callback?(.committing); provider.callback?(.accepted("local-only"))
+        await drain(); XCTAssertEqual(controller.phase, .uncertain)
+        XCTAssertEqual(queued, 0); XCTAssertEqual(finished, 0)
+        controller.send(); XCTAssertEqual(provider.calls, 1)
+        store.failAccepted = false; controller.retryRecovery(); await drain()
+        XCTAssertEqual(queued, 1); XCTAssertEqual(finished, 1); XCTAssertEqual(provider.calls, 1)
+    }
+    func testCancellationAfterPendingPrepareTombstonesLateCompletionAndBindPreserves() async {
+        let store = Store(); store.holdPrepare = true
+        let (controller, provider) = setup(store: store)
+        await drain(); controller.cancelPreparation()
+        store.prepareGate?.resume(); store.prepareGate = nil
+        await drain(); XCTAssertEqual(provider.calls, 0)
+        guard case .cancelled = store.saves.last?.1 else { return XCTFail("Late prepare must not resurrect cancelled draft") }
+        let nextStore = Store(); nextStore.holdPrepare = true
+        let (next, _) = setup(store: nextStore)
+        await drain(); next.bind(provider: nil)
+        nextStore.prepareGate?.resume(); nextStore.prepareGate = nil
+        await drain()
+        XCTAssertFalse(nextStore.saves.contains { if case .cancelled = $0.1 { true } else { false } })
+        XCTAssertEqual(next.phase, .idle)
+    }
+    func testDismissedCancellationFailureRetriesOnlyOriginalStorage() async throws {
+        let store = Store(); store.holdCancel = true
+        let (controller, provider) = setup(store: store)
+        await drain()
+        let id = try XCTUnwrap(controller.preparationContextID)
+        controller.dismissPreparation(contextID: id)
+        await drain()
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertNotNil(store.cancelGate)
+        store.cancelGate?.resume(throwing: Failure.synthetic); store.cancelGate = nil
+        await drain()
+        XCTAssertNotNil(controller.cancellationStatus)
+        XCTAssertTrue(controller.canRetryCancellation)
+        XCTAssertEqual(store.saves.count, 1, "Dismiss must not duplicate cancellation")
+        store.holdCancel = false
+        controller.retryCancellation(); await drain()
+        XCTAssertNil(controller.cancellationStatus)
+        XCTAssertEqual(store.saves.count, 2)
+        XCTAssertEqual(store.prepares, 1)
+        XCTAssertEqual(provider.calls, 0)
+        XCTAssertTrue(store.saves.allSatisfy { if case .cancelled = $0.1 { true } else { false } })
+        XCTAssertEqual(store.saves.last?.0.formattedText.text, "original")
+    }
+    func testLateInitialFailureCancellationCannotCorruptNewPreparation() async throws {
+        let store = Store(); store.holdPrepare = true; store.holdCancel = true
+        let (controller, provider) = setup(store: store)
+        await drain()
+        controller.dismissPreparation(contextID: try XCTUnwrap(controller.preparationContextID))
+        store.prepareGate?.resume(throwing: Failure.synthetic); store.prepareGate = nil
+        await drain()
+        XCTAssertNotNil(store.cancelGate, "Uncertain initial write still needs cancellation")
+        store.holdPrepare = false
+        controller.prepare(source: URL(fileURLWithPath: "/synthetic/new"), mode: .file, target: target, caption: "new")
+        await drain()
+        store.cancelGate?.resume(throwing: Failure.synthetic); store.cancelGate = nil
+        await drain()
+        XCTAssertEqual(controller.caption, "new")
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertNil(controller.cancellationStatus)
+        XCTAssertFalse(controller.canRetryCancellation)
+        XCTAssertEqual(provider.calls, 0)
+    }
+    func testRestoredStartedIsUncertainAndNeverSubmits() async throws {
+        let store = Store(), controller = TelegramUploadController(), provider = Provider()
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        let draft = try pendingUploadFixture(disposition: .submissionStarted)
+        let id = UUID(), directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + id.uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("payload-" + id.uuidString)
+        try Data("Synthetic 😀".utf8).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        let file = TelegramUploadFile(id: id, name: draft.file.attachment.name, size: draft.file.plaintextByteCount,
+            mode: .file, pixelWidth: nil, pixelHeight: nil, url: url, directory: directory)
+        XCTAssertTrue(controller.restore(draft: draft, file: file, target: target))
+        XCTAssertEqual(controller.phase, .uncertain); controller.send(); await drain()
+        XCTAssertEqual(provider.calls, 0)
+        controller.clear(); await drain()
+        XCTAssertTrue(store.saves.isEmpty, "Uncertain close preserves submission marker")
+    }
+}

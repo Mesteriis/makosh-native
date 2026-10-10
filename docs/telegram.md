@@ -392,8 +392,8 @@ format-only change survives acknowledgement of an older edit. Reference
 temporary edit state lives in AccountContext memory. Makosh likewise keeps edit
 drafts in process, while restoring the ordinary formatted input, selection and
 reply target. Reply quotes/forward state, complete in-process edit-mode
-restoration and pending attachment captions remain open. It does not
-restore the selected dialog automatically.
+restoration remain open. Pending attachment caption/file recovery is connected
+as described below. The selected dialog is not restored automatically.
 
 Reply and edit use the lower composer with a compact source accessory, following
 TelegramSwift. Message actions use the row context menu; attachment choices share
@@ -446,12 +446,12 @@ Acceptance of an edited caption clears only that captured original revision;
 newer revisions or input changed while the file picker was open survive. An
 uncertain enqueue retains the preview until explicit observation close or a late
 ACK; closing it never resends. Photo previews decode only the owned normalized
-stage with the existing bounded image decoder. Pending-caption/file restart
-recovery remains open: a restart restores the original ordinary draft, not edits
-to the unfinished attachment caption.
+stage with the existing bounded image decoder. Restart recovery now restores the
+pending file/photo, edited caption/entities/selection and original draft revision
+in the shared window. Prepared reply targets are resolved against current Postbox
+before the modal becomes sendable; missing authority leaves a visible retry error.
 
-The recovery storage foundation is implemented and integration-tested separately
-from that UI. `TelegramPendingUploadFiles` stores the exact owned staged file in
+The recovery storage adapters are connected to the runtime/model/UI. `TelegramPendingUploadFiles` stores the exact owned staged file in
 the existing encrypted S3 archive; PostgreSQL contains only authenticated file
 metadata. An opaque `pending-upload:<preparation UUID>` draft-resource identity
 is separate from received-message observations and is never an engine MessageId.
@@ -463,9 +463,27 @@ reference and prepared/submissionStarted/accepted/cancelled disposition. Atomic
 revision compare-and-swap, exact-byte idempotent retries and cancellation
 tombstones reject stale writers; unknown/foreign bytes remain untouched. Cancelling
 the pointer retains the immutable archived file. Transaction completion is not
-an fsync or disk-full guarantee. The runtime upload/model do not yet call these
-adapters: persisting edits before submission, resolving current reply authority,
-reconciling uncertain queue outcomes and showing restart recovery remain open.
+an fsync or disk-full guarantee.
+
+`TelegramPendingUploadSession` serializes writes on its captured account repository.
+Initial storage must succeed before send. Caption changes are saved; send freezes
+and persists the latest full input with `submissionStarted` before calling the
+provider. Local acceptance is saved as `.accepted` before exact original-draft
+ACK. Storage-only retries never call submit. Restored `submissionStarted` stays
+uncertain, preserves the marker on observation close and never sends automatically;
+reconciliation with the actual engine queue remains open. Cancellation is ordered
+after an in-flight initial write, including failed acknowledgements. Its failure
+and storage-only retry remain visible outside a dismissed preview. Rebinding
+preserves stored state and rejects stale UI callbacks. Recovery load/error blocks
+ordinary send/actions and attachment admission; explicit retry reopens the same
+pointer. Unknown/foreign schemas are preserved.
+
+Native synthetic acceptance verified file and normalized-photo restart recovery,
+rich caption/selection, cancellation/original restoration, accepted ACK restart
+and the shared channel selector. Unknown-result restoration and cancellation/
+acceptance faults have regression coverage, but no native fault-injection or live
+account acceptance is claimed. QA requires explicit synthetic Postbox, isolated
+PostgreSQL configuration and S3 configuration; it never opens personal sessions.
 
 Forward requires explicit selection among loaded dialogs in the same account;
 the confirmation shows the recipient. Deletion requires choosing local-only or

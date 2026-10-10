@@ -8,7 +8,7 @@ private enum TelegramUploadPanel {
     static func choose(mode: TelegramUploadMode) async -> URL? {
         let panel = NSOpenPanel()
         panel.title = mode == .photo ? "Выберите фотографию" : "Выберите файл"
-        if mode == .photo { panel.allowedContentTypes = [.image] }
+        panel.allowedContentTypes = mode == .photo ? [.image] : [.item]
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
@@ -38,7 +38,7 @@ struct TelegramAttachButtons: View {
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             .help("Прикрепить фото или файл").accessibilityLabel("Прикрепить")
             .accessibilityIdentifier("telegram.upload.attach")
-            .disabled(choosing || capturedTarget == nil || upload.phase != .idle)
+            .disabled(choosing || capturedTarget == nil || upload.phase != .idle || model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil)
     }
     private var capturedTarget: TelegramUploadTarget? {
         model.uploadTarget(replyTo: replySource, contextID: replyContextID ?? model.uploadContextID)
@@ -64,6 +64,31 @@ struct TelegramUploadView: View {
     var body: some View {
         let contextID = upload.preparationContextID
         VStack(alignment: .leading, spacing: 8) {
+            if model.isRestoringPendingUpload {
+                ProgressView("Восстановление подготовленного вложения…")
+                    .controlSize(.small).accessibilityIdentifier("telegram.upload.recoveryLoading")
+            }
+            if let error = model.pendingUploadRecoveryError {
+                HStack {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                        .accessibilityIdentifier("telegram.upload.recoveryError")
+                    Spacer()
+                    Button("Повторить восстановление", action: model.retryPendingUploadRecovery)
+                        .accessibilityIdentifier("telegram.upload.retryRestore")
+                }
+            }
+            if let status = upload.cancellationStatus {
+                HStack {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("telegram.upload.cancellationStatus")
+                    Spacer()
+                    if upload.isCancellationBusy { ProgressView().controlSize(.small) }
+                    if upload.canRetryCancellation {
+                        Button("Повторить сохранение отмены", action: upload.retryCancellation)
+                            .accessibilityIdentifier("telegram.upload.retryCancellation")
+                    }
+                }
+            }
             if !upload.showsPreparationPreview, upload.phase != .idle || upload.error != nil {
                 if let target = upload.target {
                     Label("Получатель: \(target.title)", systemImage: "paperplane").font(.callout)
@@ -79,7 +104,8 @@ struct TelegramUploadView: View {
                 }
             }
         }
-        .padding(upload.showsPreparationPreview || (upload.phase == .idle && upload.error == nil) ? 0 : 16)
+        .padding(model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || upload.cancellationStatus != nil ? 16 :
+            upload.showsPreparationPreview || (upload.phase == .idle && upload.error == nil) ? 0 : 16)
         .sheet(isPresented: Binding(get: { upload.showsPreparationPreview }, set: { shown in
             if !shown, let contextID { upload.dismissPreparation(contextID: contextID) }
         })) {

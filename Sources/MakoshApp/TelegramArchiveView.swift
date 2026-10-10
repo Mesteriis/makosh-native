@@ -3,29 +3,35 @@ import MakoshCore
 import MakoshTelegram
 import AppKit
 
-struct TelegramArchiveBar: View {
+struct TelegramArchiveButton: View {
     @ObservedObject var archive: TelegramArchiveController
+    @ObservedObject private var files: TelegramFileArchiveController
     @State private var showingArchive = false
+
+    init(archive: TelegramArchiveController) {
+        self.archive = archive
+        self.files = archive.files
+    }
+    private var hasError: Bool { archive.error != nil || files.error != nil }
+    private var busy: Bool { archive.isArchiving || files.isBusy }
+    private var status: String {
+        if hasError && busy { return "Есть ошибка; запись продолжается" }
+        if hasError { return "Есть ошибка; откройте архив для подробностей и повтора" }
+        if busy { return "Выполняется запись в архив" }
+        return "Доступен без подключения к Telegram"
+    }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        Button { showingArchive = true } label: {
+            HStack(spacing: 5) {
                 Image(systemName: "lock.doc")
-                Text(archive.status).font(.caption).foregroundStyle(.secondary)
-                if archive.isArchiving { ProgressView().controlSize(.mini) }
-                Spacer()
-                Button("Локальный архив") { showingArchive = true }
-                    .accessibilityIdentifier("telegram.archive.open")
-            }
-            if let error = archive.error {
-                HStack(alignment: .top) {
-                    Text(error).font(.caption).foregroundStyle(.red)
-                    Spacer()
-                    Button("Повторить запись", action: archive.retry).controlSize(.small)
-                        .accessibilityIdentifier("telegram.archive.retry")
-                }
-            }
-            TelegramFileArchiveStatus(files: archive.files)
-        }.padding(12)
+                if hasError { Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red) }
+                if busy { ProgressView().controlSize(.mini) }
+            }.frame(minWidth: 28, minHeight: 28)
+        }.buttonStyle(.plain)
+            .help("Локальный архив · " + status)
+            .accessibilityLabel(hasError ? "Локальный архив, есть ошибка" : busy ? "Локальный архив, запись" : "Локальный архив")
+            .accessibilityValue(status)
+            .accessibilityIdentifier("telegram.archive.open")
             .sheet(isPresented: $showingArchive) { TelegramArchiveView(archive: archive) }
     }
 }
@@ -51,6 +57,22 @@ private struct TelegramArchiveView: View {
             }
             Text("Полностью загруженные файлы сохраняются зашифрованными в S3; PostgreSQL хранит только сведения и ссылки. Превью и ещё не загруженные файлы остаются сведениями о вложениях.")
                 .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(archive.status).font(.caption).foregroundStyle(.secondary)
+                    if archive.isArchiving { ProgressView().controlSize(.mini) }
+                    Spacer()
+                }
+                if let error = archive.error {
+                    HStack(alignment: .top) {
+                        Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                        Spacer()
+                        Button("Повторить запись", action: archive.retry).controlSize(.small)
+                            .accessibilityIdentifier("telegram.archive.retry")
+                    }
+                }
+                TelegramFileArchiveStatus(files: archive.files)
+            }
             Divider()
             if archive.isLoading && archive.records.isEmpty {
                 ProgressView("Открытие зашифрованного архива…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,7 +86,6 @@ private struct TelegramArchiveView: View {
                     }.padding(4)
                 }.accessibilityIdentifier("telegram.archive.records")
             }
-            if let error = archive.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             HStack {
                 Text("Снимков в этом окне: \(archive.records.count)").font(.caption).foregroundStyle(.secondary)
                 Spacer()

@@ -1193,3 +1193,63 @@ The preceding message-status head `4847417f7b351a9042fdcc4ced706bde88d2dd07`
 passed [PR CI 38074067211](https://github.com/Mesteriis/makosh-native/actions/runs/38074067211)
 and [push CI 38074063471](https://github.com/Mesteriis/makosh-native/actions/runs/38074063471).
 Hosted CI for this header correction is tracked after publication.
+
+## Telegram reference sidebar in the shared workspace — 2026-10-10
+
+Telegram remains inside the common three-column WorkspaceView. The service
+selector is followed by Telegram's chat list and conversation. Own SwiftUI
+now follows the reference's 50-point list header, 40-point search row and
+scrolling archive entry with a back action that cancels chat search. The large
+branding/connection panel, segmented folder picker and permanent stop footer
+are replaced by compact chrome. Connection details/stop remain in a popover.
+The peer header no longer presents global connection state as peer presence.
+
+The own PostgreSQL/S3 archive opens from a compact header button, distinct from
+Telegram's archived-chat folder. It observes both archive and file controllers;
+errors and activity remain visible on that button. Full status, errors and retry
+are inside the existing archive sheet. Storage algorithms and schema are unchanged.
+
+Actual evidence:
+
+- `scripts/dev-db.sh up`: exit 0, PostgreSQL and S3 healthy. Full
+  `scripts/test.sh`: exit 0, **293 XCTest (230 Telegram + 63 core), 0 failures**,
+  and **22 Python regressions**. Eighteen existing upstream t19 teardown
+  diagnostics follow the passing Telegram suite. The full suite preceded the
+  later back-query and DEBUG/AX UI corrections; the final build/native QA
+  exercised those changes. Only indentation changed after that final build.
+- `scripts/build-app.sh`: exit 0; strict ad-hoc signature verification passed.
+  The final synthetic QA executable payload matched that built app. Native
+  screenshots and AX verified **15 focused conditions**: all six shared service
+  choices and synthetic identification, Telegram conversation in the shared
+  shell, archive folder/back query cancellation, preserved selection/draft
+  across folder changes, honest unconnected mail, contacts in the same window,
+  preserved draft across service switches, connection details, local archive
+  records/status, an unconfigured file queue error, the retained button warning,
+  and Cmd-F opening/closing in the shared scene. The synthetic draft was cleared.
+  The file-queue error proves configuration-error visibility, not S3 outage
+  recovery. No personal account, Keychain, Telegram connection or send was used.
+- Actual unified-window QA exposed clipping caused by the DEBUG preview's
+  outer VStack. A normal root on a separate empty synthetic PostgreSQL schema
+  showed the headers correctly. A bottom-inset attempt then overlapped the
+  footer. The final DEBUG route uses WorkspaceView directly, with its synthetic
+  identifier in the native toolbar; final screenshots show both headers and
+  footer. Failed/intermediate captures remain private. Production root unchanged.
+- Two bounded final source reviews found no confirmed issue in the five UI
+  files; root verified all reviewed SHA256 values. Workers did not run runtime
+  gates; observed provider/model/usage are unavailable, and no quorum was used.
+- Stable project XERJ refresh/check passed: **177 files, 147/147 code**;
+  TelegramSwift's locked reference freshness passed. Actual sidebar/archive
+  queries were confirmed against source. The publication audit checked four
+  selected local secret fields against **182 publishable files**, with zero
+  matches. No new dependency or copied upstream UI was introduced.
+
+This slice verifies shared navigation and specific reference chrome, not full
+Telegram parity. Themes/real avatars/presence, upstream filters and remaining
+screens, incoming mark-read, live-account acceptance, earlier full-dossier GUI
+acceptance, archive file opening/backup and later service implementations remain
+open. The sequential migration goal remains active.
+
+The preceding search head `d8214b3b291baead91929fdaf028c54bce38fd84` passed
+[PR CI 38074869238](https://github.com/Mesteriis/makosh-native/actions/runs/38074869238)
+and [push CI 38074866782](https://github.com/Mesteriis/makosh-native/actions/runs/38074866782).
+Hosted CI for this shared-sidebar change is tracked after publication.

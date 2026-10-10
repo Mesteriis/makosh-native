@@ -16,7 +16,10 @@ struct TelegramS3SyntheticPreview: View {
         VStack(alignment: .leading,spacing: 20) {
             Text("СИНТЕТИЧЕСКАЯ ПРОВЕРКА S3").font(.title2.bold())
             Text("Тестовый файл захвачен до удаления кеша; личные аккаунты и Связка ключей не используются.")
-            TelegramArchiveBar(archive: archive)
+            HStack {
+                Text("Локальный архив сообщений и файлов")
+                TelegramArchiveButton(archive: archive)
+            }
             if let failure { Text(failure).foregroundStyle(.red) }
             Spacer()
         }.padding(24).task {

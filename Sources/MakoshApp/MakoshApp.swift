@@ -20,11 +20,14 @@ struct MakoshApp: App {
             if CommandLine.arguments.contains("--telegram-drafts-synthetic-preview") {
                 TelegramDraftsSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
             } else if CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") {
-                VStack(spacing: 0) {
-                    Text("СИНТЕТИЧЕСКАЯ ПРОВЕРКА • отдельная схема PostgreSQL • личные аккаунты, сеть Telegram и отправка не используются")
-                        .font(.caption.bold()).padding(10).frame(maxWidth: .infinity).background(.yellow.opacity(0.15))
-                    WorkspaceView(syntheticTelegram: .syntheticPreview())
-                }.frame(minWidth: 1000, minHeight: 640)
+                WorkspaceView(syntheticTelegram: .syntheticPreview())
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2")
+                                .font(.caption.bold())
+                                .help("Отдельная схема PostgreSQL; личные аккаунты, сеть Telegram и отправка не используются")
+                        }
+                    }.frame(minWidth: 1000, minHeight: 640)
             } else if CommandLine.arguments.contains("--telegram-s3-synthetic-preview") {
                 TelegramS3SyntheticPreview().frame(minWidth: 1000,minHeight: 640)
             } else if CommandLine.arguments.contains("--telegram-synthetic-preview") {

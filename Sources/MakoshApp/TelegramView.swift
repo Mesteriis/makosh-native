@@ -1,76 +1,6 @@
 import SwiftUI
 import MakoshTelegram
 
-struct TelegramSidebarView: View {
-    @ObservedObject var model: TelegramModel
-    @ObservedObject private var search: TelegramSearchModel
-    init(model: TelegramModel) { self.model = model; self.search = model.search }
-    private var visibleChats: [TelegramChat] { search.hasChatQuery ? search.chats : model.chats }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Telegram", systemImage: "paperplane").font(.title2.bold())
-                Text(model.connectionDescription).font(.caption).foregroundStyle(.secondary)
-                Text("Неофициальный канал Макош").font(.caption).foregroundStyle(.secondary)
-            }.padding(20)
-            Divider()
-            if model.phase == .ready {
-                Picker("Список диалогов", selection: $model.chatFolder) {
-                    ForEach(TelegramChatFolder.allCases) { folder in Text(folder.title).tag(folder) }
-                }.pickerStyle(.segmented).padding(12).accessibilityIdentifier("telegram.folder")
-                TextField("Найти диалог", text: $search.chatQuery).textFieldStyle(.roundedBorder)
-                    .padding(.horizontal, 12).accessibilityIdentifier("telegram.chatSearch")
-                if search.hasChatQuery {
-                    Text("Поиск по диалогам в локальном кэше выбранного списка.")
-                        .font(.caption).foregroundStyle(.secondary).padding(12)
-                    TelegramSearchStatusView(status: search.chatStatus, retry: search.retryChats)
-                        .padding(.horizontal, 12)
-                }
-            }
-            if visibleChats.isEmpty {
-                if search.hasChatQuery {
-                    ContentUnavailableView(search.chatStatus == .ready ? "Диалоги не найдены" : "Поиск диалогов", systemImage: "magnifyingglass", description: Text(search.chatStatus == .ready ? "Попробуйте другое название. В кэше могут быть ещё не загружены все диалоги." : "Результаты появятся после завершения запроса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if model.chatPage.isLoading {
-                    ProgressView("Загрузка диалогов…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ContentUnavailableView(model.chatFolder == .archive ? "Нет загруженных архивных диалогов" : "Нет загруженных диалогов", systemImage: "bubble.left.and.bubble.right", description: Text(model.phase == .ready ? "В этом списке пока нет диалогов. Можно обновить загрузку." : "Диалоги появятся после подключения вашего отдельного сеанса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            } else {
-                List(selection: $model.selectedChatID) {
-                    ForEach(visibleChats) { chat in
-                        HStack(spacing: 10) {
-                            TelegramChatAvatar(title: chat.title, size: 50)
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack { Text(chat.title).font(.headline).lineLimit(1); Spacer(minLength: 4) }
-                                HStack(alignment: .top) {
-                                    Text(chat.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                                    Spacer(minLength: 4)
-                                    if chat.unreadCount > 0 {
-                                        Text("\(chat.unreadCount)").font(.caption.monospacedDigit())
-                                            .foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(Color.accentColor, in: Capsule())
-                                    }
-                                }
-                            }
-                        }.frame(height: 70).listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
-                            .tag(chat.id).accessibilityIdentifier("telegram.chat.\(chat.id)")
-                    }
-                }.listStyle(.inset).accessibilityIdentifier("telegram.chats")
-            }
-            if model.phase == .ready && !search.hasChatQuery {
-                TelegramPaginationBar(page: model.chatPage, prefix: "telegram.chatPage",
-                    previous: model.loadOlderChats, next: model.loadNewerChats,
-                    latest: model.showLatestChats, retry: model.retryChatPage)
-                    .padding(12)
-            }
-            Divider()
-            Button("Остановить подключение") { model.disconnect() }
-                .help("Останавливает локальное подключение и сохраняет кэш. Не завершает сеанс на серверах Telegram.")
-                .disabled(model.isSyntheticPreview).accessibilityIdentifier("telegram.disconnect").padding(16)
-        }.frame(maxHeight: .infinity, alignment: .top)
-    }
-}
-
 struct TelegramDetailView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var search: TelegramSearchModel
@@ -99,8 +29,6 @@ struct TelegramDetailView: View {
     @State private var password = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TelegramArchiveBar(archive: model.archive)
-            Divider()
             switch model.phase {
             case .configuration: setup
             case .connecting:
@@ -227,7 +155,7 @@ struct TelegramDetailView: View {
                     } label: {
                         HStack(spacing: 10) {
                             TelegramChatAvatar(title: chat.title, size: 36)
-                            VStack(alignment: .leading, spacing: 3) { Text(chat.title).font(.headline); Text(model.connectionDescription).font(.caption).foregroundStyle(.secondary) }
+                            Text(chat.title).font(.headline).lineLimit(1)
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain).help("Открыть карточку собеседника")
                         .accessibilityLabel("Карточка собеседника: \(chat.title)").accessibilityIdentifier("telegram.profile.open")
@@ -240,7 +168,7 @@ struct TelegramDetailView: View {
                     }.buttonStyle(.plain).foregroundStyle(messageSearchPresented ? Color.accentColor : Color.secondary)
                         .help("Поиск сообщений (⌘F)").accessibilityLabel("Поиск сообщений в диалоге")
                         .accessibilityIdentifier("telegram.messageSearch.toggle")
-                }.padding(.horizontal, 16).padding(.vertical, 10)
+                }.padding(.horizontal, 16).frame(height: 50)
                 Divider()
                 if messageSearchPresented {
                     HStack(spacing: 12) {
@@ -483,7 +411,7 @@ struct TelegramChatAvatar: View {
     }
 }
 
-private struct TelegramSearchStatusView: View {
+struct TelegramSearchStatusView: View {
     let status: TelegramSearchStatus
     let retry: () -> Void
     var body: some View {
@@ -499,7 +427,7 @@ private struct TelegramSearchStatusView: View {
     }
 }
 
-private struct TelegramPaginationBar: View {
+struct TelegramPaginationBar: View {
     let page: TelegramPageNavigation
     let prefix: String
     let previous: () -> Void

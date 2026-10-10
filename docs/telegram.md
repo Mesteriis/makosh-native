@@ -401,7 +401,7 @@ edit sessions in process and clears them when stopping the account context,
 while ordinary input/selection/reply is persisted separately. The reference's
 normal edit clears on local commitment; Makosh conservatively waits for the
 existing action provider's applied event. Neither proves remote delivery.
-Reply quotes/forward state and topic-aware edit navigation remain open.
+Reply quotes and topic-aware edit navigation remain open.
 Pending attachment caption/file recovery is connected
 as described below. The selected dialog is not restored automatically.
 
@@ -857,3 +857,41 @@ history. It does not prove a Telegram server operation.
 The same preview includes an explicitly synthetic in-memory local archive with
 an original, an edit and a source-cache removal marker. It exercises the actual
 native archive viewer, refresh and dismissal without opening the user's archive.
+
+## Forward composer and local queue receipt
+
+The context-menu picker now stages a forward in the chosen recipient's ordinary
+composer and navigates within the shared workspace. It preserves that recipient's
+rich comment/selection and reply, independently of the source chat's draft. A
+compact accessory offers author/caption options and another recipient; cancellation
+removes only the forward. Changing recipient retains the original comment/reply
+in its chat. The new destination's persisted draft loads before staging.
+
+Own schema 4 reads legacy 1/2/3 and stores bounded typed source IDs, exact source
+fingerprints, options and prepared/submissionStarted/accepted disposition with
+the ordinary input/reply. Unknown payloads remain untouched. Ordinary saves are
+not general Postbox CAS; transaction helpers compare the full captured draft for
+forward begin/accept/reset/consume and refuse stale saves over an in-flight record.
+Prepared input/selection/options changes get a new revision. In-flight input and
+attachment admission are blocked to keep the frozen submission unambiguous.
+
+Before enqueue, every source and destination is resolved from current Postbox.
+The optional rich comment (with its separate reply) precedes the native forward
+batch in one enqueue invocation. The final transaction admission checks all
+sources, fingerprints, protection, destination permissions and comment mentions
+again. Missing sources cannot silently produce a comment-only operation. Multiple
+source grouping uses native auto; hidden captions also hide author attribution.
+A receipt requires the full unique outgoing Local batch in the captured destination
+and is written in that queue transaction. Only accepted consumption clears the
+captured input/reply/forward. A proven zero-queue refusal returns to prepared; an
+ambiguous/partial result remains uncertain without automatic resend. Restart can
+consume an accepted receipt without enqueue. This proves local admission, not
+server delivery, remote permission freshness, fsync or power-loss survival.
+
+Reference evidence: ShareModalController.swift:1296-1359; ChatInputAccessory.swift:
+227-302; ChatInterfaceState.swift:1172-1180,1304-1320; SenderController.swift:492-523.
+No outer GPLv2 serializer/UI was copied. Makosh's atomic batch/receipt is an owned
+adaptation; the reference chains comment and forward separately. Saved Messages'
+immediate-picker exception, multi-message selection UI, topics, paid/secret-chat
+forwarding and live-account acceptance remain open. A new attachment cannot be
+combined with a staged forward yet; its attach button is disabled explicitly.

@@ -18,8 +18,9 @@ struct TelegramDraftStore: Sendable {
     @discardableResult
     mutating func save(input: TelegramComposerInput, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
         let key = Key(accountID: accountID, chatID: chatID)
-        guard drafts[key]?.input != input || drafts[key]?.schemaVersion != 3 else { return nil }
-        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: input, replyTarget: drafts[key]?.replyTarget)
+        guard drafts[key]?.forwardCanMutate ?? true else { return nil }
+        guard drafts[key]?.input != input || drafts[key]?.schemaVersion != 4 else { return nil }
+        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: input, replyTarget: drafts[key]?.replyTarget, forwardIntent: drafts[key]?.forwardIntent)
         drafts[key] = snapshot
         return snapshot
     }
@@ -28,8 +29,21 @@ struct TelegramDraftStore: Sendable {
     mutating func setReplyTarget(_ target: TelegramComposerReplyTarget?, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
         guard target?.isValid ?? true else { return nil }
         let key = Key(accountID: accountID, chatID: chatID)
-        if let current = drafts[key], current.replyTarget == target, current.schemaVersion == 3 { return nil }
-        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: drafts[key]?.input ?? .empty, replyTarget: target)
+        guard drafts[key]?.forwardCanMutate ?? true else { return nil }
+        if let current = drafts[key], current.replyTarget == target, current.schemaVersion == 4 { return nil }
+        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: drafts[key]?.input ?? .empty, replyTarget: target, forwardIntent: drafts[key]?.forwardIntent)
+        drafts[key] = snapshot
+        return snapshot
+    }
+
+    @discardableResult
+    mutating func setForwardIntent(_ intent: TelegramComposerForwardIntent?, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
+        guard intent?.isValid ?? true else { return nil }
+        let key = Key(accountID: accountID, chatID: chatID)
+        guard drafts[key]?.forwardCanMutate ?? true else { return nil }
+        if let current = drafts[key], current.forwardIntent == intent, current.schemaVersion == 4 { return nil }
+        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: drafts[key]?.input ?? .empty,
+            replyTarget: drafts[key]?.replyTarget, forwardIntent: intent)
         drafts[key] = snapshot
         return snapshot
     }
@@ -63,8 +77,8 @@ struct TelegramDraftStore: Sendable {
     @discardableResult
     mutating func acknowledge(sentInput: TelegramComposerInput, revision: UUID, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
         let key = Key(accountID: accountID, chatID: chatID)
-        guard let current = drafts[key], current.revision == revision, current.input == sentInput,
-              (!current.text.isEmpty || current.replyTarget != nil) else { return nil }
+        guard let current = drafts[key], current.forwardDisposition != .submissionStarted, current.revision == revision, current.input == sentInput,
+              (!current.text.isEmpty || current.replyTarget != nil || current.forwardIntent != nil) else { return nil }
         let cleared = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: .empty)
         drafts[key] = cleared
         return cleared

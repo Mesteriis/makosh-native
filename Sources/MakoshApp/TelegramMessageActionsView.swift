@@ -131,7 +131,7 @@ struct TelegramMessageActionSheet: View {
     private var confirmTitle: String {
         switch request.mode {
         case .edit: return "Сохранить изменение"
-        case .forward: return "Переслать выбранному получателю"
+        case .forward: return "Открыть выбранный диалог"
         case .delete: return deleteForEveryone.map { $0 ? "Удалить для всех в Telegram" : "Удалить только у меня" } ?? "Удалить в Telegram"
         case .reply: return "Ответить"
         }
@@ -150,7 +150,12 @@ struct TelegramMessageActionSheet: View {
         let action: TelegramMessageAction
         switch request.mode {
         case .edit: return
-        case .forward: guard let destination else { return }; action = .forward(destinationChatID: destination)
+        case .forward:
+            guard let destination else { return }
+            let staged = model.stageMessageForward(source: request.source, destinationChatID: destination, contextID: request.contextID)
+            validationFailed = !staged
+            if staged { dismiss() }
+            return
         case .delete: guard let deleteForEveryone else { return }; action = .delete(forEveryone: deleteForEveryone)
         case .reply: return
         }

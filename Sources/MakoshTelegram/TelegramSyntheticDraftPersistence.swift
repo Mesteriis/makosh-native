@@ -40,6 +40,8 @@ extension TelegramModel {
                 MainActor.assumeIsolated {
                     guard let box else { continuation.resume(throwing: CocoaError(.fileReadCorruptFile)); return }
                     model.syntheticPendingPostbox = box
+                    model.composerForward.bind(TelegramSyntheticForwardProvider(postbox: box,
+                        loseAcknowledgement: ProcessInfo.processInfo.arguments.contains("--telegram-forward-ack-loss-qa")))
                     model.bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: box, accountID: -1))
                     continuation.resume()
                 }

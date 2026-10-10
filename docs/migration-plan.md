@@ -72,7 +72,7 @@
    защищают новый ввод от позднего applied ACK. Native QA приняла две независимые
    правки, rich selection после смены чата/сервиса, cancel/source reopen и restart
    без edit при сохранённом ordinary/reply. Account stop очищает временный кеш.
-   Topic navigation, quote/forward state и серверные drafts ещё впереди. Настройка
+   Topic navigation, quote и серверные drafts ещё впереди. Настройка
    Enter / ⌘Enter подключена к ordinary/reply, edit и caption через guarded submit;
    modifier/persistence tests и full gates пройдены. В synthetic общем окне
    проверены оба варианта, Return/keypad Enter reply, ⌘Enter edit/caption,
@@ -136,3 +136,15 @@
    Почтовая инвентаризация выполняется
    независимо заранее; переключение на следующий сервис не закрывает пробелы
    Telegram и не меняет общий порядок.
+
+## Текущий участок: пересылка в composer
+
+Пересылка теперь проходит через выбор получателя и его обычный composer в общем
+окне. Сохраняются rich comment/selection/reply, source IDs/fingerprints и опции;
+Cancel убирает только пересылку. Schema4 совместима с legacy1/2/3. Полный batch
+comment+forwards проходит повторную transaction admission; локальный accepted
+receipt и storage-only consume защищают от автоматического resend после restart.
+Неизвестный исход и недоступный источник сохраняют черновик. Новое вложение при
+активной пересылке пока явно недоступно. Saved Messages immediate exception,
+multi-selection UI, темы, paid/secret и live-account acceptance остаются впереди.
+Окончание этого участка не завершает Telegram или общий последовательный перенос.

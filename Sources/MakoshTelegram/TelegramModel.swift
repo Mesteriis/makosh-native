@@ -78,6 +78,12 @@ public final class TelegramModel: ObservableObject {
     public let archive = TelegramArchiveController()
     public let messageActions = TelegramMessageActionsController()
     public let composerReply = TelegramComposerReplyController()
+    public let composerForward = TelegramComposerForwardController()
+    @Published public private(set) var composerForwardIntent: TelegramComposerForwardIntent?
+    @Published public private(set) var composerForwardDisposition: TelegramComposerForwardDisposition?
+    @Published public private(set) var isRestoringComposerDraft = false
+    @Published public private(set) var composerDraftRecoveryError: String?
+    private var pendingForwardStage: (context: UUID, destination: Int64, intent: TelegramComposerForwardIntent, origin: (chat: Int64, intent: UUID)?)?
     public var uploadContextID: UUID { accountGeneration }
     public var messageActionContextID: UUID { accountGeneration }
     public var contactProfileContextID: UUID { accountGeneration }
@@ -100,7 +106,8 @@ public final class TelegramModel: ObservableObject {
     }
     public var selectedChat: TelegramChat? { selectedChatID.flatMap { knownChats[$0] } }
     public var uploadTarget: TelegramUploadTarget? {
-        guard phase == .ready, !isBusy, let chat = selectedChat, let accountID = draftAccountID else { return nil }
+        guard phase == .ready, !isBusy, composerDraftRecoveryError == nil,
+              composerForwardIntent == nil, let chat = selectedChat, let accountID = draftAccountID else { return nil }
         if !isSyntheticPreview {
             guard [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel]
                 .contains(PeerId(chat.id).namespace) else { return nil }
@@ -140,6 +147,7 @@ public final class TelegramModel: ObservableObject {
             } else { displayComposerInput(.empty) }
             projectMessageEditSession()
             refreshComposerReply()
+            refreshComposerForward()
             pendingRecoveryAttempt = nil
             cancelPendingRecovery()
             restoreComposerDraft()
@@ -163,9 +171,19 @@ public final class TelegramModel: ObservableObject {
         }
     }
     public var composerCanSend: Bool {
-        !isRestoringPendingUpload && pendingUploadRecoveryError == nil && telegramFormattedTextCanSend(composerInput.formattedText)
+        guard !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil, pendingUploadRecoveryError == nil else { return false }
+        if composerForwardIntent != nil {
+            guard !isForwardComposerLocked, composerForward.phase == .ready,
+                  composerInput.formattedText.text.isEmpty || telegramFormattedTextCanSend(composerInput.formattedText),
+                  let accountID = draftAccountID, let chatID = selectedChatID else { return false }
+            return (isSyntheticPreview && composerDraftRepository == nil) || unsavedComposerDrafts[ComposerDraftKey(accountID: accountID, chatID: chatID)] == nil
+        }
+        return telegramFormattedTextCanSend(composerInput.formattedText)
     }
-    public var composerSupportsAttachments: Bool { composerInput.formattedText.isEditable }
+    public var composerSupportsAttachments: Bool { composerInput.formattedText.isEditable && composerForwardIntent == nil }
+    public var isForwardComposerLocked: Bool {
+        composerForwardIntent != nil && (composerForwardDisposition != .prepared || composerForward.phase == .committing || composerForward.phase == .uncertain)
+    }
     @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
     public private(set) var isSyntheticPreview = false
@@ -295,6 +313,20 @@ public final class TelegramModel: ObservableObject {
                 if let submitted, self.editDrafts[key] == submitted { self.editDrafts[key] = nil }
             }
         }
+        composerForward.didUpdateDraft = { [weak self] captured, replacement in
+            guard let self, captured.accountID == self.draftAccountID,
+                  let current = self.drafts.snapshot(accountID: captured.accountID, chatID: captured.chatID),
+                  current.revision == captured.revision, current.input == captured.input,
+                  current.replyTarget == captured.replyTarget, current.forwardIntent == captured.forwardIntent,
+                  self.drafts.restore(replacement, accountID: captured.accountID, chatID: captured.chatID,
+                      expectedRevision: current.revision) else { return }
+            let key = ComposerDraftKey(accountID: captured.accountID, chatID: captured.chatID)
+            if self.unsavedComposerDrafts[key]?.revision == captured.revision { self.unsavedComposerDrafts[key] = nil }
+            // Provider transitions have already committed to the captured Postbox.
+            if self.selectedChatID == captured.chatID {
+                self.displayComposerInput(replacement.input); self.refreshComposerReply(); self.refreshComposerForward()
+            }
+        }
     }
 
     private func displayComposerInput(_ input: TelegramComposerInput) {
@@ -302,14 +334,17 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func setComposerInput(_ input: TelegramComposerInput) {
+        guard !isForwardComposerLocked else { return }
         composerInput = input
         guard let accountID = draftAccountID, let chatID = selectedChatID else { return }
         if let changed = drafts.save(input: input, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        refreshComposerForward()
     }
 
     @discardableResult
     public func updateComposerInput(_ input: TelegramComposerInput, contextID: UUID, chatID: Int64) -> Bool {
-        guard contextID == accountGeneration, selectedChatID == chatID, phase == .ready, !isComposerSuspended else { return false }
+        guard contextID == accountGeneration, selectedChatID == chatID, phase == .ready, !isComposerSuspended,
+              !isForwardComposerLocked, composerDraftRecoveryError == nil else { return false }
         setComposerInput(input)
         return true
     }
@@ -351,6 +386,7 @@ public final class TelegramModel: ObservableObject {
     public func retryComposerDraftPersistence() {
         guard let accountID = draftAccountID, composerDraftRepository?.accountID == accountID else { return }
         for snapshot in Array(unsavedComposerDrafts.values) where snapshot.accountID == accountID {
+            guard snapshot.forwardDisposition == nil || snapshot.forwardDisposition == .prepared else { continue }
             guard drafts.snapshot(accountID: accountID, chatID: snapshot.chatID)?.revision == snapshot.revision else { continue }
             persistComposerDraft(snapshot)
         }
@@ -361,34 +397,47 @@ public final class TelegramModel: ObservableObject {
     func bindComposerDraftRepository(_ repository: (any TelegramComposerDraftRepository)?) {
         composerDraftGeneration = UUID()
         composerDraftLoadID = nil
+        isRestoringComposerDraft = false
+        composerDraftRecoveryError = nil
         composerDraftLoad.set(nil)
         composerDraftRepository = repository
         retryComposerDraftPersistence()
         restoreComposerDraft()
     }
 
-    private func restoreComposerDraft() {
+    private func restoreComposerDraft(forceForwardReceipt: Bool = false) {
+        let retryFailedLoad = composerDraftRecoveryError != nil
+        composerDraftRecoveryError = nil
         composerDraftLoadID = nil
+        isRestoringComposerDraft = false
         composerDraftLoad.set(nil)
         guard let chatID = selectedChatID, let accountID = draftAccountID,
-              let repository = composerDraftRepository, repository.accountID == accountID,
-              drafts.snapshot(accountID: accountID, chatID: chatID) == nil else { return }
+              let repository = composerDraftRepository, repository.accountID == accountID else { return }
+        let current = drafts.snapshot(accountID: accountID, chatID: chatID)
+        guard current == nil || retryFailedLoad || (current?.forwardIntent != nil && (current?.forwardDisposition != .prepared || forceForwardReceipt)) else { return }
+        let expectedRevision = current?.revision
         let requestID = UUID(), context = composerDraftGeneration, accountContext = accountGeneration
         composerDraftLoadID = requestID
+        isRestoringComposerDraft = true
         let disposable = repository.load(chatID: chatID) { [weak self] result in
             guard let self, self.composerDraftLoadID == requestID, self.composerDraftGeneration == context,
                   self.accountGeneration == accountContext, self.draftAccountID == accountID,
                   self.selectedChatID == chatID else { return }
             self.composerDraftLoadID = nil
+            self.isRestoringComposerDraft = false
             defer { self.restorePendingUpload() }
             switch result {
             case let .success(snapshot):
-                if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, expectedRevision: nil) {
+                if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, expectedRevision: expectedRevision) {
                     self.displayComposerInput(self.drafts.snapshot(accountID: accountID, chatID: chatID)?.input ?? .empty)
                     self.refreshComposerReply()
+                    self.refreshComposerForward()
                 }
+                self.applyPendingForwardStage()
             case .failure:
-                self.error = "Не удалось открыть сохранённый черновик. Данные на диске не изменены."
+                self.pendingForwardStage = nil
+                let message = "Не удалось открыть сохранённый черновик. Данные на диске не изменены."
+                self.composerDraftRecoveryError = message; self.error = message
             }
         }
         if composerDraftLoadID == requestID { composerDraftLoad.set(disposable) } else { disposable.dispose() }
@@ -497,9 +546,107 @@ public final class TelegramModel: ObservableObject {
         composerReply.select(target: target, chatID: selectedChatID, initial: initial)
     }
 
+    private func refreshComposerForward() {
+        let snapshot = draftAccountID.flatMap { accountID in
+            selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0) }
+        }
+        composerForwardIntent = snapshot?.forwardIntent
+        composerForwardDisposition = snapshot?.forwardDisposition
+        composerForward.select(isComposerSuspended ? nil : snapshot)
+    }
+
+    /// Staging navigates to the recipient; it never enqueues a message.
+    @discardableResult
+    public func stageMessageForward(source: TelegramMessageActionSource, destinationChatID: Int64, contextID: UUID) -> Bool {
+        guard contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
+              !isRestoringComposerDraft, composerDraftRecoveryError == nil,
+              !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
+              !messageActions.isBusy, messageActions.phase != .uncertain,
+              source.accountID == draftAccountID, source.chatID == selectedChatID, source.canForward,
+              knownChats[source.chatID] != nil,
+              let destination = forwardDestinations.first(where: { $0.id == destinationChatID }) else { return false }
+        let intent = TelegramComposerForwardIntent(sources: [.init(source: source)])
+        guard intent.isValid else { return false }
+        knownChats[destinationChatID] = destination
+        pendingForwardStage = (contextID, destinationChatID, intent, nil)
+        selectedChatID = destinationChatID
+        applyPendingForwardStage()
+        return true
+    }
+
+    private func applyPendingForwardStage() {
+        guard let pending = pendingForwardStage, !isRestoringComposerDraft else { return }
+        guard pending.context == accountGeneration, pending.destination == selectedChatID,
+              let accountID = draftAccountID else { pendingForwardStage = nil; return }
+        pendingForwardStage = nil
+        let current = drafts.snapshot(accountID: accountID, chatID: pending.destination)
+        guard current?.forwardDisposition == nil || current?.forwardDisposition == .prepared else {
+            error = "В этом диалоге уже есть пересылка с неподтверждённым результатом. Черновик сохранён."; return
+        }
+        if let changed = drafts.setForwardIntent(pending.intent, accountID: accountID, chatID: pending.destination) {
+            persistComposerDraft(changed)
+        }
+        if let origin = pending.origin,
+           drafts.snapshot(accountID: accountID, chatID: origin.chat)?.forwardIntent?.id == origin.intent,
+           let cleared = drafts.setForwardIntent(nil, accountID: accountID, chatID: origin.chat) { persistComposerDraft(cleared) }
+        refreshComposerForward()
+    }
+
+    public func cancelComposerForward() {
+        guard !isForwardComposerLocked, let accountID = draftAccountID, let chatID = selectedChatID else { return }
+        if let changed = drafts.setForwardIntent(nil, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        refreshComposerForward()
+    }
+
+    public func updateForwardOptions(hideNames: Bool, hideCaptions: Bool, intentID: UUID, contextID: UUID) {
+        guard contextID == accountGeneration, !isForwardComposerLocked,
+              let accountID = draftAccountID, let chatID = selectedChatID,
+              let intent = composerForwardIntent, intent.id == intentID else { return }
+        let changedIntent = TelegramComposerForwardIntent(id: intent.id, sources: intent.sources,
+            hideNames: hideNames, hideCaptions: hideCaptions)
+        if let changed = drafts.setForwardIntent(changedIntent, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        refreshComposerForward()
+    }
+
+    @discardableResult
+    public func moveComposerForward(to destinationChatID: Int64, intentID: UUID, contextID: UUID) -> Bool {
+        guard contextID == accountGeneration, !isForwardComposerLocked,
+              let intent = composerForwardIntent, intent.id == intentID,
+              let destination = forwardDestinations.first(where: { $0.id == destinationChatID }) else { return false }
+        guard destinationChatID != selectedChatID else { return true }
+        // Another recipient keeps the old chat's ordinary comment/reply.
+        guard let originChat = selectedChatID else { return false }
+        knownChats[destinationChatID] = destination
+        pendingForwardStage = (contextID, destinationChatID,
+            TelegramComposerForwardIntent(sources: intent.sources, hideNames: intent.hideNames, hideCaptions: intent.hideCaptions),
+            (originChat, intentID))
+        selectedChatID = destinationChatID
+        applyPendingForwardStage()
+        return true
+    }
+
+    @discardableResult
+    public func sendComposerForward() -> Bool {
+        guard composerCanSend, composerForwardIntent != nil, phase == .ready,
+              !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, upload.phase == .idle,
+              let accountID = draftAccountID, let chatID = selectedChatID,
+              let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID) else { return false }
+        return composerForward.submit(snapshot)
+    }
+
+    /// Re-read the local receipt; this never submits a new operation.
+    public func refreshForwardReceipt() {
+        guard composerForwardIntent != nil, !isRestoringComposerDraft else { return }
+        if isForwardComposerLocked { restoreComposerDraft(forceForwardReceipt: true) }
+        else { composerForward.retry() }
+    }
+
+    public func retryComposerDraftRestore() { restoreComposerDraft() }
+
     @discardableResult
     public func beginReply(to message: TelegramMessage, contextID: UUID) -> Bool {
-        guard !isRestoringPendingUpload, contextID == accountGeneration, !isBusy, upload.phase == .idle,
+        guard !isRestoringPendingUpload, composerDraftRecoveryError == nil,
+              !isForwardComposerLocked, contextID == accountGeneration, !isBusy, upload.phase == .idle,
               let source = actionSource(for: message), source.canReply, !source.fingerprint.isEmpty,
               source.chatID == source.peerID || source.metadata.migrationChatID == source.chatID else { return false }
         let target = TelegramComposerReplyTarget(source: source)
@@ -515,7 +662,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func cancelComposerReply() {
-        guard let accountID = draftAccountID, let chatID = selectedChatID else { return }
+        guard !isForwardComposerLocked, let accountID = draftAccountID, let chatID = selectedChatID else { return }
         if let changed = drafts.setReplyTarget(nil, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
         refreshComposerReply()
     }
@@ -595,7 +742,8 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func beginMessageEdit(source: TelegramMessageActionSource, author: String, contextID: UUID) -> Bool {
-        guard contextID == accountGeneration, phase == .ready, !isBusy,
+        guard contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
+              composerDraftRecoveryError == nil,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
@@ -666,7 +814,8 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func performMessageAction(_ action: TelegramMessageAction, source: TelegramMessageActionSource, contextID: UUID) -> Bool {
-        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil,
+        guard !isRestoringPendingUpload, composerDraftRecoveryError == nil,
+              !isForwardComposerLocked, pendingUploadRecoveryError == nil,
               contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
@@ -677,6 +826,7 @@ public final class TelegramModel: ObservableObject {
         }
         replyComposerSubmission = nil
         if let formatted = replyText(action) {
+            guard composerForwardIntent == nil else { return false }
             if let target = drafts.snapshot(accountID: source.accountID, chatID: source.chatID)?.replyTarget {
                 guard target == TelegramComposerReplyTarget(source: source), composerReply.resolved?.source == source else { return false }
             }
@@ -708,6 +858,8 @@ public final class TelegramModel: ObservableObject {
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID) {
         guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
+              drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.forwardIntent == nil,
+              selectedChatID != target.chatID || composerDraftRecoveryError == nil,
               target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
         upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput)
     }
@@ -942,7 +1094,8 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func sendMessage(_ formatted: TelegramFormattedText) -> Bool {
-        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil,
+        guard !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil,
+              composerForwardIntent == nil, pendingUploadRecoveryError == nil,
               let draftAccountID, let chatID = selectedChatID,
               drafts.snapshot(accountID: draftAccountID, chatID: chatID)?.replyTarget == nil else { return false }
         guard !isSyntheticPreview else { error = "Синтетическая проверка: отправка отключена."; return false }
@@ -1004,6 +1157,7 @@ public final class TelegramModel: ObservableObject {
         self.unauthorized = nil; self.account = account
         let replyProvider = TelegramPostboxComposerReplyProvider(postbox: account.postbox, accountID: account.peerId.toInt64())
         composerReply.bind(replyProvider)
+        composerForward.bind(TelegramEngineForwardProvider(account: account))
         let recovery = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: account.postbox, accountID: account.peerId.toInt64()), files: { [weak self] in
             guard let self else { throw TelegramUploadFileError.unavailable }
             return try self.archive.files.pendingUploadFiles()
@@ -1058,6 +1212,8 @@ public final class TelegramModel: ObservableObject {
         uploadComposerPreparationID = nil; uploadComposerTransfer = nil; uploadComposerSubmission = nil
         messageActions.bind(provider: nil)
         composerReply.bind(nil)
+        composerForward.bind(nil)
+        pendingForwardStage = nil
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
         search.bind(account: nil)
@@ -1286,6 +1442,7 @@ public final class TelegramModel: ObservableObject {
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
         model.composerReply.bind(TelegramSyntheticComposerReplyProvider())
+        model.composerForward.bind(TelegramSyntheticForwardProvider())
         model.bindSyntheticHistoryRead()
         model.isSyntheticPreview = true
         model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)

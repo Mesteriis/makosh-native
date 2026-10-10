@@ -26,17 +26,33 @@ struct TelegramComposerDraft: Codable, Equatable, Sendable {
     let input: TelegramComposerInput
     var text: String { input.formattedText.text }
     let replyTarget: TelegramComposerReplyTarget?
-    init(accountID: Int64, chatID: Int64, text: String, revision: UUID = UUID(), replyTarget: TelegramComposerReplyTarget? = nil) {
-        self.init(accountID: accountID, chatID: chatID, input: try! TelegramComposerInput(formattedText: TelegramFormattedText(text: text)), revision: revision, replyTarget: replyTarget)
+    let forwardIntent: TelegramComposerForwardIntent?
+    let forwardDisposition: TelegramComposerForwardDisposition?
+    init(accountID: Int64, chatID: Int64, text: String, revision: UUID = UUID(), replyTarget: TelegramComposerReplyTarget? = nil, forwardIntent: TelegramComposerForwardIntent? = nil, forwardDisposition: TelegramComposerForwardDisposition? = nil) {
+        self.init(accountID: accountID, chatID: chatID, input: try! TelegramComposerInput(formattedText: TelegramFormattedText(text: text)), revision: revision, replyTarget: replyTarget, forwardIntent: forwardIntent, forwardDisposition: forwardDisposition)
     }
-    init(accountID: Int64, chatID: Int64, input: TelegramComposerInput, revision: UUID = UUID(), replyTarget: TelegramComposerReplyTarget? = nil) {
-        schemaVersion = 3; self.accountID = accountID; self.chatID = chatID
+    init(accountID: Int64, chatID: Int64, input: TelegramComposerInput, revision: UUID = UUID(), replyTarget: TelegramComposerReplyTarget? = nil, forwardIntent: TelegramComposerForwardIntent? = nil, forwardDisposition: TelegramComposerForwardDisposition? = nil) {
+        schemaVersion = 4; self.accountID = accountID; self.chatID = chatID
         self.revision = revision; self.input = input; self.replyTarget = replyTarget
+        self.forwardIntent = forwardIntent; self.forwardDisposition = forwardDisposition ?? forwardIntent.map { _ in .prepared }
     }
     var isValid: Bool {
-        (schemaVersion == 1 && replyTarget == nil || (schemaVersion == 2 || schemaVersion == 3) && (replyTarget?.isValid ?? true)) && text.utf8.count <= Self.maximumTextBytes
+        guard (1...4).contains(schemaVersion), text.utf8.count <= Self.maximumTextBytes,
+              replyTarget?.isValid ?? true else { return false }
+        if schemaVersion == 1 && replyTarget != nil { return false }
+        guard schemaVersion == 4 || (forwardIntent == nil && forwardDisposition == nil) else { return false }
+        guard let intent = forwardIntent else { return forwardDisposition == nil }
+        guard intent.isValid, let disposition = forwardDisposition else { return false }
+        if case let .accepted(ids) = disposition { return validForwardQueueIDs(ids) }
+        return true
     }
-    private enum CodingKeys: String, CodingKey { case schemaVersion, accountID, chatID, revision, text, input, replyTarget }
+    var forwardCanMutate: Bool { forwardDisposition == nil || forwardDisposition == .prepared }
+    func validForwardQueueIDs(_ ids: [TelegramForwardQueueID]) -> Bool {
+        guard let intent = forwardIntent, ids.count == intent.sources.count + (text.isEmpty ? 0 : 1),
+              !ids.isEmpty, ids.allSatisfy({ $0.peerID == chatID && $0.namespace == Namespaces.Message.Local }) else { return false }
+        return Set(ids.map { "\($0.peerID):\($0.namespace):\($0.messageID)" }).count == ids.count
+    }
+    private enum CodingKeys: String, CodingKey { case schemaVersion, accountID, chatID, revision, text, input, replyTarget, forwardIntent, forwardDisposition }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
@@ -44,6 +60,8 @@ struct TelegramComposerDraft: Codable, Equatable, Sendable {
         chatID = try values.decode(Int64.self, forKey: .chatID)
         revision = try values.decode(UUID.self, forKey: .revision)
         replyTarget = try values.decodeIfPresent(TelegramComposerReplyTarget.self, forKey: .replyTarget)
+        forwardIntent = try values.decodeIfPresent(TelegramComposerForwardIntent.self, forKey: .forwardIntent)
+        forwardDisposition = try values.decodeIfPresent(TelegramComposerForwardDisposition.self, forKey: .forwardDisposition)
         if schemaVersion == 1 || schemaVersion == 2 {
             input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: values.decode(String.self, forKey: .text)))
         } else {
@@ -55,6 +73,8 @@ struct TelegramComposerDraft: Codable, Equatable, Sendable {
         try values.encode(schemaVersion, forKey: .schemaVersion)
         try values.encode(accountID, forKey: .accountID); try values.encode(chatID, forKey: .chatID)
         try values.encode(revision, forKey: .revision); try values.encodeIfPresent(replyTarget, forKey: .replyTarget)
+        try values.encodeIfPresent(forwardIntent, forKey: .forwardIntent)
+        try values.encodeIfPresent(forwardDisposition, forKey: .forwardDisposition)
         if schemaVersion == 1 || schemaVersion == 2 { try values.encode(text, forKey: .text) }
         else { try values.encode(input, forKey: .input) }
     }

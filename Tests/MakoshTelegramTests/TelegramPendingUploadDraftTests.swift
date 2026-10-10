@@ -57,4 +57,14 @@ final class TelegramPendingUploadDraftTests: XCTestCase {
         XCTAssertTrue(accepted.isValid)
         XCTAssertFalse(try pendingUploadFixture(disposition: .accepted(localMessageID: "")).isValid)
     }
+    func testPendingAttachmentCannotConsumeAnUnsentForwardDraft() throws {
+        let pending = try pendingUploadFixture()
+        let intent = TelegramComposerForwardIntent(sources: [.init(chatID: 7, peerID: 7, namespace: 0, messageID: 1, fingerprint: "source")])
+        let original = TelegramComposerDraft(accountID: pending.accountID, chatID: pending.chatID, input: pending.captionInput, forwardIntent: intent)
+        XCTAssertTrue(original.isValid)
+        let combined = TelegramPendingUploadDraft(id: pending.id, accountID: pending.accountID, chatID: pending.chatID,
+            title: pending.title, captionInput: pending.captionInput, originalDraft: original,
+            replyTarget: nil, file: pending.file)
+        XCTAssertFalse(combined.isValid, "An upload-only ACK must never discard a staged forward")
+    }
 }

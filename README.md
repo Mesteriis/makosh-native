@@ -13,6 +13,12 @@ An inline Telegram edit keeps its text, formatting and selection when switching
 chats or services in the same window. Cancelling it returns to the separate
 ordinary draft/reply. Active edits remain in memory and reset after app restart.
 
+Forwarding opens the selected recipient in the same workspace, with a source
+accessory and optional rich comment. The forward draft/options survive chat and
+service switches and restart; cancelling the forward keeps the comment/reply.
+Unavailable or changed sources block sending. An uncertain submission is retained
+without automatic resend; a local queue receipt can be checked after restart.
+
 Received Telegram text has a separate encrypted, append-only PostgreSQL archive,
 accessible through **Локальный архив** even while disconnected. Stored versions
 survive edits and removal from Telegram's cache. A durable same-transaction

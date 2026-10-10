@@ -194,7 +194,7 @@ private func composerFixtureRaw(_ box: Postbox, chatID: Int64, data: Data?) -> S
         var store = TelegramDraftStore()
         XCTAssertTrue(store.restore(legacy, accountID: 1, chatID: 42, expectedRevision: nil))
         let upgraded = try XCTUnwrap(store.save(input: legacy.input, accountID: 1, chatID: 42))
-        XCTAssertEqual(upgraded.schemaVersion, 3)
+        XCTAssertEqual(upgraded.schemaVersion, 4)
         XCTAssertNotEqual(upgraded.revision, revision)
         XCTAssertEqual(upgraded.input, legacy.input)
         XCTAssertEqual(upgraded.replyTarget, target)

@@ -1,6 +1,67 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram in-process edit sessions
+## Current stage: Telegram recipient composer and forward receipt
+
+Telegram stays inside the shared service-selector/list/conversation window.
+Forward now follows the reference's normal recipient-picker → recipient chat →
+composer accessory workflow. Choosing a recipient only stages the intent;
+explicit Send submits it with an optional rich comment. The recipient's ordinary
+input/selection/reply survive staging and cancellation. Name/caption options and
+source fingerprints persist in schema-4 account/chat drafts; schemas 1–3 remain
+readable and unknown formats are preserved. Another recipient retains the old
+chat's ordinary comment/reply. Native draft loading/error blocks editing/send;
+the existing programmatic delayed-restore operations retain their compatibility.
+A stale attachment picker cannot consume a newly staged forward draft.
+
+The bound-account provider revalidates the complete source/destination/comment
+batch after upstream media transforms. Native enqueue and exact owned accepted
+receipt share one Postbox transaction. The optional reply applies only to the
+comment. Nonempty unexpected IDs or post-admission receipt failure remain
+uncertain; only a proven zero-queue rejection can return to prepared. Restart or
+storage-only receipt checks consume acceptance without submitting again. This
+single local batch is a documented Makosh adaptation: the reference chains
+comment and forward operations separately. Queue acceptance does not prove
+server delivery, fsync or power-loss safety.
+
+`scripts/dev-db.sh up`, final `scripts/test.sh`, `scripts/build-app.sh` and strict
+deep signature verification exit 0: **459 XCTest (396 Telegram + 63 core), zero
+failures; 26 Python regressions**. New tests cover schema/limits, exact snapshots,
+controller callbacks/deadlines, source/recipient permissions, rejected/uncertain
+queue states, encrypted Postbox receipts and model navigation/recovery. The
+final run prints 66 upstream SQL t19 teardown diagnostics without failure/trap.
+An intermediate run failed in 15 existing composer-model cases (50 assertions):
+an overly broad loading guard broke delayed-restore input/reply/upload APIs.
+The boundary was corrected without weakening those tests; final gates pass.
+Earlier retention-cleanup and upstream SQLite failures remain recorded below.
+
+Actual native AX/screenshots verified the common window, recipient navigation,
+rich comment plus existing reply, hidden name/caption, Mail → Telegram, cancel
+retaining comment/reply, and process restart restoring the forward/options/input.
+Command-Enter cleared the exact accepted draft. Explicit DEBUG lost-ACK injection
+then left a frozen comment/accessory, disabled Send and a local-queue check;
+process restart consumed the receipt and opened an empty composer. QA used the
+same owned synthetic encrypted Postbox and isolated PostgreSQL/S3, with matching
+unsigned executable payload and strict signatures. The synthetic provider writes
+StoreMessages/receipts but does not execute a live Account's enqueue algorithm.
+No personal account, Keychain, Telegram network or server send was used.
+
+Root reviewed the integration diff and corrected an unsafe synthetic post-write
+rejection and recipient permission checks before final gates. Worker source
+checks are distinct from root runtime gates; observed model/provider/usage remain
+unknown. Saved Messages' immediate-forward exception, multi-selection UI,
+topics/paid/secret content, combined new attachment + forward, actual IME and
+live-account acceptance remain open. Later channels, backups and standalone
+packaging remain open; the full migration goal is active. Previous head 0992ea0
+passed both hosted PR/push CI runs; current-slice hosted CI is separate.
+
+Final project XERJ refresh exits 0: 258 files, 228/228 classified code. Actual
+staging/receipt/batch queries were confirmed against current source; project,
+engine and TelegramSwift fingerprints are fresh. The publication audit checked
+263 publishable files and the private PR body against five selected credential
+fields, with zero matches. Machine configuration, research clones and QA data
+remain excluded from publication.
+
+## Historical in-process edit sessions — 2026-10-11
 
 Telegram remains inside the shared service-selector/list/conversation window.
 Its active edit now belongs to the account-context model, with independent chat

@@ -51,7 +51,8 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               file.capturedAt.timeIntervalSince1970.isFinite, Self.isObjectKey(file.objectKey) else { return false }
         if let originalDraft {
             guard originalDraft.isValid, originalDraft.accountID == accountID, originalDraft.chatID == chatID,
-                  originalDraft.revision != Self.zeroUUID, originalDraft.replyTarget == replyTarget else { return false }
+                  originalDraft.revision != Self.zeroUUID, originalDraft.replyTarget == replyTarget,
+                  originalDraft.forwardIntent == nil else { return false }
         }
         if case let .accepted(localMessageID) = disposition {
             guard !localMessageID.isEmpty, localMessageID.utf8.count <= 1024,

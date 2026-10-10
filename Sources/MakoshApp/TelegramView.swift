@@ -327,7 +327,7 @@ struct TelegramDetailView: View {
 
     @ViewBuilder private func messageActionItems(_ item: TelegramMessage) -> some View {
         if let source = model.actionSource(for: item) {
-            TelegramMessageActionsItems(source: source, disabled: model.isBusy || upload.phase != .idle || messageActions.isBusy || messageActions.phase == .uncertain) { mode in
+            TelegramMessageActionsItems(source: source, disabled: model.isBusy || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil || model.isForwardComposerLocked || upload.phase != .idle || messageActions.isBusy || messageActions.phase == .uncertain) { mode in
                 let request = TelegramMessageActionRequest(source: source, author: item.author, contextID: model.messageActionContextID, mode: mode)
                 switch mode {
                 case .reply:

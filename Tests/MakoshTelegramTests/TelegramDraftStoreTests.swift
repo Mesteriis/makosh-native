@@ -138,6 +138,6 @@ final class TelegramDraftStoreTests: XCTestCase {
         var store = TelegramDraftStore()
         XCTAssertTrue(store.restore(legacy, accountID: 1, chatID: 42, expectedRevision: nil))
         let upgraded = try XCTUnwrap(store.save("legacy", accountID: 1, chatID: 42))
-        XCTAssertEqual(upgraded.schemaVersion, 3); XCTAssertNotEqual(upgraded.revision, legacy.revision)
+        XCTAssertEqual(upgraded.schemaVersion, 4); XCTAssertNotEqual(upgraded.revision, legacy.revision)
     }
 }

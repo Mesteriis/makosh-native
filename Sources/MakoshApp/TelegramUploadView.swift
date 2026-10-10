@@ -38,7 +38,7 @@ struct TelegramAttachButtons: View {
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             .help("Прикрепить фото или файл").accessibilityLabel("Прикрепить")
             .accessibilityIdentifier("telegram.upload.attach")
-            .disabled(choosing || capturedTarget == nil || upload.phase != .idle || model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil)
+            .disabled(choosing || capturedTarget == nil || upload.phase != .idle || model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil)
     }
     private var capturedTarget: TelegramUploadTarget? {
         model.uploadTarget(replyTo: replySource, contextID: replyContextID ?? model.uploadContextID)

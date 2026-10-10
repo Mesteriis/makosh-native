@@ -34,7 +34,7 @@ struct TelegramUploadPreviewView: View {
                     error: $captionError, selection: upload.captionInput.selection, accessibilityID: "telegram.upload.caption",
                     placeholder: "Подпись к вложению", inputChanged: { input in
                         _ = upload.updateCaptionInput(input, contextID: captionContext)
-                    })
+                    }, submit: send)
                     .id(captionContext).disabled(upload.phase != .ready)
                 Text("Подпись: \(upload.caption.utf16.count)/1024").font(.caption).foregroundStyle(.secondary)
             }
@@ -58,7 +58,7 @@ struct TelegramUploadPreviewView: View {
                     Button("Закрыть наблюдение") { upload.dismissPreparation(contextID: contextID) }
                         .accessibilityIdentifier("telegram.upload.clear")
                 } else {
-                    Button(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить") { upload.send(contextID: contextID) }
+                    Button(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить", action: send)
                         .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
                         .accessibilityIdentifier("telegram.upload.send")
                 }
@@ -67,6 +67,10 @@ struct TelegramUploadPreviewView: View {
         .padding(20).frame(width: 520)
         .interactiveDismissDisabled(!canDismiss)
         .onDisappear { upload.dismissPreparation(contextID: contextID) }
+    }
+    private func send() {
+        guard upload.canSend, captionError == nil else { return }
+        upload.send(contextID: contextID)
     }
 }
 

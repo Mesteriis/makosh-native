@@ -12,10 +12,12 @@ struct TelegramRichTextEditor: View {
     var placeholder: String? = nil
     var inputChanged: ((TelegramComposerInput) -> Void)? = nil
     var submit: (() -> Void)? = nil
+    @AppStorage(TelegramSendKey.preferenceKey) private var sendKeyPreference = TelegramSendKey.enter.rawValue
     @State private var height: CGFloat = 52
     var body: some View {
         NativeTelegramText(value: $value,error: $error,height: $height,selection: selection,
-            accessibilityID: accessibilityID,inputChanged: inputChanged,submit: submit)
+            accessibilityID: accessibilityID,inputChanged: inputChanged,submit: submit,
+            sendKey: TelegramSendKey(preferenceValue: sendKeyPreference))
             .frame(height: height)
             .disabled(!value.isEditable)
             .overlay(alignment: .topLeading) {
@@ -35,6 +37,7 @@ private struct NativeTelegramText: NSViewRepresentable {
     let accessibilityID: String
     let inputChanged: ((TelegramComposerInput) -> Void)?
     let submit: (() -> Void)?
+    let sendKey: TelegramSendKey
     func makeCoordinator() -> Coordinator {
         Coordinator(value: $value,error: $error,height: $height,selection: selection,inputChanged: inputChanged)
     }
@@ -69,6 +72,7 @@ private struct NativeTelegramText: NSViewRepresentable {
             coordinator.editLink(in: text)
         }
         text.submit = submit
+        text.sendKey = sendKey
         scroll.documentView = text
         context.coordinator.install(value,in: text)
         return scroll
@@ -79,6 +83,7 @@ private struct NativeTelegramText: NSViewRepresentable {
         coordinator.selection = selection; coordinator.inputChanged = inputChanged
         guard let text = scroll.documentView as? NSTextView else { return }
         (text as? TelegramNativeInput)?.submit = submit
+        (text as? TelegramNativeInput)?.sendKey = sendKey
         text.isEditable = value.isEditable && context.environment.isEnabled
         let installedDifferentValue = coordinator.lastValue != value
         if installedDifferentValue { coordinator.install(value,in: text) }
@@ -274,6 +279,7 @@ private struct NativeTelegramText: NSViewRepresentable {
     var format: ((TelegramTextEntityKind) -> Void)?
     var requestLink: (() -> Void)?
     var submit: (() -> Void)?
+    var sendKey: TelegramSendKey = .enter
     private let commands: [(String,String,NSEvent.ModifierFlags,TelegramTextEntityKind?)] = [
         ("Жирный","b",.command,.bold),("Курсив","i",.command,.italic),
         ("Моноширинный","k",[.command,.shift],.code),("Ссылка…","u",.command,nil),
@@ -301,14 +307,27 @@ private struct NativeTelegramText: NSViewRepresentable {
         if let kind = commands[sender.tag].3 { format?(kind) } else { requestLink?() }
     }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if hasMarkedText() { return super.performKeyEquivalent(with: event) }
+        if window?.firstResponder === self, handleSendKey(event) { return true }
         if performFormattingCommand(event) { return true }
         return super.performKeyEquivalent(with: event)
     }
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == UInt16(kVK_Return), !hasMarkedText(),
-           event.modifierFlags.intersection([.command,.shift,.option,.control]).isEmpty,
-           let submit { submit(); return }
+        if hasMarkedText() { super.keyDown(with: event); return }
+        if handleSendKey(event) { return }
         if !performFormattingCommand(event) { super.keyDown(with: event) }
+    }
+    private func handleSendKey(_ event: NSEvent) -> Bool {
+        guard isEditable, !hasMarkedText(), let submit,
+              event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) else { return false }
+        if sendKey.shouldSubmit(keyCode: event.keyCode, modifiers: event.modifierFlags, hasMarkedText: hasMarkedText()) {
+            submit(); return true
+        }
+        // Modified Return must remain a text edit when it is not the send key.
+        if !event.modifierFlags.intersection([.command, .shift]).isEmpty {
+            insertNewline(nil); return true
+        }
+        return false
     }
     private func performFormattingCommand(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command,.shift,.option,.control])

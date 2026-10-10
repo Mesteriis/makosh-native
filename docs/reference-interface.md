@@ -19,8 +19,15 @@ UI ACK: неопределённый modal не предлагает Send, resta
 переживает следующий restart и переключение Почта → Telegram. Это собственное
 хранение Макоша; server delivery и старые uncertain записи отдельно не приняты.
 
+В общем synthetic окне также приняты настройки Enter/⌘Enter: две строки выбора,
+сохранение после завершения процесса, применение к открытому редактору, guarded
+reply/edit/caption и newline/undo. Return и keypad Enter проверены на ответе;
+черновик сохранён при переключении Почта → Telegram. Реальный IME и серверная
+отправка остаются отдельными непроверенными критериями.
+
 | Подтверждено в TelegramSwift | Реализация Макоша |
 | --- | --- |
+| `GeneralSettingsViewController.swift:234–241,419–422`: две selectable строки; `FastSettings.swift:246–280`: app-wide Enter/⌘Enter, default Enter; `ObjcUtils.m:1329–1341`: обе Return-клавиши и modifier predicate | Native Settings с двумя взаимоисключающими вариантами; собственный `TelegramSendKey`, `@AppStorage` и существующий AppKit editor. Ordinary/reply, edit и caption явно передают guarded submit; rejected Command/Shift Return вставляет newline. Marked text остаётся в native input; реальный IME пока не принят |
 | `PeersListController.swift:1864–1879`: заголовок 50 и дополнительная строка поиска 40; `1725–1731`: отступ поиска 10; `834–917`: названия «Диалоги»/«Архив» | Компактный заголовок и поиск этих размеров вместо большой панели Telegram, segmented picker и постоянного footer подключения |
 | `PeersListController.swift:3278–3279`: архив открывается из строки списка; `1326–1337`: возврат отменяет поиск | «Архив» — первая прокручиваемая строка inbox; отдельный заголовок архива с возвратом, который очищает запрос. Пустой inbox также оставляет доступ к архиву |
 | `Telegram-Mac/ChatListRowItem.swift:2245–2260`: обычный диалог высотой 70; `ChatListRowView.swift:908`: аватар 50×50 | Строки списка высотой 70, static native-фото 50×50 с инициалами при отсутствии/ошибке |

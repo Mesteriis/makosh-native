@@ -508,6 +508,35 @@ acceptance faults also have regression coverage. Live account, power-loss and
 disk-failure acceptance remain unverified. QA requires explicit synthetic Postbox, isolated
 PostgreSQL configuration and S3 configuration; it never opens personal sessions.
 
+### Send-key preference
+
+Native Settings exposes the reference's two exclusive choices: send with Enter
+or Command-Enter. `Makosh.Telegram.SendKey` is an application preference, separate
+from Telegram accounts and Postbox drafts. Missing/unknown values read as Enter
+without replacing stored data. The same editor preference drives ordinary/reply
+send, inline edit and attachment-caption submit; each caller retains its existing
+readiness, context and formatting guards. No window-wide default-send shortcut
+is installed.
+
+Return and keypad Enter use physical key codes. In Enter mode, device-independent
+flags must be empty, Caps Lock alone or numericPad alone. In Command-Enter mode,
+Command may be combined with other modifiers, matching the inspected reference.
+Marked text never invokes the submit callback; the native text system handles
+composition. Rejected Command/Shift Return inserts a newline in submit-enabled
+editors. Other rejected events and editors without a submit callback keep native
+text behavior. Modifier/fallback/persistence regressions do not establish actual
+IME input-source or server-send acceptance.
+
+Native synthetic acceptance additionally verified both Settings choices, their
+application to an already open editor and persistence after process stop/relaunch.
+Command-Enter submits reply/edit/caption; main Return and keypad Enter submit a
+reply in Enter mode. Rejected Command/Shift Return creates a newline, which native
+undo removes. The new draft survives the shared Mail → Telegram switch. The QA
+bundle's unsigned executable matches the built app and passes strict signatures;
+only explicitly isolated Postbox/PostgreSQL/S3 and synthetic actions were used.
+
+### Forward and delete
+
 Forward requires explicit selection among loaded dialogs in the same account;
 the confirmation shows the recipient. Deletion requires choosing local-only or
 everyone, where available, and explicitly says previously retained versions and

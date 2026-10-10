@@ -67,8 +67,12 @@
    Ordinary/reply отправка передаёт native entities и проверяет text mentions
    по текущему Postbox; inline custom emoji требует отдельного media registry.
    Режим edit после restart сбрасывается и в референсе; его восстановление внутри
-   процесса, quote/forward state, серверные черновики, настройки клавиши отправки,
-   actual IME acceptance ещё впереди. Подготовка фото/файла сохраняет typed
+   процесса, quote/forward state и серверные черновики ещё впереди. Настройка
+   Enter / ⌘Enter подключена к ordinary/reply, edit и caption через guarded submit;
+   modifier/persistence tests и full gates пройдены. В synthetic общем окне
+   проверены оба варианта, Return/keypad Enter reply, ⌘Enter edit/caption,
+   newline/undo, настройка после restart и смена при открытом редакторе.
+   Actual IME/server acceptance ещё впереди. Подготовка фото/файла сохраняет typed
    подпись и выделение, очередь передаёт native entities и проверяет упоминания;
    точный revision ACK защищает новый ввод. Modal preview показывает документ
    или нормализованное фото, переносит полный input/selection и временно скрывает

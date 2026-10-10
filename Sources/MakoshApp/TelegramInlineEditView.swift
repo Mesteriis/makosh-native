@@ -47,7 +47,8 @@ struct TelegramInlineEditView: View {
             TelegramInputAccessoryView(title: "Изменить сообщение",detail: request.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(request.source),symbol: "pencil",onClose: close)
             HStack(alignment: .bottom,spacing: 12) {
                 if let value = draft {
-                    TelegramRichTextEditor(value: Binding(get: { draft ?? value },set: { draft = $0 }),error: $editorError)
+                    TelegramRichTextEditor(value: Binding(get: { draft ?? value },set: { draft = $0 }),error: $editorError,
+                        submit: submit)
                         .disabled(controller.isBusy)
                 } else { Text("Форматирование недоступно для безопасной правки.").font(.caption).foregroundStyle(.red) }
                 Button(action: submit) { Image(systemName: "checkmark.circle.fill").font(.title2) }

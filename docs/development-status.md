@@ -1,6 +1,44 @@
 # Development status — 2026-10-11
 
-## Current stage: atomic queue receipt for pending attachments
+## Current stage: Telegram send-key preference
+
+The next reference slice adds the application-wide Enter / Command-Enter choice
+to native Settings and the shared rich editor. Ordinary/reply, inline edit and
+attachment captions explicitly use their existing guarded submit actions. Both
+physical Return keys follow the reference modifier policy; marked text stays
+with the native text system. Unmatched Command/Shift Return inserts a newline.
+The default remains Enter, and unknown stored values fall back without rewriting
+the stored preference. No account or server setting is involved.
+
+`scripts/dev-db.sh up`, focused `scripts/test.sh --filter TelegramSendKeyTests`,
+full `scripts/test.sh`, `scripts/build-app.sh` and strict deep signature verification
+exit 0. **425 XCTest (362 Telegram + 63 core), zero failures; 26 Python regressions**.
+Three new tests cover all 256 independent modifier combinations on both Return
+keys, marked-text refusal and isolated preference persistence. The full run
+prints 46 upstream SQL t19 teardown diagnostics without a test failure/trap.
+
+Actual native AX/screenshots verified both settings choices, Command-Enter reply,
+edit and caption submit, Return/keypad Enter reply submit, rejected Command/Shift
+Return newlines and native newline undo. The selection survives process stop/
+relaunch, updates an already open editor, and retains the new draft across the
+shared Mail → Telegram switch. QA used the same explicitly owned synthetic
+Postbox, isolated PostgreSQL/S3 and a bundle with matching unsigned executable
+payload/strict signatures. These are synthetic actions, without personal account,
+Keychain, Telegram network or server send. Actual IME input-source acceptance
+remains open; the policy test only proves its marked-text guard.
+
+Root verified two worker implementation/test hashes and seven independent review
+hashes. No confirmed scoped findings remained; worker runtime gates were SKIP,
+observed model/provider/usage unknown. Source-confirmed XERJ queries and final
+freshness checks are recorded privately. The preceding atomic-receipt commit
+f47717a passed both hosted PR/push CI runs; this slice's hosted CI is separate.
+Final project refresh exits 0: 246 files, 216/216 classified code; the current
+policy/editor queries are source-confirmed. Project/reference/engine freshness
+checks exit 0. Publication audit checked 251 publishable files and the private
+PR body against five selected local credential fields, with zero matches.
+Other Telegram parity and later channels remain open in [migration-plan.md](migration-plan.md).
+
+## Historical atomic queue receipt — 2026-10-11
 
 Telegram remains inside the shared native service-selector/list/conversation
 window. New file/photo submissions pass their exact preparation UUID to the

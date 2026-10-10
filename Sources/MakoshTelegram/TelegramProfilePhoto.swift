@@ -20,6 +20,7 @@ enum TelegramProfilePhotoImageEvent: Sendable {
 }
 @MainActor protocol TelegramProfilePhotoSession: AnyObject {
     func image(photoID: String, receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) -> any TelegramAvatarLease
+    func thumbnail(photoID: String, receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) -> any TelegramAvatarLease
     func cancel()
 }
 
@@ -27,6 +28,8 @@ struct TelegramNativeProfilePhoto {
     let value: TelegramProfilePhoto
     let resource: MediaResource
     let reference: MediaResourceReference?
+    let thumbnailResource: MediaResource
+    let thumbnailReference: MediaResourceReference?
 }
 
 func telegramProfilePhotos(peer: Peer, cachedData: CachedPeerData?, photos: [TelegramPeerPhoto]) -> [TelegramNativeProfilePhoto] {
@@ -66,8 +69,13 @@ func telegramProfilePhotos(peer: Peer, cachedData: CachedPeerData?, photos: [Tel
             reference = usesCurrentAvatar ? .avatar(peer: peerReference, resource: representation.resource)
                 : AnyMediaReference.avatarList(peer: peerReference, media: photo.image).resourceReference(representation.resource)
         } else { reference = nil }
+        let thumb = smallestImageRepresentation(photo.image.representations.filter { !($0.resource is EmptyMediaResource) })?.resource ?? representation.resource
+        let thumbReference: MediaResourceReference? = PeerReference(peer).map {
+            usesCurrentAvatar ? .avatar(peer: $0, resource: thumb)
+                : AnyMediaReference.avatarList(peer: $0, media: photo.image).resourceReference(thumb)
+        }
         return TelegramNativeProfilePhoto(value: TelegramProfilePhoto(id: id, date: photo.date,
             totalCount: max(0, photo.totalCount), hasVideo: !photo.image.videoRepresentations.isEmpty || photo.image.representations.contains(where: { $0.hasVideo })),
-            resource: representation.resource, reference: reference)
+            resource: representation.resource, reference: reference, thumbnailResource: thumb, thumbnailReference: thumbReference)
     }
 }

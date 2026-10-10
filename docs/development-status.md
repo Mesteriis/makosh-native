@@ -1583,3 +1583,74 @@ The preceding avatar/status head `3eb5b6e3ea51ce1050cd6d083a5932c5fbfc35c0`
 passed [PR CI 38079890192](https://github.com/Mesteriis/makosh-native/actions/runs/38079890192)
 and [push CI 38079886120](https://github.com/Mesteriis/makosh-native/actions/runs/38079886120).
 These results do not establish hosted CI for this gallery change.
+
+## Screen-sized profile gallery, thumbnails and original export — 2026-10-10
+
+The shared workspace's peer-card avatar now opens a separate borderless gallery
+on the parent screen. A finite hosting-root frame preserves the screen size;
+the SwiftUI request and a narrow AppKit coordinator own window/session cleanup
+and focus restoration. Reference controls include a 95-point footer, real lazy
+thumbnails, 0.25–8 zoom with 0.5 steps, bounded pan, rotation and original-file
+Save. Keyboard arrows, minus/equal, Cmd-R/Cmd-S, Escape/Space and Cmd-W are scoped
+to the gallery. Apple SDK virtual-key constants preserve them with Cyrillic input;
+the native Save panel keeps its own keyboard handling.
+
+Small native representations have independent leases, a 32-job cap and bounded
+decoding. Save detects the original representation's format and verifies its
+SHA256 during the atomic streaming copy. A same-size mutated cache is rejected
+before destination replacement. Navigation/transforms are blocked while saving;
+close cancels owned work. Cancellation after committed rename cannot undo export.
+These photos remain transient MediaBox data, separate from encrypted S3 message
+attachment retention. Profile share is absent consistently with reference nil
+chatMode. No reference code/assets or new third-party dependencies were copied.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; PostgreSQL/S3 available.
+- `scripts/test.sh`: exit 0, **348 XCTest (285 Telegram + 63 core), zero failures;
+  24 Python regressions**. Four new regressions cover independent thumbnail/full
+  leases, exact original bytes/format, stale/rebound/released callbacks,
+  metadata replacement/invalidation, and same-size cache mutation preserving the
+  existing destination and cleaning temporary files. Twenty upstream t19 teardown
+  diagnostics remain separately visible after Telegram tests pass.
+- Final `scripts/build-app.sh` and strict ad-hoc signature verification: exit 0.
+  Full tests preceded the final UI-only fixes; those fixes were verified by the
+  final build and native scenarios. Native QA first found a 510×266 fitting-size
+  window. A finite root frame plus reapplying the screen frame fixed it. Standalone
+  SwiftUI shortcuts then failed; explicit window routing and physical virtual keys
+  fixed actual Russian-layout key delivery. Temporary synthetic diagnostics were
+  removed. A modal-window hypothesis was disproved and its change removed.
+- Final native AX/screenshots verified **33 focused conditions**: common selector;
+  profile/dossier entry; initial title/date/position/partial count/boundary;
+  keyboard zoom/rotation and zoom-out; both zoom limits; thumbnail selection with
+  reset/video label; corrupt image with disabled actions; retry; keyboard-back;
+  actual fullscreen composition/proportions/thumbnail pixels; mouse-back/boundary;
+  visible drag pan; Cmd-S; Save cancel preserving the gallery; original Save after
+  transform; Escape; reopen reset; Cmd-W; Space; mouse-close/conversation return;
+  empty state/retry/group return; exact draft input; honest disconnected mail;
+  retained chat/draft on return; draft cleanup; reopen after switching; mouse
+  zoom/rotation. Exported PNG is **900×640, 11,897 bytes, mode 0600**, despite a
+  90-degree/200-percent preview. Payload hashes of the copied and built app match;
+  the explicit isolated PostgreSQL configuration and synthetic process flags were
+  verified. No personal account, Keychain, Telegram network or send was used.
+- Root reviewed the complete source/test change and verified **9 current
+  worker-reviewed hashes**, including the final window/keyboard fixes. Worker
+  runtime gates were not run; observed provider/model and usage remain unknown,
+  with no quorum. Root owns integration results; private evidence stays ignored.
+- Final project XERJ refresh/check: exit 0, **211 files, 181/181 code**. Engine
+  and TelegramSwift fingerprint checks passed. The final actual query retrieved
+  the window's command handler/ownership, confirmed against current source.
+  `git diff --check` passed. Publication audit checked **216 publishable files**
+  and the private PR body against five selected local credential fields, with
+  zero matches. Hosted CI is recorded separately for the published head.
+
+Pinch, multiple displays/display changes, native pending-fetch deadlines and real
+account/server delivery remain unverified. Avatar transitions, precise theme/
+hover/thumbnail animations, additional F mode, public fallback/stories/video,
+first-page photo pagination, archive/key backup, other Telegram workflows and
+later channels remain open. The full sequential migration goal remains active.
+
+The preceding static-gallery head `83796c729eb6406374eddaf062b44231ad45ad81`
+passed [PR CI 38080923160](https://github.com/Mesteriis/makosh-native/actions/runs/38080923160)
+and [push CI 38080920058](https://github.com/Mesteriis/makosh-native/actions/runs/38080920058).
+These results do not establish hosted CI for this fullscreen-gallery change.

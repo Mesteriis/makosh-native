@@ -9,8 +9,7 @@ struct TelegramContactProfileView: View {
     let dossier: WorkspaceModel?
     let contextID: UUID
     let openDossier: (UUID) -> Void
-    private struct PhotoGallery: Identifiable { let id = UUID(); let title: String }
-    @State private var photoGallery: PhotoGallery?
+    @State private var photoGallery: TelegramProfilePhotosPresentation?
 
     init(model: TelegramModel, dossier: WorkspaceModel?, contextID: UUID, openDossier: @escaping (UUID) -> Void) {
         self.model = model; self.peerStatus = model.peerStatus
@@ -42,12 +41,17 @@ struct TelegramContactProfileView: View {
                         VStack(spacing: 10) {
                             Button {
                                 if model.openProfilePhotos(profile, contextID: contextID) {
-                                    photoGallery = PhotoGallery(title: profile.displayName)
+                                    photoGallery = TelegramProfilePhotosPresentation(title: profile.displayName)
                                 }
                             } label: {
                                 TelegramChatAvatar(title: profile.displayName, peerID: profile.peerID, store: model.avatars, size: 72)
                             }.buttonStyle(.plain).help("Открыть фотографии профиля")
                                 .accessibilityLabel("Фотографии профиля").accessibilityIdentifier("telegram.profile.photos")
+                                .background {
+                                    TelegramProfilePhotosPresenter(presentation: photoGallery, gallery: model.profilePhotos) { id in
+                                        if photoGallery?.id == id { photoGallery = nil }
+                                    }
+                                }
                             Text(profile.displayName.isEmpty ? "Имя не опубликовано" : profile.displayName)
                                 .font(.title2.weight(.semibold)).textSelection(.enabled)
                             Text(profile.kind.profileTitle).foregroundStyle(.secondary)
@@ -102,9 +106,6 @@ struct TelegramContactProfileView: View {
                 }.formStyle(.grouped)
             }
         }.frame(width: 480, height: 620)
-            .sheet(item: $photoGallery, onDismiss: model.profilePhotos.close) { request in
-                TelegramProfilePhotosView(gallery: model.profilePhotos, title: request.title)
-            }
             .onChange(of: model.selectedChatID) { _, _ in photoGallery = nil }
             .onChange(of: model.contactProfileContextID) { _, _ in photoGallery = nil }
     }

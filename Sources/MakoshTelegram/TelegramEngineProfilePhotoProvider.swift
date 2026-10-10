@@ -27,19 +27,21 @@ private final class ProfilePhotoBackend {
             }
         }
     }
-    func image(_ id: String) -> Signal<TelegramProfilePhotoImageEvent, NoError> {
+    func image(_ id: String, thumbnail: Bool = false) -> Signal<TelegramProfilePhotoImageEvent, NoError> {
         Signal { [self] subscriber in
             guard let source = sources.with({ $0[id] }) else { subscriber.putNext(.failed); return EmptyDisposable }
+            let resource = thumbnail ? source.thumbnailResource : source.resource
+            let reference = thumbnail ? source.thumbnailReference : source.reference
             let keep = MetaDisposable(), data = MetaDisposable(), fetch = MetaDisposable()
             let ended = Atomic(value: false)
-            keep.set(account.postbox.mediaBox.keepResource(id: source.resource.id).start())
-            data.set(account.postbox.mediaBox.resourceData(source.resource, pathExtension: nil,
+            keep.set(account.postbox.mediaBox.keepResource(id: resource.id).start())
+            data.set(account.postbox.mediaBox.resourceData(resource, pathExtension: nil,
                 option: .complete(waitUntilFetchStatus: false)).start(next: { value in
                 guard value.complete, value.offset == 0, value.size > 0, !ended.swap(true) else { return }
                 data.dispose(); fetch.dispose()
                 subscriber.putNext(.data(url: URL(fileURLWithPath: value.path), size: value.size))
             }))
-            if !ended.with({ $0 }), let reference = source.reference {
+            if !ended.with({ $0 }), let reference = reference {
                 fetch.set(fetchedMediaResource(mediaBox: account.postbox.mediaBox,
                     userLocation: .peer(peerID), userContentType: .avatar, reference: reference,
                     continueInBackground: false).start(error: { _ in
@@ -72,6 +74,7 @@ private final class ProfilePhotoBackend {
     let backend: ProfilePhotoBackend
     let load = MetaDisposable()
     private var currentLease: EngineProfilePhotoLease?
+    private var thumbnails: [UUID: EngineProfilePhotoLease] = [:]
     private var cancelled = false
     init(backend: ProfilePhotoBackend) { self.backend = backend }
     func image(photoID: String, receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) -> any TelegramAvatarLease {
@@ -83,11 +86,22 @@ private final class ProfilePhotoBackend {
         }))
         return lease
     }
-    func cancel() { cancelled = true; load.dispose(); currentLease?.cancel(); currentLease = nil }
+    func thumbnail(photoID: String, receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) -> any TelegramAvatarLease {
+        let lease = EngineProfilePhotoLease(), token = UUID()
+        guard !cancelled, thumbnails.count < 32 else { receive(.failed); return lease }
+        thumbnails[token] = lease
+        lease.onCancel = { [weak self] in self?.thumbnails.removeValue(forKey: token) }
+        lease.subscription.set((backend.image(photoID, thumbnail: true) |> deliverOnMainQueue).start(next: { event in
+            MainActor.assumeIsolated { receive(event) }
+        }))
+        return lease
+    }
+    func cancel() { cancelled = true; load.dispose(); currentLease?.cancel(); currentLease = nil; let old = thumbnails; thumbnails.removeAll(); for lease in old.values { lease.cancel() } }
     isolated deinit { cancel() }
 }
 @MainActor private final class EngineProfilePhotoLease: TelegramAvatarLease {
     let subscription = MetaDisposable()
-    func cancel() { subscription.dispose() }
+    var onCancel: (() -> Void)?
+    func cancel() { subscription.dispose(); let callback = onCancel; onCancel = nil; callback?() }
     isolated deinit { subscription.dispose() }
 }

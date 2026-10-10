@@ -491,7 +491,7 @@ and the engine can refresh the peer data. The timestamp describes a local cache
 observation, not an acknowledged server fetch. No contact-list scan or system
 Contacts access is performed. Groups, channels and bots cannot be linked to a
 person dossier; a person without a name can be viewed but not linked yet.
-Secret-chat profiles, fullscreen gallery controls/video avatars, member lists,
+Secret-chat profiles, animated video avatars, member lists,
 administration and other reference profile actions remain open. The static
 profile-photo gallery below is available from the card's avatar.
 
@@ -579,7 +579,8 @@ and 13 the previous calendar day. Dialog 12 follows the calendar and can show
 yesterday near midnight. Gallery fixtures provide three photos with a reported
 total of five; the second marks a static video-avatar frame and the third fails
 decoding on its first attempt, then recovers on retry. Dialog 2 has an empty
-gallery. Generated photos are temporary private fixture files; no personal
+gallery. The strip uses actual generated thumbnail pixels and independent leases.
+Generated photos are temporary private fixture files; no personal
 account, Keychain or Telegram network is opened. Animated avatars and list
 online badges remain open.
 
@@ -595,8 +596,24 @@ the adapter does not invent pagination. A total larger than the available list
 is displayed explicitly. Empty results can also represent a caught RPC failure,
 so the UI offers retry without claiming that the peer has no photos.
 
-The gallery shows the peer name, a static image, available date, position and
-previous/next controls, with left/right arrow keys and Escape. Video avatars are
+The gallery uses a borderless window sized to the parent screen, with a black
+0.9 background, safe top inset and 95-point footer. SwiftUI owns presentation
+requests and gallery state; a narrow AppKit coordinator owns only the child
+window, dismissal and focus restoration. Parent close, idle/context changes and
+request replacement dismiss the owned window and cancel its work. A finite
+hosting-root frame prevents intrinsic content size from shrinking the window.
+The peer name, static image, available date, position and previous/next controls
+remain visible. A lazy 400×80 strip displays independently fetched native small
+representations; selection resets zoom, rotation and pan. At most 32 thumbnail
+leases/decodes are active, each with a 30-second deadline, 2 MiB/4096-per-dimension/
+16 MP admission and a 128-pixel decoded preview. Late/released/context-stale
+events cannot restore old thumbnails. These limits do not cap network bytes.
+
+Zoom is clamped to 0.25–8, with 0.5 steps, pinch and bounded drag pan. Arrow keys,
+minus/equal, Cmd-R rotation, Cmd-S Save, Escape/Space and Cmd-W are scoped to the
+key gallery window. Apple SDK virtual-key constants preserve commands across
+input layouts; an attached native Save panel receives its own keyboard events.
+Video avatars are
 labelled as static frames. List and selected-image loads have 30-second deadlines
 and separate retries. One selected resource lease keeps its cache file available
 through decoding/display; switching, closing, changing the peer or rebinding
@@ -609,9 +626,18 @@ The existing generic image admission accepts at most 20 MiB, 8192 pixels per
 dimension and 40 million pixels, with a 1280-pixel thumbnail. These are decoder
 limits, not a native network-byte cap. Gallery images remain transient MediaBox
 cache, separate from encrypted S3 retention of received message attachments;
-PostgreSQL does not receive photo bytes. Fullscreen/transition, thumbnail strip,
-zoom/rotation/save/share, extra public fallback images, stories and animated
-video playback remain open. Real account/network fetch, pagination beyond the
+PostgreSQL does not receive photo bytes. Save exports the original downloaded
+representation, not the transformed/resized preview. ImageIO determines its
+extension; SHA256 of the decoded source is checked during the streaming atomic
+copy, so same-size cache mutation cannot silently export different bytes.
+The existing regular-file/no-symlink/private-temp/cancellation guards apply.
+Navigation/transforms are blocked while choosing/copying; closing cancels owned
+panel/copy work. Cancellation after the atomic rename cannot undo a committed
+export. Profile sharing is omitted consistently with reference nil chatMode.
+Avatar transition, exact theme/hover/thumbnail animations, the additional F
+mode, extra public fallback images, stories and animated video playback remain
+open. Pinch, display reconfiguration and native pending-fetch deadlines have not
+received runtime acceptance. Real account/network fetch, pagination beyond the
 native first page and native pending-fetch timeout acceptance are unverified.
 
 ## Offline navigation UI check

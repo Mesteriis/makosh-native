@@ -86,11 +86,19 @@ presence явно обозначено. `PresenceStrings.swift:104–137` так
 текущего аватара. `MGalleryPeerPhotoItem.swift:27,58,117` подтверждает representation
 1280 и avatar-list reference для исторического фото. Собственная SwiftUI-галерея
 показывает статический кадр, имя, доступную дату, позицию и неполный total count;
-стрелки мышью/клавиатурой и Escape следуют `GalleryViewer.swift:411–412`.
+стрелки мышью/клавиатурой следуют `GalleryViewer.swift:411–412`.
 Отдельные list/image retry не выдают ошибку RPC за доказанное отсутствие фото.
-Внешний GPLv2 UI/decoder не копируется. Сейчас это sheet внутри карточки:
-полноэкранное окно/переход из `GalleryViewer.swift:268–284`, полоса миниатюр,
-zoom/rotation/save/share, дополнительные public fallback фото, stories,
+Галерея теперь открывает отдельное borderless окно размером с экран родителя:
+`GalleryViewer.swift:268–284` подтверждает уровень popup, чёрный фон 0.9 и footer
+95 pt. `GalleryThumbsControl` задаёт полосу 400×80; Макош показывает реальные
+ленивые миниатюры с отдельными native leases. `MGalleryItem.swift:534–542` и
+`MagnifyView.swift:93–100` задают масштаб 0.25–8 с шагом 0.5. Добавлены drag/pinch,
+поворот Cmd-R, Save As Cmd-S исходного скачанного representation, Escape/Space
+и Cmd-W; команды окна работают также при русской раскладке. Файл сохраняется
+независимо от трансформаций предпросмотра. `GalleryViewer.canShare` отключает
+share при nil chatMode; для profile gallery такой кнопки тоже нет.
+Внешний GPLv2 UI/decoder не копируется. Переход из аватара, точная тема/hover
+и анимации миниатюр, дополнительный режим F, public fallback фото, stories,
 видеовоспроизведение и online badges в списке ещё не перенесены. Native API
 возвращает первую ограниченную страницу; полная история фотографий не заявлена.
 

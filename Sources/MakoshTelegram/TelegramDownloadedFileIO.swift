@@ -1,4 +1,6 @@
 import Foundation
+import UniformTypeIdentifiers
+import CryptoKit
 import Darwin
 import ImageIO
 import CoreGraphics
@@ -18,13 +20,18 @@ public enum TelegramFileError: LocalizedError, Equatable {
 /// CGImage is immutable; this value crosses from the bounded decoder worker to UI.
 public struct TelegramImagePreview: @unchecked Sendable {
     public let image: CGImage
+    public let originalSHA256: String?
+    public let originalExtension: String?
+    public init(image: CGImage, originalExtension: String? = nil, originalSHA256: String? = nil) {
+        self.image = image; self.originalExtension = originalExtension; self.originalSHA256 = originalSHA256
+    }
 }
 
 public enum TelegramDownloadedFileIO {
-    public static func copy(source: URL, expectedSize: Int64, destination: URL) async throws {
+    public static func copy(source: URL, expectedSize: Int64, destination: URL, expectedSHA256: String? = nil) async throws {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
-            try copyFile(source: source, expectedSize: expectedSize, destination: destination)
+            try copyFile(source: source, expectedSize: expectedSize, destination: destination, expectedSHA256: expectedSHA256)
         }
         try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
@@ -65,7 +72,9 @@ public enum TelegramDownloadedFileIO {
                 kCGImageSourceShouldCacheImmediately: true]
             guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { throw TelegramFileError.invalidImage }
             try Task.checkCancellation()
-            return TelegramImagePreview(image: image)
+            let originalExtension = CGImageSourceGetType(source).flatMap { UTType($0 as String)?.preferredFilenameExtension }
+            return TelegramImagePreview(image: image, originalExtension: originalExtension,
+                originalSHA256: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
         }
         return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
@@ -83,7 +92,7 @@ public enum TelegramDownloadedFileIO {
         return fd
     }
 
-    private static func copyFile(source: URL, expectedSize: Int64, destination: URL) throws {
+    private static func copyFile(source: URL, expectedSize: Int64, destination: URL, expectedSHA256: String?) throws {
         let input = try openSource(source, expectedSize: expectedSize)
         defer { Darwin.close(input) }
         guard destination.isFileURL, !destination.path.utf8.contains(0) else { throw TelegramFileError.copyFailed }
@@ -98,6 +107,7 @@ public enum TelegramDownloadedFileIO {
         defer { Darwin.close(output); unlinkat(parent, temporary, 0) }
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: 1_024 * 1_024, alignment: 16)
         defer { buffer.deallocate() }
+        var digest = SHA256()
         var copied: Int64 = 0
         while true {
             try Task.checkCancellation()
@@ -105,6 +115,7 @@ public enum TelegramDownloadedFileIO {
             if count < 0 && errno == EINTR { continue }
             guard count >= 0 else { throw TelegramFileError.copyFailed }
             if count == 0 { break }
+            if expectedSHA256 != nil { digest.update(data: Data(bytes: buffer, count: count)) }
             copied += Int64(count)
             guard copied <= expectedSize else { throw TelegramFileError.unavailable }
             var written = 0
@@ -115,6 +126,9 @@ public enum TelegramDownloadedFileIO {
                 guard size > 0 else { throw TelegramFileError.copyFailed }
                 written += size
             }
+        }
+        if let expectedSHA256 {
+            guard digest.finalize().map({ String(format: "%02x", $0) }).joined() == expectedSHA256 else { throw TelegramFileError.unavailable }
         }
         guard copied == expectedSize else { throw TelegramFileError.unavailable }
         try Task.checkCancellation()

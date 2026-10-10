@@ -19,20 +19,34 @@ import ImageIO
     let photos: [TelegramProfilePhoto]
     private var attempts: [String: Int] = [:]
     private var current: SyntheticProfilePhotoLease?
+    private var thumbnails: [UUID: SyntheticProfilePhotoLease] = [:]
     private var cancelled = false
     init(photos: [TelegramProfilePhoto]) { self.photos = photos }
     func image(photoID: String, receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) -> any TelegramAvatarLease {
         current?.cancel()
         let lease = SyntheticProfilePhotoLease(); current = lease
-        guard !cancelled, let index = photos.firstIndex(where: { $0.id == photoID }) else { receive(.failed); return lease }
-        attempts[photoID, default: 0] += 1
+        produce(photoID: photoID, thumbnail: false, lease: lease, receive: receive)
+        return lease
+    }
+    func thumbnail(photoID: String, receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) -> any TelegramAvatarLease {
+        let lease = SyntheticProfilePhotoLease(), token = UUID()
+        guard !cancelled, thumbnails.count < 32 else { receive(.failed); return lease }
+        thumbnails[token] = lease
+        lease.onCancel = { [weak self] in self?.thumbnails.removeValue(forKey: token) }
+        produce(photoID: photoID, thumbnail: true, lease: lease, receive: receive)
+        return lease
+    }
+    private func produce(photoID: String, thumbnail: Bool, lease: SyntheticProfilePhotoLease,
+                         receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) {
+        guard !cancelled, let index = photos.firstIndex(where: { $0.id == photoID }) else { receive(.failed); return }
+        if !thumbnail { attempts[photoID, default: 0] += 1 }
         do {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-synthetic-profile-photo-" + UUID().uuidString)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
                 attributes: [.posixPermissions: 0o700])
             lease.directory = directory
             let url = directory.appendingPathComponent("fixture")
-            if index == 2, attempts[photoID] == 1 { try Data("corrupt gallery fixture".utf8).write(to: url) }
+            if !thumbnail, index == 2, attempts[photoID] == 1 { try Data("corrupt gallery fixture".utf8).write(to: url) }
             else {
                 guard let context = CGContext(data: nil, width: 900, height: 640, bitsPerComponent: 8,
                     bytesPerRow: 3_600, space: CGColorSpaceCreateDeviceRGB(),
@@ -51,15 +65,16 @@ import ImageIO
             let count = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             receive(.data(url: url, size: Int64(count)))
         } catch { receive(.failed) }
-        return lease
     }
-    func cancel() { cancelled = true; current?.cancel(); current = nil }
+    func cancel() { cancelled = true; current?.cancel(); current = nil; let old = thumbnails; thumbnails.removeAll(); for lease in old.values { lease.cancel() } }
     isolated deinit { cancel() }
 }
 
 @MainActor private final class SyntheticProfilePhotoLease: TelegramAvatarLease {
     var directory: URL?
+    var onCancel: (() -> Void)?
     func cancel() {
+        let callback = onCancel; onCancel = nil; callback?()
         if let directory { try? FileManager.default.removeItem(at: directory); self.directory = nil }
     }
     isolated deinit { cancel() }

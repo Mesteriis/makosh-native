@@ -18,7 +18,12 @@ import ImageIO
             imageIDs.append(photoID); callbacks.append(receive)
             let lease = Lease(); leases.append(lease); return lease
         }
-        func cancel() { cancelled = true; for lease in leases { lease.cancel() } }
+        var thumbnailCallbacks: [String: @MainActor (TelegramProfilePhotoImageEvent) -> Void] = [:]
+        var thumbnailLeases: [String: Lease] = [:]
+        func thumbnail(photoID: String, receive: @escaping @MainActor (TelegramProfilePhotoImageEvent) -> Void) -> any TelegramAvatarLease {
+            let lease = Lease(); thumbnailCallbacks[photoID] = receive; thumbnailLeases[photoID] = lease; return lease
+        }
+        func cancel() { cancelled = true; for lease in leases { lease.cancel() }; for lease in thumbnailLeases.values { lease.cancel() } }
     }
     private final class Provider: TelegramProfilePhotoProvider {
         var callbacks: [@MainActor ([TelegramProfilePhoto]) -> Void] = []
@@ -131,4 +136,82 @@ import ImageIO
         XCTAssertEqual(model.profilePhotos.state, .idle)
         XCTAssertFalse(model.openProfilePhotos(profile, contextID: model.contactProfileContextID))
     }
+    func testThumbnailsIndependentSelectionAndExactOriginalSave() async throws {
+        let controller = TelegramProfilePhotosController(), provider = Provider()
+        provider.synchronous = photos(); controller.bind(provider); controller.open(peerID: 42)
+        let session = provider.sessions[0], file = try png(width: 90)
+        controller.requestThumbnail(photoID: "second")
+        XCTAssertFalse(session.leases[0].cancelled)
+        let thumbnail = expectation(description: "Independent thumbnail")
+        let sink = controller.$thumbnails.sink { if $0["second"] != nil { thumbnail.fulfill() } }
+        session.thumbnailCallbacks["second"]?(.data(url: file.0, size: file.1))
+        await fulfillment(of: [thumbnail], timeout: 5); sink.cancel()
+        await waitForImage(controller, width: 90) { session.callbacks[0](.data(url: file.0, size: file.1)) }
+        XCTAssertEqual(controller.suggestedFileName, "photo.png")
+        let destination = file.0.deletingLastPathComponent().appendingPathComponent("saved.png")
+        try await controller.save(to: destination)
+        XCTAssertEqual(try Data(contentsOf: destination), try Data(contentsOf: file.0))
+        controller.releaseThumbnail(photoID: "second")
+        XCTAssertTrue(session.thumbnailLeases["second"]!.cancelled)
+        XCTAssertNil(controller.thumbnails["second"])
+        controller.select(photoID: "second"); XCTAssertEqual(controller.selectedPhoto?.id, "second")
+        controller.close()
+        session.thumbnailCallbacks["second"]?(.data(url: file.0, size: file.1))
+        XCTAssertTrue(controller.thumbnails.isEmpty); XCTAssertNil(controller.image)
+    }
+
+    func testReleasedAndReboundThumbnailsRejectLateEvents() async throws {
+        let controller = TelegramProfilePhotosController(), provider = Provider()
+        provider.synchronous = photos(); controller.bind(provider); controller.open(peerID: 42)
+        let session = provider.sessions[0], file = try png()
+        controller.requestThumbnail(photoID: "second")
+        let stale = try XCTUnwrap(session.thumbnailCallbacks["second"])
+        controller.releaseThumbnail(photoID: "second")
+        stale(.data(url: file.0, size: file.1))
+        controller.requestThumbnail(photoID: "second")
+        controller.bind(Provider())
+        session.thumbnailCallbacks["second"]?(.data(url: file.0, size: file.1))
+        await Task.yield()
+        XCTAssertTrue(controller.thumbnails.isEmpty)
+        XCTAssertTrue(session.cancelled)
+    }
+    func testSaveRejectsSameSizeCacheMutationAndPreservesDestination() async throws {
+        let controller = TelegramProfilePhotosController(), provider = Provider()
+        provider.synchronous = photos(); controller.bind(provider); controller.open(peerID: 42)
+        let file = try png(), session = provider.sessions[0]
+        await waitForImage(controller, width: 40) { session.callbacks[0](.data(url: file.0, size: file.1)) }
+        let destination = file.0.deletingLastPathComponent().appendingPathComponent("existing")
+        let sentinel = Data("existing destination".utf8); try sentinel.write(to: destination)
+        var changed = try Data(contentsOf: file.0); changed[changed.count - 1] ^= 1
+        try changed.write(to: file.0)
+        do { try await controller.save(to: destination); XCTFail("Changed cache must not export") } catch { }
+        XCTAssertEqual(try Data(contentsOf: destination), sentinel)
+        XCTAssertFalse(controller.isSaving)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: destination.deletingLastPathComponent().path)
+            .contains(where: { $0.hasPrefix(".makosh-export-") }))
+    }
+
+    func testListReplacementAndInvalidationClearReadyThumbnailsAndLeases() async throws {
+        for invalid in [false, true] {
+            let controller = TelegramProfilePhotosController(), provider = Provider()
+            provider.synchronous = photos(); controller.bind(provider); controller.open(peerID: 42)
+            let session = provider.sessions[0], file = try png()
+            controller.requestThumbnail(photoID: "second")
+            let ready = expectation(description: "Thumbnail ready before list changes")
+            let sink = controller.$thumbnails.sink { if $0["second"] != nil { ready.fulfill() } }
+            session.thumbnailCallbacks["second"]?(.data(url: file.0, size: file.1))
+            await fulfillment(of: [ready], timeout: 5); sink.cancel()
+            // A delayed error cannot discard an already decoded thumbnail.
+            session.thumbnailCallbacks["second"]?(.failed)
+            XCTAssertNotNil(controller.thumbnails["second"])
+            let oldLease = try XCTUnwrap(session.thumbnailLeases["second"])
+            provider.callbacks[0](invalid ? [] : [TelegramProfilePhoto(id: "replacement", date: 0, totalCount: 1, hasVideo: false)])
+            XCTAssertTrue(oldLease.cancelled); XCTAssertTrue(controller.thumbnails.isEmpty)
+            XCTAssertEqual(controller.state, invalid ? .unavailable : .ready)
+            session.thumbnailCallbacks["second"]?(.data(url: file.0, size: file.1))
+            XCTAssertTrue(controller.thumbnails.isEmpty)
+            controller.close()
+        }
+    }
+
 }

@@ -11,6 +11,36 @@ public struct TelegramMessagePresentationKey: Equatable, Sendable {
 
 /// Reading-only presentation. No editor markers, fetches or URL activation.
 @MainActor public enum TelegramMessagePresentation {
+    /// The reference folds only quotes longer than three visual lines.
+    public static func quoteNeedsExpansion(_ value: TelegramFormattedText, width: CGFloat,
+                                          revealingSpoilers: Bool = false) -> Bool {
+        guard width.isFinite, width > 0 else { return false }
+        let storage = NSTextStorage(attributedString: attributedString(value, revealingSpoilers: revealingSpoilers))
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout); layout.addTextContainer(container)
+        layout.ensureLayout(for: container)
+        var count = 0
+        layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(for: container)) { _, _, _, _, stop in
+            count += 1
+            if count > 3 { stop.pointee = true }
+        }
+        return count > 3
+    }
+
+    /// Language is an untrusted display hint, never an editor instruction.
+    public static func codeLanguage(_ raw: String?, in value: TelegramFormattedText,
+                                    revealingSpoilers: Bool = false) -> String? {
+        guard revealingSpoilers || !value.entities.contains(where: { if case .spoiler = $0.kind { true } else { false } }),
+              let raw, !raw.isEmpty,
+              !raw.unicodeScalars.contains(where: {
+                  CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) ||
+                      $0.properties.generalCategory == .format
+              }) else { return nil }
+        return raw.count > 15 ? String(raw.prefix(15)) + "…" : raw
+    }
+
     public static func plainText(_ value: TelegramFormattedText, revealingSpoilers: Bool = false) -> String {
         let hidden = revealingSpoilers ? [] : mergedSpoilers(value.entities)
         var units = Array(value.text.utf16)

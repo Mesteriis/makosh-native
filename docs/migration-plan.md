@@ -55,7 +55,11 @@
    темы, secret/paid возможности и live acceptance ещё открыты; затем связь с досье.
    UI сверяется с TelegramSwift: [карта переноса](reference-interface.md).
    Чтение исходных rich entities, спойлеры и подтверждение скрытых ссылок добавлены
-   в историю/поиск; quote/code chrome, custom emoji и pointer acceptance ещё открыты.
+   в историю/поиск; в истории добавлены блоки кода с заголовком/копированием и
+   цитаты со сворачиванием по правилам референса. Copy protection применяется
+   к reader/action preview. Syntax highlighting, непрерывное выделение между
+   блоками, архивные entities/capabilities, custom emoji и pointer acceptance
+   ещё открыты.
    Из заголовка открывается карточка человека по сценарию TelegramSwift;
    добавлена явная связь с новым/существующим PostgreSQL-досье с сохранением
    ручных полей и источников. Native create/link/restart проверены; переход

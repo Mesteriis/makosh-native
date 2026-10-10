@@ -86,4 +86,29 @@ import AppKit
         XCTAssertEqual(output.attribute(.foregroundColor,at: 0,effectiveRange: nil) as? NSColor,NSColor.labelColor)
         XCTAssertEqual(output.attribute(.foregroundColor,at: 5,effectiveRange: nil) as? NSColor,NSColor.secondaryLabelColor)
     }
+    func testQuoteFoldingUsesThreeVisualLinesAndAvailableWidth() throws {
+        let short = try TelegramFormattedText(text: "one\ntwo\nthree")
+        let long = try TelegramFormattedText(text: "one\ntwo\nthree\nfour")
+        XCTAssertFalse(TelegramMessagePresentation.quoteNeedsExpansion(short, width: 300))
+        XCTAssertTrue(TelegramMessagePresentation.quoteNeedsExpansion(long, width: 300))
+        let wrapped = try TelegramFormattedText(text: String(repeating: "word ", count: 30))
+        XCTAssertFalse(TelegramMessagePresentation.quoteNeedsExpansion(wrapped, width: 2000))
+        XCTAssertTrue(TelegramMessagePresentation.quoteNeedsExpansion(wrapped, width: 100))
+        for width: CGFloat in [0, -1, .infinity, .nan] {
+            XCTAssertFalse(TelegramMessagePresentation.quoteNeedsExpansion(long, width: width))
+        }
+    }
+    func testCodeLanguageIsBoundedAndCannotExposeHiddenMetadata() throws {
+        let plain = try TelegramFormattedText(text: "  code😀\n")
+        let hidden = try TelegramFormattedText(text: plain.text, entities: [.init(offset: 2, length: 4, kind: .spoiler)])
+        XCTAssertEqual(TelegramMessagePresentation.codeLanguage("c++", in: plain), "c++")
+        XCTAssertEqual(TelegramMessagePresentation.codeLanguage(String(repeating: "a", count: 30), in: plain), String(repeating: "a", count: 15) + "…")
+        for language in ["", "swift\nsecret", "x\u{202e}secret", " swift", "s\u{0}x"] {
+            XCTAssertNil(TelegramMessagePresentation.codeLanguage(language, in: plain))
+        }
+        XCTAssertNil(TelegramMessagePresentation.codeLanguage("swift", in: hidden))
+        XCTAssertEqual(TelegramMessagePresentation.codeLanguage("swift", in: hidden, revealingSpoilers: true), "swift")
+        XCTAssertEqual(TelegramMessagePresentation.plainText(hidden), "  ████😀\n")
+        XCTAssertEqual(Array(TelegramMessagePresentation.plainText(hidden, revealingSpoilers: true).utf8), Array(plain.text.utf8))
+    }
 }

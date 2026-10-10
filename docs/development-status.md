@@ -947,3 +947,73 @@ The preceding reading head `d9fb0fe6a97cd3505776e9617f3bfb331a4f356b`
 passed [PR CI 38069901169](https://github.com/Mesteriis/makosh-native/actions/runs/38069901169)
 and [push CI 38069899225](https://github.com/Mesteriis/makosh-native/actions/runs/38069899225).
 Those results do not establish hosted CI for the later dossier change.
+
+## Telegram reference code/quote blocks and copy controls — 2026-10-10
+
+History now follows the confirmed TelegramSwift language-header/code-copy and
+quote-folding scenarios using own SwiftUI/AppKit code. Collapsible quotes longer
+than three measured visual lines initially show two. Code copying preserves
+spaces, Unicode and newlines; spoilers remain masked until explicit reveal.
+Language hints are bounded, reject controls and remain hidden while a spoiler
+is concealed. Expansion/reveal use the exact message version and context.
+
+Lossless UTF16 block projection rebases nested styles. Ambiguous nested/equal
+structural entities and links crossing block boundaries retain the original
+rich-text fallback, preventing a sliced link from restoring a hidden target.
+Current reader/search/action-sheet selection and code copy use an independent
+copy capability mapped from message, channel and group protection. Unspecified
+permission defaults to unavailable; it is not inferred from forwarding.
+
+Actual evidence:
+
+- `scripts/dev-db.sh up`: exit 0. Focused checks: 14 XCTest tests, exit 0.
+  Final `scripts/test.sh`: exit 0, **267 XCTest (204 Telegram + 63 core),
+  0 failures**, and **22 Python regressions**. Eight added tests cover lossless
+  blocks, UTF16/emoji/style slicing, ambiguous entities, cross-block secret-link
+  fallback, measured quote thresholds, language hints and native copy flags.
+- The first full run failed six assertions because new synthetic fixtures
+  replaced text expected by existing search/edit tests. Restoring their original
+  searchable prefix and the existing bold fixture resolved those failures.
+  Raw failed output is preserved. Eight upstream t19 teardown diagnostics occur
+  after the final Telegram suite passes; they are recorded separately.
+- `scripts/build-app.sh`: exit 0; strict ad-hoc signature verification passed.
+  A separate current-source checkout also built and passed 267 XCTest/22 Python
+  tests with research/source-cache directories absent and closed proxy endpoints.
+  Its original source cache was restored; neither directory was recreated.
+- Final native QA executable payload matched the built app. Search → In History
+  visibly reached the four-line quote; expand/collapse showed two/four/two lines.
+  A three-line quote had no toggle. Code-header copy pasted the exact masked
+  string, including leading spaces, Unicode and trailing newline, into the
+  synthetic composer. Explicit AX reveal then copied the exact original code.
+  The draft was cleared. Protected code copy and forwarding were disabled;
+  the protected Delete preview used nonselectable Text and Cancel returned
+  without submitting any action.
+- Earlier native QA found the lazy history ending visibly at message 119 when
+  the selected result was 123. Its exposed AX scroll-to-bottom action produced
+  SIGTRAP in SwiftUI lazy Accessibility traversal. Using eager layout for the
+  bounded 50-message history window restored visible target reachability and
+  ordinary AX scroll up/down without a crash. The old lazy AX action is no
+  longer exposed, so it was not falsely reported as rerun. Heavy-media
+  performance and the broader OS matrix remain unmeasured.
+- Source review found an unconditional selectable action preview bypassing
+  the copy capability. An explicit capability branch fixed it; the reviewer
+  confirmed the final source and native QA checked the protected preview.
+  Root verified eleven reviewed source/test hashes. Workers did not rerun
+  runtime gates; observed model/provider/usage are unavailable, with no quorum.
+- Final project XERJ refresh/check: exit 0, **165 files, 135/135 code**;
+  engine freshness passed. An earlier refresh overlapped fixture edits and
+  correctly refused to record freshness; a subsequent stable refresh passed.
+  Current projection query hits were confirmed against source. Credential-match
+  audit covered **170 publishable files**, with zero selected-secret matches.
+
+Syntax highlighting, inline-code click-to-copy, continuous selection across
+blocks, archive entities/copy capabilities, custom emoji and pointer/menu
+acceptance remain open. The live reader's copy controls are not a global DRM
+claim. Earlier full-dossier UI acceptance and live-account/server acceptance
+remain open. No private account, real Telegram network or real send was used.
+The sequential migration goal remains active.
+
+Preceding dossier head `94fa9945409e2c71ca3400ddef6c45ae52fba917` passed
+[PR CI 38071236523](https://github.com/Mesteriis/makosh-native/actions/runs/38071236523)
+and [push CI 38071233642](https://github.com/Mesteriis/makosh-native/actions/runs/38071233642).
+Hosted CI for the later code/quote change is tracked separately after publication.

@@ -236,7 +236,9 @@ struct TelegramDetailView: View {
                     } else {
                         ScrollViewReader { proxy in
                             ScrollView {
-                                LazyVStack(alignment: .leading, spacing: 8) {
+                                // The engine supplies a bounded 50-message window. Eager
+                                // layout keeps quote heights and AX scrolling consistent.
+                                VStack(alignment: .leading, spacing: 8) {
                                     ForEach(model.messages) { item in
                                         HStack(alignment: .top) {
                                             if item.isOutgoing { Spacer(minLength: 44) }
@@ -244,7 +246,8 @@ struct TelegramDetailView: View {
                                                 Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                                                 if !item.text.isEmpty {
                                                     TelegramMessageTextView(value: item.formattedTextForDisplay,
-                                                        identity: model.messageActionContextID.uuidString + item.id) {
+                                                        identity: model.messageActionContextID.uuidString + item.id,
+                                                        canCopy: item.actionMetadata?.canCopy == true) {
                                                             messageActionItems(item)
                                                         }
                                                 }
@@ -325,7 +328,8 @@ struct TelegramDetailView: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
                                     TelegramMessageTextView(value: item.formattedTextForDisplay,
-                                        identity: model.messageActionContextID.uuidString + item.id, lineLimit: 4) {
+                                        identity: model.messageActionContextID.uuidString + item.id,
+                                        canCopy: item.actionMetadata?.canCopy == true, lineLimit: 4) {
                                             messageActionItems(item)
                                         }
                                     ForEach(item.attachments) { attachment in

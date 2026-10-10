@@ -364,6 +364,35 @@ activation path. These are native reading controls, without a browser renderer
 or remote preview fetch. The synthetic QA exercised confirmation and Cancel;
 opening an external application was deliberately not tested.
 
+## Code and quote reading blocks
+
+The history follows the verified TelegramSwift code header/copy and quote
+folding behavior using independently written SwiftUI/AppKit. Quotes marked
+collapsible fold to two lines only when their measured text exceeds three
+visual lines. Expansion is tied to the exact captured message and account/chat
+context. Search keeps its compact four-line rich-text summary.
+
+Block projection preserves original UTF16 ranges and exact text bytes,
+including whitespace and line breaks. Nested styles/spoilers are rebased;
+ambiguous structural entities or semantic links spanning blocks retain a single
+original rich-text view. No split can restore a link target hidden elsewhere.
+Code copying uses the currently masked/revealed text and preserves whitespace;
+language hints are bounded, reject controls/format characters and stay hidden
+while the code has an unrevealed spoiler. Syntax highlighting, inline-code
+click-to-copy and continuous selection across multiple blocks remain open.
+
+Copy permission is separate from forwarding and defaults to unavailable when
+unspecified. Engine mapping checks message, channel and group protection.
+Current history/search text selection, code copy and action-sheet source
+selection respect that capability. This is a live reader boundary; the separate
+historical archive does not yet store entities/copy capabilities.
+
+History uses eager layout for the engine's bounded 50-message window. Native
+QA exposed incorrect lazy row reachability and a SwiftUI lazy Accessibility
+scroll trap. The eager layout restored Search → In History reachability and
+ordinary accessibility scrolling; heavy-media performance and the broader OS
+matrix remain unmeasured. See the status ledger for actual checks and failures.
+
 ## Peer profile and explicit dossier linking
 
 Click the conversation header to open the person's profile, following

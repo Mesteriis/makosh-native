@@ -53,13 +53,30 @@ struct TelegramSyntheticPages {
                 entities = [.init(offset: 0, length: 8, kind: .bold),
                     .init(offset: hidden.location, length: hidden.length, kind: .spoiler),
                     .init(offset: linked.location, length: linked.length, kind: .textURL(url: "https://example.invalid/docs"))]
+            } else if [117, 118, 120].contains(id) {
+                let code = id == 117 ? "  let café = \"😀\"\n  let hidden = \"SECRET_CODE_QA\"\n" : "  let value = \"CODE_QA_\(id) 😀\"\n"
+                message = TelegramMessage(id: message.id, date: message.date, text: message.text + "\nБлок кода QA \(id)\n" + code,
+                    author: message.author, isOutgoing: message.isOutgoing, delivery: message.delivery)
+                let text = message.text as NSString, range = text.range(of: code)
+                var captured = [TelegramTextEntity(offset: range.location, length: range.length, kind: .pre(language: "swift"))]
+                if id == 117 {
+                    let hidden = text.range(of: "SECRET_CODE_QA")
+                    captured.append(.init(offset: hidden.location, length: hidden.length, kind: .spoiler))
+                }
+                entities = captured
+            } else if [119, 123].contains(id) {
+                let quote = id == 123 ? "ЦИТАТА_QA_123 первая строка\nВторая строка\nТретья строка\nЧетвёртая строка" : "ЦИТАТА_QA_119 первая строка\nВторая строка\nТретья строка"
+                message = TelegramMessage(id: message.id, date: message.date, text: message.text + "\n" + quote,
+                    author: message.author, isOutgoing: message.isOutgoing, delivery: message.delivery)
+                let range = (message.text as NSString).range(of: quote)
+                entities = [.init(offset: range.location, length: range.length, kind: .blockQuote(isCollapsed: true))]
             } else { entities = id == 122 ? [.init(offset: 0, length: 8, kind: .bold)] : [] }
             message.actionMetadata = TelegramMessageActionMetadata(peerID: chatID, namespace: 0, messageID: Int32(id),
                 fingerprint: "synthetic-version-1-\(chatID)-\(id)", text: message.text,
                 authorID: message.isOutgoing ? -1 : 999, canReply: true, canEdit: message.isOutgoing && !unsupported,
-                canForward: true, canDeleteLocally: true, canDeleteForEveryone: message.isOutgoing,
+                canForward: id != 120, canDeleteLocally: true, canDeleteForEveryone: message.isOutgoing,
                 allowsEmptyEdit: caption && !unsupported, editLimit: caption ? 1024 : 4096,
-                formattedText: try? TelegramFormattedText(text: message.text, entities: entities))
+                formattedText: try? TelegramFormattedText(text: message.text, entities: entities), canCopy: id != 120)
             return message
         }
         return (items, start > 0 ? messageIndex(chatID: chatID, id: start) : nil,

@@ -21,18 +21,19 @@ public struct TelegramMessageActionMetadata: Equatable, Sendable {
     public let canReply: Bool
     public let canEdit: Bool
     public let canForward: Bool
+    public let canCopy: Bool
     public let canDeleteLocally: Bool
     public let canDeleteForEveryone: Bool
     public init(peerID: Int64, namespace: Int32, messageID: Int32, fingerprint: String, text: String,
                 authorID: Int64?, canReply: Bool, canEdit: Bool, canForward: Bool,
                 canDeleteLocally: Bool, canDeleteForEveryone: Bool, canEditAsAdmin: Bool = false,
                 canDeleteAsAdmin: Bool = false, canDeleteIncomingPrivate: Bool = false, migrationChatID: Int64? = nil, allowsEmptyEdit: Bool = false, editLimit: Int = 4096, threadID: Int64? = nil, formattedText: TelegramFormattedText? = nil,
-                canEditOutgoingChannel: Bool = false, canDeleteOutgoingChannel: Bool = false) {
+                canEditOutgoingChannel: Bool = false, canDeleteOutgoingChannel: Bool = false, canCopy: Bool = false) {
         self.peerID = peerID; self.namespace = namespace; self.messageID = messageID
         self.fingerprint = fingerprint; self.text = text; self.authorID = authorID
         self.canEditAsAdmin = canEditAsAdmin; self.canDeleteAsAdmin = canDeleteAsAdmin; self.canDeleteIncomingPrivate = canDeleteIncomingPrivate; self.migrationChatID = migrationChatID; self.allowsEmptyEdit = allowsEmptyEdit; self.editLimit = editLimit; self.threadID = threadID; self.formattedText = formattedText
         self.canEditOutgoingChannel = canEditOutgoingChannel; self.canDeleteOutgoingChannel = canDeleteOutgoingChannel
-        self.canReply = canReply; self.canEdit = canEdit; self.canForward = canForward
+        self.canReply = canReply; self.canEdit = canEdit; self.canForward = canForward; self.canCopy = canCopy
         self.canDeleteLocally = canDeleteLocally; self.canDeleteForEveryone = canDeleteForEveryone
     }
 }
@@ -51,6 +52,7 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
     public var canReply: Bool { metadata.canReply }
     public var canEdit: Bool { metadata.canEdit && (metadata.authorID == accountID || metadata.canEditAsAdmin || metadata.canEditOutgoingChannel) }
     public var canForward: Bool { metadata.canForward }
+    public var canCopy: Bool { metadata.canCopy }
     public var canDeleteLocally: Bool { metadata.canDeleteLocally }
     public var canDeleteForEveryone: Bool { metadata.canDeleteForEveryone && (metadata.authorID == accountID || metadata.canDeleteAsAdmin || metadata.canDeleteIncomingPrivate || metadata.canDeleteOutgoingChannel) }
     public init(metadata: TelegramMessageActionMetadata, accountID: Int64, chatID: Int64) {
@@ -58,10 +60,10 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
     }
     public init(accountID: Int64, chatID: Int64, peerID: Int64, namespace: Int32, messageID: Int32,
                 fingerprint: String, text: String, canReply: Bool, canEdit: Bool, canForward: Bool,
-                canDeleteLocally: Bool, canDeleteForEveryone: Bool) {
+                canDeleteLocally: Bool, canDeleteForEveryone: Bool, canCopy: Bool = false) {
         self.init(metadata: .init(peerID: peerID, namespace: namespace, messageID: messageID,
             fingerprint: fingerprint, text: text, authorID: accountID, canReply: canReply, canEdit: canEdit,
-            canForward: canForward, canDeleteLocally: canDeleteLocally, canDeleteForEveryone: canDeleteForEveryone),
+            canForward: canForward, canDeleteLocally: canDeleteLocally, canDeleteForEveryone: canDeleteForEveryone, canCopy: canCopy),
             accountID: accountID, chatID: chatID)
     }
 }

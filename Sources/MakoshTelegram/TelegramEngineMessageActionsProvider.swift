@@ -61,7 +61,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
         allowsEmptyEdit: message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile },
         editLimit: message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile } ? 1024 : 4096,
         threadID: message.threadId, formattedText: formatted,
-        canEditOutgoingChannel: outgoingChannel, canDeleteOutgoingChannel: outgoingChannel)
+        canEditOutgoingChannel: outgoingChannel, canDeleteOutgoingChannel: outgoingChannel, canCopy: supportedPeer && !protected)
 }
 
 public func telegramMessageActionSource(_ message: Message, accountID: Int64, chatID: Int64, now: Date = Date()) -> TelegramMessageActionSource {

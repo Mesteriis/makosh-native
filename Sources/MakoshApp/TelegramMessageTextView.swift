@@ -6,10 +6,12 @@ import MakoshTelegram
 struct TelegramMessageTextView<MenuContent: View>: View {
     let value: TelegramFormattedText?
     let identity: String
+    var canCopy = false
     var lineLimit: Int? = nil
     @ViewBuilder let menuContent: () -> MenuContent
     @State private var revealedKey: TelegramMessagePresentationKey?
     @State private var pendingLink: PendingLink?
+    @State private var copiedCode: [Int: TelegramMessagePresentationKey] = [:]
     private struct PendingLink {
         let key: TelegramMessagePresentationKey
         let url: URL
@@ -28,8 +30,7 @@ struct TelegramMessageTextView<MenuContent: View>: View {
     private var hasSpoilers: Bool {
         value?.entities.contains { if case .spoiler = $0.kind { true } else { false } } ?? false
     }
-    private var attributed: AttributedString? {
-        guard let value else { return nil }
+    private func attributed(_ value: TelegramFormattedText) -> AttributedString? {
         let native = NSMutableAttributedString(attributedString:
             TelegramMessagePresentation.attributedString(value, revealingSpoilers: revealed))
         if !revealed {
@@ -42,8 +43,7 @@ struct TelegramMessageTextView<MenuContent: View>: View {
         }
         return try? AttributedString(native, including: \.appKit)
     }
-    private var accessibleLinks: [AccessibleLink] {
-        guard let value else { return [] }
+    private func accessibleLinks(_ value: TelegramFormattedText) -> [AccessibleLink] {
         let presentation = TelegramMessagePresentation.attributedString(value, revealingSpoilers: revealed)
         return value.entities.enumerated().compactMap { index, entity in
             switch entity.kind {
@@ -57,20 +57,24 @@ struct TelegramMessageTextView<MenuContent: View>: View {
     }
     var body: some View {
         Group {
-            if let attributed {
-                Text(attributed).lineLimit(lineLimit).textSelection(.enabled)
-                    .contextMenu { menuContent() }
-                    .environment(\.openURL, OpenURLAction { url in activate(url); return .handled })
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(value.map { TelegramMessagePresentation.plainText($0, revealingSpoilers: revealed) } ?? ""))
-                    .accessibilityActions {
-                        if hasSpoilers && !revealed {
-                            Button("Показать скрытый текст") { revealedKey = key }
-                        }
-                        ForEach(accessibleLinks) { link in
-                            Button("Открыть ссылку: \(link.label)") { activate(link.url) }
+            if let value, let key {
+                if lineLimit != nil {
+                    richText(value, limit: lineLimit)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(telegramMessageBlocks(value), id: \.range.lowerBound) { block in
+                            switch block.kind {
+                            case .text: richText(block.value)
+                            case let .code(language): codeBlock(block, language: language)
+                            case let .quote(collapsed):
+                                TelegramQuoteReadingBlock(value: block.value, key: key,
+                                    isCollapsed: collapsed, revealingSpoilers: revealed, offset: block.range.lowerBound) { limit in
+                                        richText(block.value, limit: limit)
+                                    }
+                            }
                         }
                     }
+                }
             } else {
                 Label("Форматирование сообщения недоступно", systemImage: "exclamationmark.bubble")
                     .font(.callout).foregroundStyle(.secondary)
@@ -81,8 +85,58 @@ struct TelegramMessageTextView<MenuContent: View>: View {
             Button("Открыть") { if pendingURL == url { NSWorkspace.shared.open(url) } }
             Button("Отмена", role: .cancel) {}
         } message: { url in Text(url.absoluteString) }
-        .onChange(of: identity) { _, _ in revealedKey = nil; pendingLink = nil }
-        .onChange(of: value) { _, _ in revealedKey = nil; pendingLink = nil }
+        .onChange(of: identity) { _, _ in revealedKey = nil; pendingLink = nil; copiedCode = [:] }
+        .onChange(of: value) { _, _ in revealedKey = nil; pendingLink = nil; copiedCode = [:] }
+    }
+
+    @ViewBuilder private func richText(_ value: TelegramFormattedText, limit: Int? = nil) -> some View {
+        if let attributed = attributed(value) {
+            Group {
+                if canCopy { Text(attributed).textSelection(.enabled) }
+                else { Text(attributed).textSelection(.disabled) }
+            }
+            .lineLimit(limit).fixedSize(horizontal: false, vertical: true)
+            .contextMenu { menuContent() }
+            .environment(\.openURL, OpenURLAction { url in activate(url); return .handled })
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(TelegramMessagePresentation.plainText(value, revealingSpoilers: revealed)))
+            .accessibilityActions {
+                if hasSpoilers && !revealed {
+                    Button("Показать скрытый текст") { revealedKey = key }
+                }
+                ForEach(accessibleLinks(value)) { link in
+                    Button("Открыть ссылку: \(link.label)") { activate(link.url) }
+                }
+            }
+        } else {
+            Label("Форматирование сообщения недоступно", systemImage: "exclamationmark.bubble")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    private func codeBlock(_ block: TelegramMessageBlock, language: String?) -> some View {
+        let copied = copiedCode[block.range.lowerBound] == key
+        let language = TelegramMessagePresentation.codeLanguage(language, in: block.value, revealingSpoilers: revealed)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                guard canCopy, let key else { return }
+                let text = TelegramMessagePresentation.plainText(block.value, revealingSpoilers: revealed)
+                NSPasteboard.general.clearContents()
+                if NSPasteboard.general.setString(text, forType: .string) { copiedCode[block.range.lowerBound] = key }
+            } label: {
+                HStack(spacing: 16) {
+                    Text(copied ? "Скопировано" : language ?? "Копировать").font(.caption.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.caption)
+                }.padding(.horizontal, 10).padding(.vertical, 7).contentShape(Rectangle())
+            }.buttonStyle(.plain).disabled(!canCopy)
+                .background(Color.secondary.opacity(0.10))
+                .help(canCopy ? "Копировать код" : "Копирование запрещено для этого сообщения")
+                .accessibilityLabel(copied ? "Скопировано" : "Копировать код")
+                .accessibilityIdentifier("telegram.code.copy.\(block.range.lowerBound)")
+            richText(block.value).padding(10)
+        }.background(Color.secondary.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
     private func activate(_ url: URL) {
         guard let key else { return }
@@ -100,6 +154,40 @@ struct TelegramMessageTextView<MenuContent: View>: View {
             let label = (value.text as NSString).substring(with: NSRange(location: entity.offset, length: entity.length))
             return label.trimmingCharacters(in: .whitespacesAndNewlines) != target
         }
+    }
+}
+
+/// SwiftUI owns expansion; AppKit measures the same captured, masked text.
+private struct TelegramQuoteReadingBlock<Content: View>: View {
+    let value: TelegramFormattedText
+    let key: TelegramMessagePresentationKey
+    let isCollapsed: Bool
+    let revealingSpoilers: Bool
+    let offset: Int
+    @ViewBuilder let content: (Int?) -> Content
+    @State private var width: CGFloat = 0
+    @State private var expandedKey: TelegramMessagePresentationKey?
+    private var expanded: Bool { expandedKey == key }
+    private var folds: Bool {
+        isCollapsed && (width <= 0 || TelegramMessagePresentation.quoteNeedsExpansion(value,
+            width: width, revealingSpoilers: revealingSpoilers))
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            content(folds && !expanded ? 2 : nil)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            if folds {
+                Button {
+                    expandedKey = expanded ? nil : key
+                } label: {
+                    Label(expanded ? "Свернуть цитату" : "Развернуть цитату",
+                        systemImage: expanded ? "chevron.up" : "chevron.down").font(.caption)
+                }.buttonStyle(.plain).foregroundStyle(.tint)
+                    .accessibilityIdentifier("telegram.quote.toggle.\(offset)")
+            }
+        }.padding(.vertical, 7).padding(.leading, 10).padding(.trailing, 8)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Color.accentColor).frame(width: 3) }
     }
 }
 

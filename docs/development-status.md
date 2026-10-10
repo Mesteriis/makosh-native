@@ -1086,3 +1086,62 @@ The preceding code/quote head `e998e9c34d03f1f385f145d7ae1b81ad56acacd3`
 passed [PR CI 38072274699](https://github.com/Mesteriis/makosh-native/actions/runs/38072274699)
 and [push CI 38072272059](https://github.com/Mesteriis/makosh-native/actions/runs/38072272059).
 Hosted CI for this later composer change is tracked after publication.
+
+## Telegram reference message status indicators — 2026-10-10
+
+Own native rendering now follows `ChatRightView`'s timestamp/clock/error and
+single/double-check arrangement. The history adapter retains the engine's
+`MessageHistoryEntry.isRead`; read-only changes update the guarded existing
+window. Message-only search does not manufacture read context. Failed/sending/
+queued flags take priority, including pending channel posts. Stable incoming
+and broadcast posts have no check; unsupported namespaces are not called sent.
+Saved/bot conventions have distinct descriptions and exclude support peers.
+
+Actual evidence:
+
+- `scripts/dev-db.sh up`: exit 0, PostgreSQL/S3 healthy. Full `scripts/test.sh`:
+  exit 0, **293 XCTest (230 Telegram + 63 core), 0 failures**, and **22 Python
+  regressions**. Seven added tests cover typed priorities/direction/namespaces,
+  history versus search, delivery-only updates and stale window/chat/reset
+  rejection. A real encrypted Postbox test observes sent → read on the same
+  subscription, checks peer/namespace isolation and unchanged message content,
+  then verifies the state after public Postbox release and reopen.
+- The first focused run failed because production seed history holes clipped
+  the manufactured random message. Committed-message/peer assertions and explicit
+  removal of holes in this fully loaded synthetic fixture resolved it. The
+  corrected fixture and full suite pass. Eighteen upstream t19 teardown
+  diagnostics occur after the passing Telegram suite; raw logs remain private.
+- `scripts/build-app.sh`: exit 0, including a later UI-only layout correction;
+  strict ad-hoc signature verification passed. The full test suite preceded
+  that Grid correction; the final build and native QA exercised it. Dependency
+  preparation is unchanged; no additional reference-free rebuild is claimed.
+- Final isolated native QA executable payload matched the built app. Accessible
+  descriptions exposed all five ordinary states and no incoming status. Search
+  → In History visibly showed clocks, the red failure indicator and single and
+  double checks beside time. An initial flexible metadata frame widened short
+  bubbles; a one-column native Grid with a trailing metadata cell restored
+  their content width, verified in final screenshots. Code blocks still render.
+  A capture error and a later `noWindowsAvailable` response interrupted the UI
+  bridge; reselecting the exact task-owned app restored observation. Its process
+  remained running; no new crash report appeared. The failed scroll action is
+  not claimed as verified. No personal account, Keychain or network send was used.
+- Two bounded source reviews found no remaining confirmed issue after the
+  pending-broadcast correction. Root verified reviewed file hashes. Worker
+  runtime metadata/usage are unknown; no quorum was used. Stable project XERJ
+  refresh/check passed: **175 files, 145/145 code**. One earlier refresh refused
+  freshness because source edits overlapped it; stale results were not reused.
+  Actual own status/mapping and engine seed queries were checked against source.
+  Credential-match audit checked 180 publishable files against four selected
+  local secret fields: zero matches.
+
+One check denotes a stored Telegram message, not recipient-device delivery;
+group read state is not an individual reader list. All source-reference messages
+conservatively retain one check; full crosspost/pinned/custom-mode presentation
+remains open. Incoming mark-read, live server receipts/pending ID reconciliation,
+other reference screens, earlier dossier acceptance and later channels remain
+unfinished. This slice does not complete the sequential migration goal.
+
+Preceding composer head `05217cf64add1b0e78ec5e34a7a9f46813fd7cc5` passed
+[PR CI 38073276605](https://github.com/Mesteriis/makosh-native/actions/runs/38073276605)
+and [push CI 38073273655](https://github.com/Mesteriis/makosh-native/actions/runs/38073273655).
+Hosted CI for the later message-status change is tracked after publication.

@@ -202,8 +202,8 @@ public final class TelegramSearchModel: ObservableObject {
                     if !result.searchFailed {
                         self.mediaSources = Dictionary(result.messages.flatMap(telegramAttachments).map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
                     }
-                    let items = result.messages.map(TelegramMessage.init)
-                    let indexes = Dictionary(result.messages.map { (TelegramMessage($0).id, $0.index) }, uniquingKeysWith: { first, _ in first })
+                    let items = result.messages.map { TelegramMessage($0, accountID: account.peerId.toInt64()) }
+                    let indexes = Dictionary(zip(items, result.messages).map { ($0.id, $1.index) }, uniquingKeysWith: { first, _ in first })
                     self.receiveMessages(items, indexes: indexes, cursor: .server(state), total: Int(result.totalCount),
                         completed: result.completed, failed: result.searchFailed, requestID: token)
                 }))

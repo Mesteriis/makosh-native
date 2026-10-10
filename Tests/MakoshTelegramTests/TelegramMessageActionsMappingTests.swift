@@ -189,7 +189,7 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
     }
 
     func testReadingMappingDoesNotSubstituteUnicodeEquivalentOrMissingFormattedSource() throws {
-        var message = TelegramMessage(id: "fixture", date: now, text: "é", author: "Synthetic", isOutgoing: false, delivery: "")
+        var message = TelegramMessage(id: "fixture", date: now, text: "é", author: "Synthetic", isOutgoing: false, delivery: .none)
         XCTAssertEqual(message.formattedTextForDisplay?.text, "é")
         message.actionMetadata = TelegramMessageActionMetadata(peerID: 1, namespace: 0, messageID: 1,
             fingerprint: "fixture", text: "é", authorID: 1, canReply: false, canEdit: false,

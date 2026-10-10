@@ -31,7 +31,7 @@ struct TelegramSyntheticPages {
         let items = ((start + 1)...end).map { id in
             var message = TelegramMessage(id: "synthetic:\(chatID):\(id)", date: Date(timeIntervalSince1970: 1_700_000_000 + Double(id * 60)),
                 text: "Тестовое сообщение \(id) • диалог \(chatID)", author: id.isMultiple(of: 2) ? "Макош QA" : "Тестовый собеседник",
-                isOutgoing: id.isMultiple(of: 2), delivery: "")
+                isOutgoing: id.isMultiple(of: 2), delivery: syntheticDelivery(id))
             if [25, 124, 125, 126, 127, 128, 129, 130].contains(id) {
                 let kind: TelegramAttachmentKind = id == 130 ? .photo : id == 128 ? .unsupported : .file
                 let playback: TelegramPlaybackKind? = id == 124 ? .roundVideo : id == 125 ? .voice : id == 126 ? .audio : id == 127 ? .video : nil
@@ -85,6 +85,18 @@ struct TelegramSyntheticPages {
 
     private func messageIndex(chatID: Int64, id: Int) -> MessageIndex {
         MessageIndex(id: MessageId(peerId: PeerId(chatID), namespace: 0, id: Int32(id)), timestamp: Int32(id))
+    }
+
+    private func syntheticDelivery(_ id: Int) -> TelegramMessageDelivery {
+        guard id.isMultiple(of: 2) else { return .none }
+        switch id {
+        case 110: return .queued
+        case 112: return .sending
+        case 114: return .failed
+        case 116: return .sent
+        case 118: return .read
+        default: return .sent
+        }
     }
 
     func searchChats(folder: TelegramChatFolder, query: String) -> [TelegramChat] {

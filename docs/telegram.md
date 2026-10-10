@@ -186,10 +186,10 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   account/recipient identity is retained across selection changes. The draft
   clears only after enqueue acknowledgement; pending/failed flags are shown in
   history. Local enqueue is not proof of server delivery or recipient read.
-- Drafts are isolated by account/chat and retained in memory while switching
-  dialogs or stopping/reconnecting in the same app process. They are not
-  persisted across app exit. A delayed acknowledgement preserves text edited
-  since submission, including normalization-only edits.
+- Ordinary text drafts are isolated by account/chat and persisted in encrypted
+  account Postbox, including explicit empty snapshots. Revision guards preserve
+  text edited since submission, including normalization-only edits. See the
+  composer-persistence section for limits and retry behavior.
 
 Tests cover config rejection before account work, exact-source preparation,
 draft/account isolation and acknowledgement races, disabled logger setup and
@@ -197,6 +197,30 @@ real OpenSSL modular arithmetic/binary roundtrips. Build, tests and native setup
 UI checks are distinct from real authorization, incoming sync, sending,
 reconnect or cache-corruption acceptance. See [`development-status.md`](development-status.md)
 for actual completed checks and outstanding runtime limits.
+
+## Reference message status indicators
+
+History retains the engine's `MessageHistoryEntry.isRead` when projecting a
+message. Read-state-only emissions update the existing guarded history window;
+the adapter does not calculate its own read maximum or mark incoming messages
+read. Search receives bare messages and therefore never invents a remote read
+receipt from a missing history context.
+
+Own SwiftUI rendering follows the confirmed `ChatRightView` arrangement: time
+with a clock while queued/sending, an error on failure, one check for a stored
+cloud message and two for native read state. Pending/failure flags take priority
+over read and remain visible for outgoing channel posts. Stable incoming and
+broadcast messages have no check; unsupported local/scheduled namespaces without
+pending flags are not announced as sent. One check does not promise delivery to
+a recipient device. Group read state does not identify individual readers.
+
+Saved Messages and bots use the reference's double-check convention with
+distinct accessible descriptions; support peers are excluded from that
+convention. Source-reference messages conservatively retain one check because
+the full upstream crosspost/pinned/custom-mode presentation is not yet mapped.
+Actual server receipts and local-to-cloud pending ID reconciliation still need
+live-account acceptance. The offline fixture demonstrates all five ordinary
+states without contacting Telegram.
 
 ## Independent local message retention
 

@@ -249,20 +249,28 @@ struct TelegramDetailView: View {
                                     ForEach(model.messages) { item in
                                         HStack(alignment: .top) {
                                             if item.isOutgoing { Spacer(minLength: 44) }
-                                            VStack(alignment: .leading, spacing: 7) {
-                                                Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                            Grid(alignment: .leading, verticalSpacing: 7) {
+                                                GridRow {
+                                                    Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                                }
                                                 if !item.text.isEmpty {
-                                                    TelegramMessageTextView(value: item.formattedTextForDisplay,
-                                                        identity: model.messageActionContextID.uuidString + item.id,
-                                                        canCopy: item.actionMetadata?.canCopy == true) {
-                                                            messageActionItems(item)
-                                                        }
+                                                    GridRow {
+                                                        TelegramMessageTextView(value: item.formattedTextForDisplay,
+                                                            identity: model.messageActionContextID.uuidString + item.id,
+                                                            canCopy: item.actionMetadata?.canCopy == true) {
+                                                                messageActionItems(item)
+                                                            }
+                                                    }
                                                 }
                                                 ForEach(item.attachments) { attachment in
-                                                    TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
+                                                    GridRow {
+                                                        TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
+                                                    }
                                                 }
-                                                Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(.secondary)
-                                                if !item.delivery.isEmpty { Text(item.delivery).font(.caption).foregroundStyle(.secondary) }
+                                                GridRow {
+                                                    TelegramMessageMetadataView(message: item)
+                                                        .gridCellAnchor(.trailing)
+                                                }
                                             }.padding(11).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                                             if !item.isOutgoing { Spacer(minLength: 44) }
                                         }.id(item.id).accessibilityElement(children: .contain)
@@ -333,7 +341,11 @@ struct TelegramDetailView: View {
                         ForEach(search.messages) { item in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+                                    HStack {
+                                        Text(item.author).font(.caption.weight(.semibold))
+                                        Spacer()
+                                        TelegramMessageMetadataView(message: item, includesDate: true)
+                                    }
                                     TelegramMessageTextView(value: item.formattedTextForDisplay,
                                         identity: model.messageActionContextID.uuidString + item.id,
                                         canCopy: item.actionMetadata?.canCopy == true, lineLimit: 4) {

@@ -10,11 +10,15 @@ func telegramPeerTitle(_ peer: Peer) -> String {
 }
 
 extension TelegramMessage {
-    init(_ message: Message) {
+    init(_ entry: MessageHistoryEntry, accountID: Int64) {
+        self.init(entry.message, isRead: entry.isRead, accountID: accountID)
+    }
+
+    init(_ message: Message, isRead: Bool? = nil, accountID: Int64? = nil) {
         self.init(id: "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id)",
             date: Date(timeIntervalSince1970: TimeInterval(message.timestamp)), text: message.text,
-            author: message.author.map(telegramPeerTitle) ?? "Telegram", isOutgoing: !message.flags.contains(.Incoming),
-            delivery: message.flags.contains(.Failed) ? "Не отправлено" : message.flags.contains(.Unsent) ? "В очереди отправки" : "")
+            author: message.author.map(telegramPeerTitle) ?? "Telegram", isOutgoing: telegramMessageIsOutgoing(message, accountID: accountID),
+            delivery: telegramMessageDelivery(message, isRead: isRead, accountID: accountID))
         attachments = telegramAttachments(message).map(\.attachment)
         actionMetadata = telegramMessageActionMetadata(message)
     }

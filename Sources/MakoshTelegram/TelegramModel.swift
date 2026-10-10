@@ -24,7 +24,7 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public let text: String
     public let author: String
     public let isOutgoing: Bool
-    public let delivery: String
+    public let delivery: TelegramMessageDelivery
     public var attachments: [TelegramAttachment] = []
     public var actionMetadata: TelegramMessageActionMetadata? = nil
     public var formattedTextForDisplay: TelegramFormattedText? {
@@ -835,7 +835,7 @@ public final class TelegramModel: ObservableObject {
                 let view = value.0
                 let waiting = view.isLoading || view.isLoadingEarlier ||
                     (view.earlierId == nil && view.holeEarlier) || (view.laterId == nil && view.holeLater)
-                let messages = view.entries.map { TelegramMessage($0.message) }
+                let messages = view.entries.map { TelegramMessage($0, accountID: account.peerId.toInt64()) }
                 if !messages.isEmpty || !waiting {
                     self.historyMediaSources = view.entries.flatMap { telegramAttachments($0.message) }
                 }

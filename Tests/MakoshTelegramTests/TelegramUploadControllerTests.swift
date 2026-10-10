@@ -39,6 +39,90 @@ import XCTest
         return (controller, provider)
     }
 
+    func testStablePreparationIdentitySurvivesCommitAndLateAcceptance() async throws {
+        let (controller, provider) = await ready()
+        let id = try XCTUnwrap(controller.preparationContextID)
+        var finished: [UUID] = [], order: [String] = []
+        controller.didFinishPreparation = { finished.append($0); order.append("finish") }
+        controller.didQueue = { _, _ in
+            XCTAssertEqual(controller.preparationContextID, id)
+            order.append("queue")
+        }
+        XCTAssertTrue(controller.showsPreparationPreview)
+        controller.send(contextID: UUID()); XCTAssertTrue(provider.callbacks.isEmpty)
+        controller.send(contextID: id)
+        XCTAssertEqual(controller.preparationContextID, id)
+        XCTAssertNotEqual(controller.captionContextID, id)
+        provider.callbacks[0](.committing)
+        controller.dismissPreparation(contextID: id)
+        XCTAssertEqual(controller.phase, .enqueuing)
+        controller.expireSubmission()
+        XCTAssertTrue(controller.showsPreparationPreview)
+        controller.dismissPreparation(contextID: UUID())
+        XCTAssertEqual(controller.phase, .uncertain)
+        provider.callbacks[0](.accepted("late"))
+        XCTAssertEqual(finished, [id]); XCTAssertEqual(order, ["queue", "finish"])
+        XCTAssertNil(controller.preparationContextID); XCTAssertFalse(controller.showsPreparationPreview)
+        controller.dismissPreparation(contextID: id)
+        XCTAssertEqual(controller.phase, .queued(nil))
+        controller.clear(); XCTAssertEqual(finished, [id])
+    }
+
+    func testDismissFinishesOnceAndOldSheetCannotCancelNextPreparation() async throws {
+        let (controller, _) = await ready()
+        let first = try XCTUnwrap(controller.preparationContextID)
+        var finished: [UUID] = [], prepared: [UUID] = []
+        controller.didFinishPreparation = { finished.append($0) }
+        controller.didPrepare = { target, input, id in
+            XCTAssertEqual(target, self.recipient); XCTAssertEqual(input.formattedText.text, "next")
+            prepared.append(id)
+        }
+        controller.dismissPreparation(contextID: first)
+        XCTAssertEqual(controller.phase, .idle); XCTAssertEqual(finished, [first])
+        controller.prepare(source: fixture().url, mode: .file, target: recipient, caption: "next")
+        for _ in 0..<100 where controller.phase == .preparing { await Task.yield() }
+        let second = try XCTUnwrap(controller.preparationContextID)
+        XCTAssertNotEqual(first, second); XCTAssertEqual(prepared, [second])
+        controller.dismissPreparation(contextID: first)
+        XCTAssertEqual(controller.phase, .ready)
+        controller.cancelPreparation(); controller.clear()
+        XCTAssertEqual(finished, [first, second])
+    }
+
+    func testFailedStageAndPrecommitFailuresReleasePreparation() async throws {
+        let controller = TelegramUploadController(), provider = Provider()
+        var prepared: [UUID] = [], finished: [UUID] = []
+        controller.bind(provider: provider)
+        controller.didPrepare = { _, _, id in prepared.append(id) }
+        controller.didFinishPreparation = { finished.append($0) }
+        controller.stage = { _, _ in throw TelegramUploadFileError.stagingFailed }
+        controller.prepare(source: fixture().url, mode: .file, target: recipient, caption: "")
+        for _ in 0..<100 where controller.phase == .preparing { await Task.yield() }
+        XCTAssertEqual(controller.phase, .failed); XCTAssertEqual(prepared, finished)
+        XCTAssertEqual(finished.count, 1); XCTAssertFalse(controller.showsPreparationPreview)
+        for rejection in [false, true] {
+            let (next, nextProvider) = await ready()
+            let id = try XCTUnwrap(next.preparationContextID)
+            var ended: [UUID] = []
+            next.didFinishPreparation = { ended.append($0) }
+            next.send()
+            if rejection { nextProvider.callbacks[0](.rejected) } else { next.expireSubmission() }
+            XCTAssertEqual(ended, [id]); XCTAssertNil(next.preparationContextID)
+            XCTAssertFalse(next.showsPreparationPreview)
+        }
+    }
+
+    func testPrepareCallbackCancellationCannotLaunchStaleWorker() {
+        let controller = TelegramUploadController(), provider = Provider()
+        var starts = 0, finished = 0
+        controller.bind(provider: provider)
+        controller.stage = { _, _ in starts += 1; return self.fixture() }
+        controller.didPrepare = { _, _, id in controller.dismissPreparation(contextID: id) }
+        controller.didFinishPreparation = { _ in finished += 1 }
+        controller.prepare(source: fixture().url, mode: .file, target: recipient, caption: "")
+        XCTAssertEqual(controller.phase, .idle); XCTAssertEqual(starts, 0); XCTAssertEqual(finished, 1)
+    }
+
     func testExplicitSendFreezesTargetCaptionAndQueuesOnlyOnce() async {
         let (controller, provider) = await ready()
         var queued: [(TelegramUploadTarget, String)] = []

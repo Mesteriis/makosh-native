@@ -334,6 +334,84 @@ import SwiftSignalKit
         }
     }
 
+    private final class UploadLease: TelegramUploadLease { func stop() {} }
+    private final class UploadProvider: TelegramUploadProvider {
+        let accountID: Int64 = -1
+        var callback: (@MainActor (TelegramUploadEvent) -> Void)?
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
+                    receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
+            callback = receive; return UploadLease()
+        }
+    }
+    private func prepareTransfer(_ model: TelegramModel, input: TelegramComposerInput) async throws -> UploadProvider {
+        let provider = UploadProvider()
+        model.upload.bind(provider: provider)
+        model.upload.stage = { _, _ in
+            TelegramUploadFile(id: UUID(), name: "synthetic.txt", size: 1, mode: .file,
+                pixelWidth: nil, pixelHeight: nil, url: URL(fileURLWithPath: "/synthetic/payload"),
+                directory: URL(fileURLWithPath: "/synthetic"))
+        }
+        model.upload.discard = { _ in }
+        let target = try XCTUnwrap(model.uploadTarget(replyTo: model.composerReply.resolved?.source, contextID: model.uploadContextID))
+        model.prepareUpload(source: URL(fileURLWithPath: "/synthetic/source"), mode: .file,
+            target: target, captionInput: input, contextID: model.uploadContextID)
+        for _ in 0..<100 where model.upload.phase == .preparing { await Task.yield() }
+        XCTAssertEqual(model.upload.phase, .ready)
+        return provider
+    }
+    func testPreparationSuspendsWithoutErasingDurableDraftAndCancelRestoresAcrossChats() async throws {
+        let (model, repository) = fixture()
+        let replyMessage = try XCTUnwrap(model.messages.first)
+        XCTAssertTrue(model.beginReply(to: replyMessage, contextID: model.messageActionContextID))
+        let input = try richInput(selection: .init(location: 0, length: 2))
+        XCTAssertTrue(model.updateComposerInput(input, contextID: model.messageActionContextID, chatID: 10001))
+        let saved = try XCTUnwrap(repository.writes.last?.0)
+        _ = try await prepareTransfer(model, input: input)
+        XCTAssertTrue(model.isComposerSuspended); XCTAssertEqual(model.composerInput, .empty)
+        XCTAssertNil(model.composerReply.resolved)
+        XCTAssertEqual(repository.writes.last?.0, saved)
+        XCTAssertFalse(model.updateComposerInput(.empty, contextID: model.messageActionContextID, chatID: 10001))
+        model.selectedChatID = 10002; model.draft = "other"
+        model.selectedChatID = 10001
+        XCTAssertTrue(model.isComposerSuspended); XCTAssertEqual(model.composerInput, .empty)
+        model.upload.cancelPreparation()
+        XCTAssertFalse(model.isComposerSuspended); XCTAssertEqual(model.composerInput, input)
+        XCTAssertNotNil(model.composerReply.resolved)
+        model.selectedChatID = 10002; XCTAssertEqual(model.draft, "other")
+    }
+    func testEditedCaptionAcknowledgesOnlyOriginalRevisionAndPreservesNewerDraft() async throws {
+        for newer in [false, true] {
+            let (model, repository) = fixture()
+            let input = try richInput()
+            XCTAssertTrue(model.updateComposerInput(input, contextID: model.messageActionContextID, chatID: 10001))
+            let provider = try await prepareTransfer(model, input: input)
+            model.upload.caption = "edited attachment caption"
+            if newer { model.draft = "new ordinary revision" }
+            model.upload.send()
+            provider.callback?(.committing); provider.callback?(.accepted("synthetic-only"))
+            XCTAssertFalse(model.isComposerSuspended)
+            XCTAssertEqual(model.draft, newer ? "new ordinary revision" : "")
+            XCTAssertEqual(repository.writes.last?.0.text, newer ? "new ordinary revision" : "")
+        }
+    }
+    func testPickerMismatchAndStaleFinishCannotAcknowledgeOrRestoreNewTransfer() async throws {
+        let (model, _) = fixture()
+        let old = try richInput()
+        model.draft = "newer while picker open"
+        let provider = try await prepareTransfer(model, input: old)
+        XCTAssertFalse(model.isComposerSuspended)
+        model.upload.caption = model.draft
+        model.upload.send(); provider.callback?(.committing); provider.callback?(.accepted("synthetic-only"))
+        XCTAssertEqual(model.draft, "newer while picker open")
+        model.upload.clear()
+        let input = model.composerInput
+        _ = try await prepareTransfer(model, input: input)
+        model.upload.didFinishPreparation?(UUID())
+        XCTAssertTrue(model.isComposerSuspended)
+        model.disconnect()
+        XCTAssertFalse(model.isComposerSuspended); XCTAssertEqual(model.composerInput, .empty)
+    }
+
     private final class Lease: TelegramMessageActionsLease { func cancel() {} }
     private final class SynchronousRepository: TelegramComposerDraftRepository {
         let accountID: Int64 = -1

@@ -52,10 +52,13 @@ enum TelegramUploadEvent {
     private var preparation: Task<Void, Never>?
     private var deadline: Task<Void, Never>?
     private var token = UUID()
+    private var preparationID: UUID?
     private var committed = false
     private var sentCaption = TelegramComposerInput.empty.formattedText
     var didQueue: ((TelegramUploadTarget, TelegramFormattedText) -> Void)?
     var willSubmit: ((TelegramUploadTarget, TelegramFormattedText) -> Void)?
+    var didPrepare: ((TelegramUploadTarget, TelegramComposerInput, UUID) -> Void)?
+    var didFinishPreparation: ((UUID) -> Void)?
     // Per-instance deterministic staging seam, with identical ownership semantics.
     var stage: (URL, TelegramUploadMode) async throws -> TelegramUploadFile = TelegramUploadFileIO.stage
     var discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard
@@ -64,6 +67,25 @@ enum TelegramUploadEvent {
     public var canSend: Bool { phase == .ready && provider?.accountID == target?.accountID && telegramFormattedCaptionCanSend(captionInput.formattedText) }
     public var canCancel: Bool { phase == .preparing || phase == .ready || phase == .storing }
     public var captionContextID: UUID { token }
+    public var preparationContextID: UUID? { preparationID }
+    public var showsPreparationPreview: Bool {
+        guard preparationID != nil else { return false }
+        switch phase {
+        case .preparing, .ready, .storing, .enqueuing, .uncertain: return true
+        default: return false
+        }
+    }
+
+    public func send(contextID: UUID) {
+        guard preparationID == contextID else { return }
+        send()
+    }
+
+    public func dismissPreparation(contextID: UUID) {
+        guard preparationID == contextID else { return }
+        if canCancel { cancelPreparation(); clear() }
+        else if phase == .uncertain { clear() }
+    }
 
     @discardableResult
     public func updateCaptionInput(_ input: TelegramComposerInput, contextID: UUID) -> Bool {
@@ -90,6 +112,9 @@ enum TelegramUploadEvent {
         guard file == nil else { phase = .failed; return }
         self.target = target; self.captionInput = captionInput; phase = .preparing
         let request = token, stage = self.stage, discard = self.discard
+        preparationID = request
+        didPrepare?(target, captionInput, request)
+        guard token == request, phase == .preparing else { return }
         preparation = Task { [weak self] in
             do {
                 let result = try await stage(source, mode)
@@ -106,6 +131,7 @@ enum TelegramUploadEvent {
                 guard self.token == request else { return }
                 self.phase = Task.isCancelled ? .cancelled : .failed
                 if !Task.isCancelled { self.error = "Не удалось подготовить вложение." }
+                self.finishPreparation()
             }
         }
     }
@@ -136,6 +162,7 @@ enum TelegramUploadEvent {
         token = UUID(); preparation?.cancel(); deadline?.cancel(); deadline = nil
         let old = lease; lease = nil; old?.stop()
         cleanup(); phase = .cancelled
+        finishPreparation()
     }
 
     public func clear() {
@@ -146,6 +173,7 @@ enum TelegramUploadEvent {
         phase = .idle
         let notice = "Отправка могла остаться в очереди Telegram. Повторно автоматически не отправляем."
         error = !cleaned ? "Не удалось удалить временный файл." + (possiblyQueued ? " " + notice : "") : possiblyQueued ? notice : nil
+        finishPreparation()
     }
 
     func expireSubmission() {
@@ -155,6 +183,7 @@ enum TelegramUploadEvent {
         } else {
             token = UUID(); let old = lease; lease = nil; old?.stop()
             phase = .failed; error = "Не удалось подготовить очередь отправки."; cleanup()
+            finishPreparation()
         }
         deadline?.cancel(); deadline = nil
     }
@@ -166,9 +195,11 @@ enum TelegramUploadEvent {
             committed = true; phase = .enqueuing
         case .accepted(let id):
             guard messageID == nil, !id.isEmpty, committed else { return }
+            let preparationID = self.preparationID
             messageID = id; phase = .queued(nil); error = nil
             deadline?.cancel(); deadline = nil; cleanup()
             if let target { didQueue?(target, sentCaption) }
+            if self.preparationID == preparationID { finishPreparation() }
         case .progress(let value):
             guard messageID != nil else { return }
             phase = .queued(value.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil })
@@ -180,11 +211,17 @@ enum TelegramUploadEvent {
             token = UUID(); deadline?.cancel(); deadline = nil
             let old = lease; lease = nil; old?.stop()
             phase = .rejected; error = "Вложение не поставлено в очередь отправки."; cleanup()
+            finishPreparation()
         case .uncertain:
             guard committed, messageID == nil else { return }
             phase = .uncertain; error = "Результат постановки в очередь пока неизвестен. Не отправляйте повторно."
             deadline?.cancel(); deadline = nil
         }
+    }
+    private func finishPreparation() {
+        guard let id = preparationID else { return }
+        preparationID = nil
+        didFinishPreparation?(id)
     }
     @discardableResult private func cleanup() -> Bool {
         guard let file else { return true }

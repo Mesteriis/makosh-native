@@ -70,9 +70,12 @@
    процесса, quote/forward state, серверные черновики, настройки клавиши отправки,
    actual IME acceptance ещё впереди. Подготовка фото/файла сохраняет typed
    подпись и выделение, очередь передаёт native entities и проверяет упоминания;
-   точный revision ACK защищает новый ввод. Полный temporaryInputState перенос
-   и восстановление обычного поля, restart pending-caption, inline media,
-   premium caption limits и предпросмотр отправляемых медиа ещё впереди.
+   точный revision ACK защищает новый ввод. Modal preview показывает документ
+   или нормализованное фото, переносит полный input/selection и временно скрывает
+   ordinary/reply. Cancel/Escape возвращает исходный draft; edited-caption ACK
+   очищает только его revision. Durable original переживает завершение процесса.
+   Restart pending-caption/file, inline media, albums и premium caption limits
+   ещё впереди.
    Индикаторы отправки/ошибки и одна/две галочки рядом со временем следуют
    `ChatRightView`; прочтение берётся из native history entry. Видимая граница
    обычной cloud-истории отмечается через native interactive read только в

@@ -26,6 +26,7 @@ struct TelegramComposerView: View {
                         _ = model.updateComposerInput(input,contextID: contextID,chatID: chatID)
                     },submit: send)
                     .id("\(contextID.uuidString):\(chatID)")
+                    .disabled(model.isComposerSuspended)
             }
             Button(action: send) { Image(systemName: "paperplane.fill").font(.system(size: 22)).frame(width: 32, height: 32) }
                 .buttonStyle(.plain).foregroundStyle(.tint).accessibilityLabel("Отправить")

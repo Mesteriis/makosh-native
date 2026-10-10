@@ -56,71 +56,49 @@ struct TelegramAttachButtons: View {
     }
 }
 
+/// Presentation stays attached while the inline observation bar appears/disappears.
 struct TelegramUploadView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var upload: TelegramUploadController
-    @State private var captionError: String?
     init(model: TelegramModel) { self.model = model; upload = model.upload }
     var body: some View {
-        if upload.phase != .idle || upload.error != nil {
-            VStack(alignment: .leading, spacing: 10) {
+        let contextID = upload.preparationContextID
+        VStack(alignment: .leading, spacing: 8) {
+            if !upload.showsPreparationPreview, upload.phase != .idle || upload.error != nil {
                 if let target = upload.target {
-                    HStack {
-                        Label("Получатель: \(target.title)", systemImage: "paperplane")
-                        Spacer()
-                        if target.chatID != model.selectedChatID {
-                            Button("Открыть диалог") { model.selectedChatID = target.chatID }
-                                .accessibilityIdentifier("telegram.upload.openRecipient")
-                        }
-                    }
-                    if let source = target.replySource {
-                        Label("Ответ на: \(source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(source))", systemImage: "arrowshape.turn.up.left")
-                            .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
-                    }
-                }
-                if let file = upload.file {
-                    Text("\(file.name) • \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
-                        .font(.callout).accessibilityIdentifier("telegram.upload.file")
-                    if file.mode == .photo {
-                        Text("Фото будет отправлено как JPEG размером не более 2560 пикселей без исходных метаданных.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if upload.phase == .ready {
-                    let contextID = upload.captionContextID
-                    TelegramRichTextEditor(value: Binding(get: { upload.captionInput.formattedText },set: { _ in }),
-                        error: $captionError,selection: upload.captionInput.selection,accessibilityID: "telegram.upload.caption",
-                        placeholder: "Подпись к вложению",inputChanged: { input in
-                            _ = upload.updateCaptionInput(input,contextID: contextID)
-                        })
-                        .id(contextID)
-                    Text("Подпись: \(upload.caption.utf16.count)/1024. Проверьте получателя перед отправкой.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Label("Получатель: \(target.title)", systemImage: "paperplane").font(.callout)
                 }
                 HStack {
-                    if upload.phase == .preparing || upload.phase == .storing || upload.phase == .enqueuing {
-                        ProgressView().controlSize(.small)
-                    }
-                    Text(status).font(.callout).accessibilityIdentifier("telegram.upload.status")
+                    TelegramUploadStatusView(upload: upload, synthetic: model.isSyntheticPreview)
                     Spacer()
-                    if upload.phase == .ready {
-                        Button(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить вложение") { upload.send() }
-                            .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
-                            .accessibilityIdentifier("telegram.upload.send")
-                    }
-                    if upload.canCancel {
-                        Button("Отменить подготовку", action: upload.cancelPreparation)
-                            .accessibilityIdentifier("telegram.upload.cancel")
-                    } else if upload.phase != .enqueuing {
-                        Button(upload.messageID != nil || upload.phase == .uncertain ? "Закрыть наблюдение" : "Закрыть", action: upload.clear)
-                            .accessibilityIdentifier("telegram.upload.clear")
-                    }
+                    Button("Закрыть наблюдение", action: upload.clear)
+                        .accessibilityIdentifier("telegram.upload.clear")
                 }
-                if let error = upload.error { Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.error") }
-                if let captionError { Text(captionError).font(.caption).foregroundStyle(.red) }
-            }.padding(16).background(Color.accentColor.opacity(0.06))
-                .onAppear { captionError = nil }
-                .onChange(of: upload.captionContextID) { _,_ in captionError = nil }
+                if let error = upload.error {
+                    Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.error")
+                }
+            }
+        }
+        .padding(upload.showsPreparationPreview || (upload.phase == .idle && upload.error == nil) ? 0 : 16)
+        .sheet(isPresented: Binding(get: { upload.showsPreparationPreview }, set: { shown in
+            if !shown, let contextID { upload.dismissPreparation(contextID: contextID) }
+        })) {
+            if let contextID {
+                TelegramUploadPreviewView(model: model, contextID: contextID).id(contextID)
+            }
+        }
+    }
+}
+
+struct TelegramUploadStatusView: View {
+    @ObservedObject var upload: TelegramUploadController
+    let synthetic: Bool
+    var body: some View {
+        HStack(spacing: 8) {
+            if upload.phase == .preparing || upload.phase == .storing || upload.phase == .enqueuing {
+                ProgressView().controlSize(.small)
+            }
+            Text(status).font(.callout).accessibilityIdentifier("telegram.upload.status")
         }
     }
     private var status: String {
@@ -131,7 +109,7 @@ struct TelegramUploadView: View {
         case .storing: "Сохранение вложения в кэше Telegram…"
         case .enqueuing: "Постановка в локальную очередь…"
         case .queued(let progress):
-            model.isSyntheticPreview ? "Синтетическая очередь: отправки в Telegram нет." :
+            synthetic ? "Синтетическая очередь: отправки в Telegram нет." :
                 progress.map { "В локальной очереди • \(Int($0 * 100))%. Доставка не подтверждена." } ?? "В локальной очереди. Доставка не подтверждена."
         case .queueFailed: "Telegram сообщил об ошибке очереди. Автоматический повтор не выполняется."
         case .rejected: "Вложение не поставлено в очередь."

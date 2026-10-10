@@ -79,7 +79,7 @@ private struct NativeTelegramText: NSViewRepresentable {
         coordinator.selection = selection; coordinator.inputChanged = inputChanged
         guard let text = scroll.documentView as? NSTextView else { return }
         (text as? TelegramNativeInput)?.submit = submit
-        text.isEditable = value.isEditable
+        text.isEditable = value.isEditable && context.environment.isEnabled
         let installedDifferentValue = coordinator.lastValue != value
         if installedDifferentValue { coordinator.install(value,in: text) }
         else { coordinator.installSelection(in: text) }

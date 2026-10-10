@@ -3,6 +3,7 @@ import Foundation
 import Darwin
 import ImageIO
 import CoreGraphics
+import CryptoKit
 @testable import MakoshTelegram
 
 final class TelegramUploadFileIOTests: XCTestCase {
@@ -163,5 +164,39 @@ final class TelegramUploadFileIOTests: XCTestCase {
             XCTAssertEqual($0 as? TelegramUploadFileError, .stagingFailed)
         }
         XCTAssertEqual(try Data(contentsOf: source), Data([7]))
+    }
+    func testOwnedNormalizedPhotoPreviewPreservesSourceAndStageBytes() async throws {
+        let source = try directory().appendingPathComponent("preview.jpg")
+        try image(at: source)
+        let original = try Data(contentsOf: source)
+        let staged = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        addTeardownBlock { try TelegramUploadFileIO.discard(staged) }
+        let bytes = try Data(contentsOf: staged.url)
+        let preview = try await TelegramUploadFileIO.preview(staged)
+        XCTAssertEqual(preview.image.width, 30); XCTAssertEqual(preview.image.height, 60)
+        XCTAssertEqual(preview.originalSHA256, SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
+        XCTAssertEqual(try Data(contentsOf: staged.url), bytes)
+        XCTAssertEqual(try Data(contentsOf: source), original)
+        let document = TelegramUploadFile(id: staged.id, name: staged.name, size: staged.size, mode: .file,
+            pixelWidth: nil, pixelHeight: nil, url: staged.url, directory: staged.directory)
+        do { _ = try await TelegramUploadFileIO.preview(document); XCTFail("Documents cannot use photo preview") } catch {}
+        let forged = TelegramUploadFile(id: UUID(), name: staged.name, size: staged.size, mode: .photo,
+            pixelWidth: staged.pixelWidth, pixelHeight: staged.pixelHeight, url: source, directory: staged.directory)
+        do { _ = try await TelegramUploadFileIO.preview(forged); XCTFail("Foreign stage must fail") } catch {}
+        try TelegramUploadFileIO.discard(staged)
+        do { _ = try await TelegramUploadFileIO.preview(staged); XCTFail("Removed stage must fail") } catch {}
+    }
+
+    @MainActor func testCancelledPreviewDoesNotDecodeOrMutateOwnedStage() async throws {
+        let source = try directory().appendingPathComponent("preview.jpg")
+        try image(at: source)
+        let staged = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        addTeardownBlock { try TelegramUploadFileIO.discard(staged) }
+        let original = try Data(contentsOf: staged.url)
+        let task = Task { @MainActor in try await TelegramUploadFileIO.preview(staged) }
+        task.cancel()
+        do { _ = try await task.value; XCTFail("Cancelled preview must fail") }
+        catch is CancellationError {} catch { XCTFail("Expected cancellation") }
+        XCTAssertEqual(try Data(contentsOf: staged.url), original)
     }
 }

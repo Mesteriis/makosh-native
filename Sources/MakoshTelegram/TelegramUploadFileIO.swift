@@ -35,6 +35,21 @@ public enum TelegramUploadFileIO {
         return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
 
+    /// Decode only our normalized photo stage; UI never receives its private URL.
+    public static func preview(_ file: TelegramUploadFile) async throws -> TelegramImagePreview {
+        try Task.checkCancellation()
+        let expected = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + file.id.uuidString, isDirectory: true)
+        guard file.mode == .photo, file.directory.isFileURL, file.url.isFileURL,
+              file.directory.standardizedFileURL == expected.standardizedFileURL,
+              file.url.standardizedFileURL == expected.appendingPathComponent("payload-" + file.id.uuidString).standardizedFileURL else {
+            throw TelegramUploadFileError.unavailable
+        }
+        var info = stat()
+        guard lstat(file.directory.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+              info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else { throw TelegramUploadFileError.unavailable }
+        return try await TelegramDownloadedFileIO.image(source: file.url, expectedSize: file.size)
+    }
+
     static func discard(_ file: TelegramUploadFile) throws {
         let expected = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + file.id.uuidString, isDirectory: true)
         guard file.directory.standardizedFileURL == expected.standardizedFileURL,

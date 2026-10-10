@@ -184,7 +184,14 @@ public final class TelegramModel: ObservableObject {
     private var composerDraftLoadID: UUID?
     private let composerDraftLoad = MetaDisposable()
     private var replyComposerSubmission: (source: TelegramMessageActionSource, draft: TelegramComposerDraft)?
-    private var uploadComposerSubmission: TelegramComposerDraft?
+    private var uploadComposerSubmission: (draft: TelegramComposerDraft, caption: TelegramFormattedText)?
+    private var uploadComposerPreparationID: UUID?
+    private var uploadComposerTransfer: (id: UUID, draft: TelegramComposerDraft)?
+    public var isComposerSuspended: Bool {
+        guard let transfer = uploadComposerTransfer, transfer.draft.accountID == draftAccountID,
+              transfer.draft.chatID == selectedChatID else { return false }
+        return drafts.snapshot(accountID: transfer.draft.accountID, chatID: transfer.draft.chatID)?.revision == transfer.draft.revision
+    }
     private struct EditDraftKey: Hashable {
         let account: Int64, peer: Int64, namespace: Int32, message: Int32
         init(_ source: TelegramMessageActionSource) {
@@ -220,6 +227,8 @@ public final class TelegramModel: ObservableObject {
 
     public init() {
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+        upload.didPrepare = { [weak self] target, input, id in self?.suspendUploadComposer(target: target, input: input, id: id) }
+        upload.didFinishPreparation = { [weak self] id in self?.finishUploadComposer(id: id) }
         upload.willSubmit = { [weak self] target, caption in self?.captureUploadDraft(target: target, caption: caption) }
         upload.didQueue = { [weak self] target, caption in self?.acknowledgeUpload(target: target, caption: caption) }
         messageActions.didQueue = { [weak self] action, source in
@@ -242,7 +251,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func displayComposerInput(_ input: TelegramComposerInput) {
-        composerInput = input
+        composerInput = isComposerSuspended ? .empty : input
     }
 
     private func setComposerInput(_ input: TelegramComposerInput) {
@@ -253,7 +262,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func updateComposerInput(_ input: TelegramComposerInput, contextID: UUID, chatID: Int64) -> Bool {
-        guard contextID == accountGeneration, selectedChatID == chatID, phase == .ready else { return false }
+        guard contextID == accountGeneration, selectedChatID == chatID, phase == .ready, !isComposerSuspended else { return false }
         setComposerInput(input)
         return true
     }
@@ -348,7 +357,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func refreshComposerReply(initial: TelegramComposerReply? = nil) {
-        let target = draftAccountID.flatMap { accountID in
+        let target = isComposerSuspended ? nil : draftAccountID.flatMap { accountID in
             selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0)?.replyTarget }
         }
         composerReply.select(target: target, chatID: selectedChatID, initial: initial)
@@ -514,6 +523,29 @@ public final class TelegramModel: ObservableObject {
         return captured.hasValidReplySource ? captured : nil
     }
 
+    private func suspendUploadComposer(target: TelegramUploadTarget, input: TelegramComposerInput, id: UUID) {
+        uploadComposerPreparationID = id
+        uploadComposerTransfer = nil
+        uploadComposerSubmission = nil
+        guard target.accountID == draftAccountID,
+              let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
+              snapshot.input == input,
+              snapshot.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
+        uploadComposerTransfer = (id, snapshot)
+        if selectedChatID == target.chatID { displayComposerInput(.empty); refreshComposerReply() }
+    }
+
+    private func finishUploadComposer(id: UUID) {
+        guard uploadComposerPreparationID == id else { return }
+        uploadComposerPreparationID = nil
+        let transfer = uploadComposerTransfer
+        uploadComposerTransfer = nil
+        uploadComposerSubmission = nil
+        guard let transfer, transfer.draft.accountID == draftAccountID, transfer.draft.chatID == selectedChatID else { return }
+        displayComposerInput(drafts.snapshot(accountID: transfer.draft.accountID, chatID: transfer.draft.chatID)?.input ?? .empty)
+        refreshComposerReply()
+    }
+
     func captureUploadDraft(target: TelegramUploadTarget, caption: String) {
         guard let formatted = try? TelegramFormattedText(text: caption) else { return }
         captureUploadDraft(target: target,caption: formatted)
@@ -521,11 +553,17 @@ public final class TelegramModel: ObservableObject {
 
     func captureUploadDraft(target: TelegramUploadTarget, caption: TelegramFormattedText) {
         uploadComposerSubmission = nil
-        guard target.accountID == draftAccountID,
-              let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
+        guard target.accountID == draftAccountID else { return }
+        if uploadComposerPreparationID != nil {
+            guard let transfer = uploadComposerTransfer, transfer.draft.accountID == target.accountID, transfer.draft.chatID == target.chatID,
+                  transfer.draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
+            uploadComposerSubmission = (transfer.draft, caption)
+            return
+        }
+        guard let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
               snapshot.input.formattedText == caption,
               snapshot.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
-        uploadComposerSubmission = snapshot
+        uploadComposerSubmission = (snapshot, caption)
     }
 
     func acknowledgeUpload(target: TelegramUploadTarget, caption: String) {
@@ -535,9 +573,10 @@ public final class TelegramModel: ObservableObject {
 
     func acknowledgeUpload(target: TelegramUploadTarget, caption: TelegramFormattedText) {
         guard target.accountID == draftAccountID, let submitted = uploadComposerSubmission,
-              submitted.accountID == target.accountID, submitted.chatID == target.chatID else { return }
+              submitted.draft.accountID == target.accountID, submitted.draft.chatID == target.chatID,
+              submitted.caption == caption else { return }
         uploadComposerSubmission = nil
-        acknowledgeComposerDraft(formatted: caption, submitted: submitted)
+        acknowledgeComposerDraft(formatted: submitted.draft.input.formattedText, submitted: submitted.draft)
     }
 
     public func connectUsingSavedAPIConfiguration() {
@@ -805,6 +844,7 @@ public final class TelegramModel: ObservableObject {
         archive.bind(journal: nil)
         playback.stop()
         upload.bind(provider: nil)
+        uploadComposerPreparationID = nil; uploadComposerTransfer = nil; uploadComposerSubmission = nil
         messageActions.bind(provider: nil)
         composerReply.bind(nil)
         mediaProvider = nil; historyMediaSources = []

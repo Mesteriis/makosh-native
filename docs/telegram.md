@@ -161,8 +161,8 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   varies by OS codec version. Real account media and audio-device output remain
   separately unverified.
 - The attachment buttons open a native single-file panel. Choosing a file does
-  not send it: a separate confirmation shows the frozen recipient and editable
-  caption. Switching chat keeps that recipient; stopping/replacing the account
+  not send it: a modal preview shows the frozen recipient, document card or
+  bounded photo thumbnail, and editable caption. Switching chat keeps that recipient; stopping/replacing the account
   while the panel is open invalidates its result, including same-account reconnect.
   Documents retain original bytes, stream in 1 MiB chunks and have an explicit
   4 GiB product cap (not a promise about the server/account quota). **Фото** is
@@ -437,10 +437,18 @@ The 1,024 UTF16 limit remains; unresolved custom emoji cannot be sent.
 Caption callbacks are bound to the current preparation token and ready phase;
 send freezes the formatted value. Only an exact captured ordinary draft revision
 can clear after acknowledgement, protecting newer formatting/selection/reply.
-Unlike the reference's temporaryInputState workflow, the ordinary draft remains
-visible during preparation; a separately edited caption retains it after queue
-acceptance. Complete input transfer/restore and pending-caption restart recovery
-remain open.
+Following the reference's temporaryInputState workflow, preparation suspends the
+ordinary input and reply accessory and transfers the full input/selection into a
+modal preview. Cancel/Escape restores the current original-chat draft and reply;
+late sheet callbacks cannot cancel a newer preparation. The durable original is
+retained as a crash-recovery backup rather than overwritten with an empty draft.
+Acceptance of an edited caption clears only that captured original revision;
+newer revisions or input changed while the file picker was open survive. An
+uncertain enqueue retains the preview until explicit observation close or a late
+ACK; closing it never resends. Photo previews decode only the owned normalized
+stage with the existing bounded image decoder. Pending-caption/file restart
+recovery remains open: a restart restores the original ordinary draft, not edits
+to the unfinished attachment caption.
 
 Forward requires explicit selection among loaded dialogs in the same account;
 the confirmation shows the recipient. Deletion requires choosing local-only or

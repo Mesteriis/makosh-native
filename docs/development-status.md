@@ -1937,3 +1937,66 @@ These are results for that exact preceding head, not this caption patch.
 Full caption transfer/recovery, other Telegram flows and live-account acceptance,
 archive/key backup, later channels and standalone packaging remain open in
 migration-plan.md. The full sequential goal remains active.
+
+
+## Telegram modal attachment preview and input transfer — 2026-10-10
+
+The reference's `PreviewSenderController` temporary input/cancel flow now runs
+inside the shared workspace as a native sheet. A document card or bounded
+normalized-photo thumbnail accompanies the frozen recipient/reply and the owned
+rich caption editor. Ordinary input/reply is suspended during preparation;
+Cancel/Escape restores the current origin draft. The durable original is retained
+as a crash-recovery backup. An edited-caption queue ACK clears only that original
+revision; later revisions and picker mismatches survive. A stable preparation ID
+is separate from send/editor tokens, protecting late dismissal and callback order.
+Precommit rejection/failure releases the transfer; committed uncertainty retains
+it until late ACK or explicit observation close without resend.
+
+Observed checks for this slice:
+
+- `scripts/dev-db.sh up`: exit 0; local PostgreSQL and S3 available.
+- `scripts/test.sh`: exit 0, **398 XCTest (335 Telegram + 63 core)** with zero
+  failures, plus **24 Python regressions**. Added production-flow draft transfer,
+  cancellation, edited-caption/newer-revision ACK, picker mismatch and stable-ID
+  lifecycle tests; bounded photo preview verifies owned paths, cancellation,
+  normalized bytes and refusal of foreign/removed stages. The passing suite still
+  prints **34 upstream SQL t19 teardown diagnostics**.
+- `scripts/build-app.sh`: initial and final builds exit 0. Strict deep signatures
+  and unsigned executable comparison confirm the QA app uses the final payload.
+  The only post-test source change removes an inherited parent accessibility ID;
+  it was rebuilt and checked natively without repeating unrelated tests.
+- Native AX/screenshots establish **13 conditions across two builds**. Initial
+  file sheet/rich transfer and Escape passed; the final build additionally checked
+  restored rich draft after restart, individual button/file IDs, edited-file
+  cancellation, photo thumbnail, original recovery after exact owned-process
+  SIGTERM, edited-caption simulated queue clear, reply/photo preview, restored
+  reply/input after cancel, shared channel selector, synthetic cleanup and clear
+  restart. Same owned Postbox and explicitly isolated PostgreSQL schema; no
+  personal account, Keychain, Telegram network or actual send.
+- Native QA found an inherited SwiftUI accessibility ID overriding child controls;
+  removing that parent ID restored individual IDs. Cmd-Q while the sheet was open
+  did not exit; a relaunch helper correctly refused (exit 1). Exact owned synthetic
+  process termination and subsequent relaunch succeeded (exit 0), preserving the
+  ordinary original. This does not prove abrupt power-loss survival or edited
+  pending-caption recovery.
+- Root reviewed the full patch and verified **10 current worker-reviewed hashes**.
+  Final readonly reviews found no scoped defects; the post-QA one-line ID fix was
+  reviewed again. Workers did not run SwiftPM/runtime gates; source-only reviews
+  did not reuse stale indexes. Observed provider/model/usage remain unknown,
+  without quorum. Private merged evidence is ignored.
+
+- Final project XERJ refresh/check: exit 0, **228 files, 198/198 code**.
+  Reference/engine fingerprints are fresh. Actual final queries retrieved the
+  photo preview and composer finish helpers, confirmed against current source.
+- `git diff --check`: exit 0. Publication audit checked **233 publishable files**
+  and the private PR body against five selected credential fields, zero matches.
+  Machine configuration, databases, caches and native QA artifacts stay ignored.
+
+The preceding caption head `f07d956278a51527045971eee1335fcd958ab50a` passed
+[PR CI 38086826931](https://github.com/Mesteriis/makosh-native/actions/runs/38086826931)
+and [push CI 38086823938](https://github.com/Mesteriis/makosh-native/actions/runs/38086823938).
+These are results for that exact preceding head, not this modal preview patch.
+
+Pending-caption/file restart reconciliation, albums/premium/inline media, other
+Telegram flows and live-account acceptance, archive/key backup, later channels
+and standalone packaging remain open. The full sequential goal remains active.

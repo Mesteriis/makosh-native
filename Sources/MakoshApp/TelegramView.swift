@@ -66,8 +66,9 @@ struct TelegramDetailView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var search: TelegramSearchModel
     @ObservedObject private var media: TelegramMediaController
+    @ObservedObject private var upload: TelegramUploadController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
-    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media }
+    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload }
     @State private var apiID = ""
     @State private var apiHash = ""
     @State private var phone = ""
@@ -86,6 +87,7 @@ struct TelegramDetailView: View {
             case .unsupported(let explanation):
                 ContentUnavailableView("Нужен дополнительный шаг входа", systemImage: "person.crop.circle.badge.exclamationmark", description: Text(explanation)).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            TelegramUploadView(model: model)
             if let error = model.error {
                 HStack(alignment: .top) { Image(systemName: "exclamationmark.circle"); Text(error).textSelection(.enabled); Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.help("Закрыть сообщение") }
                     .font(.callout).padding(16).background(.red.opacity(0.08)).accessibilityIdentifier("telegram.error")
@@ -216,8 +218,9 @@ struct TelegramDetailView: View {
                 }
                 Divider()
                 HStack(alignment: .bottom, spacing: 12) {
+                    TelegramAttachButtons(model: model)
                     TextField("Сообщение в Telegram", text: $model.draft, axis: .vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.composer")
-                    Button("Отправить") { _ = model.sendMessage(model.draft) }.buttonStyle(.borderedProminent).disabled(model.isSyntheticPreview || model.isBusy || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.send")
+                    Button("Отправить") { _ = model.sendMessage(model.draft) }.buttonStyle(.borderedProminent).disabled(model.isSyntheticPreview || model.isBusy || upload.phase != .idle || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.send")
                 }.padding(16)
                 Text(model.isSyntheticPreview ? "Синтетическая проверка: отправка отключена." : "Кнопка отправляет сообщение в выбранный диалог Telegram.").font(.caption).foregroundStyle(.secondary).padding(.bottom, 12)
             }

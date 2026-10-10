@@ -334,3 +334,80 @@ Project and unchanged recipe-3 engine freshness checks passed; actual queries
 resolved withDownloadedFile and fetchedMediaResource and were checked against
 current controller/provider and upstream source. Indexes and review artifacts
 remain ignored; product build/run/test does not use them or research clones.
+
+
+## Telegram file/photo upload slice — 2026-10-10
+
+Implemented explicit native single-file selection, private staging and separate
+recipient/caption confirmation. Chat changes retain the captured recipient;
+account-generation validation rejects a panel opened before stopping/replacing
+the account, even when its account ID later matches again. A document streams
+unchanged bytes (1 MiB chunks, 4 GiB product cap). Photo mode separately validates
+20 MiB / 8,192-side / 40-million-pixel input, normalizes orientation and encodes
+JPEG at no more than 2,560 pixels without copying source metadata. Owned copies
+are 0700/0600, and sources remain untouched.
+
+The production provider copies into this account's MediaBox, then requires
+complete zero-offset data and a measured, regular, nofollow cache file with the
+expected size before calling real TelegramCore enqueue. Its local MessageId
+acknowledges only the outbox. Captured caption acknowledgement preserves another
+chat/account and byte-distinct edits. Progress/nil/100% never establishes server
+delivery. Cancellation is available before enqueue; closing observation after
+possible commitment never deletes/recalls a message. The 30-second deadline
+keeps an uncertain operation observable for a late acknowledgement and blocks
+another enqueue of that active operation. No app automatic resend is added.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0, existing Docker PostgreSQL healthy.
+- `scripts/test.sh`: exit 0, **122 XCTest tests, 0 failures** (24 against real
+  PostgreSQL and 98 Telegram), plus **18 Python regressions**. The 23 new Swift
+  tests exercise actual document/photo staging, metadata/orientation/bounds,
+  safe special-file/cleanup failures, cancellation, frozen recipient/caption,
+  synchronous/stale callbacks, pre/postcommit deadlines and late acknowledgement,
+  media projection/cache verification, account/chat/Unicode draft preservation
+  and rejection of an old picker context before staging.
+- `scripts/build-app.sh`: exit 0, native bundle built and strict ad-hoc signature
+  verification passed. The initial test compilation failed because an implicit
+  catch `error` shadowed the controller's published property; explicit `self.error`
+  fixed it. Both subsequent full test runs passed; failed logs remain local.
+- The separate source copy with `.references/` absent, its bare source cache
+  preserved outside the expected location and closed HTTP(S)/ALL_PROXY routes
+  built/signed and passed all **122 XCTest / 18 Python tests**, exit 0. Neither
+  excluded directory was created. The source cache was restored, and the test
+  DSN was passed only in process memory.
+- Actual isolated DEBUG native UI: cancelling the Open panel retained the draft;
+  a 51-byte synthetic document reached explicit confirmation. Switching to a
+  second chat retained the first recipient. The labeled fake queue acknowledged
+  only the first caption, preserving the second chat's newer draft. Opening the
+  first chat showed its caption cleared. Closing observation showed the possible
+  queue notice. Photo selection prepared a 780-byte JPEG; 1,026 UTF-16 units
+  disabled send. Cancel removed the sole owned stage and both original fixture
+  hashes remained unchanged. The final rebuilt executable also showed the updated
+  JPEG explanation and successful ready-to-cancel transition. No real send occurred.
+- Scoped same-model source reviews covered staging, controller/provider and
+  UI/model integration; no additional confirmed findings. Root independently
+  added the same-account reconnect/picker guard and regression, and owns the
+  final build/test/UI evidence. Worker SwiftPM/live checks were not run and
+  observed route/usage metadata remain unknown; no quorum was used.
+
+The preceding download head `8a288d12e8c105fcfec60c32b12a70645b70b709` passed
+[PR CI 38059043973](https://github.com/Mesteriis/makosh-native/actions/runs/38059043973).
+This is evidence for that head, not a CI result for the new upload changes.
+
+No account login, private message read, real file/photo send or network media
+acceptance was performed. Cloud quota/restricted-peer behavior, genuine MediaBox
+copy failure, sandbox-scoped documents, cancellation/mutation during streaming,
+crash/restart uncertain-send reconciliation, local-to-cloud message mapping,
+secret-chat upload, queued-send deletion and delivery/read status remain open.
+Queued engine work may resume after reconnect; exactly-once remote delivery is
+not claimed. Audio/video playback, message actions, dossier linking and subsequent
+services remain in the active sequential goal.
+
+Final upload project XERJ refresh: exit 0, **95 indexed files, 68/68 classified
+code**. Project and unchanged recipe-3 engine fingerprints passed. Actual own
+queries retrieved the native panel, caption acknowledgement and context guard;
+engine queries/source reads confirmed enqueue, local resources, MediaBox copy
+and pending status. An intermediate refresh failed because source changed while
+indexing; its stale fingerprint was not reported as fresh. The stable final
+refresh supersedes it. Product build/run/test still does not use indexes/clones.

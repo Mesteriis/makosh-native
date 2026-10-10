@@ -62,6 +62,8 @@ enum TelegramSetupError: LocalizedError {
 public final class TelegramModel: ObservableObject {
     public let search = TelegramSearchModel()
     public let media = TelegramMediaController()
+    public let upload = TelegramUploadController()
+    public var uploadContextID: UUID { accountGeneration }
     @Published public private(set) var phase: TelegramPhase = .configuration
     @Published public private(set) var isBusy = false
     @Published public var error: String?
@@ -73,6 +75,14 @@ public final class TelegramModel: ObservableObject {
         didSet { if oldValue != chatFolder { loadChatList(clear: true); search.setFolder(chatFolder) } }
     }
     public var selectedChat: TelegramChat? { selectedChatID.flatMap { knownChats[$0] } }
+    public var uploadTarget: TelegramUploadTarget? {
+        guard phase == .ready, !isBusy, let chat = selectedChat, let accountID = draftAccountID else { return nil }
+        if !isSyntheticPreview {
+            guard [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel]
+                .contains(PeerId(chat.id).namespace) else { return nil }
+        }
+        return TelegramUploadTarget(accountID: accountID, chatID: chat.id, title: chat.title)
+    }
     public var historyWindowID: UUID? { historyPages.requestID }
     @Published public private(set) var historyFocusID: String?
     public var readyHistoryFocusID: String? {
@@ -131,6 +141,20 @@ public final class TelegramModel: ObservableObject {
 
     public init() {
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+        upload.didQueue = { [weak self] target, caption in self?.acknowledgeUpload(target: target, caption: caption) }
+    }
+
+    public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String, contextID: UUID) {
+        guard contextID == accountGeneration, phase == .ready,
+              target.accountID == draftAccountID, knownChats[target.chatID] != nil else { return }
+        if selectedChatID == target.chatID { drafts.save(draft, accountID: target.accountID, chatID: target.chatID) }
+        upload.prepare(source: source, mode: mode, target: target, caption: caption)
+    }
+
+    func acknowledgeUpload(target: TelegramUploadTarget, caption: String) {
+        guard target.accountID == draftAccountID else { return }
+        drafts.acknowledge(sentText: caption, accountID: target.accountID, chatID: target.chatID)
+        if selectedChatID == target.chatID, draft.utf8.elementsEqual(caption.utf8) { draft = "" }
     }
 
     public func connectUsingSavedAPIConfiguration() {
@@ -347,6 +371,7 @@ public final class TelegramModel: ObservableObject {
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
         media.bind(provider: mediaProvider)
+        upload.bind(provider: TelegramEngineUploadProvider(account: account))
         search.bind(account: account)
         search.setFolder(chatFolder)
         let accountToken = accountGeneration
@@ -368,6 +393,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        upload.bind(provider: nil)
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
         search.bind(account: nil)
@@ -569,6 +595,7 @@ public final class TelegramModel: ObservableObject {
         model.preview = TelegramSyntheticPages()
         model.search.useSyntheticPreview()
         model.media.bind(provider: TelegramSyntheticMediaProvider())
+        model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.isSyntheticPreview = true
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"

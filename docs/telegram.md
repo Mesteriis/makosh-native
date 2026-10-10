@@ -140,8 +140,31 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   nothing. Source files are never moved or overwritten. Regular-file, size,
   symlink and same-inode checks protect the cache and destination. Download
   paths and raw protocol references are not persisted in contact dossiers.
-  Media upload, video/audio playback and immediate-thumbnail decoding remain
-  future work; image/file support is not full media-client acceptance.
+  Video/audio playback and immediate-thumbnail decoding remain future work;
+  image/file support is not full media-client acceptance.
+- The attachment buttons open a native single-file panel. Choosing a file does
+  not send it: a separate confirmation shows the frozen recipient and editable
+  caption. Switching chat keeps that recipient; stopping/replacing the account
+  while the panel is open invalidates its result, including same-account reconnect.
+  Documents retain original bytes, stream in 1 MiB chunks and have an explicit
+  4 GiB product cap (not a promise about the server/account quota). **Фото** is
+  separate: input is bounded to 20 MiB, 8,192 per side and 40 million pixels,
+  orientation is normalized and a JPEG no larger than 2,560 pixels is encoded
+  without copying source metadata. Temporary copies use private 0700/0600 paths;
+  symlinks/special files and sources changed during preparation are rejected.
+- **Отправить вложение** validates the captured account/cloud chat and a caption
+  of at most 1,024 UTF-16 units. It first copies into MediaBox and verifies a
+  complete zero-offset regular cache file with the exact measured size. Only then
+  can TelegramCore enqueue the file/photo. A local MessageId acknowledges the
+  outbox, clears only a byte-identical caption in its original chat, and releases
+  the temporary copy. Queue progress, 100% or absent progress never mean delivery.
+  Before enqueue, cancellation stops preparation; after possible enqueue, closing
+  observation never recalls/deletes the message. A 30-second enqueue deadline
+  preserves an uncertain result and allows a late acknowledgement without another
+  enqueue. There is no app-triggered automatic resend. Queued engine work may
+  resume on reconnect. Crash/restart reconciliation, local-to-cloud ID tracking,
+  server quota/restriction acceptance, secret-chat upload and queued-send deletion
+  remain unverified or unimplemented; no exactly-once delivery claim is made.
 - Text sending uses TelegramCore's genuine durable local outbox. Captured
   account/recipient identity is retained across selection changes. The draft
   clears only after enqueue acknowledgement; pending/failed flags are shown in
@@ -173,7 +196,9 @@ photo/file/unsupported attachments exercise download, cancel, image preview and
 the real Save panel. Fixture bytes are created in a private temporary directory
 only after an explicit download and removed when their lease is released.
 It bypasses the contact workspace and opens no
-PostgreSQL, API file, Keychain, account/session or network. Sending and connection
-are blocked in the model as well as the UI. It is visibly labeled synthetic and
+PostgreSQL, API file, Keychain, account/session or network. Real sending and connection
+are blocked in the model as well as the UI. File/photo selection exercises real
+staging and confirmation; **Имитировать очередь** invokes only a visibly labeled
+DEBUG fake provider with no Postbox transaction or network. It is visibly labeled synthetic and
 does not prove server pagination or hole filling. The branch and fixture are
 excluded from release builds; regular launch still starts disconnected.

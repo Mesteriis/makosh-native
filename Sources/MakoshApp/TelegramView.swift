@@ -11,7 +11,6 @@ struct TelegramDetailView: View {
     @ObservedObject private var peerStatus: TelegramPeerStatusController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
-    @State private var editRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
     @State private var messageSearchPresented = false
     @FocusState private var messageSearchFocused: Bool
@@ -69,10 +68,10 @@ struct TelegramDetailView: View {
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
             .onChange(of: model.selectedChatID) { _, _ in
-                attachmentActions.cancel(); editRequest = nil; profilePresented = false
+                attachmentActions.cancel(); profilePresented = false
                 closeMessageSearch()
             }
-            .onChange(of: model.messageActionContextID) { _, _ in editRequest = nil; messageActionRequest = nil; profilePresented = false }
+            .onChange(of: model.messageActionContextID) { _, _ in messageActionRequest = nil; profilePresented = false }
             .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
             .onChange(of: search.messageQuery) { _, _ in
@@ -248,9 +247,9 @@ struct TelegramDetailView: View {
                     }
                 }
                 Divider()
-                if let editRequest {
-                    TelegramInlineEditView(model: model, request: editRequest) { self.editRequest = nil }
-                        .id(editRequest.id)
+                if let session = model.messageEditSession {
+                    TelegramInlineEditView(model: model, session: session)
+                        .id(session.id)
                 } else {
                     TelegramComposerView(model: model)
                 }
@@ -332,8 +331,9 @@ struct TelegramDetailView: View {
                 let request = TelegramMessageActionRequest(source: source, author: item.author, contextID: model.messageActionContextID, mode: mode)
                 switch mode {
                 case .reply:
-                    if model.beginReply(to: item, contextID: request.contextID) { editRequest = nil }
-                case .edit: editRequest = request
+                    _ = model.beginReply(to: item, contextID: request.contextID)
+                case .edit:
+                    _ = model.beginMessageEdit(source: source, author: item.author, contextID: request.contextID)
                 case .forward, .delete: messageActionRequest = request
                 }
             }

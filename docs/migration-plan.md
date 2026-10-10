@@ -66,8 +66,13 @@
    native undo/redo и rich input/reply проверены в общем окне после restart.
    Ordinary/reply отправка передаёт native entities и проверяет text mentions
    по текущему Postbox; inline custom emoji требует отдельного media registry.
-   Режим edit после restart сбрасывается и в референсе; его восстановление внутри
-   процесса, quote/forward state и серверные черновики ещё впереди. Настройка
+   Режим edit после restart сбрасывается и в референсе. Внутри процесса отдельная
+   per-chat session восстанавливает source, typed text/entities и выделение при
+   смене диалога/сервиса, сохраняя ordinary/reply отдельно. Session/revision guards
+   защищают новый ввод от позднего applied ACK. Native QA приняла две независимые
+   правки, rich selection после смены чата/сервиса, cancel/source reopen и restart
+   без edit при сохранённом ordinary/reply. Account stop очищает временный кеш.
+   Topic navigation, quote/forward state и серверные drafts ещё впереди. Настройка
    Enter / ⌘Enter подключена к ordinary/reply, edit и caption через guarded submit;
    modifier/persistence tests и full gates пройдены. В synthetic общем окне
    проверены оба варианта, Return/keypad Enter reply, ⌘Enter edit/caption,

@@ -385,16 +385,24 @@ Failed/pending revisions stay dirty; an
 explicit retry or account rebind resubmits only the latest snapshot, including
 an empty snapshot after enqueue. A completed upstream NoError transaction is
 not a guarantee of disk-full diagnosis or survival of abrupt power loss while a
-write is pending. Edit has a separate in-process
-draft keyed by account and native message identity. Rejection, uncertainty,
-closing/reopening the editor and controller rebind preserve it; an exact applied
-acknowledgement clears it. Drafts include exact text and typed entities; a newer
-format-only change survives acknowledgement of an older edit. Reference
-`ChatInterfaceState` explicitly decodes `editState = nil` after restart; its
-temporary edit state lives in AccountContext memory. Makosh likewise keeps edit
-drafts in process, while restoring the ordinary formatted input, selection and
-reply target. Reply quotes/forward state, complete in-process edit-mode
-restoration remain open. Pending attachment caption/file recovery is connected
+write is pending. Edit has a separate in-process session for each chat in the
+current account context. Switching chats or the shared service selector restores
+its source, exact text/entities and UTF16 selection. Ordinary input and reply
+remain separate. Explicit cancel discards the edit input and returns to that
+ordinary input; reopening starts from the source message. A changed source
+version uses its own original, without attaching a cached older draft.
+Rejection/uncertainty retains the session. An applied acknowledgement closes only
+the captured session revision, including while another chat is selected; newer
+text, formatting, selection or a replacement session survives. Submission still
+revalidates the source against current Postbox. There is no automatic retry.
+Reference `ChatInterfaceState` restores edit from AccountContext temporary state
+but explicitly decodes `editState = nil` after restart. Makosh likewise keeps
+edit sessions in process and clears them when stopping the account context,
+while ordinary input/selection/reply is persisted separately. The reference's
+normal edit clears on local commitment; Makosh conservatively waits for the
+existing action provider's applied event. Neither proves remote delivery.
+Reply quotes/forward state and topic-aware edit navigation remain open.
+Pending attachment caption/file recovery is connected
 as described below. The selected dialog is not restored automatically.
 
 Reply and edit use the lower composer with a compact source accessory, following

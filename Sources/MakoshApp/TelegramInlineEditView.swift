@@ -32,25 +32,21 @@ public struct TelegramInputAccessoryView: View {
 struct TelegramInlineEditView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var controller: TelegramMessageActionsController
-    let request: TelegramMessageActionRequest
-    let onClose: () -> Void
-    @State private var draft: TelegramFormattedText?
+    let session: TelegramMessageEditSession
     @State private var editorError: String?
     @State private var rejected = false
-    @State private var submitted = false
-    init(model: TelegramModel,request: TelegramMessageActionRequest,onClose: @escaping () -> Void) {
-        self.model = model; controller = model.messageActions; self.request = request; self.onClose = onClose
-        _draft = State(initialValue: model.messageFormattedEditDraft(for: request.source))
+    init(model: TelegramModel,session: TelegramMessageEditSession) {
+        self.model = model; controller = model.messageActions; self.session = session
     }
     var body: some View {
         VStack(spacing: 0) {
-            TelegramInputAccessoryView(title: "Изменить сообщение",detail: request.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(request.source),symbol: "pencil",onClose: close)
+            TelegramInputAccessoryView(title: "Изменить сообщение",detail: session.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(session.source),symbol: "pencil",onClose: close)
             HStack(alignment: .bottom,spacing: 12) {
-                if let value = draft {
-                    TelegramRichTextEditor(value: Binding(get: { draft ?? value },set: { draft = $0 }),error: $editorError,
-                        submit: submit)
-                        .disabled(controller.isBusy)
-                } else { Text("Форматирование недоступно для безопасной правки.").font(.caption).foregroundStyle(.red) }
+                TelegramRichTextEditor(value: Binding(get: { currentSession?.input.formattedText ?? session.input.formattedText },set: { _ in }),
+                    error: $editorError,selection: session.input.selection,inputChanged: { input in
+                        _ = model.updateMessageEditInput(input,sessionID: session.id,contextID: session.contextID)
+                    },submit: submit)
+                    .disabled(controller.isBusy)
                 Button(action: submit) { Image(systemName: "checkmark.circle.fill").font(.title2) }
                     .buttonStyle(.plain).foregroundStyle(.tint).disabled(!canSubmit)
                     .help("Сохранить изменение").accessibilityLabel("Сохранить изменение")
@@ -59,27 +55,29 @@ struct TelegramInlineEditView: View {
             if let editorError { Text(editorError).font(.caption).foregroundStyle(.red).padding(.horizontal,16) }
             if rejected { Text("Не удалось начать правку. Введённый текст сохранён.").font(.caption).foregroundStyle(.red) }
         }
-        .onChange(of: draft) { _,value in
-            if let value { model.saveMessageFormattedEditDraft(value,source: request.source,contextID: request.contextID) }
-        }
-        .onChange(of: controller.phase) { _,phase in
-            if submitted,controller.source == request.source,phase == .applied { onClose() }
-        }
-        .onChange(of: model.messageActionContextID) { _,_ in onClose() }
-        .onChange(of: model.selectedChatID) { _,_ in onClose() }
+    }
+    private var currentSession: TelegramMessageEditSession? {
+        guard let current = model.messageEditSession,current.id == session.id,
+              current.contextID == model.messageActionContextID else { return nil }
+        return current
     }
     private var canSubmit: Bool {
-        guard !controller.isBusy,controller.phase != .uncertain,editorError == nil,
-              model.messageActionContextID == request.contextID,model.selectedChatID == request.source.chatID,
-              let draft,draft.isEditable,draft.text.utf16.count <= request.source.editLimit,
-              !draft.text.isEmpty || request.source.metadata.allowsEmptyEdit else { return false }
-        return draft != request.source.metadata.formattedText &&
-            (request.source.metadata.formattedText != nil || !draft.text.utf8.elementsEqual(request.source.text.utf8) || !draft.entities.isEmpty)
+        guard model.phase == .ready,!model.isBusy,!model.isRestoringPendingUpload,
+              model.pendingUploadRecoveryError == nil,!controller.isBusy,controller.phase != .uncertain,editorError == nil,
+              let current = currentSession,model.selectedChatID == current.source.chatID else { return false }
+        let draft = current.input.formattedText,source = current.source
+        guard draft.isEditable,draft.text.utf16.count <= source.editLimit,
+              !draft.text.isEmpty || source.metadata.allowsEmptyEdit else { return false }
+        return draft != source.metadata.formattedText &&
+            (source.metadata.formattedText != nil || !draft.text.utf8.elementsEqual(source.text.utf8) || !draft.entities.isEmpty)
     }
     private func submit() {
-        guard canSubmit,let draft else { return }
-        submitted = model.performMessageAction(.editFormatted(draft),source: request.source,contextID: request.contextID)
-        rejected = !submitted
+        guard canSubmit,let current = currentSession else { return }
+        rejected = !model.performMessageAction(.editFormatted(current.input.formattedText),source: current.source,contextID: current.contextID)
     }
-    private func close() { if submitted { controller.cancel() }; onClose() }
+    private func close() {
+        guard let current = currentSession else { return }
+        if controller.source == current.source { controller.cancel() }
+        _ = model.cancelMessageEdit(sessionID: current.id,contextID: current.contextID)
+    }
 }

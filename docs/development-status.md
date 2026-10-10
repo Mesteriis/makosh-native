@@ -1,6 +1,52 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram send-key preference
+## Current stage: Telegram in-process edit sessions
+
+Telegram remains inside the shared service-selector/list/conversation window.
+Its active edit now belongs to the account-context model, with independent chat
+sessions retaining source, exact rich input and scalar-safe UTF16 selection.
+Chat/service switches restore the edit while ordinary input/reply stay separate.
+Explicit Cancel discards that edit and its exact source cache; reopening starts
+from the message original. Changed source fingerprints have separate cache keys.
+Account stop clears all temporary sessions/cache; restart does not restore edit.
+The reference's AccountContext temporary state and cancellation paths were
+source-confirmed through XERJ; no outer GPLv2 UI/serializer code was copied.
+
+Applied acknowledgement closes only the session/revision/input captured before
+provider admission, including synchronous callbacks and a different selected chat.
+Newer text/formatting/selection or a replacement session survives. Rejection and
+uncertainty retain the active edit without automatic retry. Source validation
+still uses current Postbox. Unlike the reference's normal edit clearing at local
+commitment, Makosh waits for its existing provider's applied event.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` and strict
+signature verification exit 0: **432 XCTest (369 Telegram + 63 core), zero failures;
+26 Python regressions**. Seven new model tests cover independent chats, source
+versions, stale context/session calls, selection/formatting, cancel/reopen,
+ordinary reply isolation, synchronous/late ACK, rejection/uncertainty and account
+stop. A failing regression first exposed the old cached text after account stop;
+clearing that cache fixes it. The full run prints 46 upstream t19 teardown
+diagnostics. An intermediate full run failed in an existing retention fixture's
+temporary-directory cleanup (NSCocoaErrorDomain 513 / EPERM); its six-test probe
+and subsequent full runs pass. The cleanup cause remains unconfirmed; the failed
+run is retained. Historical upstream SQLite trap evidence remains below.
+
+Actual native AX/screenshots verified two independent edits; bold text/selection
+across Mail → Telegram and chat switches; Cancel returning the original ordinary
+reply; reopening from source; Command-Enter applied; and process restart resetting
+edit while retaining the ordinary reply. QA used explicitly owned synthetic
+Postbox and isolated PostgreSQL/S3, matching executable payload/strict signatures.
+After the final cache-reset correction, the matching final payload repeated
+rich edit/selection across services and Cancel returning the ordinary reply;
+account-context cache clearing is established by the focused regression/full run.
+No personal account, Keychain, Telegram network or server send was used.
+Topic navigation, actual IME, other Telegram parity/live-account acceptance,
+later channels, backups and standalone packaging remain open. The full migration
+goal stays active. Prior head 59c554c passed both hosted PR/push CI runs; hosted
+CI for this slice is separate. Worker route/usage metadata remains unknown;
+root performed integration gates and native acceptance.
+
+## Historical send-key preference — 2026-10-11
 
 The next reference slice adds the application-wide Enter / Command-Enter choice
 to native Settings and the shared rich editor. Ordinary/reply, inline edit and

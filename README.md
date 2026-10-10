@@ -9,6 +9,10 @@ The choice persists across launches and applies to messages/replies, inline
 edits and attachment captions. Shift-Return inserts a newline; Return also
 inserts a newline when ⌘Enter is selected.
 
+An inline Telegram edit keeps its text, formatting and selection when switching
+chats or services in the same window. Cancelling it returns to the separate
+ordinary draft/reply. Active edits remain in memory and reset after app restart.
+
 Received Telegram text has a separate encrypted, append-only PostgreSQL archive,
 accessible through **Локальный архив** even while disconnected. Stored versions
 survive edits and removal from Telegram's cache. A durable same-transaction

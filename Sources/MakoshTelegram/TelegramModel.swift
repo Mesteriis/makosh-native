@@ -138,6 +138,7 @@ public final class TelegramModel: ObservableObject {
             if let accountID = draftAccountID {
                 displayComposerInput(selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0)?.input } ?? .empty)
             } else { displayComposerInput(.empty) }
+            projectMessageEditSession()
             refreshComposerReply()
             pendingRecoveryAttempt = nil
             cancelPendingRecovery()
@@ -211,10 +212,16 @@ public final class TelegramModel: ObservableObject {
 
     private struct EditDraftKey: Hashable {
         let account: Int64, peer: Int64, namespace: Int32, message: Int32
+        let chat: Int64, thread: Int64?
+        let fingerprint: Data
         init(_ source: TelegramMessageActionSource) {
             account = source.accountID; peer = source.peerID; namespace = source.namespace; message = source.messageID
+            chat = source.chatID; thread = source.threadID; fingerprint = Data(source.fingerprint.utf8)
         }
     }
+    @Published public private(set) var messageEditSession: TelegramMessageEditSession?
+    private var messageEditSessions: [Int64: TelegramMessageEditSession] = [:]
+    private var submittedEditSession: TelegramMessageEditSession?
     private var editDrafts: [EditDraftKey: TelegramFormattedText] = [:]
     private var knownChats: [Int64: TelegramChat] = [:]
     private var mediaProvider: TelegramEngineMediaProvider?
@@ -276,8 +283,17 @@ public final class TelegramModel: ObservableObject {
             case let .editFormatted(value): submitted = value
             default: return
             }
+            let captured = self.submittedEditSession
+            self.submittedEditSession = nil
+            if let captured, captured.source == source, captured.contextID == self.accountGeneration,
+               self.messageEditSessions[source.chatID] == captured {
+                self.messageEditSessions[source.chatID] = nil
+                self.projectMessageEditSession()
+            }
             let key = EditDraftKey(source)
-            if let submitted, self.editDrafts[key] == submitted { self.editDrafts[key] = nil }
+            if captured == nil || self.messageEditSessions[source.chatID] == nil {
+                if let submitted, self.editDrafts[key] == submitted { self.editDrafts[key] = nil }
+            }
         }
     }
 
@@ -491,6 +507,9 @@ public final class TelegramModel: ObservableObject {
         if let changed = drafts.setReplyTarget(target, accountID: source.accountID, chatID: source.chatID) {
             persistComposerDraft(changed)
         }
+        if let session = messageEditSession {
+            _ = cancelMessageEdit(sessionID: session.id, contextID: contextID)
+        }
         refreshComposerReply(initial: TelegramComposerReply(source: source, author: message.author))
         return true
     }
@@ -568,6 +587,56 @@ public final class TelegramModel: ObservableObject {
         contactProfileState = .idle
     }
 
+    private func projectMessageEditSession() {
+        messageEditSession = selectedChatID.flatMap { messageEditSessions[$0] }.flatMap {
+            $0.contextID == accountGeneration && $0.source.accountID == draftAccountID ? $0 : nil
+        }
+    }
+
+    @discardableResult
+    public func beginMessageEdit(source: TelegramMessageActionSource, author: String, contextID: UUID) -> Bool {
+        guard contextID == accountGeneration, phase == .ready, !isBusy,
+              !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
+              !messageActions.isBusy, messageActions.phase != .uncertain,
+              source.accountID == draftAccountID, source.chatID == selectedChatID,
+              knownChats[source.chatID] != nil, source.canEdit, !source.fingerprint.isEmpty,
+              source.peerID == source.chatID || source.metadata.migrationChatID == source.chatID,
+              source.metadata.formattedText?.isEditable != false,
+              let formatted = messageFormattedEditDraft(for: source), formatted.isEditable,
+              let input = try? TelegramComposerInput(formattedText: formatted) else { return false }
+        if let current = messageEditSessions[source.chatID], current.source == source,
+           current.contextID == contextID { projectMessageEditSession(); return true }
+        messageEditSessions[source.chatID] = TelegramMessageEditSession(source: source, author: author,
+            contextID: contextID, input: input)
+        projectMessageEditSession()
+        return true
+    }
+
+    @discardableResult
+    public func updateMessageEditInput(_ input: TelegramComposerInput, sessionID: UUID, contextID: UUID) -> Bool {
+        guard phase == .ready, contextID == accountGeneration, let current = messageEditSession,
+              current.id == sessionID, current.contextID == contextID,
+              current.source.accountID == draftAccountID, current.source.chatID == selectedChatID,
+              input.formattedText.isEditable else { return false }
+        guard current.input != input else { return true }
+        messageEditSessions[current.source.chatID] = TelegramMessageEditSession(id: current.id,
+            source: current.source, author: current.author, contextID: contextID, input: input)
+        editDrafts[EditDraftKey(current.source)] = input.formattedText
+        projectMessageEditSession()
+        return true
+    }
+
+    @discardableResult
+    public func cancelMessageEdit(sessionID: UUID, contextID: UUID) -> Bool {
+        guard contextID == accountGeneration, let current = messageEditSession,
+              current.id == sessionID, current.contextID == contextID,
+              current.source.chatID == selectedChatID else { return false }
+        editDrafts[EditDraftKey(current.source)] = nil
+        messageEditSessions[current.source.chatID] = nil
+        projectMessageEditSession()
+        return true
+    }
+
     public func messageEditDraft(for source: TelegramMessageActionSource) -> String {
         editDrafts[EditDraftKey(source)]?.text ?? source.text
     }
@@ -615,8 +684,20 @@ public final class TelegramModel: ObservableObject {
                 replyComposerSubmission = (source, snapshot)
             }
         }
+        submittedEditSession = nil
+        let edited: TelegramFormattedText?
+        switch action {
+        case let .edit(value): edited = try? TelegramFormattedText(text: value)
+        case let .editFormatted(value): edited = value
+        default: edited = nil
+        }
+        if let edited, let session = messageEditSession, session.source == source,
+           session.contextID == contextID, session.input.formattedText == edited {
+            submittedEditSession = session
+        }
+        // Capture before perform: providers may synchronously acknowledge.
         let accepted = messageActions.perform(action, source: source)
-        if !accepted { replyComposerSubmission = nil }
+        if !accepted { replyComposerSubmission = nil; submittedEditSession = nil }
         return accepted
     }
 
@@ -981,6 +1062,7 @@ public final class TelegramModel: ObservableObject {
         media.bind(provider: nil)
         search.bind(account: nil)
         accountGeneration = UUID()
+        messageEditSessions = [:]; messageEditSession = nil; submittedEditSession = nil; editDrafts = [:]
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
         account?.network.shouldKeepConnection.set(.single(false))

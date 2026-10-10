@@ -491,8 +491,8 @@ and the engine can refresh the peer data. The timestamp describes a local cache
 observation, not an acknowledged server fetch. No contact-list scan or system
 Contacts access is performed. Groups, channels and bots cannot be linked to a
 person dossier; a person without a name can be viewed but not linked yet.
-Secret-chat profiles, photos, presence, member lists, administration and other
-reference profile actions remain open.
+Secret-chat profiles, photo galleries/video avatars, member lists,
+administration and other reference profile actions remain open.
 
 The profile offers explicit creation of a new dossier or selection of an existing
 PostgreSQL contact. Existing-source ownership opens that dossier or permits an
@@ -532,6 +532,47 @@ The DEBUG-only `--telegram-peer-profiles-synthetic-preview` flag uses that same
 workspace and explicit isolated database contract. Dialogs 1–7 cover a person,
 group, channel, supergroup, bot, unknown-count scam channel and zero-count fake
 supergroup. These are in-memory fixtures, not server-refresh acceptance.
+
+## Peer avatars and cached status
+
+Visible dialog rows, the conversation header and the peer card observe the
+selected account's native peer view with `updateData: false` for static profile
+photos. The provider selects native small/large representations and uses an
+avatar reference, peer location and avatar content category. Missing access
+hashes permit a cache-only attempt; no standalone network fallback is invented.
+An absent, unsupported, failed or invalid image leaves the existing initials.
+
+Photo replacement disposes the previous resource observation/fetch. Pending
+fetches have a 30-second bound; native cache leases remain until resource change
+or view cancellation after completion. Forced cache purge can still interrupt
+decoding and falls back safely. Only opaque resource digests and complete-file
+events cross to main delivery; native protocol references stay in the provider.
+The shared avatar store invalidates account contexts and limits active observers
+to 128. Its worker accepts regular files without following a final symlink,
+at most 2 MiB, 4096 pixels per dimension and 16 million pixels; thumbnails are
+bounded to 128/512 pixels. The generic attachment preview keeps its prior limits.
+These transient profile photos use the account's MediaBox cache; no image bytes
+are written to PostgreSQL or dossiers. Retained message attachments still use S3.
+
+The header and person card show cached native presence rather than connection
+state. Server clock offset is added when comparing native Unix expiry/activity
+times; it is subtracted for device-clock timer deadlines. Absolute last-seen
+dates preserve the original Unix timestamp. Online expiry and relative minute
+boundaries refresh without a new peer event. Privacy buckets remain approximate,
+missing presence is explicitly unavailable, and Saved Messages hides presence.
+Bot/support/service and group/channel counts have separate presentation.
+Leaving Telegram or changing account/chat cancels the selected-peer subscription
+and the view's timer. The clock offset is refreshed on peer emissions, with no
+separate clock-change subscription. Actual account/network behavior remains
+unaccepted; this is a cache observation, not a live-availability guarantee.
+
+The DEBUG-only `--telegram-peer-appearance-synthetic-preview` uses the same
+explicit isolated database contract and shared workspace. Dialog 1 has a generated
+photo/online status, 2 no photo, 3 corrupt bytes, 8 a four-second online expiry,
+9 approximate recently, 10 missing presence and 11 a self peer. Generated photos
+are temporary private fixture files; no personal account, Keychain or Telegram
+network is opened. Animated avatars, profile photo galleries and list online
+badges remain open.
 
 ## Offline navigation UI check
 

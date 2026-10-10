@@ -5,9 +5,15 @@ import MakoshTelegram
 struct TelegramContactProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: TelegramModel
+    @ObservedObject private var peerStatus: TelegramPeerStatusController
     let dossier: WorkspaceModel?
     let contextID: UUID
     let openDossier: (UUID) -> Void
+
+    init(model: TelegramModel, dossier: WorkspaceModel?, contextID: UUID, openDossier: @escaping (UUID) -> Void) {
+        self.model = model; self.peerStatus = model.peerStatus
+        self.dossier = dossier; self.contextID = contextID; self.openDossier = openDossier
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,11 +38,15 @@ struct TelegramContactProfileView: View {
                 Form {
                     Section {
                         VStack(spacing: 10) {
-                            TelegramChatAvatar(title: profile.displayName, size: 72)
+                            TelegramChatAvatar(title: profile.displayName, peerID: profile.peerID, store: model.avatars, size: 72)
                             Text(profile.displayName.isEmpty ? "Имя не опубликовано" : profile.displayName)
                                 .font(.title2.weight(.semibold)).textSelection(.enabled)
                             Text(profile.kind.profileTitle).foregroundStyle(.secondary)
                                 .accessibilityIdentifier("telegram.profile.kind")
+                            if profile.isPerson, let status = peerStatus.status,
+                               status.peerID == profile.peerID, status.accountID == profile.accountID, !status.isSelf {
+                                TelegramPeerStatusView(status: status, identifier: "telegram.peerStatus.profile")
+                            }
                             if profile.isScam || profile.isFake {
                                 Label(profile.isScam ? "Пометка Telegram: мошенничество" : "Пометка Telegram: поддельный аккаунт",
                                     systemImage: "exclamationmark.triangle").foregroundStyle(.red)

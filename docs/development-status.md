@@ -1449,3 +1449,64 @@ The preceding head `fc12c2d84b4fec9242acb00204711a16ba270ccd` passed
 [PR CI 38077756700](https://github.com/Mesteriis/makosh-native/actions/runs/38077756700)
 and [push CI 38077753148](https://github.com/Mesteriis/makosh-native/actions/runs/38077753148).
 These results do not establish hosted CI for the new peer-card change.
+
+## Static Telegram avatars and cached peer status — 2026-10-10
+
+Telegram remains inside the shared WorkspaceView. Dialog rows, the conversation
+header and peer cards now show native static small/large photos, with initials
+for absent/invalid images. Account-bound peer/resource observations replace old
+fetches on photo changes; complete-file events are decoded through bounded
+regular-file/ImageIO admission. Profile photos are transient MediaBox cache;
+retained message attachments still use encrypted S3 with PostgreSQL metadata.
+No outer GPLv2 UI/assets or research-folder runtime dependency were added.
+
+The header/person card now presents cached native presence with privacy buckets,
+self/bot/support/service conventions, optional counts and cancellable expiry
+refresh. Server offset affects comparisons/deadlines; absolute last-seen dates
+retain native Unix time. Account/chat/visibility changes dispose selected-peer
+observation and reject stale events. Relative hours/today/yesterday wording,
+animated avatars, profile galleries and list online badges remain open.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; PostgreSQL/S3 healthy.
+- Final `scripts/test.sh`: exit 0, **331 XCTest (268 Telegram + 63 core),
+  0 failures; 24 Python regressions**. Nineteen new tests cover native avatar
+  mapping, replacement/account/cancellation guards, image admission, presence
+  expiry/server-offset/date/count mapping and selected-peer lifecycle/recovery.
+  The first fixture compile failed on PeerId namespace typing; it was fixed.
+  Twenty upstream t19 teardown diagnostics remain separately visible.
+- Final `scripts/build-app.sh` and strict ad-hoc signature verification: exit 0.
+  A final UI-only accessibility-label correction followed the full suite and
+  was covered by this build and the native checks. This is a Debug build;
+  release/notarization is not established.
+- Native AX/screenshots verified **19 focused conditions**: shared workspace,
+  accessible header online, list/header photo, profile photo/status/dossier,
+  no-photo group initials/count, corrupt-photo channel initials/count, initial
+  short online, automatic expiry without switching, approximate presence,
+  unavailable presence, hidden self status, bot status, unknown channel count,
+  zero group count, exact draft input, honest unconnected mail, retained
+  chat/draft/status on return, cleared draft and profile reopening. Unsigned
+  copied/built payloads matched and exact synthetic process/configuration were
+  verified. The explicit schema/private file contract was preserved. No personal
+  account, Keychain, Telegram network or Telegram send was used.
+- Root verified all **14 final reviewed source/test hashes** and reviewed the
+  complete change. Worker runtime gates were not run; observed provider/model
+  and usage remain unknown, with no quorum. Root owns passing integration gates.
+- Project XERJ publication refresh/check covers **203 files, 173/173 code**;
+  engine and locked TelegramSwift freshness checks passed. Actual source queries
+  confirmed the avatar/controller definitions and reference presence timer.
+  One query used an incorrect prefix and returned no matches; the verified
+  prefix returned the reference. This is not compiler-grade call-graph evidence.
+
+Native pending-fetch timeout, a real Account/ViewTracker/network lifecycle and
+clock changes without new peer emissions were not exercised. Decoder admission
+is capped at 2 MiB; native network bytes are not capped by that admission limit.
+Remaining Telegram/reference features, archive/key backup and subsequent channels
+remain open. The full sequential migration goal remains active. Publication
+secret audit and hosted CI are recorded separately for the actual published head.
+
+The preceding head `41bd0f1d3d9d5e13b0d1144034c7c806dc8441ad` passed
+[PR CI 38078692061](https://github.com/Mesteriis/makosh-native/actions/runs/38078692061)
+and [push CI 38078688295](https://github.com/Mesteriis/makosh-native/actions/runs/38078688295).
+These results do not establish hosted CI for this avatar/status change.

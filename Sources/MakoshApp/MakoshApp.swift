@@ -19,9 +19,10 @@ struct MakoshApp: App {
             #if DEBUG
             if CommandLine.arguments.contains("--telegram-drafts-synthetic-preview") {
                 TelegramDraftsSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
-            } else if CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") || CommandLine.arguments.contains("--telegram-history-read-synthetic-preview") || CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview") {
+            } else if CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") || CommandLine.arguments.contains("--telegram-history-read-synthetic-preview") || CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview") || CommandLine.arguments.contains("--telegram-peer-appearance-synthetic-preview") {
                 WorkspaceView(syntheticTelegram: CommandLine.arguments.contains("--telegram-history-read-synthetic-preview")
-                    ? .syntheticHistoryReadPreview() : CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview")
+                    ? .syntheticHistoryReadPreview() : CommandLine.arguments.contains("--telegram-peer-appearance-synthetic-preview")
+                    ? .syntheticPeerAppearancePreview() : CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview")
                     ? .syntheticPeerProfilesPreview() : .syntheticPreview())
                     .toolbar {
                         ToolbarItem(placement: .primaryAction) {

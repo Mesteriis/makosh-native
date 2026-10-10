@@ -30,9 +30,15 @@ public enum TelegramDownloadedFileIO {
     }
 
     public static func image(source: URL, expectedSize: Int64) async throws -> TelegramImagePreview {
+        try await image(source: source, expectedSize: expectedSize, maximumBytes: 20 * 1_024 * 1_024,
+            maximumDimension: 8_192, maximumPixels: 40_000_000, thumbnailPixelSize: 1_280)
+    }
+
+    static func image(source: URL, expectedSize: Int64, maximumBytes: Int64,
+                      maximumDimension: Int64, maximumPixels: Int64, thumbnailPixelSize: Int) async throws -> TelegramImagePreview {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
-            guard expectedSize > 0, expectedSize <= 20 * 1_024 * 1_024 else { throw TelegramFileError.previewLimit }
+            guard expectedSize > 0, expectedSize <= maximumBytes else { throw TelegramFileError.previewLimit }
             let fd = try openSource(source, expectedSize: expectedSize)
             defer { Darwin.close(fd) }
             var bytes = Data(count: Int(expectedSize))
@@ -51,10 +57,11 @@ public enum TelegramDownloadedFileIO {
                   let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int64Value,
                   let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int64Value,
                   width > 0, height > 0 else { throw TelegramFileError.invalidImage }
-            guard width <= 8_192, height <= 8_192, width * height <= 40_000_000 else { throw TelegramFileError.previewLimit }
+            guard width <= maximumDimension, height <= maximumDimension,
+                  width <= maximumPixels / height else { throw TelegramFileError.previewLimit }
             try Task.checkCancellation()
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 1_280, kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: thumbnailPixelSize, kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceShouldCacheImmediately: true]
             guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { throw TelegramFileError.invalidImage }
             try Task.checkCancellation()

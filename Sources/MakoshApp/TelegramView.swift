@@ -8,6 +8,7 @@ struct TelegramDetailView: View {
     @ObservedObject private var upload: TelegramUploadController
     @ObservedObject private var playback: TelegramPlaybackController
     @ObservedObject private var messageActions: TelegramMessageActionsController
+    @ObservedObject private var peerStatus: TelegramPeerStatusController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var replyRequest: TelegramMessageActionRequest?
@@ -20,6 +21,7 @@ struct TelegramDetailView: View {
     init(model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in }) {
         self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload
         self.playback = model.playback; self.messageActions = model.messageActions
+        self.peerStatus = model.peerStatus
         self.dossier = dossier; self.openDossier = openDossier
     }
     @State private var apiID = ""
@@ -87,9 +89,11 @@ struct TelegramDetailView: View {
                 attachmentActions.cancel(); playback.stop()
                 if search.hasMessageQuery { messageSearchPresented = true }
             }
+            .onAppear { peerStatus.setVisible(true) }
             .onDisappear {
                 attachmentActions.cancel(); model.cancelMediaLoads()
                 profilePresented = false; model.cancelContactProfile()
+                peerStatus.setVisible(false)
             }
             .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
@@ -157,11 +161,16 @@ struct TelegramDetailView: View {
                         model.loadContactProfile(); profilePresented = true
                     } label: {
                         HStack(spacing: 10) {
-                            TelegramChatAvatar(title: chat.title, size: 36)
-                            Text(chat.title).font(.headline).lineLimit(1)
+                            TelegramChatAvatar(title: chat.title, peerID: chat.id, store: model.avatars, size: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(chat.title).font(.headline).lineLimit(1)
+                                if let status = peerStatus.status, status.peerID == chat.id, !status.isSelf {
+                                    TelegramPeerStatusView(status: status, identifier: "telegram.peerStatus.header")
+                                }
+                            }
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain).help("Открыть карточку собеседника")
-                        .accessibilityLabel("Карточка собеседника: \(chat.title)").accessibilityIdentifier("telegram.profile.open")
+                        .accessibilityIdentifier("telegram.profile.open")
                     Spacer()
                     Button {
                         if messageSearchPresented { closeMessageSearch() }
@@ -405,21 +414,6 @@ struct TelegramDraftsSyntheticPreviewView: View {
     }
 }
 #endif
-
-struct TelegramChatAvatar: View {
-    let title: String
-    let size: CGFloat
-    private var initials: String {
-        title.split(whereSeparator: { $0.isWhitespace }).prefix(2)
-            .compactMap { $0.first.map(String.init) }.joined().uppercased()
-    }
-    var body: some View {
-        Text(initials).font(.system(size: size * 0.4, weight: .medium))
-            .foregroundStyle(.tint).frame(width: size, height: size)
-            .background(Color.accentColor.opacity(0.14), in: Circle())
-            .accessibilityHidden(true)
-    }
-}
 
 struct TelegramSearchStatusView: View {
     let status: TelegramSearchStatus

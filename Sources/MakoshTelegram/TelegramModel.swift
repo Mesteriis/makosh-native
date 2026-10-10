@@ -69,6 +69,8 @@ enum TelegramSetupError: LocalizedError {
 public final class TelegramModel: ObservableObject {
     public let search = TelegramSearchModel()
     public let media = TelegramMediaController()
+    public let avatars = TelegramAvatarStore()
+    public let peerStatus = TelegramPeerStatusController()
     public let playback = TelegramPlaybackController()
     public let upload = TelegramUploadController()
     public let archive = TelegramArchiveController()
@@ -135,6 +137,7 @@ public final class TelegramModel: ObservableObject {
             } else { displayDraft("") }
             restoreComposerDraft()
             search.selectChat(selectedChatID)
+            peerStatus.selectPeer(selectedChatID)
             loadHistory()
         }
     }
@@ -661,6 +664,8 @@ public final class TelegramModel: ObservableObject {
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
         setupAccount(account)
+        avatars.bind(TelegramEngineAvatarProvider(account: account))
+        peerStatus.bind(account: account)
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
@@ -690,6 +695,7 @@ public final class TelegramModel: ObservableObject {
 
     private func stopAuthorizedAccount() {
         cancelContactProfile()
+        avatars.bind(nil); peerStatus.bind(account: nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -932,6 +938,13 @@ public final class TelegramModel: ObservableObject {
     public static func syntheticPeerProfilesPreview() -> TelegramModel {
         let model = syntheticPreview()
         model.peerProfilesPreview = true
+        return model
+    }
+
+    public static func syntheticPeerAppearancePreview() -> TelegramModel {
+        let model = syntheticPeerProfilesPreview()
+        model.avatars.bind(TelegramSyntheticAvatarProvider())
+        model.peerStatus.useSyntheticPreview()
         return model
     }
     #endif

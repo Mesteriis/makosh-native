@@ -11,9 +11,15 @@ struct TelegramDraftStore: Sendable {
     /// Retain even the first empty save so delayed restore cannot resurrect text.
     @discardableResult
     mutating func save(_ text: String, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
-        let key = Key(accountID: accountID,chatID: chatID)
-        guard drafts[key]?.text.utf8.elementsEqual(text.utf8) != true || drafts[key]?.schemaVersion == 1 else { return nil }
-        let snapshot = TelegramComposerDraft(accountID: accountID,chatID: chatID,text: text, replyTarget: drafts[key]?.replyTarget)
+        guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: text)) else { return nil }
+        return save(input: input, accountID: accountID, chatID: chatID)
+    }
+
+    @discardableResult
+    mutating func save(input: TelegramComposerInput, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
+        let key = Key(accountID: accountID, chatID: chatID)
+        guard drafts[key]?.input != input || drafts[key]?.schemaVersion != 3 else { return nil }
+        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: input, replyTarget: drafts[key]?.replyTarget)
         drafts[key] = snapshot
         return snapshot
     }
@@ -22,8 +28,8 @@ struct TelegramDraftStore: Sendable {
     mutating func setReplyTarget(_ target: TelegramComposerReplyTarget?, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
         guard target?.isValid ?? true else { return nil }
         let key = Key(accountID: accountID, chatID: chatID)
-        if let current = drafts[key], current.replyTarget == target, current.schemaVersion == 2 { return nil }
-        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, text: drafts[key]?.text ?? "", replyTarget: target)
+        if let current = drafts[key], current.replyTarget == target, current.schemaVersion == 3 { return nil }
+        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: drafts[key]?.input ?? .empty, replyTarget: target)
         drafts[key] = snapshot
         return snapshot
     }
@@ -50,10 +56,16 @@ struct TelegramDraftStore: Sendable {
 
     @discardableResult
     mutating func acknowledge(sentText: String, revision: UUID, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
-        let key = Key(accountID: accountID,chatID: chatID)
-        guard let current = drafts[key], current.revision == revision,
-              current.text.utf8.elementsEqual(sentText.utf8), (!current.text.isEmpty || current.replyTarget != nil) else { return nil }
-        let cleared = TelegramComposerDraft(accountID: accountID, chatID: chatID, text: "")
+        guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: sentText)) else { return nil }
+        return acknowledge(sentInput: input, revision: revision, accountID: accountID, chatID: chatID)
+    }
+
+    @discardableResult
+    mutating func acknowledge(sentInput: TelegramComposerInput, revision: UUID, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
+        let key = Key(accountID: accountID, chatID: chatID)
+        guard let current = drafts[key], current.revision == revision, current.input == sentInput,
+              (!current.text.isEmpty || current.replyTarget != nil) else { return nil }
+        let cleared = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: .empty)
         drafts[key] = cleared
         return cleared
     }

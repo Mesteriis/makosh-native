@@ -56,14 +56,19 @@
    получателя/объёма удаления. Rich-text и ответы с фото/файлами добавлены;
    темы, secret/paid возможности и live acceptance ещё открыты; затем связь с досье.
    UI сверяется с TelegramSwift: [карта переноса](reference-interface.md).
-   Обычный текст composer сохраняется в account Postbox между перезапусками;
+   Обычный composer сохраняет точный текст, entities и UTF16-выделение в account
+   Postbox между перезапусками;
    поздние чтения и подтверждения отправки защищены revision/request guards.
-   Typed reply target теперь сохраняется с текстом одной revision, включая
+   Typed reply target сохраняется с полным input одной revision, включая
    reply-only draft, и заново разрешается из текущего Postbox. Недоступный
    источник блокирует отправку до retry/явной отмены; поздний ACK не очищает
-   новый target. Режим edit после restart сбрасывается и в референсе; его
-   восстановление внутри процесса, rich ordinary input, quote/forward state,
-   серверные черновики и подпись вложения ещё впереди.
+   новый target, форматирование или выделение. Schema 3 читает legacy 1/2;
+   native undo/redo и rich input/reply проверены в общем окне после restart.
+   Ordinary/reply отправка передаёт native entities и проверяет text mentions
+   по текущему Postbox; inline custom emoji требует отдельного media registry.
+   Режим edit после restart сбрасывается и в референсе; его восстановление внутри
+   процесса, quote/forward state, серверные черновики, настройки клавиши отправки,
+   actual IME acceptance и форматированная подпись вложения ещё впереди.
    Индикаторы отправки/ошибки и одна/две галочки рядом со временем следуют
    `ChatRightView`; прочтение берётся из native history entry. Видимая граница
    обычной cloud-истории отмечается через native interactive read только в

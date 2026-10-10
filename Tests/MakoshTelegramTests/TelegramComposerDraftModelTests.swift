@@ -257,6 +257,64 @@ import SwiftSignalKit
         XCTAssertEqual(model.draft, "same caption")
         XCTAssertEqual(repository.writes.last?.0.replyTarget, TelegramComposerReplyTarget(source: try XCTUnwrap(model.actionSource(for: last))))
     }
+    private func richInput(_ kind: TelegramTextEntityKind = .bold, selection: TelegramInputSelection? = nil) throws -> TelegramComposerInput {
+        try TelegramComposerInput(formattedText: TelegramFormattedText(text: "e\u{301} 😀 reply", entities: [
+            TelegramTextEntity(offset: 0,length: 2,kind: kind)
+        ]),selection: selection)
+    }
+    func testRichInputAndSelectionSurviveChatSwitchWithStaleEditorRejected() throws {
+        let (model,repository) = fixture(), context = model.messageActionContextID
+        let input = try richInput(selection: .init(location: 3,length: 2))
+        XCTAssertTrue(model.updateComposerInput(input,contextID: context,chatID: 10001))
+        XCTAssertEqual(repository.writes.last?.0.input,input)
+        model.selectedChatID = 10002
+        XCTAssertFalse(model.updateComposerInput(input,contextID: context,chatID: 10001))
+        XCTAssertEqual(model.composerInput,.empty)
+        model.draft = "other"
+        model.selectedChatID = 10001
+        XCTAssertEqual(model.composerInput,input)
+        XCTAssertFalse(model.updateComposerInput(.empty,contextID: UUID(),chatID: 10001))
+        model.draft = input.formattedText.text
+        XCTAssertEqual(model.composerInput,input,"Same-text compatibility setter must not flatten formatting")
+    }
+    func testRichReplyAcknowledgementProtectsFormatAndSelectionOnlyChanges() throws {
+        for change in 0..<3 {
+            let (model,repository) = fixture(), provider = ReplyProvider()
+            let message = try XCTUnwrap(model.messages.last), source = try XCTUnwrap(model.actionSource(for: message))
+            model.messageActions.bind(provider: provider)
+            XCTAssertTrue(model.beginReply(to: message,contextID: model.messageActionContextID))
+            let input = try richInput(selection: .init(location: 0,length: 2))
+            XCTAssertTrue(model.updateComposerInput(input,contextID: model.messageActionContextID,chatID: 10001))
+            XCTAssertTrue(model.performMessageAction(.replyFormatted(input.formattedText),source: source,contextID: model.messageActionContextID))
+            if change == 1 {
+                XCTAssertTrue(model.updateComposerInput(try richInput(.italic,selection: input.selection),contextID: model.messageActionContextID,chatID: 10001))
+            } else if change == 2 {
+                XCTAssertTrue(model.updateComposerInput(try richInput(selection: .init(location: 3,length: 2)),contextID: model.messageActionContextID,chatID: 10001))
+            }
+            let current = model.composerInput
+            provider.callback?(.queued)
+            XCTAssertEqual(model.composerInput,change == 0 ? .empty : current)
+            XCTAssertEqual(repository.writes.last?.0.replyTarget == nil,change == 0)
+        }
+    }
+    func testRichRestoreAndReplyCancelKeepExactInputAndPlainAckCannotClearIt() throws {
+        let (model,repository) = fixture(),provider = ReplyProvider()
+        let message = try XCTUnwrap(model.messages.last),source = try XCTUnwrap(model.actionSource(for: message))
+        let input = try richInput(selection: .init(location: 0,length: 2))
+        repository.reads[0].1(.success(.init(accountID: -1,chatID: 10001,input: input,
+            replyTarget: .init(source: source))))
+        XCTAssertEqual(model.composerInput,input)
+        model.cancelComposerReply()
+        XCTAssertEqual(repository.writes.last?.0.input,input)
+        XCTAssertNil(repository.writes.last?.0.replyTarget)
+        XCTAssertFalse(model.composerSupportsAttachments)
+        XCTAssertNil(model.uploadTarget(replyTo: nil,contextID: model.messageActionContextID))
+        model.messageActions.bind(provider: provider)
+        XCTAssertTrue(model.performMessageAction(.reply(input.formattedText.text),source: source,contextID: model.messageActionContextID))
+        provider.callback?(.queued)
+        XCTAssertEqual(model.composerInput,input)
+    }
+
     private final class Lease: TelegramMessageActionsLease { func cancel() {} }
     private final class SynchronousRepository: TelegramComposerDraftRepository {
         let accountID: Int64 = -1

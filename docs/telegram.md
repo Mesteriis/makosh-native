@@ -356,15 +356,17 @@ Channel deletion never offers a misleading local-only option.
 Reply uses the current chat draft and shows the original author/text. Canceling
 reply keeps the text; a local enqueue acknowledgement clears only the exact
 submitted revision in its captured account/chat, including protection against
-typing A → B → A or changing only the reply target while acknowledgement is
-pending. Plain text and the optional typed reply target (peer/namespace/message/
-thread) share one revision and transaction in that account's encrypted Postbox,
+typing A → B → A or changing only formatting, selection or the reply target
+while acknowledgement is pending. Exact text, typed entities, scalar-safe UTF16
+selection and the optional reply target (peer/namespace/message/thread) share
+one revision and transaction in that account's encrypted Postbox,
 including a reply-only draft with empty text. The ordinary composer is
 restored when opening the dialog after restart. Explicit empty snapshots prevent
 late reads from resurrecting cleared text; account/binding/request guards reject
 stale results. This uses the engine's local persistent interface preferences,
-without server draft synchronization. Schema 2 reads schema-1 text drafts and
-upgrades them on the next local change/save; the envelope marker stays stable.
+without server draft synchronization. Schema 3 reads schema-1/2 text drafts with
+the caret at the end and upgrades them on the next local change/save; the
+envelope marker stays stable.
 Stored fingerprints/capabilities are never restored as authority: a cancellable,
 account-bound local Postbox lookup supplies fresh source text/author/permissions,
 checks thread/migration ownership and has a 30-second deadline. A missing or
@@ -374,7 +376,10 @@ cancelled. Dispatch still revalidates the resolved source before enqueue.
 Switching chats/channels does not lose reply context; editing temporarily hides
 the ordinary composer and returns to it when cancelled. Unknown/malformed/future state is retained
 and reported, never replaced. Text over 64 KiB UTF8 stays in memory with an error
-instead of being truncated on disk. Failed/pending revisions stay dirty; an
+instead of being truncated on disk. Input admits at most 1,024 entities; decoding
+checks the text/entity limits before formatted-range validation. The entire
+encoded envelope is bounded to 512 KiB before a write, including URL metadata.
+Failed/pending revisions stay dirty; an
 explicit retry or account rebind resubmits only the latest snapshot, including
 an empty snapshot after enqueue. A completed upstream NoError transaction is
 not a guarantee of disk-full diagnosis or survival of abrupt power loss while a
@@ -385,8 +390,8 @@ acknowledgement clears it. Drafts include exact text and typed entities; a newer
 format-only change survives acknowledgement of an older edit. Reference
 `ChatInterfaceState` explicitly decodes `editState = nil` after restart; its
 temporary edit state lives in AccountContext memory. Makosh likewise keeps edit
-drafts in process, while restoring the ordinary text and reply target. Ordinary
-rich input/selection, reply quotes/forward state, complete in-process edit-mode
+drafts in process, while restoring the ordinary formatted input, selection and
+reply target. Reply quotes/forward state, complete in-process edit-mode
 restoration and pending attachment captions remain open. It does not
 restore the selected dialog automatically.
 
@@ -397,11 +402,26 @@ context menu and keyboard shortcuts, without a persistent formatting toolbar.
 See [reference interface mapping](reference-interface.md) for verified source
 pointers and remaining visual gaps.
 
-The native AppKit text editor preserves UTF16 entity ranges, styles, links and
+The ordinary and edit composers share the native AppKit text editor. It preserves
+UTF16 entity ranges, styles, links and
 Telegram-specific metadata. Malformed ranges or unsupported server entity
 conversion block editing instead of silently flattening the source. Plain edit
 calls cannot erase a rich source. Formatting-only edits are allowed; no-change
 comparison includes entities. Telegram's server still decides entity validity.
+Formatting replacement and native undo/redo publish storage plus selection as
+one coherent value; their callbacks cannot trigger an external reinstall that
+erases redo. Chat/account recreation discards that editor's undo history.
+Ordinary Return submits, Shift+Return inserts a newline, and marked input is
+left to the native text system. Configurable send-key preferences and actual IME
+acceptance remain open.
+
+Ordinary messages and replies enqueue typed native text entities, including
+format-only changes. Fresh Postbox preflight rejects unresolved or hashless
+text mentions instead of letting the API silently discard their entities.
+Inline custom emoji remains retained in the DTO but cannot be sent without its
+resolved media registry. The ordinary enqueue chain is built outside MainActor;
+only its guarded acknowledgement returns to the UI queue. Local fixture/native
+simulation checks do not establish live server delivery.
 
 File/photo replies capture the original message and chat before opening the
 file picker. The preparation view shows that reply subject and frozen recipient;
@@ -409,6 +429,9 @@ the caption may be empty. After copying the prepared file into MediaBox, dispatc
 freshly validates the source before enqueueing the exact native reply/thread.
 A stale or deleted source rejects the upload; it never becomes an ordinary
 message. Closing or switching chats cannot retarget a captured attachment.
+Attachment captions currently accept plain text. Attaching while the ordinary
+draft contains entities is explicitly unavailable, preserving the rich draft
+until caption-entity support is implemented.
 
 Forward requires explicit selection among loaded dialogs in the same account;
 the confirmation shows the recipient. Deletion requires choosing local-only or

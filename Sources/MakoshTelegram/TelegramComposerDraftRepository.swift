@@ -45,7 +45,7 @@ private func composerDraftSave(postbox: Postbox, accountID: Int64, draft: Telegr
         let key = PreferencesKeys.persistentChatInterfaceData(peerId: PeerId(draft.chatID))
         if let existing = transaction.getPreferencesEntry(key: key),
            decodeComposerDraft(existing, accountID: accountID, chatID: draft.chatID) == nil { return .failure(.incompatibleData) }
-        guard let encoded = try? JSONEncoder().encode(draft) else { return .failure(.unavailable) }
+        guard let encoded = try? JSONEncoder().encode(draft), encoded.count <= 512 * 1024 - composerDraftMarker.count else { return .failure(.unavailable) }
         let entry = CodableEntry(data: composerDraftMarker + encoded)
         transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: entry.data))
         return .success(())

@@ -7,18 +7,37 @@ import MakoshTelegram
 struct TelegramRichTextEditor: View {
     @Binding var value: TelegramFormattedText
     @Binding var error: String?
+    var selection: TelegramInputSelection? = nil
+    var accessibilityID = "telegram.actions.editText"
+    var placeholder: String? = nil
+    var inputChanged: ((TelegramComposerInput) -> Void)? = nil
+    var submit: (() -> Void)? = nil
     @State private var height: CGFloat = 52
     var body: some View {
-        NativeTelegramText(value: $value,error: $error,height: $height)
+        NativeTelegramText(value: $value,error: $error,height: $height,selection: selection,
+            accessibilityID: accessibilityID,inputChanged: inputChanged,submit: submit)
             .frame(height: height)
             .disabled(!value.isEditable)
+            .overlay(alignment: .topLeading) {
+                if value.text.isEmpty, let placeholder {
+                    Text(placeholder).font(.system(size: 14)).foregroundStyle(.tertiary)
+                        .padding(.horizontal, 7).padding(.top, 3)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+            }
     }
 }
 private struct NativeTelegramText: NSViewRepresentable {
     @Binding var value: TelegramFormattedText
     @Binding var error: String?
     @Binding var height: CGFloat
-    func makeCoordinator() -> Coordinator { Coordinator(value: $value,error: $error,height: $height) }
+    let selection: TelegramInputSelection?
+    let accessibilityID: String
+    let inputChanged: ((TelegramComposerInput) -> Void)?
+    let submit: (() -> Void)?
+    func makeCoordinator() -> Coordinator {
+        Coordinator(value: $value,error: $error,height: $height,selection: selection,inputChanged: inputChanged)
+    }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = TelegramGrowingScrollView()
         scroll.hasVerticalScroller = false; scroll.scrollerStyle = .overlay; scroll.borderType = .bezelBorder
@@ -37,7 +56,8 @@ private struct NativeTelegramText: NSViewRepresentable {
             guard let coordinator,let text,let scroll else { return }
             coordinator.measure(text,in: scroll)
         }
-        text.setAccessibilityIdentifier("telegram.actions.editText")
+        text.setAccessibilityIdentifier(accessibilityID)
+        text.setAccessibilityLabel(accessibilityID == "telegram.composer" ? "Сообщение в Telegram" : "Изменить сообщение")
         text.delegate = context.coordinator
         text.format = { [weak coordinator = context.coordinator,weak text] kind in
             guard let coordinator,let text else { return }
@@ -47,6 +67,7 @@ private struct NativeTelegramText: NSViewRepresentable {
             guard let coordinator,let text else { return }
             coordinator.editLink(in: text)
         }
+        text.submit = submit
         scroll.documentView = text
         context.coordinator.install(value,in: text)
         return scroll
@@ -54,31 +75,40 @@ private struct NativeTelegramText: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView,context: Context) {
         let coordinator = context.coordinator
         coordinator.value = $value; coordinator.error = $error; coordinator.height = $height
+        coordinator.selection = selection; coordinator.inputChanged = inputChanged
         guard let text = scroll.documentView as? NSTextView else { return }
+        (text as? TelegramNativeInput)?.submit = submit
         text.isEditable = value.isEditable
         let installedDifferentValue = coordinator.lastValue != value
         if installedDifferentValue { coordinator.install(value,in: text) }
+        else { coordinator.installSelection(in: text) }
         coordinator.measure(text,in: scroll)
     }
     static func dismantleNSView(_ scroll: NSScrollView,coordinator: Coordinator) {
         coordinator.detach()
+        (scroll.documentView as? NSTextView)?.undoManager?.removeAllActions()
         (scroll as? TelegramGrowingScrollView)?.didLayout = nil
         (scroll.documentView as? NSTextView)?.delegate = nil
         (scroll.documentView as? TelegramNativeInput)?.format = nil
         (scroll.documentView as? TelegramNativeInput)?.requestLink = nil
+        (scroll.documentView as? TelegramNativeInput)?.submit = nil
     }
     @MainActor final class Coordinator: NSObject,NSTextViewDelegate {
         var value: Binding<TelegramFormattedText>
         var error: Binding<String?>
         var lastValue: TelegramFormattedText?
         var height: Binding<CGFloat>
+        var selection: TelegramInputSelection?
+        var inputChanged: ((TelegramComposerInput) -> Void)?
         private var installing = false
         private var active = true
         private var revision = UUID()
         private var measurementTask: Task<Void,Never>?
         func detach() { active = false; measurementTask?.cancel(); measurementTask = nil }
-        init(value: Binding<TelegramFormattedText>,error: Binding<String?>,height: Binding<CGFloat>) {
+        init(value: Binding<TelegramFormattedText>,error: Binding<String?>,height: Binding<CGFloat>,
+             selection: TelegramInputSelection?,inputChanged: ((TelegramComposerInput) -> Void)?) {
             self.value = value; self.error = error; self.height = height
+            self.selection = selection; self.inputChanged = inputChanged
         }
         func measure(_ text: NSTextView,in scroll: NSScrollView) {
             measurementTask?.cancel()
@@ -106,9 +136,13 @@ private struct NativeTelegramText: NSViewRepresentable {
             revision = UUID()
             do {
                 let attributed = try TelegramAttributedText.attributedString(value)
-                let selection = text.selectedRange()
-                installing = true; text.textStorage?.setAttributedString(attributed); installing = false
-                text.setSelectedRange(NSRange(location: min(selection.location,attributed.length),length: min(selection.length,max(0,attributed.length - min(selection.location,attributed.length)))))
+                let previousSelection = text.selectedRange()
+                installing = true
+                text.undoManager?.removeAllActions()
+                text.textStorage?.setAttributedString(attributed)
+                if let selection { text.setSelectedRange(NSRange(location: selection.location,length: selection.length)) }
+                else { text.setSelectedRange(NSRange(location: min(previousSelection.location,attributed.length),length: min(previousSelection.length,max(0,attributed.length - min(previousSelection.location,attributed.length))))) }
+                installing = false
                 lastValue = value
             } catch {
                 let expectedRevision = revision
@@ -118,6 +152,30 @@ private struct NativeTelegramText: NSViewRepresentable {
                 }
             }
         }
+        func installSelection(in text: NSTextView) {
+            guard let selection else { return }
+            let range = NSRange(location: selection.location,length: selection.length)
+            guard text.selectedRange() != range else { return }
+            installing = true; text.setSelectedRange(range); installing = false
+        }
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard active,!installing,inputChanged != nil,let text = notification.object as? NSTextView,
+                  let current = try? TelegramAttributedText.formattedText(text.attributedString()),
+                  current == lastValue else { return }
+            _ = report(current,in: text)
+        }
+        private func report(_ next: TelegramFormattedText,in text: NSTextView) -> Bool {
+            if let inputChanged {
+                let range = text.selectedRange()
+                guard let input = try? TelegramComposerInput(formattedText: next,
+                    selection: TelegramInputSelection(location: range.location,length: range.length)) else {
+                    error.wrappedValue = "Не удалось сохранить выделение текста."; return false
+                }
+                selection = input.selection
+                inputChanged(input)
+            } else { value.wrappedValue = next }
+            return true
+        }
         // Editing a Telegram link must never invoke NSWorkspace or an external browser.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool { true }
         func textDidChange(_ notification: Notification) {
@@ -126,16 +184,35 @@ private struct NativeTelegramText: NSViewRepresentable {
             if let scroll = text.enclosingScrollView { measure(text,in: scroll) }
             do {
                 let next = try TelegramAttributedText.formattedText(text.attributedString())
-                lastValue = next; value.wrappedValue = next; error.wrappedValue = nil
+                let previous = lastValue
+                // Publishing can synchronously update the representable. It must see
+                // the value already installed, or install() would erase native redo.
+                lastValue = next
+                if report(next,in: text) { error.wrappedValue = nil }
+                else { lastValue = previous }
             } catch { self.error.wrappedValue = "Форматирование не сохранено. Отмените последнее изменение перед отправкой." }
+        }
+        private func replace(_ value: NSAttributedString,selection: NSRange,in text: NSTextView) {
+            let undoManager = text.undoManager
+            let registrationEnabled = undoManager?.isUndoRegistrationEnabled == true
+            if registrationEnabled { undoManager?.disableUndoRegistration() }
+            // Storage and selection form one input snapshot. Delegate callbacks
+            // must never publish the temporary selection created by replacement.
+            installing = true
+            text.textStorage?.setAttributedString(value)
+            text.setSelectedRange(selection)
+            installing = false
+            if registrationEnabled { undoManager?.enableUndoRegistration() }
+            text.didChangeText()
         }
         private func registerUndo(_ previous: NSAttributedString, selection: NSRange, in text: NSTextView) {
             text.undoManager?.registerUndo(withTarget: self) { coordinator in
                 MainActor.assumeIsolated {
-                    let inverse = text.attributedString(), inverseSelection = text.selectedRange()
+                    guard coordinator.active else { return }
+                    let inverse = NSAttributedString(attributedString: text.attributedString())
+                    let inverseSelection = text.selectedRange()
                     coordinator.registerUndo(inverse, selection: inverseSelection, in: text)
-                    text.textStorage?.setAttributedString(previous)
-                    text.setSelectedRange(selection); text.didChangeText()
+                    coordinator.replace(previous,selection: selection,in: text)
                 }
             }
             text.undoManager?.setActionName("Форматирование Telegram")
@@ -178,9 +255,9 @@ private struct NativeTelegramText: NSViewRepresentable {
                 let next = try TelegramFormattedText(text: current.text,entities: entities)
                 let replacement = try TelegramAttributedText.attributedString(next)
                 guard text.shouldChangeText(in: NSRange(location: 0,length: text.string.utf16.count),replacementString: next.text) else { return }
-                let previous = text.attributedString()
+                let previous = NSAttributedString(attributedString: text.attributedString())
                 registerUndo(previous, selection: range, in: text)
-                text.textStorage?.setAttributedString(replacement); text.didChangeText(); text.setSelectedRange(range)
+                replace(replacement,selection: range,in: text)
                 self.error.wrappedValue = nil
             } catch { self.error.wrappedValue = "Это выделение несовместимо с границами форматирования Telegram." }
         }
@@ -195,6 +272,7 @@ private struct NativeTelegramText: NSViewRepresentable {
 @MainActor private final class TelegramNativeInput: NSTextView {
     var format: ((TelegramTextEntityKind) -> Void)?
     var requestLink: (() -> Void)?
+    var submit: (() -> Void)?
     private let commands: [(String,String,NSEvent.ModifierFlags,TelegramTextEntityKind?)] = [
         ("Жирный","b",.command,.bold),("Курсив","i",.command,.italic),
         ("Моноширинный","k",[.command,.shift],.code),("Ссылка…","u",.command,nil),
@@ -226,6 +304,9 @@ private struct NativeTelegramText: NSViewRepresentable {
         return super.performKeyEquivalent(with: event)
     }
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == UInt16(kVK_Return), !hasMarkedText(),
+           event.modifierFlags.intersection([.command,.shift,.option,.control]).isEmpty,
+           let submit { submit(); return }
         if !performFormattingCommand(event) { super.keyDown(with: event) }
     }
     private func performFormattingCommand(_ event: NSEvent) -> Bool {

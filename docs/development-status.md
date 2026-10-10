@@ -1792,3 +1792,75 @@ server drafts, complete in-process edit-mode restoration, attachment captions,
 gallery gaps, other Telegram workflows, archive/key backup, later channels and
 standalone packaging remain open in `migration-plan.md`. The full sequential
 migration goal remains active.
+
+## Rich ordinary composer in the shared workspace — 2026-10-10
+
+Ordinary input now reuses the existing owned AppKit rich editor. Exact text,
+typed entities, scalar-safe UTF16 selection and the optional reply target form
+one revision in encrypted Postbox. Schema 3 reads legacy 1/2 and upgrades on the
+next save; the envelope marker remains stable. Unknown/malformed bytes remain
+untouched. Decoding checks 64 KiB text and 1,024 entities before formatted range
+validation; writes bound the entire envelope to 512 KiB, including URL metadata.
+Format-only and selection-only changes protect newer input from a captured ACK.
+
+Ordinary messages and replies enqueue native text entities. Fresh Postbox checks
+reject missing/hashless text mentions; inline custom emoji requires a resolved
+media registry and remains unavailable for send. The ordinary transaction/enqueue
+chain is constructed outside MainActor, with only guarded UI acknowledgements
+delivered to the main queue. Rich attachment captions are still open: attachment
+selection explicitly refuses a rich ordinary draft instead of losing entities.
+Default Return submits and Shift+Return inserts a line; configurable send-key
+preferences and actual marked-input/IME acceptance remain open.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; PostgreSQL/S3 available.
+- Final `scripts/test.sh`: exit 0, **381 XCTest (318 Telegram + 63 core), zero
+  failures; 24 Python regressions**. Added coverage includes real encrypted
+  Postbox rich-input reopen, valid schema-2 text/reply upgrade, exact Unicode/
+  selection/range bounds, complete payload refusal retaining existing bytes,
+  entity-count boundaries, native attribute roundtrip, missing/hashless mentions
+  through the production preflight, stale editor context and format/selection
+  ACK races. Thirty-two upstream `t19` teardown diagnostics remain visible after
+  the passing Telegram suite; the previous unreachable-catch warning remains.
+- `scripts/build-app.sh`, strict deep signature verification and unsigned
+  built/QA payload comparison: exit 0. Native AX/screenshots verified **21
+  focused conditions** in the common workspace: exact Unicode, bold/italic,
+  undo/redo, honest mail placeholder, channel/chat isolation and return,
+  selection restoration on channel return/restart, reply preserving rich input,
+  explicit rich-caption guard, temporary edit/cancel, rich reply restart,
+  Shift+Return newline, Return to labelled simulated queue, clear after restart
+  and synthetic cleanup. Restored selection was verified by native replacement
+  followed by undo. The same owned Postbox and explicit isolated PostgreSQL
+  schema were reused after confirmed process exit. No personal account, Keychain,
+  Telegram network or real send was used. Actual Account enqueue/server delivery
+  remains unaccepted.
+- Native QA initially found partial-style/invalid-formatting undo/redo. Immutable
+  snapshots, suppression of intermediate storage/selection callbacks and setting
+  lastValue before model publication repaired it; the failed scenario was not
+  counted as a pass. Readonly review also identified possible actor inheritance
+  in queue closures; the nonisolated production helper and real fixture test
+  address it. Final source review found no remaining scoped defects.
+- Root reviewed the complete code/test/doc diff and verified **16 current
+  worker-reviewed hashes**. Root separately reviewed the model regressions and
+  added the valid schema-2 Postbox upgrade regression after worker storage review.
+  Worker reviews did not run integration/runtime gates. Observed provider/model
+  and usage remain unknown, without quorum; storage review is author self-review.
+- Final project XERJ refresh/check: exit 0, **225 files, 195/195 code**. Locked
+  TelegramSwift and prepared engine fingerprints are fresh. Actual queries
+  retrieved the editor and outgoing helper, confirmed against current source.
+- `git diff --check`: exit 0. Publication audit checked **230 publishable files**
+  and the private PR body against five selected local credential fields, with
+  zero matches. Local configuration, databases, caches and QA artifacts stay
+  ignored.
+
+The preceding durable-reply head `94ba5d4fb607c66d61dcaf51bc4fccabe8e59f99`
+passed [PR CI 38084551427](https://github.com/Mesteriis/makosh-native/actions/runs/38084551427)
+and [push CI 38084549366](https://github.com/Mesteriis/makosh-native/actions/runs/38084549366).
+These results do not establish hosted CI for this rich composer change.
+
+Reply quote/forward/cloud state, complete in-process edit-mode restoration,
+rich attachment captions/inline media, other Telegram workflows and gallery
+gaps, live-account acceptance, archive/key backup, later channels and standalone
+packaging remain open in `migration-plan.md`. The full sequential goal remains
+active.

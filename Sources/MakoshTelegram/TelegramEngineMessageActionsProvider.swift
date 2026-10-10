@@ -93,6 +93,9 @@ private func validatedTelegramActionSource(postbox: Postbox, accountID: Int64,
         } else {
             guard fresh.canReply, fresh.chatID == fresh.peerID || fresh.metadata.migrationChatID == fresh.chatID else { return nil }
         }
+        if case let .replyFormatted(formatted)? = action {
+            guard telegramFormattedTextCanSend(formatted, transaction: transaction) else { return nil }
+        }
         if case let .editFormatted(formatted)? = action {
             for entity in formatted.entities {
                 if case let .textMention(peerID) = entity.kind {
@@ -143,8 +146,16 @@ private func reconcileEditedMessage(account: Account, id: MessageId, formatted: 
             lease.receive(.committing)
             guard !lease.stopped else { return }
             switch action {
-            case let .reply(text):
-                let message = EnqueueMessage.message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil,
+            case .reply, .replyFormatted:
+                let formatted: TelegramFormattedText
+                switch action {
+                case let .reply(text):
+                    guard let value = try? TelegramFormattedText(text: text) else { lease.emit(.rejected); return }
+                    formatted = value
+                case let .replyFormatted(value): formatted = value
+                default: return
+                }
+                let message = EnqueueMessage.message(text: formatted.text, attributes: telegramOutgoingTextAttributes(formatted), inlineStickers: [:], mediaReference: nil,
                     threadId: source.threadID, replyToMessageId: EngineMessageReplySubject(messageId: id, quote: nil, todoItemId: nil),
                     replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
                 lease.operation.set((enqueueMessages(account: account, peerId: PeerId(source.chatID), messages: [message])

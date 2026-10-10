@@ -198,4 +198,14 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
         XCTAssertNil(message.formattedTextForDisplay)
     }
 
+    func testFormattedReplyAdmissionPreservesEntityTransportAndSourceCapability() throws {
+        let native = fixture(text: "reply target")
+        let source = telegramMessageActionSource(native, accountID: native.id.peerId.toInt64(), chatID: native.id.peerId.toInt64())
+        let rich = try TelegramFormattedText(text: "😀 reply", entities: [.init(offset: 0, length: 2, kind: .bold)])
+        XCTAssertTrue(telegramMessageActionAllowed(.replyFormatted(rich), source: source))
+        XCTAssertFalse(telegramMessageActionAllowed(.replyFormatted(try TelegramFormattedText(text: " ")), source: source))
+        XCTAssertFalse(telegramMessageActionAllowed(.replyFormatted(try TelegramFormattedText(text: "😀", entities: [
+            .init(offset: 0, length: 2, kind: .customEmoji(stickerPack: nil, fileID: 1))])), source: source))
+    }
+
 }

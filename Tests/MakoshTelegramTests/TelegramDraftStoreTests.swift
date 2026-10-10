@@ -132,11 +132,12 @@ final class TelegramDraftStoreTests: XCTestCase {
     func testKnownV1UpgradesOnSameTextSave() throws {
         let draft = TelegramComposerDraft(accountID: 1, chatID: 42, text: "legacy")
         var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        fields["text"] = draft.text
         fields["schemaVersion"] = 1
         let legacy = try JSONDecoder().decode(TelegramComposerDraft.self, from: JSONSerialization.data(withJSONObject: fields))
         var store = TelegramDraftStore()
         XCTAssertTrue(store.restore(legacy, accountID: 1, chatID: 42, expectedRevision: nil))
         let upgraded = try XCTUnwrap(store.save("legacy", accountID: 1, chatID: 42))
-        XCTAssertEqual(upgraded.schemaVersion, 2); XCTAssertNotEqual(upgraded.revision, legacy.revision)
+        XCTAssertEqual(upgraded.schemaVersion, 3); XCTAssertNotEqual(upgraded.revision, legacy.revision)
     }
 }

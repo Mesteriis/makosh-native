@@ -146,6 +146,7 @@ private func composerFixtureRaw(_ box: Postbox, chatID: Int64, data: Data?) -> S
         let reopened = try await load(42, from: repository).get()
         XCTAssertEqual(reopened, draft)
         var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        fields["text"] = draft.text
         fields["schemaVersion"] = 1; fields.removeValue(forKey: "replyTarget")
         let marker = Data("MakoshComposerDraft.v1\n".utf8)
         _ = await raw(box, chat: 42, data: marker + (try JSONSerialization.data(withJSONObject: fields)))
@@ -169,5 +170,68 @@ private func composerFixtureRaw(_ box: Postbox, chatID: Int64, data: Data?) -> S
         if case .failure(.incompatibleData) = await save(upgraded, to: repository) {} else { XCTFail("Invalid existing data must remain") }
         let unchanged = await raw(box, chat: 42)
         XCTAssertEqual(unchanged, invalid)
+    }
+    func testSchemaTwoTextAndReplyUpgradeWithoutLosingTarget() async throws {
+        let box = try await open(root())
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let text = "e\u{301} 😀 legacy", revision = UUID()
+        let target = TelegramComposerReplyTarget(peerID: 42, namespace: 0, messageID: 7, threadID: 9)
+        let fields: [String: Any] = [
+            "schemaVersion": 2, "accountID": 1, "chatID": 42,
+            "revision": revision.uuidString, "text": text,
+            "replyTarget": ["peerID": 42, "namespace": 0, "messageID": 7, "threadID": 9]
+        ]
+        let marker = Data("MakoshComposerDraft.v1\n".utf8)
+        _ = await raw(box, chat: 42, data: marker + (try JSONSerialization.data(withJSONObject: fields)))
+        let loaded = try await load(42, from: repository).get()
+        let legacy = try XCTUnwrap(loaded)
+        XCTAssertEqual(legacy.schemaVersion, 2)
+        XCTAssertEqual(legacy.revision, revision)
+        XCTAssertEqual(Array(legacy.text.utf8), Array(text.utf8))
+        XCTAssertEqual(legacy.input.selection, .init(location: text.utf16.count, length: 0))
+        XCTAssertTrue(legacy.input.formattedText.entities.isEmpty)
+        XCTAssertEqual(legacy.replyTarget, target)
+        var store = TelegramDraftStore()
+        XCTAssertTrue(store.restore(legacy, accountID: 1, chatID: 42, expectedRevision: nil))
+        let upgraded = try XCTUnwrap(store.save(input: legacy.input, accountID: 1, chatID: 42))
+        XCTAssertEqual(upgraded.schemaVersion, 3)
+        XCTAssertNotEqual(upgraded.revision, revision)
+        XCTAssertEqual(upgraded.input, legacy.input)
+        XCTAssertEqual(upgraded.replyTarget, target)
+        try await save(upgraded, to: repository).get()
+        let persisted = try await load(42, from: repository).get()
+        XCTAssertEqual(persisted, upgraded)
+        let persistedBytes = await raw(box, chat: 42)
+        XCTAssertTrue(try XCTUnwrap(persistedBytes).starts(with: marker))
+    }
+    func testRichSelectionReplySnapshotSurvivesEncryptedReopen() async throws {
+        let path = try root()
+        let input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "😀 bold", entities: [.init(offset: 3, length: 4, kind: .bold)]), selection: .init(location: 3, length: 4))
+        let draft = TelegramComposerDraft(accountID: 1, chatID: 42, input: input, replyTarget: .init(peerID: 42, namespace: 0, messageID: 7))
+        try await seedThenRelease(path, draft: draft)
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let box = try await open(path)
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let restored = try await load(42, from: repository).get()
+        XCTAssertEqual(restored, draft)
+    }
+    func testTotalEncodedPayloadLimitRefusesWriteAndPreservesExistingRawBytes() async throws {
+        let box = try await open(root())
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let original = TelegramComposerDraft(accountID: 1, chatID: 42, text: "existing")
+        try await save(original, to: repository).get()
+        let existingBytes = await raw(box, chat: 42)
+        let before = try XCTUnwrap(existingBytes)
+        let largeURL = "https://example.invalid/" + String(repeating: "x", count: 530 * 1024)
+        let formatted = try TelegramFormattedText(text: "x", entities: [.init(offset: 0, length: 1, kind: .textURL(url: largeURL))])
+        let excessive = TelegramComposerDraft(accountID: 1, chatID: 42, input: try TelegramComposerInput(formattedText: formatted))
+        XCTAssertLessThanOrEqual(excessive.text.utf8.count, TelegramComposerDraft.maximumTextBytes)
+        XCTAssertGreaterThan(try JSONEncoder().encode(excessive).count, 512 * 1024)
+        if case .failure = await save(excessive, to: repository) {} else { XCTFail("Encoded payload must be bounded") }
+        let after = await raw(box, chat: 42)
+        XCTAssertEqual(after, before)
+        let retained = try await load(42, from: repository).get()
+        XCTAssertEqual(retained, original)
     }
 }

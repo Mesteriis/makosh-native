@@ -69,7 +69,7 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
 }
 
 public enum TelegramMessageAction: Equatable, Sendable {
-    case reply(String), edit(String), editFormatted(TelegramFormattedText), forward(destinationChatID: Int64), delete(forEveryone: Bool)
+    case reply(String), replyFormatted(TelegramFormattedText), edit(String), editFormatted(TelegramFormattedText), forward(destinationChatID: Int64), delete(forEveryone: Bool)
 }
 public enum TelegramMessageActionPhase: Equatable, Sendable {
     case idle, validating, committing, queued, applied, rejected, uncertain
@@ -85,7 +85,8 @@ enum TelegramMessageActionEvent { case committing, queued, applied, rejected, un
 func telegramMessageActionAllowed(_ action: TelegramMessageAction, source: TelegramMessageActionSource) -> Bool {
     guard (source.chatID == source.peerID || source.metadata.migrationChatID == source.chatID), !source.fingerprint.isEmpty else { return false }
     switch action {
-    case let .reply(text): return source.canReply && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.utf16.count <= 4096
+    case let .reply(text): return source.canReply && (try? TelegramFormattedText(text: text)).map { telegramFormattedTextCanSend($0) } == true
+    case let .replyFormatted(value): return source.canReply && telegramFormattedTextCanSend(value)
     case let .edit(text):
         return source.canEdit && (source.metadata.formattedText?.entities.isEmpty ?? true) &&
             text.utf16.count <= source.editLimit && !text.utf8.elementsEqual(source.text.utf8) &&

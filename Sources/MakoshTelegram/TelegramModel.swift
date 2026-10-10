@@ -136,8 +136,8 @@ public final class TelegramModel: ObservableObject {
             playback.stop()
             if let id = selectedChatID, let found = search.chats.first(where: { $0.id == id }) { knownChats[id] = found }
             if let accountID = draftAccountID {
-                displayDraft(selectedChatID.map { drafts.draft(accountID: accountID, chatID: $0) } ?? "")
-            } else { displayDraft("") }
+                displayComposerInput(selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0)?.input } ?? .empty)
+            } else { displayComposerInput(.empty) }
             refreshComposerReply()
             restoreComposerDraft()
             search.selectChat(selectedChatID)
@@ -145,12 +145,21 @@ public final class TelegramModel: ObservableObject {
             loadHistory()
         }
     }
-    @Published public var draft = "" {
-        didSet {
-            guard !displayingRestoredDraft, let accountID = draftAccountID, let chatID = selectedChatID else { return }
-            saveComposerDraft(draft, accountID: accountID, chatID: chatID)
+    @Published public private(set) var composerInput: TelegramComposerInput = .empty
+    /// Compatibility for plain input callers. Native rich input updates the
+    /// complete value atomically, including its UTF16 selection.
+    public var draft: String {
+        get { composerInput.formattedText.text }
+        set {
+            if newValue.utf8.elementsEqual(draft.utf8) { setComposerInput(composerInput); return }
+            guard let value = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: newValue)) else {
+                error = "Не удалось сохранить текст ввода."; return
+            }
+            setComposerInput(value)
         }
     }
+    public var composerCanSend: Bool { telegramFormattedTextCanSend(composerInput.formattedText) }
+    public var composerSupportsAttachments: Bool { composerInput.formattedText.entities.isEmpty }
     @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
     public private(set) var isSyntheticPreview = false
@@ -170,7 +179,6 @@ public final class TelegramModel: ObservableObject {
         guard let accountID = draftAccountID, composerDraftRepository?.accountID == accountID else { return false }
         return unsavedComposerDrafts.values.contains { $0.accountID == accountID }
     }
-    private var displayingRestoredDraft = false
     private var composerDraftRepository: (any TelegramComposerDraftRepository)?
     private var composerDraftGeneration = UUID()
     private var composerDraftLoadID: UUID?
@@ -215,10 +223,10 @@ public final class TelegramModel: ObservableObject {
         upload.willSubmit = { [weak self] target, caption in self?.captureUploadDraft(target: target, caption: caption) }
         upload.didQueue = { [weak self] target, caption in self?.acknowledgeUpload(target: target, caption: caption) }
         messageActions.didQueue = { [weak self] action, source in
-            guard let self, source.accountID == self.draftAccountID, case let .reply(text) = action,
+            guard let self, source.accountID == self.draftAccountID, let formatted = self.replyText(action),
                   let submitted = self.replyComposerSubmission, submitted.source == source else { return }
             self.replyComposerSubmission = nil
-            self.acknowledgeComposerDraft(text: text, submitted: submitted.draft)
+            self.acknowledgeComposerDraft(formatted: formatted, submitted: submitted.draft)
         }
         messageActions.didApply = { [weak self] action, source in
             guard let self, source.accountID == self.draftAccountID else { return }
@@ -233,20 +241,35 @@ public final class TelegramModel: ObservableObject {
         }
     }
 
-    private func displayDraft(_ text: String) {
-        displayingRestoredDraft = true
-        draft = text
-        displayingRestoredDraft = false
+    private func displayComposerInput(_ input: TelegramComposerInput) {
+        composerInput = input
     }
 
-    private func saveComposerDraft(_ text: String, accountID: Int64, chatID: Int64) {
-        if let changed = drafts.save(text, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+    private func setComposerInput(_ input: TelegramComposerInput) {
+        composerInput = input
+        guard let accountID = draftAccountID, let chatID = selectedChatID else { return }
+        if let changed = drafts.save(input: input, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
     }
 
-    private func composerSubmission(text: String, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
+    @discardableResult
+    public func updateComposerInput(_ input: TelegramComposerInput, contextID: UUID, chatID: Int64) -> Bool {
+        guard contextID == accountGeneration, selectedChatID == chatID, phase == .ready else { return false }
+        setComposerInput(input)
+        return true
+    }
+
+    private func composerSubmission(formatted: TelegramFormattedText, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
         guard let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID),
-              snapshot.text.utf8.elementsEqual(text.utf8) else { return nil }
+              snapshot.input.formattedText == formatted else { return nil }
         return snapshot
+    }
+
+    private func replyText(_ action: TelegramMessageAction) -> TelegramFormattedText? {
+        switch action {
+        case let .reply(text): return try? TelegramFormattedText(text: text)
+        case let .replyFormatted(value): return value
+        default: return nil
+        }
     }
 
     private func persistComposerDraft(_ snapshot: TelegramComposerDraft) {
@@ -304,7 +327,7 @@ public final class TelegramModel: ObservableObject {
             switch result {
             case let .success(snapshot):
                 if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, expectedRevision: nil) {
-                    self.displayDraft(self.drafts.draft(accountID: accountID, chatID: chatID))
+                    self.displayComposerInput(self.drafts.snapshot(accountID: accountID, chatID: chatID)?.input ?? .empty)
                     self.refreshComposerReply()
                 }
             case .failure:
@@ -314,12 +337,14 @@ public final class TelegramModel: ObservableObject {
         if composerDraftLoadID == requestID { composerDraftLoad.set(disposable) } else { disposable.dispose() }
     }
 
-    private func acknowledgeComposerDraft(text: String, submitted: TelegramComposerDraft) {
-        guard let cleared = drafts.acknowledge(sentText: text, revision: submitted.revision,
+    private func acknowledgeComposerDraft(formatted: TelegramFormattedText, submitted: TelegramComposerDraft) {
+        guard submitted.input.formattedText == formatted,
+              let cleared = drafts.acknowledge(sentInput: submitted.input, revision: submitted.revision,
             accountID: submitted.accountID, chatID: submitted.chatID) else { return }
         persistComposerDraft(cleared)
-        if draftAccountID == submitted.accountID, selectedChatID == submitted.chatID,
-           draft.utf8.elementsEqual(text.utf8) { displayDraft(""); refreshComposerReply() }
+        if draftAccountID == submitted.accountID, selectedChatID == submitted.chatID {
+            displayComposerInput(.empty); refreshComposerReply()
+        }
     }
 
     private func refreshComposerReply(initial: TelegramComposerReply? = nil) {
@@ -454,11 +479,11 @@ public final class TelegramModel: ObservableObject {
             knownChats[destination] = chat
         }
         replyComposerSubmission = nil
-        if case let .reply(text) = action {
+        if let formatted = replyText(action) {
             if let target = drafts.snapshot(accountID: source.accountID, chatID: source.chatID)?.replyTarget {
                 guard target == TelegramComposerReplyTarget(source: source), composerReply.resolved?.source == source else { return false }
             }
-            if let snapshot = composerSubmission(text: text, accountID: source.accountID, chatID: source.chatID) {
+            if let snapshot = composerSubmission(formatted: formatted, accountID: source.accountID, chatID: source.chatID) {
                 replyComposerSubmission = (source, snapshot)
             }
         }
@@ -474,7 +499,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func uploadTarget(replyTo source: TelegramMessageActionSource?, contextID: UUID) -> TelegramUploadTarget? {
-        guard contextID == accountGeneration, let target = uploadTarget else { return nil }
+        guard contextID == accountGeneration, composerSupportsAttachments, let target = uploadTarget else { return nil }
         if let replyTarget = drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.replyTarget {
             guard let source, TelegramComposerReplyTarget(source: source) == replyTarget,
                   composerReply.resolved?.source == source else { return nil }
@@ -488,6 +513,7 @@ public final class TelegramModel: ObservableObject {
         uploadComposerSubmission = nil
         guard target.accountID == draftAccountID,
               let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
+              snapshot.input.formattedText.entities.isEmpty,
               snapshot.text.utf8.elementsEqual(caption.utf8),
               snapshot.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
         uploadComposerSubmission = snapshot
@@ -497,7 +523,8 @@ public final class TelegramModel: ObservableObject {
         guard target.accountID == draftAccountID, let submitted = uploadComposerSubmission,
               submitted.accountID == target.accountID, submitted.chatID == target.chatID else { return }
         uploadComposerSubmission = nil
-        acknowledgeComposerDraft(text: caption, submitted: submitted)
+        guard let formatted = try? TelegramFormattedText(text: caption) else { return }
+        acknowledgeComposerDraft(formatted: formatted, submitted: submitted)
     }
 
     public func connectUsingSavedAPIConfiguration() {
@@ -656,26 +683,34 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func sendMessage(_ text: String) -> Bool {
+        guard let formatted = try? TelegramFormattedText(text: text) else { return false }
+        return sendMessage(formatted)
+    }
+
+    public func sendMessage(_ formatted: TelegramFormattedText) -> Bool {
         guard let draftAccountID, let chatID = selectedChatID,
               drafts.snapshot(accountID: draftAccountID, chatID: chatID)?.replyTarget == nil else { return false }
         guard !isSyntheticPreview else { error = "Синтетическая проверка: отправка отключена."; return false }
         guard !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, upload.phase == .idle,
               phase == .ready, let account, let selectedChatID,
-              knownChats[selectedChatID] != nil, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        guard text.utf16.count <= 4096 else { error = "Текст превышает 4096 символов. Разделите сообщение."; return false }
+              knownChats[selectedChatID] != nil else { return false }
+        guard telegramFormattedTextCanSend(formatted) else {
+            error = "Текст или его форматирование не поддерживается для отправки. Максимум — 4096 знаков UTF16."; return false
+        }
         let token = generation
         let accountToken = accountGeneration
         let chat = selectedChatID
         let accountID = account.peerId.toInt64()
-        let submitted = composerSubmission(text: text, accountID: accountID, chatID: chat)
+        let submitted = composerSubmission(formatted: formatted, accountID: accountID, chatID: chat)
         isBusy = true; error = nil
-        let message = EnqueueMessage.message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
-        outgoing.set((enqueueMessages(account: account, peerId: PeerId(chat), messages: [message]) |> deliverOnMainQueue).start(next: { [weak self] ids in
+        let enqueue = telegramEnqueueOutgoingText(account: account,chatID: chat,formatted: formatted)
+        outgoing.set((enqueue |> deliverOnMainQueue).start(next: { [weak self] ids in
             guard let self, self.generation == token, self.accountGeneration == accountToken else { return }
             self.isBusy = false
+            guard let ids else { self.error = "Не удалось проверить форматирование перед отправкой. Черновик сохранён."; return }
             if ids.contains(where: { $0 != nil }) {
-                if let submitted { self.acknowledgeComposerDraft(text: text, submitted: submitted) }
-            } else { self.error = "Сообщение не поставлено в очередь. Текст сохранён в поле ввода." }
+                if let submitted { self.acknowledgeComposerDraft(formatted: formatted, submitted: submitted) }
+            } else { self.error = "Не удалось подтвердить постановку в очередь. Черновик сохранён." }
         }))
         return true // Accepted for enqueue; only its acknowledgement clears the draft.
     }

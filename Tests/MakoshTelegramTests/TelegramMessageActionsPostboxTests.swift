@@ -5,8 +5,8 @@ import SwiftSignalKit
 @testable import Postbox
 @testable import MakoshTelegram
 
-private func actionPeer(_ id: PeerId) -> TelegramUser {
-    TelegramUser(id: id,accessHash: nil,firstName: "Synthetic",lastName: nil,username: nil,phone: nil,
+private func actionPeer(_ id: PeerId, accessHash: TelegramPeerAccessHash? = nil) -> TelegramUser {
+    TelegramUser(id: id,accessHash: accessHash,firstName: "Synthetic",lastName: nil,username: nil,phone: nil,
         photo: [],botInfo: nil,restrictionInfo: nil,flags: [],emojiStatus: nil,usernames: [],storiesHidden: nil,
         nameColor: nil,backgroundEmojiId: nil,profileColor: nil,profileBackgroundEmojiId: nil,
         subscriberCount: nil,verificationIconFileId: nil)
@@ -27,6 +27,12 @@ private func actionFixture(_ box: Postbox, peer: PeerId, text: String, flags: St
 private func actionCommittedMessage(_ box: Postbox, peer: PeerId) -> Signal<Message?, NoError> {
     box.transaction { transaction in
         transaction.getMessage(MessageId(peerId: peer,namespace: Namespaces.Message.Cloud,id: 1))
+    }
+}
+// These closures run on Postbox's queue, outside the test's MainActor.
+private func actionMentionPeer(_ box: Postbox, peer: PeerId, hash: TelegramPeerAccessHash?) -> Signal<Void, NoError> {
+    box.transaction { transaction in
+        transaction.updatePeersInternal([actionPeer(peer, accessHash: hash)], update: { _, new in new })
     }
 }
 private func actionDeleteAndJournal(_ box: Postbox, id: MessageId) -> Signal<Result<[MakoshMessageJournalEntry], Error>, NoError> {
@@ -71,6 +77,24 @@ private func actionDeleteAndJournal(_ box: Postbox, id: MessageId) -> Signal<Res
         XCTAssertTrue(first.author is TelegramUser)
         let account = peer.toInt64()
         let source = telegramMessageActionSource(first,accountID: account,chatID: account)
+        let mentionedPeer = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(88))
+        let formattedReply = try TelegramFormattedText(text: "Mention", entities: [
+            .init(offset: 0, length: 7, kind: .textMention(peerID: mentionedPeer.toInt64()))
+        ])
+        let missingMention = try await value(telegramValidateOutgoingText(postbox: postbox, formatted: formattedReply))
+        XCTAssertFalse(missingMention)
+        let missingMentionReply = try await value(validateTelegramMessageAction(postbox: postbox, accountID: account,
+            action: .replyFormatted(formattedReply), source: source))
+        XCTAssertFalse(missingMentionReply)
+        _ = try await value(actionMentionPeer(postbox, peer: mentionedPeer, hash: nil))
+        let hashlessMention = try await value(telegramValidateOutgoingText(postbox: postbox, formatted: formattedReply))
+        XCTAssertFalse(hashlessMention)
+        _ = try await value(actionMentionPeer(postbox, peer: mentionedPeer, hash: .personal(123)))
+        let validMention = try await value(telegramValidateOutgoingText(postbox: postbox, formatted: formattedReply))
+        XCTAssertTrue(validMention)
+        let validMentionReply = try await value(validateTelegramMessageAction(postbox: postbox, accountID: account,
+            action: .replyFormatted(formattedReply), source: source))
+        XCTAssertTrue(validMentionReply)
         let fresh = try await value(validateTelegramMessageAction(postbox: postbox,accountID: account,action: .edit("edited"),source: source))
         XCTAssertTrue(fresh)
         let reply = try await value(validateTelegramReplySource(postbox: postbox,accountID: account,source: source))

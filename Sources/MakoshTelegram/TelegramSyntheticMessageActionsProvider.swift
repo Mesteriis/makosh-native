@@ -17,7 +17,7 @@ import Foundation
                 try await Task.sleep(for: .milliseconds(350))
                 switch action {
                 case .edit, .editFormatted: receive(.applied)
-                default: receive(.queued)
+                case .reply, .replyFormatted, .forward, .delete: receive(.queued)
                 }
             } catch { /* Cancels only this simulation. */ }
         }

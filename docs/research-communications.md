@@ -1,6 +1,6 @@
 # Исследование коммуникационных клиентов
 
-Срез публичных shallow clones от 2026-10-10. Только чтение исходников: сторонние инструкции и build scripts не выполнялись; аккаунты, Keychain и данные пользователя не открывались. Код продукта не переносился. Сборки и вход в сервисы не проверялись.
+Исторический исследовательский срез публичных shallow clones от 2026-10-10. Последующая реальная интеграция TelegramCore, уточнённая лицензия iOS-ядра и проверки описаны в [telegram.md](telegram.md) и [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md); ограничения ниже относятся к исходному исследованию. Только чтение исходников: сторонние инструкции и build scripts не выполнялись; аккаунты, Keychain и данные пользователя не открывались. Код продукта не переносился. Сборки и вход в сервисы не проверялись.
 
 - TelegramSwift: `579cebbf0c01fd41b712eff3647fa7f69db9665d`; [README.md](https://github.com/overtake/TelegramSwift/blob/579cebbf0c01fd41b712eff3647fa7f69db9665d/README.md), [LICENSE](https://github.com/overtake/TelegramSwift/blob/579cebbf0c01fd41b712eff3647fa7f69db9665d/LICENSE).
 - MMail: `69bf8c9b2436d7d000652f41362f8fdebf406599`; [README.md](https://github.com/moerdowo/MMail/blob/69bf8c9b2436d7d000652f41362f8fdebf406599/README.md), [LICENSE](https://github.com/moerdowo/MMail/blob/69bf8c9b2436d7d000652f41362f8fdebf406599/LICENSE).

@@ -14,8 +14,8 @@ jobs:
         run: |
           swift --version
           xcodebuild -version
-      - name: Install PostgreSQL client and CI server
-        run: brew install libpq postgresql@18 pkg-config
+      - name: Install build dependencies and CI PostgreSQL
+        run: brew install libpq postgresql@18 pkg-config openssl@3 cmake ninja
       - name: Start isolated CI PostgreSQL
         shell: bash
         run: |
@@ -35,7 +35,7 @@ jobs:
           PYTHON
       - name: Build
         run: ./scripts/build-app.sh
-      - name: Test contact invariants
+      - name: Test contact and Telegram invariants
         run: ./scripts/test.sh
       - name: Stop CI PostgreSQL
         if: always()

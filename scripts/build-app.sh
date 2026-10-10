@@ -2,7 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/libpq-env.sh
-swift build --product Makosh
+python3 scripts/prepare-telegram.py
+swift build --product Makosh -j 4
 makosh_bin_dir="$(swift build --show-bin-path)"
 makosh_bundle="$PWD/.build/Makosh.app"
 mkdir -p "$makosh_bundle/Contents/MacOS"
@@ -16,13 +17,16 @@ cat > "$makosh_bundle/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>Makosh</string>
   <key>CFBundleDisplayName</key><string>Макош</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>0.2.0</string>
+  <key>CFBundleVersion</key><string>2</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSHumanReadableCopyright</key><string>2026 Makosh contributors · MIT</string>
+  <key>NSHumanReadableCopyright</key><string>2026 Makosh contributors; includes Telegram-iOS. Combined application GPLv3; see third-party notices.</string>
 </dict></plist>
 PLIST
+mkdir -p "$makosh_bundle/Contents/Resources/Licenses"
+cp THIRD_PARTY_NOTICES.md LICENSE "$makosh_bundle/Contents/Resources/Licenses/"
+cp LICENSES/* "$makosh_bundle/Contents/Resources/Licenses/"
 codesign --force --sign - "$makosh_bundle"
 codesign --verify --strict "$makosh_bundle"
 echo "$makosh_bundle"

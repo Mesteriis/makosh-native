@@ -17,12 +17,18 @@ python3 scripts/xerj-index.py MMail --check
 xerj search --url http://127.0.0.1:19320 --prefix mk-com-mail 'IMAPSession connectAndLogin' -k 3
 python3 scripts/xerj-index.py project
 python3 scripts/xerj-index.py project --check
-xerj search --url http://127.0.0.1:19320 --prefix mk-own 'undoMerge expectedRevision' -k 3
+xerj search --url http://127.0.0.1:19320 --prefix mk-own-v2 'undoMerge expectedRevision' -k 3
 ```
 
 Run the index command for each of the eight lock names. Reuse the same generated `--no-graph` state directory for changes; rc.93 reconciles changed/added/removed files, but preparation still copies the complete scope (O(N)). Do not use `--fresh` as a deletion/reconciliation substitute. Check current content fingerprints and reference SHA before every reuse; a commit SHA alone does not cover uncommitted edits. The script refuses mismatched locked commits and records pre/post content fingerprints plus root and scope ignore rules outside Git. `--record-existing RESULT LOG` is for recording already-completed runs; it validates scope/terminal and records current content, but cannot reconstruct historical file edits. Original clones were checked for source changes separately.
 
-Hidden files, `.git`, built-in build/vendor/generated directories and ignore rules are excluded. Communication scopes also exclude private/, databases, png/jpg/xcassets; Telegram submodules were not initialized/indexed and are an explicit integration-audit gap. The reproducer prepares local `.xerjignore` rules without modifying tracked upstream source. The project excludes `.references`, `.local`, `.build`, databases/images and the mutable development status ledger. Index state, logs, raw query results, machine configuration and fingerprints stay in `.local/` and are ignored. Exit 3 is completed-with-junk, not a clean exit 0; examine skipped paths before claiming coverage.
+Adding retained `.notice` license files caused the original `mk-own` frozen
+dataset to refuse new text fields (actual exit 1, unsupported schema evolution).
+The current project uses a separate `mk-own-v2` prefix/state, as instructed by
+that diagnostic. The failed run is preserved locally; the old prefix is not
+reused as evidence for current code. Reference/engine scopes are unchanged.
+
+Hidden files, `.git`, built-in build/vendor/generated directories and ignore rules are excluded. Communication reference scopes also exclude private/, databases, png/jpg/xcassets; the original TelegramSwift index excludes submodules. Its selected TelegramCore engine is now prepared, audited and indexed separately as described below. The reproducer prepares local `.xerjignore` rules without modifying tracked upstream source. The project excludes `.references`, `.local`, `.build`, databases/images and the mutable development status ledger. Index state, logs, raw query results, machine configuration and fingerprints stay in `.local/` and are ignored. Exit 3 is completed-with-junk, not a clean exit 0; examine skipped paths before claiming coverage.
 
 ## Observed reference coverage
 
@@ -36,6 +42,36 @@ Hidden files, `.git`, built-in build/vendor/generated directories and ignore rul
 | Yandex Messenger | 3 | 132 | 2,206 | 73/73 | 10 PNGs, 2 duplicate-content files |
 | 900CRM | 3 | 431 | 4,259 | 237/237 | 56 initial skips, including 6 Svelte sources |
 | Orbit | 3 | 77 | 433 | 65/65 | 6 PNGs |
+
+## Telegram engine integration scope
+
+```sh
+python3 scripts/prepare-telegram.py
+python3 scripts/xerj-index.py telegram-engine
+python3 scripts/xerj-index.py telegram-engine --check
+xerj search --url http://127.0.0.1:19320 --prefix mk-telegram-engine 'sendAuthorizationCode authorizeWithPassword' -k 3
+```
+
+This separately indexes `.local/telegram-engine/submodules/TelegramCore`, after
+checking the pinned preparation recipe and exact SHA256/file-set record. Its
+scope includes generated FlatSerialization sources and bundled FlatBuffers;
+the sibling Postbox/MtProtoKit and other packages were audited/read for build
+and lifecycle integration but are not claimed as indexed by this scope.
+Observed final engine refresh: **exit 0, 721 indexed files, 686/686 classified
+code files**. Fingerprints cover current adapted/generated content before and
+after indexing. `--check` revalidates the complete prepared engine as well as
+this index fingerprint. No session cache, private API configuration or Keychain
+data is indexed. Local API credentials are outside the project/index root.
+
+Actual engine queries retrieved `sendAuthorizationCode`/`authorizeWithPassword`
+from `Authorization.swift` and `tailChatListView`/history-view APIs from
+`AccountViewTracker.swift`; source reads confirmed their signatures and auth
+state transitions. This led to direct engine integration, explicit outbox
+acknowledgement, disposal/generation guards, disabled logging and privacy/cache
+adaptations. Project refresh/search also covers the new adapter and regressions.
+Raw records: `.local/telegram-engine-refresh.{json,log}` and
+`.local/freshness/telegram-engine.json`. The original eight reference counts
+above remain historical scope-specific results, not full dependency coverage.
 
 900CRM's classified-code metric did not count Svelte. A supplementary text index `mk-crm-900-svelte` recovered **6/6** rejected Svelte originals (exit 0, 6 files, 68 records, 0 junk), with original path/commit/SHA256 mapping. Text corpus fields differ: code CLI search failed; an actual structured XERJ query on `text` succeeded. See `research-crm.md`. Remaining binary/empty/archive skips are explicitly recorded; this is not a claim of searchable media or downloaded dependency coverage.
 

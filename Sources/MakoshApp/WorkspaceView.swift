@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import MakoshCore
+import MakoshTelegram
 import UniformTypeIdentifiers
 
 @MainActor
@@ -111,6 +112,7 @@ private struct EditorSelection: Identifiable { let id = UUID(); let contact: Con
 struct WorkspaceView: View {
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var model = WorkspaceModel()
+    @StateObject private var telegram = TelegramModel()
     @State private var destination: Destination? = .contacts
     @State private var search = ""
     @State private var editor: EditorSelection?
@@ -130,7 +132,7 @@ struct WorkspaceView: View {
                 }.listStyle(.sidebar).accessibilityIdentifier("workspace.sidebar")
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Локальный PostgreSQL", systemImage: "externaldrive.connected.to.line.below").font(.callout.weight(.medium))
-                    Text("База на этом Mac; сервисные аккаунты не подключены.").font(.caption).foregroundStyle(.secondary)
+                    Text("Контакты в PostgreSQL; Telegram — отдельный сеанс.").font(.caption).foregroundStyle(.secondary)
                 }.padding(16)
             }.navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 250)
         } content: {
@@ -157,6 +159,8 @@ struct WorkspaceView: View {
                         Button { review = true } label: { Label("Объединения · \(model.duplicates.count)", systemImage: "person.2.badge.gearshape").frame(maxWidth: .infinity) }.accessibilityIdentifier("contacts.duplicates").disabled(!model.ready)
                     }.padding(16)
                 }.frame(maxHeight: .infinity, alignment: .top).navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
+            } else if destination == .telegram {
+                TelegramSidebarView(model: telegram).navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
             } else {
                 VStack(alignment: .leading, spacing: 16) {
                     Label(destination?.rawValue ?? "", systemImage: destination?.symbol ?? "square").font(.title2.bold())
@@ -169,7 +173,8 @@ struct WorkspaceView: View {
             if destination == .contacts {
                 if let contact = model.selected { DossierView(contact: contact, model: model) { editor = EditorSelection(contact: contact) } }
                 else { ContentUnavailableView("Всё о человеке — рядом", systemImage: "person.text.rectangle", description: Text("Выберите контакт, чтобы открыть досье, заметки и источники.")) }
-            } else if destination == .meetings { MeetingsView() }
+            } else if destination == .telegram { TelegramDetailView(model: telegram) }
+            else if destination == .meetings { MeetingsView() }
             else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
         }
         .tint(accent).background(Color(nsColor: .windowBackgroundColor))

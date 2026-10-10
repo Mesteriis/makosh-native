@@ -1,21 +1,21 @@
 # Макош / Makosh
 
-Native macOS workspace for a unified contact dossier and future communications adapters. The first stage is a contact book backed by a local PostgreSQL service: create/edit/search, multiple phones/emails, organization, role, tags, notes, source-scoped identities, JSON import, duplicate review, transactional merge and guarded undo.
+Native macOS workspace for a unified contact dossier and communications. The contact book is backed by a local PostgreSQL service: create/edit/search, multiple phones/emails, organization, role, tags, notes, source-scoped identities, JSON import, duplicate review, transactional merge and guarded undo.
 
-Telegram, Mail, WhatsApp and Teams are visible as disconnected sections. Meetings can open an official Telemost link in the browser; no meeting API account is connected. This release does not synchronize messages, mail or accounts. It does not read macOS Contacts or existing mail/session databases. All included examples are synthetic.
+Telegram is the first implemented channel: native account setup, dialogs, text history and a text composer backed by the actual TelegramCore from the selected TelegramSwift reference. Connect your own separate session explicitly in the app. Real authorization/sync/send acceptance is still unverified; see [Telegram setup and limits](docs/telegram.md). Mail, WhatsApp and Teams remain disconnected. Meetings open an official Telemost link in the browser. Existing Telegram/mail sessions and macOS Contacts are not read. All included examples are synthetic.
 
 ## Requirements and run
 
-Apple Silicon, macOS 26+, Xcode 26+ with Swift 6.0+, Docker with Compose, and Homebrew `libpq`/`pkg-config`. First local verification uses Xcode 27 / Swift 6.4 on macOS 27.0.1; macOS 26 is the configured minimum and CI target, not a claim of a full OS/device matrix. Intel and older macOS are unverified.
+Apple Silicon, macOS 26+, Xcode 26+ with Swift 6.2+, Python 3.11+, Docker with Compose, and Homebrew `libpq`, `pkg-config`, `openssl@3`, `cmake` and `ninja`. First local verification uses Xcode 27 / Swift 6.4 on macOS 27.0.1; macOS 26 is the configured minimum and CI target, not a claim of a full OS/device matrix. Intel and older macOS are unverified.
 
 ```sh
-brew install libpq pkg-config
+brew install libpq pkg-config openssl@3 cmake ninja
 ./scripts/dev-db.sh up
 ./scripts/test.sh
 ./scripts/run.sh
 ```
 
-The scripts supply Homebrew libpq's `PKG_CONFIG_PATH`. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and needs that library on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
+Build/test scripts prepare the pinned Telegram engine and FlatBuffers compiler in ignored local storage, verify their exact source checksums, and supply Homebrew libpq/OpenSSL `PKG_CONFIG_PATH`. The first build requires downloading source and compiling the engine. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and OpenSSL 3 and needs both libraries on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
 
 The development service uses PostgreSQL 18.6, binds only `127.0.0.1:55439`, and persists data in a Docker named volume mounted at `/var/lib/postgresql` (the PostgreSQL 18 layout). `./scripts/dev-db.sh down` stops the service while preserving its data. Do not remove the volume to upgrade or reset a test.
 
@@ -33,7 +33,7 @@ See the [import schema](docs/import-format.md), [architecture](docs/architecture
 
 ## References and source research
 
-The eight selected references are pinned in `references.lock.json`; clones live in ignored `.references/`. No reference application source or assets are included in the product. Our independent code is MIT. Upstream licenses and unresolved integration conditions remain separate; TelegramSwift GPL-2.0 and 900CRM Apache-2.0 must not be assumed compatible.
+The eight selected references are pinned in `references.lock.json`; clones live in ignored `.references/`. The pinned iOS engine gitlink from TelegramSwift is prepared and linked locally; the outer macOS UI and branding assets are excluded. The combined application is **GPLv3**; independently authored Makosh code retains MIT. Exact official-tree equivalence, adaptations, license grants and retained texts are in [third-party notices](THIRD_PARTY_NOTICES.md). No built app or prepared engine is published as a binary release. Other reference applications remain research inputs.
 
 Read [XERJ workflow](docs/xerj.md) and the CRM, communications, UI/meetings research documents. Indexes, journals, raw local reports and machine configuration are excluded from Git. Reference research does not claim their applications build or their live integrations work.
 

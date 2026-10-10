@@ -2,6 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/libpq-env.sh
+python3 scripts/prepare-telegram.py
+python3 scripts/test-telegram-preparation.py
 python3 - "$@" <<'PYTHON'
 import json
 import os
@@ -18,5 +20,5 @@ if not environment.get("MAKOSH_TEST_DATABASE_URL"):
         environment["MAKOSH_TEST_DATABASE_URL"] = json.loads(config.read_text())["connectionString"]
     except (ValueError, KeyError):
         raise SystemExit("Invalid development database configuration.") from None
-sys.exit(subprocess.call(["swift", "test", *sys.argv[1:]], env=environment))
+sys.exit(subprocess.call(["swift", "test", "-j", "4", *sys.argv[1:]], env=environment))
 PYTHON

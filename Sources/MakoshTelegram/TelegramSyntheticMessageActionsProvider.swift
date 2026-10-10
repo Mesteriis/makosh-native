@@ -15,7 +15,10 @@ import Foundation
                 try await Task.sleep(for: .milliseconds(250))
                 receive(.committing)
                 try await Task.sleep(for: .milliseconds(350))
-                if case .edit = action { receive(.applied) } else { receive(.queued) }
+                switch action {
+                case .edit, .editFormatted: receive(.applied)
+                default: receive(.queued)
+                }
             } catch { /* Cancels only this simulation. */ }
         }
         return lease

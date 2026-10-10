@@ -10,22 +10,19 @@ struct TelegramMessageActionRequest: Identifiable {
     let mode: Mode
 }
 
-struct TelegramMessageActionsMenu: View {
+struct TelegramMessageActionsItems: View {
     let source: TelegramMessageActionSource
     let disabled: Bool
     let choose: (TelegramMessageActionRequest.Mode) -> Void
     var body: some View {
-        Menu {
-            Button("Ответить") { choose(.reply) }.disabled(!source.canReply)
-            Button("Изменить текст") { choose(.edit) }.disabled(!source.canEdit)
-            Button("Переслать…") { choose(.forward) }.disabled(!source.canForward)
+        Group {
+            Button("Ответить", systemImage: "arrowshape.turn.up.left") { choose(.reply) }.disabled(!source.canReply)
+            Button("Изменить", systemImage: "pencil") { choose(.edit) }.disabled(!source.canEdit)
+            Button("Переслать…", systemImage: "arrowshape.turn.up.right") { choose(.forward) }.disabled(!source.canForward)
             Divider()
-            Button("Удалить в Telegram…", role: .destructive) { choose(.delete) }
+            Button("Удалить…", systemImage: "trash", role: .destructive) { choose(.delete) }
                 .disabled(!source.canDeleteLocally && !source.canDeleteForEveryone)
-        } label: { Image(systemName: "ellipsis.circle") }
-            .menuStyle(.borderlessButton).fixedSize().disabled(disabled)
-            .help("Действия с сообщением").accessibilityLabel("Действия с сообщением")
-            .accessibilityIdentifier("telegram.actions.\(source.peerID).\(source.namespace).\(source.messageID)")
+        }.disabled(disabled)
     }
 }
 
@@ -61,7 +58,6 @@ struct TelegramMessageActionSheet: View {
     @ObservedObject private var controller: TelegramMessageActionsController
     let request: TelegramMessageActionRequest
     @Environment(\.dismiss) private var dismiss
-    @State private var text: String
     @State private var destination: Int64?
     @State private var destinationQuery = ""
     @State private var deleteForEveryone: Bool?
@@ -69,7 +65,6 @@ struct TelegramMessageActionSheet: View {
     @State private var validationFailed = false
     init(model: TelegramModel, request: TelegramMessageActionRequest) {
         self.model = model; self.controller = model.messageActions; self.request = request
-        self._text = State(initialValue: model.messageEditDraft(for: request.source))
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -79,10 +74,7 @@ struct TelegramMessageActionSheet: View {
                 .lineLimit(4).textSelection(.enabled).padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             switch request.mode {
-            case .edit:
-                TextEditor(text: $text).frame(minHeight: 130).border(.secondary.opacity(0.2))
-                    .accessibilityIdentifier("telegram.actions.editText").disabled(controller.isBusy)
-                Text("\(text.utf16.count) / \(request.source.editLimit)").font(.caption).foregroundStyle(.secondary)
+            case .edit: EmptyView()
             case .forward:
                 TextField("Фильтр загруженных диалогов", text: $destinationQuery).textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("telegram.actions.destinationFilter")
@@ -127,9 +119,6 @@ struct TelegramMessageActionSheet: View {
                 if submitted, controller.source == request.source, phase == .queued || phase == .applied { dismiss() }
             }
             .onChange(of: model.messageActionContextID) { _, _ in dismiss() }
-            .onChange(of: text) { _, value in
-                model.saveMessageEditDraft(value, source: request.source, contextID: request.contextID)
-            }
     }
     private var title: String {
         switch request.mode { case .edit: "Изменить сообщение"; case .forward: "Переслать сообщение"; case .delete: "Удалить в Telegram"; case .reply: "Ответить" }
@@ -146,7 +135,7 @@ struct TelegramMessageActionSheet: View {
         guard !controller.isBusy, controller.phase != .uncertain,
               model.messageActionContextID == request.contextID else { return false }
         switch request.mode {
-        case .edit: return text.utf16.count <= request.source.editLimit && !text.utf8.elementsEqual(request.source.text.utf8) && (!text.isEmpty || request.source.metadata.allowsEmptyEdit)
+        case .edit: return false
         case .forward: return destination != nil
         case .delete: return deleteForEveryone != nil
         case .reply: return false
@@ -155,7 +144,7 @@ struct TelegramMessageActionSheet: View {
     private func submit() {
         let action: TelegramMessageAction
         switch request.mode {
-        case .edit: action = .edit(text)
+        case .edit: return
         case .forward: guard let destination else { return }; action = .forward(destinationChatID: destination)
         case .delete: guard let deleteForEveryone else { return }; action = .delete(forEveryone: deleteForEveryone)
         case .reply: return

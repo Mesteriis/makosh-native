@@ -22,20 +22,29 @@ private enum TelegramUploadPanel {
 struct TelegramAttachButtons: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var upload: TelegramUploadController
+    private let replySource: TelegramMessageActionSource?
+    private let replyContextID: UUID?
     @State private var choosing = false
-    init(model: TelegramModel) { self.model = model; upload = model.upload }
+    init(model: TelegramModel, replySource: TelegramMessageActionSource? = nil, replyContextID: UUID? = nil) {
+        self.model = model; upload = model.upload; self.replySource = replySource; self.replyContextID = replyContextID
+    }
     var body: some View {
-        HStack(spacing: 8) {
-            Button { choose(.file) } label: { Image(systemName: "paperclip") }
-                .help("Прикрепить файл без изменения оригинала").accessibilityLabel("Прикрепить файл")
-                .accessibilityIdentifier("telegram.upload.chooseFile")
-            Button { choose(.photo) } label: { Image(systemName: "photo") }
-                .help("Подготовить фотографию для отправки").accessibilityLabel("Прикрепить фото")
+        Menu {
+            Button("Фото", systemImage: "photo") { choose(.photo) }
                 .accessibilityIdentifier("telegram.upload.choosePhoto")
-        }.disabled(choosing || model.uploadTarget == nil || upload.phase != .idle)
+            Button("Файл", systemImage: "doc") { choose(.file) }
+                .accessibilityIdentifier("telegram.upload.chooseFile")
+        } label: { Image(systemName: "paperclip").font(.system(size: 22)).frame(width: 32, height: 32) }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .help("Прикрепить фото или файл").accessibilityLabel("Прикрепить")
+            .accessibilityIdentifier("telegram.upload.attach")
+            .disabled(choosing || capturedTarget == nil || upload.phase != .idle)
+    }
+    private var capturedTarget: TelegramUploadTarget? {
+        model.uploadTarget(replyTo: replySource, contextID: replyContextID ?? model.uploadContextID)
     }
     private func choose(_ mode: TelegramUploadMode) {
-        guard !choosing, let target = model.uploadTarget else { return }
+        guard !choosing, let target = capturedTarget else { return }
         let caption = model.draft
         let contextID = model.uploadContextID
         choosing = true
@@ -62,6 +71,10 @@ struct TelegramUploadView: View {
                             Button("Открыть диалог") { model.selectedChatID = target.chatID }
                                 .accessibilityIdentifier("telegram.upload.openRecipient")
                         }
+                    }
+                    if let source = target.replySource {
+                        Label("Ответ на: \(source.text.isEmpty ? "Сообщение с вложением" : source.text)", systemImage: "arrowshape.turn.up.left")
+                            .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
                     }
                 }
                 if let file = upload.file {

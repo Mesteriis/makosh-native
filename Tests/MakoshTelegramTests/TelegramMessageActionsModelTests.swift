@@ -90,5 +90,34 @@ import XCTest
         model.saveMessageEditDraft("foreign", source: other, contextID: context)
         XCTAssertEqual(model.messageEditDraft(for: other), source.text)
     }
+    func testFormattedDraftSurvivesRejectionAndNewerFormattingSurvivesAck() throws {
+        let (model, provider, source) = try fixture()
+        let bold = try TelegramFormattedText(text: "rich", entities: [.init(offset: 0, length: 4, kind: .bold)])
+        let italic = try TelegramFormattedText(text: "rich", entities: [.init(offset: 0, length: 4, kind: .italic)])
+        let context = model.messageActionContextID
+        model.saveMessageFormattedEditDraft(bold, source: source, contextID: context)
+        XCTAssertTrue(model.performMessageAction(.editFormatted(bold), source: source, contextID: context))
+        provider.callback?(.rejected)
+        XCTAssertEqual(model.messageFormattedEditDraft(for: source), bold)
+        model.saveMessageEditDraft("plain must not flatten", source: source, contextID: context)
+        XCTAssertEqual(model.messageFormattedEditDraft(for: source), bold)
+        XCTAssertTrue(model.performMessageAction(.editFormatted(bold), source: source, contextID: context))
+        model.saveMessageFormattedEditDraft(italic, source: source, contextID: context)
+        provider.callback?(.applied)
+        XCTAssertEqual(model.messageFormattedEditDraft(for: source), italic)
+        XCTAssertTrue(model.performMessageAction(.editFormatted(italic), source: source, contextID: context))
+        provider.callback?(.applied)
+        XCTAssertEqual(model.messageFormattedEditDraft(for: source), source.metadata.formattedText)
+    }
+    func testRichSourceDraftPreservesEntitiesAndRejectsStaleContext() throws {
+        let model = TelegramModel.syntheticPreview(); model.selectedChatID = 10001
+        let source = try XCTUnwrap(model.messages.first { $0.id == "synthetic:10001:122" }.flatMap(model.actionSource))
+        let original = try XCTUnwrap(source.metadata.formattedText)
+        XCTAssertEqual(model.messageFormattedEditDraft(for: source), original)
+        model.saveMessageEditDraft("plain", source: source, contextID: model.messageActionContextID)
+        XCTAssertEqual(model.messageFormattedEditDraft(for: source), original)
+        model.saveMessageFormattedEditDraft(try TelegramFormattedText(text: "stale"), source: source, contextID: UUID())
+        XCTAssertEqual(model.messageFormattedEditDraft(for: source), original)
+    }
 }
 #endif

@@ -9,7 +9,7 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
     private var peerID: PeerId { PeerId(namespace: Namespaces.Peer.CloudUser,id: ._internalFromInt64Value(42)) }
     private func fixture(text: String = "original", version: UInt32 = 1, flags: MessageFlags = [],
                          timestamp: Int32 = 1_999_999, namespace: Int32 = Namespaces.Message.Cloud,
-                         attributes: [MessageAttribute] = [], media: [Media] = [], threadID: Int64? = nil, peer: Peer? = nil) -> Message {
+                         attributes: [MessageAttribute] = [], media: [Media] = [], threadID: Int64? = nil, peer: Peer? = nil, author: Peer? = nil) -> Message {
         let user = TelegramUser(id: peerID, accessHash: nil, firstName: "Synthetic", lastName: nil,
             username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [],
             emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil,
@@ -18,7 +18,7 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
         return Message(stableId: 7,stableVersion: version,id: MessageId(peerId: peer?.id ?? peerID,namespace: namespace,id: 99),
             globallyUniqueId: nil,groupingKey: nil,groupInfo: nil,threadId: threadID,timestamp: timestamp,
             flags: flags,tags: [],globalTags: [],localTags: [],customTags: [],forwardInfo: nil,
-            author: user,text: text,attributes: attributes,media: media,peers: peers,
+            author: author ?? user,text: text,attributes: attributes,media: media,peers: peers,
             associatedMessages: SimpleDictionary(),associatedMessageIds: [],associatedMedia: [:],associatedThreadInfo: nil,associatedStories: [:])
     }
     func testTypedIdentityOwnershipAndConservativePlainTextPermissions() {
@@ -45,11 +45,11 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
         let unsupported = telegramMessageActionMetadata(fixture(namespace: Int32.max),now: now)
         XCTAssertFalse(unsupported.canReply); XCTAssertFalse(unsupported.canForward); XCTAssertFalse(unsupported.canEdit)
     }
-    func testOldOutgoingRemainsCandidateWhileIncomingAndEntitiesRequireOtherSupport() {
+    func testOldOutgoingRemainsCandidateAndRichEntitiesUseFormattedEdit() {
         XCTAssertTrue(telegramMessageActionMetadata(fixture(timestamp: 1),now: now).canEdit)
         XCTAssertFalse(telegramMessageActionMetadata(fixture(flags: [.Incoming]),now: now).canEdit)
         let entities = TextEntitiesMessageAttribute(entities: [MessageTextEntity(range: 0..<3,type: .Bold)])
-        XCTAssertFalse(telegramMessageActionMetadata(fixture(attributes: [entities]),now: now).canEdit)
+        XCTAssertTrue(telegramMessageActionMetadata(fixture(attributes: [entities]),now: now).canEdit)
     }
     func testPhotoCaptionLimitsEmptyEditAndThreadIdentity() {
         let photo = TelegramMediaImage(imageId: MediaId(namespace: 0,id: 7),representations: [],
@@ -114,6 +114,65 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
             XCTAssertEqual(telegramMessageActionAllowed(.delete(forEveryone: true),source: source),expected)
             XCTAssertTrue(source.canDeleteLocally)
         }
+    }
+
+    func testEveryNativeEntityRoundTripsWithoutDroppingUnsupportedKinds() throws {
+        let kinds: [MessageTextEntityType] = [.Unknown,.Mention,.Hashtag,.BotCommand,.Url,.Email,
+            .Bold,.Italic,.Code,.Pre(language: "swift"),.Pre(language: nil),.TextUrl(url: "https://example.invalid/é"),
+            .TextMention(peerId: peerID),.PhoneNumber,.Strikethrough,.BlockQuote(isCollapsed: true),
+            .Underline,.BankCard,.Spoiler,.CustomEmoji(stickerPack: .id(id: 10,accessHash: 11),fileId: 12),.Custom(type: 13)]
+        for kind in kinds {
+            let native = MessageTextEntity(range: 0..<2,type: kind)
+            let formatted = try telegramFormattedText(text: "😀",entities: [native])
+            XCTAssertEqual(formatted.engineEntities(),[native])
+            XCTAssertEqual(try JSONDecoder().decode(TelegramFormattedText.self,from: JSONEncoder().encode(formatted)),formatted)
+        }
+        let packs: [StickerPackReference] = [.id(id: 1,accessHash: 2),.name("é"),.animatedEmoji,.dice("🎲"),
+            .animatedEmojiAnimations,.premiumGifts,.emojiGenericAnimations,.iconStatusEmoji,
+            .iconTopicEmoji,.iconChannelStatusEmoji,.tonGifts]
+        for pack in packs {
+            let native = MessageTextEntity(range: 0..<2,type: .CustomEmoji(stickerPack: pack,fileId: 99))
+            XCTAssertEqual(try telegramFormattedText(text: "😀",entities: [native]).engineEntities(),[native])
+        }
+        let unknown = try telegramFormattedText(text: "x",entities: [.init(range: 0..<1,type: .Unknown)])
+        XCTAssertEqual(unknown.entities.first?.kind,.unknown); XCTAssertFalse(unknown.isEditable)
+        let source = telegramMessageActionSource(fixture(text: "x",attributes: [TextEntitiesMessageAttribute(entities: unknown.engineEntities())]),
+            accountID: peerID.toInt64(),chatID: peerID.toInt64(),now: now)
+        XCTAssertFalse(source.canEdit)
+    }
+
+    func testFormatOnlyChangesAreMutationsButPlainEditCannotDropFormatting() throws {
+        let native = MessageTextEntity(range: 0..<3,type: .Bold)
+        let source = telegramMessageActionSource(fixture(text: "abc",attributes: [TextEntitiesMessageAttribute(entities: [native])]),
+            accountID: peerID.toInt64(),chatID: peerID.toInt64(),now: now)
+        let original = try XCTUnwrap(source.metadata.formattedText)
+        XCTAssertFalse(telegramMessageActionAllowed(.editFormatted(original),source: source))
+        XCTAssertFalse(telegramMessageActionAllowed(.edit("changed"),source: source))
+        let italic = try TelegramFormattedText(text: "abc",entities: [.init(offset: 0,length: 3,kind: .italic)])
+        XCTAssertTrue(telegramMessageActionAllowed(.editFormatted(italic),source: source))
+        XCTAssertNotEqual(original,italic)
+    }
+
+    func testOutgoingChannelAndSendAsAuthorsUseSelectedAccountOutFlagAndPostingRights() {
+        let id = PeerId(namespace: Namespaces.Peer.CloudChannel,id: ._internalFromInt64Value(999))
+        let channel = TelegramChannel(id: id,accessHash: nil,title: "Synthetic",username: nil,
+            photo: [],creationDate: 0,version: 1,participationStatus: .member,
+            info: .broadcast(TelegramChannelBroadcastInfo(flags: [])),flags: [],restrictionInfo: nil,
+            adminRights: TelegramChatAdminRights(rights: [.canPostMessages]),bannedRights: nil,
+            defaultBannedRights: nil,usernames: [],storiesHidden: nil,nameColor: nil,backgroundEmojiId: nil,
+            profileColor: nil,profileBackgroundEmojiId: nil,emojiStatus: nil,approximateBoostLevel: nil,
+            subscriptionUntilDate: nil,verificationIconFileId: nil,sendPaidMessageStars: nil,linkedMonoforumId: nil)
+        let account: Int64 = 123456
+        // Native outgoing posts may be authored by channel or a separate send-as peer.
+        for author: Peer? in [channel,nil] {
+            let outgoing = telegramMessageActionSource(fixture(peer: channel,author: author),accountID: account,chatID: id.toInt64(),now: now)
+            XCTAssertNotEqual(outgoing.metadata.authorID,account)
+            XCTAssertTrue(outgoing.canEdit); XCTAssertTrue(outgoing.canDeleteForEveryone)
+            XCTAssertFalse(outgoing.canDeleteLocally)
+        }
+        let incoming = telegramMessageActionSource(fixture(flags: [.Incoming],peer: channel,author: channel),
+            accountID: account,chatID: id.toInt64(),now: now)
+        XCTAssertFalse(incoming.canEdit); XCTAssertFalse(incoming.canDeleteForEveryone)
     }
 
 }

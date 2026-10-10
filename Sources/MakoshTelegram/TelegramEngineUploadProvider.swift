@@ -36,7 +36,7 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = EngineUploadLease(receive: receive)
         let peerID = PeerId(target.chatID)
-        guard target.accountID == accountID,
+        guard target.accountID == accountID, target.hasValidReplySource,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(peerID.namespace),
               caption.utf16.count <= 1024, let (resource, reference) = telegramUploadMedia(file) else {
             receive(.rejected); return lease
@@ -48,19 +48,22 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
         mediaBox.copyResourceData(resource.id, fromTempPath: file.url.path)
         lease.data.set((mediaBox.resourceData(resource, pathExtension: nil,
             option: .complete(waitUntilFetchStatus: false)) |> deliverOnMainQueue).start(next: { [weak lease, account] data in
-                guard let lease, !lease.stopped, !lease.committing,
+                guard let lease, !lease.stopped, !lease.validating, !lease.committing,
                       data.complete, data.offset == 0 else { return }
                 guard data.size == file.size, validUploadCacheFile(data.path, size: file.size) else {
                     lease.receive(.rejected); lease.stop(); return
                 }
-                lease.committing = true
+                lease.validating = true
                 lease.data.dispose()
-                lease.receive(.committing)
-                guard !lease.stopped else { return }
-                let message = EnqueueMessage.message(text: caption, attributes: [], inlineStickers: [:],
-                    mediaReference: reference, threadId: nil, replyToMessageId: nil, replyToStoryId: nil,
-                    localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
-                lease.enqueue.set((enqueueMessages(account: account, peerId: peerID, messages: [message])
+                let commit: @MainActor (TelegramMessageActionSource?) -> Void = { [weak lease, account] reply in
+                    guard let lease, !lease.stopped, !lease.committing else { return }
+                    guard let message = telegramUploadMessage(caption: caption, reference: reference, target: target, replySource: reply) else {
+                        lease.receive(.rejected); lease.stop(); return
+                    }
+                    lease.committing = true
+                    lease.receive(.committing)
+                    guard !lease.stopped else { return }
+                    lease.enqueue.set((enqueueMessages(account: account, peerId: peerID, messages: [message])
                     |> deliverOnMainQueue).start(next: { [weak lease, account] ids in
                         guard let lease, !lease.stopped, !lease.accepted else { return }
                         guard let id = ids.first.flatMap({ $0 }) else {
@@ -77,9 +80,34 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
                                 // nil or 100% is not server delivery/read acknowledgement.
                             }))
                     }))
+                }
+                if let source = target.replySource {
+                    lease.validation.set((validateTelegramReplySource(postbox: account.postbox, accountID: target.accountID, source: source)
+                        |> deliverOnMainQueue).start(next: { fresh in commit(fresh) }))
+                } else { commit(nil) }
             }))
         return lease
     }
+}
+
+/// A failed reply preflight must never degrade into an ordinary media message.
+func telegramUploadMessage(caption: String, reference: AnyMediaReference, target: TelegramUploadTarget,
+                           replySource: TelegramMessageActionSource?) -> EnqueueMessage? {
+    guard caption.utf16.count <= 1024, target.hasValidReplySource else { return nil }
+    if let captured = target.replySource {
+        guard let replySource, replySource.accountID == captured.accountID,
+              replySource.chatID == captured.chatID, replySource.peerID == captured.peerID,
+              replySource.namespace == captured.namespace, replySource.messageID == captured.messageID,
+              replySource.fingerprint == captured.fingerprint, replySource.threadID == captured.threadID,
+              replySource.canReply else { return nil }
+    } else if replySource != nil { return nil }
+    let reply = replySource.map {
+        EngineMessageReplySubject(messageId: MessageId(peerId: PeerId($0.peerID), namespace: $0.namespace, id: $0.messageID),
+            quote: nil, todoItemId: nil)
+    }
+    return .message(text: caption, attributes: [], inlineStickers: [:], mediaReference: reference,
+        threadId: replySource?.threadID, replyToMessageId: reply, replyToStoryId: nil,
+        localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
 }
 
 func validUploadCacheFile(_ path: String, size: Int64) -> Bool {
@@ -93,16 +121,17 @@ func validUploadCacheFile(_ path: String, size: Int64) -> Bool {
 
 @MainActor
 private final class EngineUploadLease: TelegramUploadLease {
-    let keep = MetaDisposable(), data = MetaDisposable(), enqueue = MetaDisposable(), pending = MetaDisposable()
+    let keep = MetaDisposable(), data = MetaDisposable(), validation = MetaDisposable(), enqueue = MetaDisposable(), pending = MetaDisposable()
     let receive: @MainActor (TelegramUploadEvent) -> Void
     var committing = false
+    var validating = false
     var accepted = false
     private(set) var stopped = false
     init(receive: @escaping @MainActor (TelegramUploadEvent) -> Void) { self.receive = receive }
     func stop() {
         guard !stopped else { return }
         stopped = true
-        keep.dispose(); data.dispose(); enqueue.dispose(); pending.dispose()
+        keep.dispose(); data.dispose(); validation.dispose(); enqueue.dispose(); pending.dispose()
         // This disposes observations only. A committed Postbox send is not recalled.
     }
     isolated deinit { stop() }

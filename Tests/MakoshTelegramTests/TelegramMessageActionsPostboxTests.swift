@@ -11,13 +11,13 @@ private func actionPeer(_ id: PeerId) -> TelegramUser {
         nameColor: nil,backgroundEmojiId: nil,profileColor: nil,profileBackgroundEmojiId: nil,
         subscriberCount: nil,verificationIconFileId: nil)
 }
-private func actionFixture(_ box: Postbox, peer: PeerId, text: String, flags: StoreMessageFlags = [], update: Bool = false) -> Signal<Message?, NoError> {
+private func actionFixture(_ box: Postbox, peer: PeerId, text: String, flags: StoreMessageFlags = [], update: Bool = false, media: [Media] = []) -> Signal<Message?, NoError> {
     box.transaction { transaction in
         transaction.updatePeersInternal([actionPeer(peer)],update: { _,new in new })
         let id = MessageId(peerId: peer,namespace: Namespaces.Message.Cloud,id: 1)
         let message = StoreMessage(id: id,globallyUniqueId: nil,groupingKey: nil,threadId: nil,
             timestamp: Int32(Date().timeIntervalSince1970) - 1,flags: flags,tags: [],globalTags: [],
-            localTags: [],forwardInfo: nil,authorId: peer,text: text,attributes: [],media: [])
+            localTags: [],forwardInfo: nil,authorId: peer,text: text,attributes: [],media: media)
         if update { transaction.updateMessage(id) { _ in .update(message) } }
         else { _ = transaction.addMessages([message],location: .Random) }
         return transaction.getMessage(id)
@@ -73,6 +73,10 @@ private func actionDeleteAndJournal(_ box: Postbox, id: MessageId) -> Signal<Res
         let source = telegramMessageActionSource(first,accountID: account,chatID: account)
         let fresh = try await value(validateTelegramMessageAction(postbox: postbox,accountID: account,action: .edit("edited"),source: source))
         XCTAssertTrue(fresh)
+        let reply = try await value(validateTelegramReplySource(postbox: postbox,accountID: account,source: source))
+        XCTAssertEqual(reply?.fingerprint,source.fingerprint)
+        let foreignReply = try await value(validateTelegramReplySource(postbox: postbox,accountID: account + 1,source: source))
+        XCTAssertNil(foreignReply)
         let wrongAccount = try await value(validateTelegramMessageAction(postbox: postbox,accountID: account + 1,action: .reply("x"),source: source))
         XCTAssertFalse(wrongAccount)
         let wrongChat = TelegramMessageActionSource(metadata: source.metadata,accountID: account,chatID: account + 1)
@@ -80,6 +84,18 @@ private func actionDeleteAndJournal(_ box: Postbox, id: MessageId) -> Signal<Res
         XCTAssertFalse(wrong)
         let missingDestination = try await value(validateTelegramMessageAction(postbox: postbox,accountID: account,action: .forward(destinationChatID: account + 99),source: source))
         XCTAssertFalse(missingDestination)
+        let photo = TelegramMediaImage(imageId: MediaId(namespace: 0,id: 77),representations: [],
+            immediateThumbnailData: nil,reference: nil,partialReference: nil,flags: [])
+        _ = try await value(actionFixture(postbox,peer: peer,text: "",update: true,media: [photo]))
+        let emptyResult = try await value(actionCommittedMessage(postbox,peer: peer))
+        let empty = try XCTUnwrap(emptyResult)
+        let emptySource = telegramMessageActionSource(empty,accountID: account,chatID: account)
+        let emptyReply = try await value(validateTelegramReplySource(postbox: postbox,accountID: account,source: emptySource))
+        XCTAssertNotNil(emptyReply); XCTAssertEqual(emptyReply?.text, "")
+        let staleReply = try await value(validateTelegramReplySource(postbox: postbox,accountID: account,source: source))
+        XCTAssertNil(staleReply)
+
+
         _ = try await value(actionFixture(postbox,peer: peer,text: "edited",update: true))
         let editedResult = try await value(actionCommittedMessage(postbox,peer: peer))
         let edited = try XCTUnwrap(editedResult)
@@ -97,6 +113,9 @@ private func actionDeleteAndJournal(_ box: Postbox, id: MessageId) -> Signal<Res
         XCTAssertTrue(journal.contains { $0.id == edited.id && $0.removed })
         let deleted = try await value(validateTelegramMessageAction(postbox: postbox,accountID: account,action: .reply("x"),source: protectedSource))
         XCTAssertFalse(deleted)
+        let removedReply = try await value(validateTelegramReplySource(postbox: postbox,accountID: account,source: protectedSource))
+        XCTAssertNil(removedReply)
+
         _ = try await value(actionFixture(postbox,peer: peer,text: "incoming",flags: [.Incoming]))
         let incomingResult = try await value(actionCommittedMessage(postbox,peer: peer))
         let incoming = try XCTUnwrap(incomingResult)

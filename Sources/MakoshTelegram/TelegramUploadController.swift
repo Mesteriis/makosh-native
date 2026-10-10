@@ -5,8 +5,15 @@ public struct TelegramUploadTarget: Equatable, Sendable {
     public let accountID: Int64
     public let chatID: Int64
     public let title: String
-    public init(accountID: Int64, chatID: Int64, title: String) {
+    public let replySource: TelegramMessageActionSource?
+    public init(accountID: Int64, chatID: Int64, title: String, replySource: TelegramMessageActionSource? = nil) {
         self.accountID = accountID; self.chatID = chatID; self.title = title
+        self.replySource = replySource
+    }
+    var hasValidReplySource: Bool {
+        guard let source = replySource else { return true }
+        return source.accountID == accountID && source.chatID == chatID && source.canReply &&
+            !source.fingerprint.isEmpty && (source.peerID == chatID || source.metadata.migrationChatID == chatID)
     }
 }
 public enum TelegramUploadPhase: Equatable, Sendable {
@@ -53,7 +60,7 @@ enum TelegramUploadEvent {
 
     public func prepare(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String) {
         guard preparation == nil, phase == .idle || phase == .cancelled || phase == .failed || phase == .rejected,
-              provider?.accountID == target.accountID else { return }
+              provider?.accountID == target.accountID, target.hasValidReplySource else { return }
         clear()
         guard file == nil else { phase = .failed; return }
         self.target = target; self.caption = caption; phase = .preparing

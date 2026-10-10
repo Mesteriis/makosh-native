@@ -134,7 +134,7 @@ public final class TelegramModel: ObservableObject {
             account = source.accountID; peer = source.peerID; namespace = source.namespace; message = source.messageID
         }
     }
-    private var editDrafts: [EditDraftKey: String] = [:]
+    private var editDrafts: [EditDraftKey: TelegramFormattedText] = [:]
     private var knownChats: [Int64: TelegramChat] = [:]
     private var mediaProvider: TelegramEngineMediaProvider?
     private var historyMediaSources: [TelegramAttachmentSource] = []
@@ -167,19 +167,37 @@ public final class TelegramModel: ObservableObject {
             if self.selectedChatID == source.chatID, self.draft.utf8.elementsEqual(text.utf8) { self.draft = "" }
         }
         messageActions.didApply = { [weak self] action, source in
-            guard let self, source.accountID == self.draftAccountID, case let .edit(text) = action else { return }
+            guard let self, source.accountID == self.draftAccountID else { return }
+            let submitted: TelegramFormattedText?
+            switch action {
+            case let .edit(text): submitted = try? TelegramFormattedText(text: text)
+            case let .editFormatted(value): submitted = value
+            default: return
+            }
             let key = EditDraftKey(source)
-            if self.editDrafts[key]?.utf8.elementsEqual(text.utf8) == true { self.editDrafts[key] = nil }
+            if let submitted, self.editDrafts[key] == submitted { self.editDrafts[key] = nil }
         }
     }
 
     public func messageEditDraft(for source: TelegramMessageActionSource) -> String {
-        editDrafts[EditDraftKey(source)] ?? source.text
+        editDrafts[EditDraftKey(source)]?.text ?? source.text
+    }
+
+    public func messageFormattedEditDraft(for source: TelegramMessageActionSource) -> TelegramFormattedText? {
+        editDrafts[EditDraftKey(source)] ?? source.metadata.formattedText ?? (try? TelegramFormattedText(text: source.text))
     }
 
     public func saveMessageEditDraft(_ text: String, source: TelegramMessageActionSource, contextID: UUID) {
+        // The plain compatibility API must never erase a rich draft/source.
+        guard editDrafts[EditDraftKey(source)]?.entities.isEmpty != false,
+              source.metadata.formattedText?.entities.isEmpty != false,
+              let value = try? TelegramFormattedText(text: text) else { return }
+        saveMessageFormattedEditDraft(value, source: source, contextID: contextID)
+    }
+
+    public func saveMessageFormattedEditDraft(_ value: TelegramFormattedText, source: TelegramMessageActionSource, contextID: UUID) {
         guard contextID == accountGeneration, source.accountID == draftAccountID else { return }
-        editDrafts[EditDraftKey(source)] = text
+        editDrafts[EditDraftKey(source)] = value
     }
 
     public func actionSource(for message: TelegramMessage) -> TelegramMessageActionSource? {
@@ -203,9 +221,16 @@ public final class TelegramModel: ObservableObject {
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String, contextID: UUID) {
         guard contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
-              target.accountID == draftAccountID, knownChats[target.chatID] != nil else { return }
+              target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
         if selectedChatID == target.chatID { drafts.save(draft, accountID: target.accountID, chatID: target.chatID) }
         upload.prepare(source: source, mode: mode, target: target, caption: caption)
+    }
+
+    public func uploadTarget(replyTo source: TelegramMessageActionSource?, contextID: UUID) -> TelegramUploadTarget? {
+        guard contextID == accountGeneration, let target = uploadTarget else { return nil }
+        let captured = TelegramUploadTarget(accountID: target.accountID, chatID: target.chatID,
+            title: target.title, replySource: source)
+        return captured.hasValidReplySource ? captured : nil
     }
 
     func acknowledgeUpload(target: TelegramUploadTarget, caption: String) {

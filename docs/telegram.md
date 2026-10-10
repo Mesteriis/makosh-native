@@ -274,20 +274,44 @@ Current boundaries:
 
 ## Message actions
 
-Each history/search row offers reply, plain text or supported media-caption edit,
+Each history/search row offers reply, formatted text or supported media-caption edit,
 forward and deletion. The source captures account, chat, native peer/namespace/
 message ID, thread and a content/version fingerprint. Dispatch reads the current
 Postbox message and permissions again; changed or missing sources are rejected.
 Server rules remain authoritative. Incoming private-message revoke uses the
 account's current limits; basic-group and channel administrator deletion rights
-are checked. Channel deletion never offers a misleading local-only option.
+are checked. Own outgoing channel/send-as posts use the selected Postbox's
+outgoing flag and current channel rights, since their author may be the channel.
+Channel deletion never offers a misleading local-only option.
 
 Reply uses the current chat draft and shows the original author/text. Canceling
 reply keeps the text; a local enqueue acknowledgement clears only the exact
 submitted draft in its captured account/chat. Edit has a separate in-process
 draft keyed by account and native message identity. Rejection, uncertainty,
 closing/reopening the editor and controller rebind preserve it; an exact applied
-acknowledgement clears it. These drafts do not yet persist across app exit.
+acknowledgement clears it. Drafts include exact text and typed entities; a newer
+format-only change survives acknowledgement of an older edit. These drafts do
+not yet persist across app exit.
+
+Reply and edit use the lower composer with a compact source accessory, following
+TelegramSwift. Message actions use the row context menu; attachment choices share
+one paperclip menu. Formatting is available for selected text through the native
+context menu and keyboard shortcuts, without a persistent formatting toolbar.
+See [reference interface mapping](reference-interface.md) for verified source
+pointers and remaining visual gaps.
+
+The native AppKit text editor preserves UTF16 entity ranges, styles, links and
+Telegram-specific metadata. Malformed ranges or unsupported server entity
+conversion block editing instead of silently flattening the source. Plain edit
+calls cannot erase a rich source. Formatting-only edits are allowed; no-change
+comparison includes entities. Telegram's server still decides entity validity.
+
+File/photo replies capture the original message and chat before opening the
+file picker. The preparation view shows that reply subject and frozen recipient;
+the caption may be empty. After copying the prepared file into MediaBox, dispatch
+freshly validates the source before enqueueing the exact native reply/thread.
+A stale or deleted source rejects the upload; it never becomes an ordinary
+message. Closing or switching chats cannot retarget a captured attachment.
 
 Forward requires explicit selection among loaded dialogs in the same account;
 the confirmation shows the recipient. Deletion requires choosing local-only or
@@ -297,14 +321,15 @@ retention journal. No archive-delete operation is introduced.
 
 Reply, forward and delete acknowledgement means local queue acceptance, not
 server delivery/recall. Edit reports applied only after the engine response;
-its ambiguous no-change response is reconciled against exact current text.
+its ambiguous no-change response is reconciled against exact current text and
+entities.
 After a post-commit timeout/error the result is uncertain: text remains and
 automatic repeat is disabled. Stopping observation cannot undo a queued action.
 Fresh preflight and mutation are separate engine transactions; a concurrent
 server change after preflight remains subject to Telegram's server rules.
 
-This is a message-action slice, not complete Telegram migration. Rich-entity
-editing, media replies, destination topic selection, secret-chat actions,
+This is a message-action slice, not complete Telegram migration. Destination
+topic selection, secret-chat actions,
 paid-content forwarding and premium caption limits remain unfinished. Plain
 text currently allows 4096 UTF16 units; supported captions allow 1024. Protected,
 paid and service-action messages are not forwarded. Replies/deletion do not

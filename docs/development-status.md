@@ -732,4 +732,78 @@ Preflight and engine mutation are separate transactions; Telegram's server
 rules still decide changes after preflight. Rich-entity editing, media replies,
 destination topics, secret/paid capabilities, premium caption limits and live
 account acceptance remain unfinished. Dossier linking and subsequent channels
-remain in the active goal. Current action-head hosted CI has not yet completed.
+remain in the active goal. Published action head
+`55806b858724ecf003508c84bc81e7741d521714` passed
+[PR CI 38066942485](https://github.com/Mesteriis/makosh-native/actions/runs/38066942485)
+and [push CI 38066939636](https://github.com/Mesteriis/makosh-native/actions/runs/38066939636).
+
+
+## Rich actions and reference UI correction — 2026-10-10
+
+The user corrected the earlier independent UI design. Telegram now follows
+verified TelegramSwift input/row patterns: 70-point dialog rows with 50-point
+initial placeholders, a 36-point header placeholder, message context menus,
+one attachment menu, inline reply/edit accessories and selection formatting.
+The standalone edit sheet and persistent formatting toolbar were removed.
+[The reference mapping](reference-interface.md) records exact source pointers,
+license boundaries and remaining visual gaps. This is a partial UI adaptation,
+not a claim of complete TelegramSwift visual parity or copied outer UI code.
+
+Formatted edits retain exact UTF8 text and typed UTF16 entity ranges, including
+Telegram metadata. Validation rejects malformed/crossing ranges and server
+conversions that would silently drop entities. Format-only edits are supported;
+a newer formatted draft survives an older applied acknowledgement. Current
+channel send-as permissions are checked. File/photo replies freeze account,
+chat, native message/thread and fingerprint before the picker, then freshly
+validate after MediaBox storage. Deleted/stale sources reject without ordinary
+message fallback; captions may be empty.
+
+Actual checks for this source slice:
+
+- `scripts/dev-db.sh up`: exit 0, development PostgreSQL/S3 healthy.
+- `scripts/test.sh`: exit 0, **236 XCTest / 0 failures** (181 Telegram, 55 core)
+  and **22 Python regressions**. Coverage includes entity/sticker-pack round
+  trips, UTF16 scalar boundaries, attributed-text integrity, dynamic label
+  colors, format-only draft/ACK, channel permissions and typed media replies
+  with stale/deleted/mismatched sources and empty captions.
+- Native app build/strict ad-hoc signing: exit 0 after correcting an ambiguous
+  CGFloat size initializer. The failed build remains a separate retained log;
+  parse success alone was not treated as compilation proof.
+- Actual isolated DEBUG native QA verified context-menu edit opening in the
+  lower composer, preserved original bold text, format-only italic by keyboard
+  and menu, Undo/no-change disabled confirmation, close/reopen preserving rich
+  draft while the normal draft remained, twelve-line growth/scroll and Undo,
+  and a labelled simulated applied result returning to the normal composer.
+  The final QA unsigned executable matched the built application.
+- Native reply QA verified source accessory, one paperclip menu, actual
+  NSOpenPanel selection of a purpose-created 61-byte text file, frozen recipient
+  and source in preparation, empty caption and labelled fake queue acceptance.
+  An earlier fixture in a hidden project directory could not be selected;
+  changing to a normal temporary fixture passed without a speculative panel fix.
+- Earlier keyboard QA did not apply the style. The final native control handles
+  formatting in both key-equivalent and key-down paths with physical command
+  key fallback; the final observed test passed. Menu QA required no extra Return
+  after selecting an action; the extra Return in an earlier probe inserted text
+  and was undone. No personal content was selected or transmitted.
+- Final separate snapshot with research checkout/source cache absent and closed
+  outbound proxy routes passed build/sign and **236 XCTest / 22 Python** checks,
+  without S3 skips; the original source cache was restored afterward.
+
+Six upstream temporary Postbox-fixture `no such table: t19` teardown diagnostics
+remain after passing tests. Synthetic UI actions did not mutate the fixed
+preview history or use an account, Keychain, PostgreSQL or Telegram network.
+Fresh preflight and mutation still have a concurrency boundary; live server
+formatting/action acceptance is unverified. App-restart edit-draft persistence,
+full reference UI, topics, secret/paid capabilities, dossier linking and the
+subsequent channels remain in the active sequential goal.
+
+Final source review found no confirmed must-fix findings in six functional and
+four UI files. Both same-model workers used bounded read-only diff/source/hash
+checks, without independent native/runtime execution; provider/model/usage
+metadata is unavailable and no quorum was used. Root's final unsigned-payload
+comparison still matched after the indentation-only cleanup. Secret-match audit
+of 158 publishable files found zero matches to the selected local credential
+fields. Final project XERJ refresh/check passed: **153 files, 123/123 code**;
+engine freshness also passed. Actual inline-draft and upload-preflight queries
+were checked against the current source. No generated engine/dependency lock or
+reference checkout was changed in this slice.

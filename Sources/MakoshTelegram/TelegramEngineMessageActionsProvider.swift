@@ -28,6 +28,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
     let forwardable = !message.media.contains { $0 is TelegramMediaAction || $0 is TelegramMediaPaidContent }
     let protected = message.flags.contains(.CopyProtected) || channel?.flags.contains(.copyProtectionEnabled) == true || group?.flags.contains(.copyProtectionEnabled) == true
     let entities = message.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.flatMap(\.entities)
+    let formatted = try? telegramFormattedText(text: message.text, entities: entities)
     let editAdmin = channel?.hasPermission(.editAllMessages) == true
     let groupDeleteAdmin: Bool
     if let group {
@@ -39,6 +40,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
     } else { groupDeleteAdmin = false }
     let deleteAdmin = channel?.hasPermission(.deleteAllMessages) == true || groupDeleteAdmin
     let outgoing = !message.flags.contains(.Incoming)
+    let outgoingChannel = outgoing && channel?.hasPermission(.sendText) == true
     // Without configuration this is a UI candidate. Dispatch always revalidates
     // against the selected account's freshly stored server configuration.
     let age = now.timeIntervalSince1970 - Double(message.timestamp)
@@ -50,7 +52,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
     return TelegramMessageActionMetadata(peerID: message.id.peerId.toInt64(), namespace: message.id.namespace,
         messageID: message.id.id, fingerprint: fingerprint, text: message.text, authorID: message.author?.id.toInt64(),
         canReply: ordinary && (channel?.hasPermission(.sendText) ?? true) && !(group?.hasBannedPermission(.banSendText) ?? false),
-        canEdit: ordinary && ordinaryMedia && entities.isEmpty && message.forwardInfo == nil && (outgoing || editAdmin),
+        canEdit: ordinary && ordinaryMedia && formatted?.isEditable == true && message.forwardInfo == nil && (outgoing || editAdmin),
         canForward: ordinary && forwardable && !protected,
         canDeleteLocally: ordinary && channel == nil,
         canDeleteForEveryone: ordinary && (outgoing || deleteAdmin || incomingPrivate),
@@ -58,7 +60,8 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
         migrationChatID: group?.migrationReference?.peerId.toInt64(),
         allowsEmptyEdit: message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile },
         editLimit: message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile } ? 1024 : 4096,
-        threadID: message.threadId)
+        threadID: message.threadId, formattedText: formatted,
+        canEditOutgoingChannel: outgoingChannel, canDeleteOutgoingChannel: outgoingChannel)
 }
 
 public func telegramMessageActionSource(_ message: Message, accountID: Int64, chatID: Int64, now: Date = Date()) -> TelegramMessageActionSource {
@@ -68,31 +71,58 @@ public func telegramMessageActionSource(_ message: Message, accountID: Int64, ch
 // Postbox executes this closure on its own queue, outside MainActor isolation.
 func validateTelegramMessageAction(postbox: Postbox, accountID: Int64, action: TelegramMessageAction,
                                    source: TelegramMessageActionSource) -> Signal<Bool, NoError> {
-    let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
-    return postbox.transaction { transaction -> Bool in
-            guard source.accountID == accountID else { return false }
-            guard let message = transaction.getMessage(id) else { return false }
-            let fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
-                limits: currentLimitsConfiguration(transaction: transaction)), accountID: accountID, chatID: source.chatID)
-            guard fresh.fingerprint == source.fingerprint, telegramMessageActionAllowed(action, source: fresh) else { return false }
-            if source.chatID != source.peerID {
-                guard let group = transaction.getPeer(id.peerId) as? TelegramGroup,
-                      group.migrationReference?.peerId == PeerId(source.chatID) else { return false }
-            }
-            if case let .forward(destination) = action {
-                guard let peer = transaction.getPeer(PeerId(destination)) else { return false }
-                if let channel = peer as? TelegramChannel { return channel.hasPermission(.sendSomething) }
-                if let group = peer as? TelegramGroup { return group.hasPermission(.sendSomething) }
-                return peer is TelegramUser
-            }
-            return true
-        }
+    validatedTelegramActionSource(postbox: postbox, accountID: accountID, source: source, action: action)
+    |> map { $0 != nil }
 }
 
-private func reconcileEditedMessage(account: Account, id: MessageId, text: String) -> Signal<Bool, NoError> {
+func validateTelegramReplySource(postbox: Postbox, accountID: Int64,
+                                source: TelegramMessageActionSource) -> Signal<TelegramMessageActionSource?, NoError> {
+    validatedTelegramActionSource(postbox: postbox, accountID: accountID, source: source, action: nil)
+}
+
+private func validatedTelegramActionSource(postbox: Postbox, accountID: Int64,
+    source: TelegramMessageActionSource, action: TelegramMessageAction?) -> Signal<TelegramMessageActionSource?, NoError> {
+    let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
+    return postbox.transaction { transaction -> TelegramMessageActionSource? in
+        guard source.accountID == accountID, let message = transaction.getMessage(id) else { return nil }
+        let fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
+            limits: currentLimitsConfiguration(transaction: transaction)), accountID: accountID, chatID: source.chatID)
+        guard fresh.fingerprint == source.fingerprint else { return nil }
+        if let action {
+            guard telegramMessageActionAllowed(action, source: fresh) else { return nil }
+        } else {
+            guard fresh.canReply, fresh.chatID == fresh.peerID || fresh.metadata.migrationChatID == fresh.chatID else { return nil }
+        }
+        if case let .editFormatted(formatted)? = action {
+            for entity in formatted.entities {
+                if case let .textMention(peerID) = entity.kind {
+                    // apiInputUser is internal upstream; otherwise it drops this entity.
+                    guard let user = transaction.getPeer(PeerId(peerID)) as? TelegramUser,
+                          user.accessHash != nil else { return nil }
+                }
+            }
+        }
+        if source.chatID != source.peerID {
+            guard let group = transaction.getPeer(id.peerId) as? TelegramGroup,
+                  group.migrationReference?.peerId == PeerId(source.chatID) else { return nil }
+        }
+        if case let .forward(destination)? = action {
+            guard let peer = transaction.getPeer(PeerId(destination)) else { return nil }
+            if let channel = peer as? TelegramChannel {
+                guard channel.hasPermission(.sendSomething) else { return nil }
+            } else if let group = peer as? TelegramGroup {
+                guard group.hasPermission(.sendSomething) else { return nil }
+            } else if !(peer is TelegramUser) { return nil }
+        }
+        return fresh
+    }
+}
+
+private func reconcileEditedMessage(account: Account, id: MessageId, formatted: TelegramFormattedText) -> Signal<Bool, NoError> {
     account.postbox.transaction { transaction in
         guard let message = transaction.getMessage(id) else { return false }
-        return message.text.utf8.elementsEqual(text.utf8)
+        let entities = message.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.flatMap(\.entities)
+        return (try? telegramFormattedText(text: message.text, entities: entities)) == formatted
     }
 }
 
@@ -127,17 +157,25 @@ private func reconcileEditedMessage(account: Account, id: MessageId, text: Strin
                 ]) |> deliverOnMainQueue).start(next: { [weak lease] ids in
                     lease?.emit(ids.first.flatMap { $0 } == nil ? .uncertain : .queued)
                 }))
-            case let .edit(text):
+            case .edit, .editFormatted:
+                let formatted: TelegramFormattedText
+                switch action {
+                case let .edit(text):
+                    guard let plain = try? TelegramFormattedText(text: text) else { lease.emit(.rejected); return }
+                    formatted = plain
+                case let .editFormatted(value): formatted = value
+                default: lease.emit(.rejected); return
+                }
                 // Empty plain messages are invalid; an empty supported media caption is allowed.
-                lease.operation.set((TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: text,
-                    media: .keep, entities: TextEntitiesMessageAttribute(entities: []), inlineStickers: [:])
+                lease.operation.set((TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: formatted.text,
+                    media: .keep, entities: TextEntitiesMessageAttribute(entities: formatted.engineEntities()), inlineStickers: [:])
                     |> deliverOnMainQueue).start(next: { [weak lease] result in
                         if case let .done(changed) = result {
                             guard let lease, !lease.stopped else { return }
                             if changed { lease.emit(.applied) }
                             else {
                                 // false also covers missing input peer/message, not only NOT_MODIFIED.
-                                lease.reconciliation.set((reconcileEditedMessage(account: account, id: id, text: text)
+                                lease.reconciliation.set((reconcileEditedMessage(account: account, id: id, formatted: formatted)
                                     |> deliverOnMainQueue).start(next: { [weak lease] matches in
                                         lease?.emit(matches ? .applied : .uncertain)
                                     }))

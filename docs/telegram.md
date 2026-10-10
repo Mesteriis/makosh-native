@@ -272,6 +272,44 @@ Current boundaries:
   use generated schemas and encrypted temporary Postbox fixtures; UI inspection
   uses visibly synthetic data. See the evidence ledger for exact results.
 
+## Message actions
+
+Each history/search row offers reply, plain text or supported media-caption edit,
+forward and deletion. The source captures account, chat, native peer/namespace/
+message ID, thread and a content/version fingerprint. Dispatch reads the current
+Postbox message and permissions again; changed or missing sources are rejected.
+Server rules remain authoritative. Incoming private-message revoke uses the
+account's current limits; basic-group and channel administrator deletion rights
+are checked. Channel deletion never offers a misleading local-only option.
+
+Reply uses the current chat draft and shows the original author/text. Canceling
+reply keeps the text; a local enqueue acknowledgement clears only the exact
+submitted draft in its captured account/chat. Edit has a separate in-process
+draft keyed by account and native message identity. Rejection, uncertainty,
+closing/reopening the editor and controller rebind preserve it; an exact applied
+acknowledgement clears it. These drafts do not yet persist across app exit.
+
+Forward requires explicit selection among loaded dialogs in the same account;
+the confirmation shows the recipient. Deletion requires choosing local-only or
+everyone, where available, and explicitly says previously retained versions and
+S3 copies remain. All engine mutations continue through the central Postbox
+retention journal. No archive-delete operation is introduced.
+
+Reply, forward and delete acknowledgement means local queue acceptance, not
+server delivery/recall. Edit reports applied only after the engine response;
+its ambiguous no-change response is reconciled against exact current text.
+After a post-commit timeout/error the result is uncertain: text remains and
+automatic repeat is disabled. Stopping observation cannot undo a queued action.
+Fresh preflight and mutation are separate engine transactions; a concurrent
+server change after preflight remains subject to Telegram's server rules.
+
+This is a message-action slice, not complete Telegram migration. Rich-entity
+editing, media replies, destination topic selection, secret-chat actions,
+paid-content forwarding and premium caption limits remain unfinished. Plain
+text currently allows 4096 UTF16 units; supported captions allow 1024. Protected,
+paid and service-action messages are not forwarded. Replies/deletion do not
+depend on the media renderer's supported types. No real account action was run.
+
 ## Offline navigation UI check
 
 After a debug build, launch the explicit synthetic view:
@@ -293,6 +331,11 @@ staging and confirmation; **Имитировать очередь** invokes only
 DEBUG fake provider with no Postbox transaction or network. It is visibly labeled synthetic and
 does not prove server pagination or hole filling. The branch and fixture are
 excluded from release builds; regular launch still starts disconnected.
+
+Message actions also use an explicit DEBUG simulation. It exercises menus,
+reply context, separate edit drafts, recipient/scope selection and labelled
+outcomes without mutating an engine queue or changing the fixed synthetic
+history. It does not prove a Telegram server operation.
 
 The same preview includes an explicitly synthetic in-memory local archive with
 an original, an edit and a source-cache removal marker. It exercises the actual

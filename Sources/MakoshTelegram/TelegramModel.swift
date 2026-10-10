@@ -26,6 +26,7 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public let isOutgoing: Bool
     public let delivery: String
     public var attachments: [TelegramAttachment] = []
+    public var actionMetadata: TelegramMessageActionMetadata? = nil
 }
 
 public struct TelegramAPIConfiguration: Equatable {
@@ -66,7 +67,14 @@ public final class TelegramModel: ObservableObject {
     public let playback = TelegramPlaybackController()
     public let upload = TelegramUploadController()
     public let archive = TelegramArchiveController()
+    public let messageActions = TelegramMessageActionsController()
     public var uploadContextID: UUID { accountGeneration }
+    public var messageActionContextID: UUID { accountGeneration }
+    public var forwardDestinations: [TelegramChat] {
+        var destinations = knownChats
+        for chat in search.chats { destinations[chat.id] = chat }
+        return destinations.values.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
     @Published public private(set) var phase: TelegramPhase = .configuration
     @Published public private(set) var isBusy = false
     @Published public var error: String?
@@ -120,6 +128,13 @@ public final class TelegramModel: ObservableObject {
     private var accountGeneration = UUID()
     private var authorizationGeneration = UUID()
     private var drafts = TelegramDraftStore()
+    private struct EditDraftKey: Hashable {
+        let account: Int64, peer: Int64, namespace: Int32, message: Int32
+        init(_ source: TelegramMessageActionSource) {
+            account = source.accountID; peer = source.peerID; namespace = source.namespace; message = source.messageID
+        }
+    }
+    private var editDrafts: [EditDraftKey: String] = [:]
     private var knownChats: [Int64: TelegramChat] = [:]
     private var mediaProvider: TelegramEngineMediaProvider?
     private var historyMediaSources: [TelegramAttachmentSource] = []
@@ -146,10 +161,48 @@ public final class TelegramModel: ObservableObject {
     public init() {
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
         upload.didQueue = { [weak self] target, caption in self?.acknowledgeUpload(target: target, caption: caption) }
+        messageActions.didQueue = { [weak self] action, source in
+            guard let self, source.accountID == self.draftAccountID, case let .reply(text) = action else { return }
+            self.drafts.acknowledge(sentText: text, accountID: source.accountID, chatID: source.chatID)
+            if self.selectedChatID == source.chatID, self.draft.utf8.elementsEqual(text.utf8) { self.draft = "" }
+        }
+        messageActions.didApply = { [weak self] action, source in
+            guard let self, source.accountID == self.draftAccountID, case let .edit(text) = action else { return }
+            let key = EditDraftKey(source)
+            if self.editDrafts[key]?.utf8.elementsEqual(text.utf8) == true { self.editDrafts[key] = nil }
+        }
+    }
+
+    public func messageEditDraft(for source: TelegramMessageActionSource) -> String {
+        editDrafts[EditDraftKey(source)] ?? source.text
+    }
+
+    public func saveMessageEditDraft(_ text: String, source: TelegramMessageActionSource, contextID: UUID) {
+        guard contextID == accountGeneration, source.accountID == draftAccountID else { return }
+        editDrafts[EditDraftKey(source)] = text
+    }
+
+    public func actionSource(for message: TelegramMessage) -> TelegramMessageActionSource? {
+        guard phase == .ready, let accountID = draftAccountID, let chatID = selectedChatID,
+              knownChats[chatID] != nil, let metadata = message.actionMetadata else { return nil }
+        return TelegramMessageActionSource(metadata: metadata, accountID: accountID, chatID: chatID)
+    }
+
+    @discardableResult
+    public func performMessageAction(_ action: TelegramMessageAction, source: TelegramMessageActionSource, contextID: UUID) -> Bool {
+        guard contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
+              source.accountID == draftAccountID, source.chatID == selectedChatID,
+              knownChats[source.chatID] != nil else { return false }
+        if case let .forward(destination) = action {
+            guard let chat = forwardDestinations.first(where: { $0.id == destination }) else { return false }
+            knownChats[destination] = chat
+        }
+        if case let .reply(text) = action { drafts.save(text, accountID: source.accountID, chatID: source.chatID) }
+        return messageActions.perform(action, source: source)
     }
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String, contextID: UUID) {
-        guard contextID == accountGeneration, phase == .ready,
+        guard contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
               target.accountID == draftAccountID, knownChats[target.chatID] != nil else { return }
         if selectedChatID == target.chatID { drafts.save(draft, accountID: target.accountID, chatID: target.chatID) }
         upload.prepare(source: source, mode: mode, target: target, caption: caption)
@@ -317,7 +370,8 @@ public final class TelegramModel: ObservableObject {
 
     public func sendMessage(_ text: String) -> Bool {
         guard !isSyntheticPreview else { error = "Синтетическая проверка: отправка отключена."; return false }
-        guard !isBusy, phase == .ready, let account, let selectedChatID,
+        guard !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, upload.phase == .idle,
+              phase == .ready, let account, let selectedChatID,
               knownChats[selectedChatID] != nil, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         guard text.utf16.count <= 4096 else { error = "Текст превышает 4096 символов. Разделите сообщение."; return false }
         let token = generation
@@ -378,6 +432,7 @@ public final class TelegramModel: ObservableObject {
         self.mediaProvider = mediaProvider
         media.bind(provider: mediaProvider)
         upload.bind(provider: TelegramEngineUploadProvider(account: account))
+        messageActions.bind(provider: TelegramEngineMessageActionsProvider(account: account))
         search.bind(account: account)
         search.setFolder(chatFolder)
         let accountToken = accountGeneration
@@ -402,6 +457,7 @@ public final class TelegramModel: ObservableObject {
         archive.bind(journal: nil)
         playback.stop()
         upload.bind(provider: nil)
+        messageActions.bind(provider: nil)
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
         search.bind(account: nil)
@@ -620,6 +676,7 @@ public final class TelegramModel: ObservableObject {
         model.search.useSyntheticPreview()
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
+        model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
         model.isSyntheticPreview = true
         model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)
         model.phase = .ready

@@ -32,6 +32,10 @@ struct TelegramSyntheticPages {
             var message = TelegramMessage(id: "synthetic:\(chatID):\(id)", date: Date(timeIntervalSince1970: 1_700_000_000 + Double(id * 60)),
                 text: "Тестовое сообщение \(id) • диалог \(chatID)", author: id.isMultiple(of: 2) ? "Макош QA" : "Тестовый собеседник",
                 isOutgoing: id.isMultiple(of: 2), delivery: "")
+            message.actionMetadata = TelegramMessageActionMetadata(peerID: chatID, namespace: 0, messageID: Int32(id),
+                fingerprint: "synthetic-version-1-\(chatID)-\(id)", text: message.text,
+                authorID: message.isOutgoing ? -1 : 999, canReply: true, canEdit: message.isOutgoing,
+                canForward: true, canDeleteLocally: true, canDeleteForEveryone: message.isOutgoing)
             if [25, 124, 125, 126, 127, 128, 129, 130].contains(id) {
                 let kind: TelegramAttachmentKind = id == 130 ? .photo : id == 128 ? .unsupported : .file
                 let playback: TelegramPlaybackKind? = id == 124 ? .roundVideo : id == 125 ? .voice : id == 126 ? .audio : id == 127 ? .video : nil

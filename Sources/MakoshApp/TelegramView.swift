@@ -68,8 +68,11 @@ struct TelegramDetailView: View {
     @ObservedObject private var media: TelegramMediaController
     @ObservedObject private var upload: TelegramUploadController
     @ObservedObject private var playback: TelegramPlaybackController
+    @ObservedObject private var messageActions: TelegramMessageActionsController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
-    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload; self.playback = model.playback }
+    @State private var messageActionRequest: TelegramMessageActionRequest?
+    @State private var replyRequest: TelegramMessageActionRequest?
+    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload; self.playback = model.playback; self.messageActions = model.messageActions }
     @State private var apiID = ""
     @State private var apiHash = ""
     @State private var phone = ""
@@ -92,6 +95,7 @@ struct TelegramDetailView: View {
             }
             TelegramPlaybackView(playback: playback)
             TelegramUploadView(model: model)
+            TelegramMessageActionsStatus(controller: messageActions, synthetic: model.isSyntheticPreview)
             if let error = model.error {
                 HStack(alignment: .top) { Image(systemName: "exclamationmark.circle"); Text(error).textSelection(.enabled); Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.help("Закрыть сообщение") }
                     .font(.callout).padding(16).background(.red.opacity(0.08)).accessibilityIdentifier("telegram.error")
@@ -109,11 +113,17 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.media.saved")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
-            .onChange(of: model.selectedChatID) { _, _ in attachmentActions.cancel() }
+            .onChange(of: model.selectedChatID) { _, _ in attachmentActions.cancel(); replyRequest = nil }
+            .onChange(of: model.messageActionContextID) { _, _ in replyRequest = nil; messageActionRequest = nil }
+            .onChange(of: messageActions.phase) { _, phase in
+                if phase == .queued, let replyRequest, messageActions.source == replyRequest.source,
+                   case .reply = messageActions.action { self.replyRequest = nil }
+            }
             .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
             .onChange(of: search.messageQuery) { _, _ in attachmentActions.cancel(); playback.stop() }
             .onDisappear { attachmentActions.cancel(); model.cancelMediaLoads() }
+            .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
             .sheet(isPresented: Binding(get: { attachmentActions.preview != nil }, set: { if !$0 { attachmentActions.preview = nil } })) {
                 VStack(spacing: 16) {
                     if let preview = attachmentActions.preview {
@@ -197,7 +207,11 @@ struct TelegramDetailView: View {
                                         HStack(alignment: .top) {
                                             if item.isOutgoing { Spacer(minLength: 44) }
                                             VStack(alignment: .leading, spacing: 7) {
-                                                Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                                HStack {
+                                                    Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                                    Spacer(minLength: 12)
+                                                    messageMenu(item)
+                                                }
                                                 Text(item.text.isEmpty ? "Вложение или служебное сообщение" : item.text).textSelection(.enabled)
                                                 ForEach(item.attachments) { attachment in
                                                     TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
@@ -221,12 +235,32 @@ struct TelegramDetailView: View {
                     }
                 }
                 Divider()
+                if let replyRequest {
+                    HStack(alignment: .top) {
+                        Image(systemName: "arrowshape.turn.up.left")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Ответ: \(replyRequest.author)").font(.caption.weight(.semibold))
+                            Text(replyRequest.source.text.isEmpty ? "Сообщение с вложением" : replyRequest.source.text).font(.caption).lineLimit(2)
+                            Text("Сейчас ответ поддерживает текст.").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Отменить ответ") { self.replyRequest = nil }.controlSize(.small)
+                            .accessibilityIdentifier("telegram.actions.cancelReply")
+                    }.padding(.horizontal, 16).padding(.top, 12).accessibilityIdentifier("telegram.actions.replySubject")
+                }
                 HStack(alignment: .bottom, spacing: 12) {
                     TelegramAttachButtons(model: model)
+                        .disabled(replyRequest != nil || messageActions.isBusy || messageActions.phase == .uncertain)
                     TextField("Сообщение в Telegram", text: $model.draft, axis: .vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.composer")
-                    Button("Отправить") { _ = model.sendMessage(model.draft) }.buttonStyle(.borderedProminent).disabled(model.isSyntheticPreview || model.isBusy || upload.phase != .idle || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.send")
+                    Button("Отправить") {
+                        if let replyRequest {
+                            _ = model.performMessageAction(.reply(model.draft), source: replyRequest.source, contextID: replyRequest.contextID)
+                        } else { _ = model.sendMessage(model.draft) }
+                    }.buttonStyle(.borderedProminent)
+                        .disabled((model.isSyntheticPreview && replyRequest == nil) || model.isBusy || messageActions.isBusy || messageActions.phase == .uncertain || upload.phase != .idle || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("telegram.send")
                 }.padding(16)
-                Text(model.isSyntheticPreview ? "Синтетическая проверка: отправка отключена." : "Кнопка отправляет сообщение в выбранный диалог Telegram.").font(.caption).foregroundStyle(.secondary).padding(.bottom, 12)
+                Text(model.isSyntheticPreview ? "Синтетическая проверка: действия имитируются, отправки в Telegram нет." : "Кнопка отправляет сообщение в выбранный диалог Telegram.").font(.caption).foregroundStyle(.secondary).padding(.bottom, 12)
             }
         } else {
             ContentUnavailableView("Выберите диалог", systemImage: "bubble.left.and.bubble.right", description: Text("Здесь будет история выбранного диалога Telegram.")).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -249,7 +283,7 @@ struct TelegramDetailView: View {
                         ForEach(search.messages) { item in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+                                    HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary); messageMenu(item) }
                                     Text(item.text).lineLimit(4).multilineTextAlignment(.leading)
                                     ForEach(item.attachments) { attachment in
                                         TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
@@ -269,6 +303,15 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.messageSearch.more")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder private func messageMenu(_ item: TelegramMessage) -> some View {
+        if let source = model.actionSource(for: item) {
+            TelegramMessageActionsMenu(source: source, disabled: model.isBusy || upload.phase != .idle || messageActions.isBusy || messageActions.phase == .uncertain) { mode in
+                let request = TelegramMessageActionRequest(source: source, author: item.author, contextID: model.messageActionContextID, mode: mode)
+                if mode == .reply { replyRequest = request } else { messageActionRequest = request }
+            }
+        }
     }
 }
 

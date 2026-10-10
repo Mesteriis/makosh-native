@@ -16,5 +16,6 @@ extension TelegramMessage {
             author: message.author.map(telegramPeerTitle) ?? "Telegram", isOutgoing: !message.flags.contains(.Incoming),
             delivery: message.flags.contains(.Failed) ? "Не отправлено" : message.flags.contains(.Unsent) ? "В очереди отправки" : "")
         attachments = telegramAttachments(message).map(\.attachment)
+        actionMetadata = telegramMessageActionMetadata(message)
     }
 }

@@ -666,9 +666,70 @@ successful XCTest completion; clean upstream teardown remains unverified.
 Retention head `70e85c0133af524de367c6fabed1c6a87fbcd4c3` passed
 [PR CI 38063471351](https://github.com/Mesteriis/makosh-native/actions/runs/38063471351)
 and [push CI 38063467369](https://github.com/Mesteriis/makosh-native/actions/runs/38063467369).
-Those are previous-head results. Hosted CI for the new S3 head is pending.
+Those are previous-head results. S3 head `d52bad870c2e79f957da9b69637d275f6e08cb8e` subsequently passed [PR CI 38065475578](https://github.com/Mesteriis/makosh-native/actions/runs/38065475578) and [push CI 38065471951](https://github.com/Mesteriis/makosh-native/actions/runs/38065471951): cold reference-free build, isolated S3 initialization, all 193 XCTest and 22 Python regressions.
 
 Real-account media/download/deletion acceptance, untouched cache backfill,
 secret/protected media, administrator/disaster recovery and portable backup
 remain unverified. Reply/edit/delete/forward, dossier linking and subsequent
 channels remain in the active sequential goal.
+
+## Telegram message-action slice — 2026-10-10
+
+History and search rows now expose typed reply, plain-text/supported-caption
+edit, forward and deletion. Account/chat/native message identity, thread and
+content/version fingerprint are captured before confirmation. A fresh Postbox
+transaction checks the source, current rights and explicit forward destination.
+Incoming private revoke uses current limits; group creator/admin and channel
+rights are included. Replies/deletion do not depend on renderer support.
+
+Reply preserves its chat draft and clears only exact text after local enqueue
+acknowledgement. Edit owns an account/message draft that survives closing,
+rejection, uncertainty and controller rebind; exact applied acknowledgement
+clears it. Forward has no selected recipient by default. Deletion has no scope
+selected by default, shows the chosen scope and states retained versions/S3
+copies remain. All mutations still use the central Postbox retention journal.
+Post-commit uncertainty blocks automatic repeat and preserves composition.
+Queue acceptance is explicitly distinct from server delivery/recall.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; existing development PostgreSQL/S3 healthy.
+- `scripts/test.sh`: exit 0, **215 XCTest / 0 failures** (160 Telegram, 55 core)
+  plus **22 Python regressions**. The 22 new action tests cover frozen typed
+  sources, account/chat/context guards, synchronous/stale callbacks, exact ACK,
+  uncertainty/no retry, edit draft retention, real peer permissions, UTF16
+  limits and production preflight on an encrypted synthetic Postbox.
+- The real Postbox test changes and deletes a source, rejects stale/deleted
+  action targets and verifies original, edited and removal journal entries.
+  It has no Account/network object. Initial fixture runs failed because the
+  peer codecs were not registered; explicit `initializeAccountManagement()`
+  and committed-peer/author assertions fixed the fixture without weakening the
+  production validator. Failed logs remain separate from the passing run.
+- `scripts/build-app.sh`: exit 0; native app and strict ad-hoc signing passed.
+- A separate reference-free snapshot passed build/sign and the same **215
+  XCTest / 22 Python** checks with no S3 skips. Research/source-cache paths
+  stayed absent under closed outbound proxy settings; the original cache was
+  restored afterward. These are source-snapshot results, not hosted CI.
+- Actual native DEBUG QA verified reply selection/cancel/draft preservation and
+  labelled local-queue acceptance; forward was disabled until explicit recipient
+  selection and then displayed the recipient. The final bundle's unsigned
+  executable matched the built app. It verified independent edit text surviving
+  close/reopen while the main draft remained, edit outcome, initially disabled
+  deletion confirmation, explicit local scope and the retention notice.
+  Actions were visibly simulated; fixed preview history was not mutated and
+  no personal account, message, Keychain or Telegram network was used.
+- Final project XERJ refresh: exit 0, **145 files, 116/116 classified code**;
+  project and unchanged engine fingerprints are current. Actual validator and
+  edit-draft query hits were checked against current source.
+- Two scoped same-model source reviews found the edit-draft reopening gap and
+  missing basic-group administrator deletion permission. Both are fixed and
+  covered by current tests; follow-up review confirmed the group fix. Runtime
+  provider/model/usage remain unknown; no quorum was used.
+
+The full runs retain six upstream `no such table: t19` temporary-fixture teardown
+diagnostics after successful XCTest completion; clean teardown is unverified.
+Preflight and engine mutation are separate transactions; Telegram's server
+rules still decide changes after preflight. Rich-entity editing, media replies,
+destination topics, secret/paid capabilities, premium caption limits and live
+account acceptance remain unfinished. Dossier linking and subsequent channels
+remain in the active goal. Current action-head hosted CI has not yet completed.

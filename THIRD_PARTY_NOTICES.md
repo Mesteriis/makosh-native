@@ -61,7 +61,7 @@ Build adaptations in the generated copy:
 
 Apache 2.0 is compatible with GPL v3 according to the [Apache licensing FAQ](https://www.apache.org/foundation/license-faq.html#GPL).
 Full GPL text was obtained from the GNU project's [GCC mirror COPYING3](https://github.com/gcc-mirror/gcc/blob/master/COPYING3).
-Reachability text is from Apple's [published sample license](https://developer.apple.com/library/archive/samplecode/Reachability/Listings/LICENSE_txt.html).
+Reachability text is from Apple's [published sample license](https://developer.apple.com/library/archive/samplecode/Reachability/Listings/LICENSE_txt.html); only trailing whitespace on blank lines was removed.
 
 ## Distribution boundary
 

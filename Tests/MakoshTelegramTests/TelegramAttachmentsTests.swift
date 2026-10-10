@@ -29,11 +29,12 @@ final class TelegramAttachmentsTests: XCTestCase {
     }
 
     private func file(resource: TelegramMediaResource, name: String = "report.pdf",
-                      previews: [TelegramMediaImageRepresentation] = [], size: Int64? = 500) -> TelegramMediaFile {
+                      previews: [TelegramMediaImageRepresentation] = [], size: Int64? = 500,
+                      mimeType: String = "application/pdf", attributes: [TelegramMediaFileAttribute] = []) -> TelegramMediaFile {
         TelegramMediaFile(fileId: MediaId(namespace: 0, id: 50), partialReference: nil,
             resource: resource, previewRepresentations: previews, videoThumbnails: [],
-            immediateThumbnailData: nil, mimeType: "application/pdf", size: size,
-            attributes: [.FileName(fileName: name)], alternativeRepresentations: [])
+            immediateThumbnailData: nil, mimeType: mimeType, size: size,
+            attributes: [.FileName(fileName: name)] + attributes, alternativeRepresentations: [])
     }
 
     func testPhotoSelectsLargestAndSmallestWithoutDependingOnArrayOrder() throws {
@@ -85,6 +86,7 @@ final class TelegramAttachmentsTests: XCTestCase {
             XCTAssertFalse(source.attachment.canDownload)
             XCTAssertNil(source.full)
             XCTAssertNil(source.preview)
+            XCTAssertNil(source.attachment.playback)
         }
     }
 
@@ -126,4 +128,54 @@ final class TelegramAttachmentsTests: XCTestCase {
         XCTAssertEqual(telegramAttachmentName(String(repeating: ".", count: 180) + "a"), "Файл")
         XCTAssertEqual(source.full?.resource.id, LocalFileMediaResource(fileId: 1).id)
     }
+
+    func testPlaybackClassificationUsesActualAttributesAndVideoPrecedence() {
+        let voice = TelegramMediaFileAttribute.Audio(isVoice: true, duration: 3, title: nil, performer: nil, waveform: nil)
+        let music = TelegramMediaFileAttribute.Audio(isVoice: false, duration: 3, title: "Song", performer: "Artist", waveform: nil)
+        let video = TelegramMediaFileAttribute.Video(duration: 3, size: PixelDimensions(width: 320, height: 240),
+            flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil)
+        let round = TelegramMediaFileAttribute.Video(duration: 3, size: PixelDimensions(width: 240, height: 240),
+            flags: [.instantRoundVideo], preloadSize: nil, coverTime: nil, videoCodec: nil)
+        let cases: [([TelegramMediaFileAttribute], TelegramPlaybackKind?)] = [
+            ([voice], .voice), ([music], .audio), ([video], .video), ([round], .roundVideo),
+            ([music, video], .video), ([round, music], .roundVideo),
+            ([voice, music], nil), ([music, voice], nil), ([voice, video], nil),
+            ([round, voice], nil), ([round, video], nil), ([], nil)
+        ]
+        for (attributes, expected) in cases {
+            let resource = LocalFileMediaResource(fileId: 701, size: 500)
+            let source = telegramAttachments(message([file(resource: resource, attributes: attributes)]))[0]
+            XCTAssertEqual(source.attachment.playback, expected)
+            XCTAssertTrue(source.attachment.canDownload)
+            XCTAssertEqual(source.full?.resource.id, resource.id)
+            XCTAssertEqual(source.attachment.name, "report.pdf")
+        }
+    }
+
+    func testMIMEAndExtensionDoNotGrantPlaybackOrChangeResourceIdentity() {
+        let resource = LocalFileMediaResource(fileId: 702)
+        for label in ["audio/ogg", "audio/mpeg", "video/mp4"] {
+            let descriptor = telegramAttachments(message([file(resource: resource, name: "voice.mp4", mimeType: label)]))[0].attachment
+            XCTAssertNil(descriptor.playback)
+        }
+        let plain = telegramAttachments(message([file(resource: resource)]))[0].attachment
+        let audio = telegramAttachments(message([file(resource: resource,
+            attributes: [.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: nil)])]))[0].attachment
+        XCTAssertEqual(plain.id, audio.id)
+        XCTAssertNotEqual(plain, audio)
+        let legacy = TelegramAttachment(id: "id", kind: .file, name: "file", byteCount: nil,
+            mimeType: nil, hasPreview: false, canDownload: true)
+        XCTAssertNil(legacy.playback)
+    }
+
+    func testPaidNestedPlayableFileNeverBecomesPlaybackCandidate() {
+        let audio = file(resource: LocalFileMediaResource(fileId: 703),
+            attributes: [.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: nil)])
+        let paid = TelegramMediaPaidContent(amount: 100, extendedMedia: [.full(media: audio)])
+        let descriptor = telegramAttachments(message([paid]))[0].attachment
+        XCTAssertNil(descriptor.playback)
+        XCTAssertFalse(descriptor.canDownload)
+        XCTAssertEqual(descriptor.kind, .unsupported)
+    }
+
 }

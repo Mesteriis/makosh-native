@@ -67,8 +67,9 @@ struct TelegramDetailView: View {
     @ObservedObject private var search: TelegramSearchModel
     @ObservedObject private var media: TelegramMediaController
     @ObservedObject private var upload: TelegramUploadController
+    @ObservedObject private var playback: TelegramPlaybackController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
-    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload }
+    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload; self.playback = model.playback }
     @State private var apiID = ""
     @State private var apiHash = ""
     @State private var phone = ""
@@ -87,6 +88,7 @@ struct TelegramDetailView: View {
             case .unsupported(let explanation):
                 ContentUnavailableView("Нужен дополнительный шаг входа", systemImage: "person.crop.circle.badge.exclamationmark", description: Text(explanation)).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            TelegramPlaybackView(playback: playback)
             TelegramUploadView(model: model)
             if let error = model.error {
                 HStack(alignment: .top) { Image(systemName: "exclamationmark.circle"); Text(error).textSelection(.enabled); Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.help("Закрыть сообщение") }
@@ -108,7 +110,7 @@ struct TelegramDetailView: View {
             .onChange(of: model.selectedChatID) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
-            .onChange(of: search.messageQuery) { _, _ in attachmentActions.cancel() }
+            .onChange(of: search.messageQuery) { _, _ in attachmentActions.cancel(); playback.stop() }
             .onDisappear { attachmentActions.cancel(); model.cancelMediaLoads() }
             .sheet(isPresented: Binding(get: { attachmentActions.preview != nil }, set: { if !$0 { attachmentActions.preview = nil } })) {
                 VStack(spacing: 16) {
@@ -196,7 +198,7 @@ struct TelegramDetailView: View {
                                                 Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                                                 Text(item.text.isEmpty ? "Вложение или служебное сообщение" : item.text).textSelection(.enabled)
                                                 ForEach(item.attachments) { attachment in
-                                                    TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions)
+                                                    TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
                                                 }
                                                 Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(.secondary)
                                                 if !item.delivery.isEmpty { Text(item.delivery).font(.caption).foregroundStyle(.secondary) }
@@ -248,7 +250,7 @@ struct TelegramDetailView: View {
                                     HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
                                     Text(item.text).lineLimit(4).multilineTextAlignment(.leading)
                                     ForEach(item.attachments) { attachment in
-                                        TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions)
+                                        TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
                                     }
                                 }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
                                 Button("В истории") { model.openSearchMessage(id: item.id) }

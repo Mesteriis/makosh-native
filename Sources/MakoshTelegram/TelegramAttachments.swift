@@ -7,6 +7,10 @@ public enum TelegramAttachmentKind: Sendable, Equatable {
     case photo, file, unsupported
 }
 
+public enum TelegramPlaybackKind: Sendable, Equatable {
+    case voice, audio, video, roundVideo
+}
+
 public struct TelegramAttachment: Identifiable, Sendable, Equatable {
     public let id: String
     public let kind: TelegramAttachmentKind
@@ -15,6 +19,20 @@ public struct TelegramAttachment: Identifiable, Sendable, Equatable {
     public let mimeType: String?
     public let hasPreview: Bool
     public let canDownload: Bool
+    public let playback: TelegramPlaybackKind?
+
+    public init(id: String, kind: TelegramAttachmentKind, name: String, byteCount: Int64?,
+                mimeType: String?, hasPreview: Bool, canDownload: Bool,
+                playback: TelegramPlaybackKind? = nil) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.byteCount = byteCount
+        self.mimeType = mimeType
+        self.hasPreview = hasPreview
+        self.canDownload = canDownload
+        self.playback = playback
+    }
 }
 
 /// A display/export suggestion only. Never use this value as a cache path or extension.
@@ -37,11 +55,37 @@ struct TelegramAttachmentSource {
     let contentType: MediaResourceUserContentType
 }
 
+/// Classification is a capability hint from engine attributes, never a codec guarantee.
+private func telegramPlaybackKind(_ attributes: [TelegramMediaFileAttribute]) -> TelegramPlaybackKind? {
+    var hasVoice = false
+    var hasAudio = false
+    var videoKinds: [Bool] = []
+    for attribute in attributes {
+        switch attribute {
+        case let .Audio(isVoice, _, _, _, _):
+            if isVoice { hasVoice = true } else { hasAudio = true }
+        case let .Video(_, _, flags, _, _, _):
+            videoKinds.append(flags.contains(.instantRoundVideo))
+        default:
+            break
+        }
+    }
+    // Contradictory voice/music or voice/video metadata must not promise playback.
+    guard !(hasVoice && (hasAudio || !videoKinds.isEmpty)) else { return nil }
+    if let round = videoKinds.first {
+        guard videoKinds.allSatisfy({ $0 == round }) else { return nil }
+        return round ? .roundVideo : .video
+    }
+    if hasVoice { return .voice }
+    return hasAudio ? .audio : nil
+}
+
 /// Pure projection: retains message references but performs no fetch, file or account access.
 func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
     message.media.enumerated().map { ordinal, media in
         let reference = AnyMediaReference.message(message: MessageReference(message), media: media)
         let kind: TelegramAttachmentKind
+        let playback: TelegramPlaybackKind?
         let name: String
         let size: Int64?
         let mimeType: String?
@@ -50,6 +94,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         let contentType: MediaResourceUserContentType
         if let image = media as? TelegramMediaImage {
             kind = .photo
+            playback = nil
             name = "Фотография"
             fullResource = largestImageRepresentation(image.representations)?.resource
             previewResource = smallestImageRepresentation(image.representations)?.resource
@@ -58,6 +103,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
             contentType = .image
         } else if let file = media as? TelegramMediaFile {
             kind = .file
+            playback = telegramPlaybackKind(file.attributes)
             name = telegramAttachmentName(file.fileName)
             fullResource = file.resource
             previewResource = smallestImageRepresentation(file.previewRepresentations)?.resource
@@ -67,6 +113,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         } else {
             // Paid/locked and unknown media are intentionally not recursively expanded.
             kind = .unsupported
+            playback = nil
             name = media is TelegramMediaPaidContent ? "Платное вложение не поддерживается" : "Вложение не поддерживается"
             fullResource = nil
             previewResource = nil
@@ -89,7 +136,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         let id = "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id):\(ordinal):\(mediaKey):\(digest)"
         let attachment = TelegramAttachment(id: id, kind: kind, name: name,
             byteCount: size.flatMap { $0 >= 0 ? $0 : nil }, mimeType: mimeType,
-            hasPreview: preview != nil, canDownload: full != nil)
+            hasPreview: preview != nil, canDownload: full != nil, playback: playback)
         return TelegramAttachmentSource(attachment: attachment, full: full, preview: preview,
             location: .peer(message.id.peerId), contentType: contentType)
     }

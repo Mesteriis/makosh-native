@@ -36,6 +36,9 @@ final class TelegramSyntheticMediaProvider: TelegramMediaProvider {
                           let output = CGImageDestinationCreateWithURL(file as CFURL, UTType.png.identifier as CFString, 1, nil) else { throw TelegramFileError.invalidImage }
                     CGImageDestinationAddImage(output, image, nil)
                     guard CGImageDestinationFinalize(output) else { throw TelegramFileError.invalidImage }
+                } else if let id = attachmentID.split(separator: ":").last.flatMap({ Int($0) }), (124...127).contains(id) {
+                    let kind: TelegramPlaybackKind = id == 124 ? .roundVideo : id == 125 ? .voice : id == 126 ? .audio : .video
+                    try await TelegramSyntheticPlaybackFixtures.write(kind: kind, to: file)
                 } else {
                     try Data("Makosh synthetic attachment QA\nNo account or network data.\n".utf8).write(to: file)
                 }

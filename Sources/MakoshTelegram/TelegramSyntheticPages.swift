@@ -32,12 +32,14 @@ struct TelegramSyntheticPages {
             var message = TelegramMessage(id: "synthetic:\(chatID):\(id)", date: Date(timeIntervalSince1970: 1_700_000_000 + Double(id * 60)),
                 text: "Тестовое сообщение \(id) • диалог \(chatID)", author: id.isMultiple(of: 2) ? "Макош QA" : "Тестовый собеседник",
                 isOutgoing: id.isMultiple(of: 2), delivery: "")
-            if [25, 128, 129, 130].contains(id) {
+            if [25, 124, 125, 126, 127, 128, 129, 130].contains(id) {
                 let kind: TelegramAttachmentKind = id == 130 ? .photo : id == 128 ? .unsupported : .file
+                let playback: TelegramPlaybackKind? = id == 124 ? .roundVideo : id == 125 ? .voice : id == 126 ? .audio : id == 127 ? .video : nil
+                let playbackName = id == 124 ? "Синтетическое круглое видео QA.mp4" : id == 125 ? "Синтетическое голосовое QA.ogg" : id == 126 ? "Синтетическое аудио QA.wav" : "Синтетическое видео QA.mp4"
                 message.attachments = [TelegramAttachment(id: "synthetic-attachment:\(chatID):\(id)", kind: kind,
-                    name: kind == .photo ? "Синтетическое фото QA.png" : kind == .file ? "Синтетический файл QA.txt" : "Вложение не поддерживается",
+                    name: playback != nil ? playbackName : kind == .photo ? "Синтетическое фото QA.png" : kind == .file ? "Синтетический файл QA.txt" : "Вложение не поддерживается",
                     byteCount: nil, mimeType: kind == .file ? "text/plain" : nil,
-                    hasPreview: kind == .photo, canDownload: kind != .unsupported)]
+                    hasPreview: kind == .photo, canDownload: kind != .unsupported, playback: playback)]
             }
             return message
         }

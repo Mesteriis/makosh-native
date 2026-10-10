@@ -140,8 +140,25 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   nothing. Source files are never moved or overwritten. Regular-file, size,
   symlink and same-inode checks protect the cache and destination. Download
   paths and raw protocol references are not persisted in contact dossiers.
-  Video/audio playback and immediate-thumbnail decoding remain future work;
-  image/file support is not full media-client acceptance.
+  Immediate-thumbnail decoding remains future work; image/file support is not
+  full media-client acceptance.
+- Audio/voice/video/round-video attributes expose an explicit **Открыть
+  проигрыватель** action after full download. Native AVFoundation/AVPlayerView
+  opens a private streamed copy (4 GiB cap, 0700/0600); opening never autoplays.
+  Container suffixes for Ogg/WAV/MP4 come from bytes, never message names/MIME.
+  Actual native tracks, finite positive duration up to seven days and video
+  dimensions up to 8,192 / 40 million pixels are checked before controls appear.
+  The asset forbids all external references and alias resolution before loading;
+  no resource-loader/network fallback is installed. Decoder isolation and support
+  for every codec/container are not established by these limits.
+- Playback has play/pause, seek and 0.5/1/1.5/2 speed controls. A paused player
+  retains its cache borrow and private copy. Stop/end/failure, account/chat/page
+  changes, descriptor replacement, search-query change and view dismissal detach
+  the decoder before releasing resources; a 30-second preparation deadline offers
+  explicit retry. Unsupported native media can still be saved. Synthetic native
+  WAV/MP4/Ogg tests establish those fixtures only; native Ogg duration reporting
+  varies by OS codec version. Real account media and audio-device output remain
+  separately unverified.
 - The attachment buttons open a native single-file panel. Choosing a file does
   not send it: a separate confirmation shows the frozen recipient and editable
   caption. Switching chat keeps that recipient; stopping/replacing the account

@@ -62,6 +62,7 @@ enum TelegramSetupError: LocalizedError {
 public final class TelegramModel: ObservableObject {
     public let search = TelegramSearchModel()
     public let media = TelegramMediaController()
+    public let playback = TelegramPlaybackController()
     public let upload = TelegramUploadController()
     public var uploadContextID: UUID { accountGeneration }
     @Published public private(set) var phase: TelegramPhase = .configuration
@@ -94,6 +95,7 @@ public final class TelegramModel: ObservableObject {
     @Published public var selectedChatID: Int64? {
         didSet {
             guard oldValue != selectedChatID else { return }
+            playback.stop()
             if let id = selectedChatID, let found = search.chats.first(where: { $0.id == id }) { knownChats[id] = found }
             if let accountID = draftAccountID {
                 if let oldValue { drafts.save(draft, accountID: accountID, chatID: oldValue) }
@@ -170,6 +172,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     isolated deinit {
+        playback.stop()
         openingTimeout?.cancel()
         chatPageTimeout?.cancel()
         historyPageTimeout?.cancel()
@@ -393,6 +396,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        playback.stop()
         upload.bind(provider: nil)
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
@@ -449,6 +453,7 @@ public final class TelegramModel: ObservableObject {
     public func clearHistoryFocus() { historyFocusID = nil }
 
     public func cancelMediaLoads() {
+        playback.stop()
         #if DEBUG
         if isSyntheticPreview {
             media.bind(provider: TelegramSyntheticMediaProvider())
@@ -463,7 +468,9 @@ public final class TelegramModel: ObservableObject {
     private func refreshMediaSources() {
         let sources = historyMediaSources + Array(search.mediaSources.values)
         mediaProvider?.sources = Dictionary(sources.map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
-        media.retain(attachments: (messages + search.messages).flatMap(\.attachments))
+        let attachments = (messages + search.messages).flatMap(\.attachments)
+        playback.retain(attachments: attachments)
+        media.retain(attachments: attachments)
     }
 
     private func loadChatList(anchor: ChatListIndex? = nil, clear: Bool = false) {
@@ -504,6 +511,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func loadHistory(anchor: MessageIndex? = nil, clear: Bool = true, focusID: String? = nil) {
+        playback.stop()
         historyFocusID = focusID
         history.set(nil)
         historyPageTimeout?.cancel(); historyPageTimeout = nil

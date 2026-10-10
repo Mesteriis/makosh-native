@@ -90,6 +90,7 @@ struct TelegramAttachmentRow: View {
     let attachment: TelegramAttachment
     @ObservedObject var media: TelegramMediaController
     @ObservedObject var actions: TelegramAttachmentActions
+    @ObservedObject var playback: TelegramPlaybackController
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -134,11 +135,16 @@ struct TelegramAttachmentRow: View {
                 Text(purpose == .full ? "Файл загружен" : "Превью загружено").font(.caption).foregroundStyle(.secondary)
                 if purpose == .full {
                     Button("Сохранить…") { actions.save(media: media, key: key, name: attachment.name) }
-                        .disabled(actions.isBusy).accessibilityIdentifier(prefix + ".save")
+                        .disabled(actions.isBusy || playback.isBusy).accessibilityIdentifier(prefix + ".save")
+                    if attachment.playback != nil {
+                        Button("Открыть проигрыватель") { playback.open(attachment: attachment, media: media) }
+                            .disabled(actions.isBusy || playback.isBusy)
+                            .accessibilityIdentifier(prefix + ".playback")
+                    }
                 }
                 if purpose == .preview || attachment.kind == .photo {
                     Button("Посмотреть") { actions.showPreview(media: media, key: key) }
-                        .disabled(actions.isBusy).accessibilityIdentifier(prefix + ".open")
+                        .disabled(actions.isBusy || playback.isBusy).accessibilityIdentifier(prefix + ".open")
                 }
             }
         }.controlSize(.small)

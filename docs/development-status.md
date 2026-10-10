@@ -411,3 +411,78 @@ engine queries/source reads confirmed enqueue, local resources, MediaBox copy
 and pending status. An intermediate refresh failed because source changed while
 indexing; its stale fingerprint was not reported as fresh. The stable final
 refresh supersedes it. Product build/run/test still does not use indexes/clones.
+
+## Telegram local audio/video playback slice — 2026-10-10
+
+Engine attributes now classify voice, audio, video and round video without
+fetching. Contradictory attributes and MIME-only guesses remain ordinary file
+downloads. The full resource must already be downloaded before explicitly
+opening the native AVFoundation player; opening never autoplays. Play/pause,
+seek and 0.5/1/1.5/2 speed controls operate on one player and actual native timing.
+
+A streaming private 0700/0600 copy has a 4 GiB cap. Container hints for Ogg/WAV/MP4
+come from bytes, never a message's name or MIME label. Actual playable tracks,
+finite positive duration up to seven days and video dimensions up to 8,192-side /
+40 million pixels are checked. AVURLAsset forbids all external references and
+alias resolution before property loading; no network/resource-loader fallback
+exists. This config is tested, but a valid unrestricted/restricted reference-movie
+baseline pair was not executed. Native decoder sandbox/resource isolation is not
+established by the file/dimension caps.
+
+The source cache borrow spans loading, playing and pause. Stop/end/failure,
+account/chat/page changes, changed descriptors, search query and view dismissal
+detach the decoder before releasing that borrow and deleting the private copy.
+Late callbacks are token guarded. Preparation has a 30-second deadline. Unsupported
+native files remain exportable. No playback/account state is persisted.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0, Docker PostgreSQL healthy.
+- `scripts/test.sh`: exit 0, **146 XCTest tests, 0 failures** (24 PostgreSQL,
+  122 Telegram), plus **18 Python regressions**. New coverage includes pure
+  classification, real private IO, borrow/cancellation/deadline/stale events,
+  actual WAV/MP4/Ogg native loading, no autoplay and real model boundary cleanup.
+- `scripts/build-app.sh`: exit 0, native build and strict ad-hoc signature passed.
+- A source copy with `.references/` absent, its bare source cache preserved
+  outside the expected location and closed HTTP(S)/ALL_PROXY routes built/signed
+  and passed all **146 XCTest / 18 Python tests**, both exit 0. Neither excluded
+  directory was created, source cache restored, test DSN supplied only in memory.
+- Actual isolated DEBUG native UI showed the synthetic video frame at 0:00,
+  explicit playback/time advance, pause, seek to about 0:08, 1.5 speed and normal
+  end. Ogg/Opus opened, played, advanced and paused; changing chat removed the
+  player and left zero playback stages. WAV opened at 0:00 / 0:20, explicitly
+  played/advanced/paused; changing history page removed it. Personal accounts /
+  network / real sends were disabled. Audio-device output was not captured or
+  verified.
+- The final rebuilt QA binary also rejected a task-owned symlink replacing its
+  playback stage, showed the cleanup error after closing, and preserved the
+  target sentinel's hash. The test-owned link/saved stage were then removed,
+  leaving zero playback stages; dismissing the error restored idle controls.
+- Two bounded same-model source reviews covered engine/IO and controller/UI.
+  One confirmed observation gap was fixed: status KVO now includes its initial
+  state after readiness. Worker SwiftPM/runtime checks were not run; root owns
+  integration evidence, observed worker provider/model/usage remain unknown.
+
+Failed checks remain recorded: Foundation stripped an embedded NUL before the
+IO API received a URL, invalidating one test expectation (removed). Native Ogg
+opening also failed for an opaque extensionless copy; byte-derived container
+suffixes fixed that actual integration failure. Ogg duration reporting differs
+by OS codec version, so the codec fixture checks bounded native timing rather
+than an assumed exact duration. Both earlier failures are separate from the
+successful final checks above.
+
+Upload head `e9c0e4aaf4691b54e01beeeede0bdced50b9fc41` passed
+[PR CI 38060157464](https://github.com/Mesteriis/makosh-native/actions/runs/38060157464).
+That is not CI evidence for these subsequent playback changes.
+
+No account login/private-message read/real network-media acceptance occurred.
+Broader codecs, OS versions, audio-device output, protected/secret media and
+reference-container runtime denial remain unverified. Recording, message actions,
+dossier linking and subsequent channels remain in the active sequential goal.
+No release build, complete accessibility/resize matrix or remote delivery claim.
+
+Final playback project XERJ refresh: exit 0, **105 indexed files, 78/78 classified
+code**. Current project and unchanged recipe-3 engine fingerprints passed; actual
+queries resolved the playback controller/cache-borrow and engine attribute APIs,
+which were checked against source. Research indexes and clones remain optional,
+ignored tooling; product build/run/test uses neither.

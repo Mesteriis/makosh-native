@@ -117,14 +117,19 @@ public final class TelegramModel: ObservableObject {
             playback.stop()
             if let id = selectedChatID, let found = search.chats.first(where: { $0.id == id }) { knownChats[id] = found }
             if let accountID = draftAccountID {
-                if let oldValue { drafts.save(draft, accountID: accountID, chatID: oldValue) }
-                draft = selectedChatID.map { drafts.draft(accountID: accountID, chatID: $0) } ?? ""
-            } else { draft = "" }
+                displayDraft(selectedChatID.map { drafts.draft(accountID: accountID, chatID: $0) } ?? "")
+            } else { displayDraft("") }
+            restoreComposerDraft()
             search.selectChat(selectedChatID)
             loadHistory()
         }
     }
-    @Published public var draft = ""
+    @Published public var draft = "" {
+        didSet {
+            guard !displayingRestoredDraft, let accountID = draftAccountID, let chatID = selectedChatID else { return }
+            saveComposerDraft(draft, accountID: accountID, chatID: chatID)
+        }
+    }
     @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
     public private(set) var isSyntheticPreview = false
@@ -137,6 +142,20 @@ public final class TelegramModel: ObservableObject {
     private var accountGeneration = UUID()
     private var authorizationGeneration = UUID()
     private var drafts = TelegramDraftStore()
+    private struct ComposerDraftKey: Hashable { let accountID: Int64; let chatID: Int64 }
+    @Published private var unsavedComposerDrafts: [ComposerDraftKey: TelegramComposerDraft] = [:]
+    private let composerPersistenceError = "Не удалось сохранить черновик на диске. Текст остаётся в памяти; повторите сохранение перед выходом."
+    public var canRetryComposerDraftPersistence: Bool {
+        guard let accountID = draftAccountID, composerDraftRepository?.accountID == accountID else { return false }
+        return unsavedComposerDrafts.values.contains { $0.accountID == accountID }
+    }
+    private var displayingRestoredDraft = false
+    private var composerDraftRepository: (any TelegramComposerDraftRepository)?
+    private var composerDraftGeneration = UUID()
+    private var composerDraftLoadID: UUID?
+    private let composerDraftLoad = MetaDisposable()
+    private var replyComposerSubmission: (source: TelegramMessageActionSource, draft: TelegramComposerDraft)?
+    private var uploadComposerSubmission: TelegramComposerDraft?
     private struct EditDraftKey: Hashable {
         let account: Int64, peer: Int64, namespace: Int32, message: Int32
         init(_ source: TelegramMessageActionSource) {
@@ -171,11 +190,13 @@ public final class TelegramModel: ObservableObject {
 
     public init() {
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+        upload.willSubmit = { [weak self] target, caption in self?.captureUploadDraft(target: target, caption: caption) }
         upload.didQueue = { [weak self] target, caption in self?.acknowledgeUpload(target: target, caption: caption) }
         messageActions.didQueue = { [weak self] action, source in
-            guard let self, source.accountID == self.draftAccountID, case let .reply(text) = action else { return }
-            self.drafts.acknowledge(sentText: text, accountID: source.accountID, chatID: source.chatID)
-            if self.selectedChatID == source.chatID, self.draft.utf8.elementsEqual(text.utf8) { self.draft = "" }
+            guard let self, source.accountID == self.draftAccountID, case let .reply(text) = action,
+                  let submitted = self.replyComposerSubmission, submitted.source == source else { return }
+            self.replyComposerSubmission = nil
+            self.acknowledgeComposerDraft(text: text, submitted: submitted.draft)
         }
         messageActions.didApply = { [weak self] action, source in
             guard let self, source.accountID == self.draftAccountID else { return }
@@ -188,6 +209,94 @@ public final class TelegramModel: ObservableObject {
             let key = EditDraftKey(source)
             if let submitted, self.editDrafts[key] == submitted { self.editDrafts[key] = nil }
         }
+    }
+
+    private func displayDraft(_ text: String) {
+        displayingRestoredDraft = true
+        draft = text
+        displayingRestoredDraft = false
+    }
+
+    private func saveComposerDraft(_ text: String, accountID: Int64, chatID: Int64) {
+        if let changed = drafts.save(text, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+    }
+
+    private func composerSubmission(text: String, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
+        guard let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID),
+              snapshot.text.utf8.elementsEqual(text.utf8) else { return nil }
+        return snapshot
+    }
+
+    private func persistComposerDraft(_ snapshot: TelegramComposerDraft) {
+        let key = ComposerDraftKey(accountID: snapshot.accountID, chatID: snapshot.chatID)
+        unsavedComposerDrafts[key] = snapshot
+        guard let repository = composerDraftRepository, repository.accountID == snapshot.accountID else { return }
+        let context = composerDraftGeneration
+        repository.save(snapshot) { [weak self] result in
+            guard let self else { return }
+            if case .success = result, self.unsavedComposerDrafts[key]?.revision == snapshot.revision {
+                self.unsavedComposerDrafts[key] = nil
+                if !self.canRetryComposerDraftPersistence, self.error == self.composerPersistenceError { self.error = nil }
+            }
+            guard self.composerDraftGeneration == context,
+                  self.draftAccountID == snapshot.accountID,
+                  self.drafts.snapshot(accountID: snapshot.accountID, chatID: snapshot.chatID)?.revision == snapshot.revision else { return }
+            if case .failure = result, self.unsavedComposerDrafts[key]?.revision == snapshot.revision {
+                self.error = self.composerPersistenceError
+            }
+        }
+    }
+
+    public func retryComposerDraftPersistence() {
+        guard let accountID = draftAccountID, composerDraftRepository?.accountID == accountID else { return }
+        for snapshot in Array(unsavedComposerDrafts.values) where snapshot.accountID == accountID {
+            guard drafts.snapshot(accountID: accountID, chatID: snapshot.chatID)?.revision == snapshot.revision else { continue }
+            persistComposerDraft(snapshot)
+        }
+    }
+
+    // Binding is account-scoped. Already started writes retain the original
+    // Postbox and complete even after this account is disconnected.
+    func bindComposerDraftRepository(_ repository: (any TelegramComposerDraftRepository)?) {
+        composerDraftGeneration = UUID()
+        composerDraftLoadID = nil
+        composerDraftLoad.set(nil)
+        composerDraftRepository = repository
+        retryComposerDraftPersistence()
+        restoreComposerDraft()
+    }
+
+    private func restoreComposerDraft() {
+        composerDraftLoadID = nil
+        composerDraftLoad.set(nil)
+        guard let chatID = selectedChatID, let accountID = draftAccountID,
+              let repository = composerDraftRepository, repository.accountID == accountID,
+              drafts.snapshot(accountID: accountID, chatID: chatID) == nil else { return }
+        let requestID = UUID(), context = composerDraftGeneration, accountContext = accountGeneration
+        composerDraftLoadID = requestID
+        let disposable = repository.load(chatID: chatID) { [weak self] result in
+            guard let self, self.composerDraftLoadID == requestID, self.composerDraftGeneration == context,
+                  self.accountGeneration == accountContext, self.draftAccountID == accountID,
+                  self.selectedChatID == chatID else { return }
+            self.composerDraftLoadID = nil
+            switch result {
+            case let .success(snapshot):
+                if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, expectedRevision: nil) {
+                    self.displayDraft(self.drafts.draft(accountID: accountID, chatID: chatID))
+                }
+            case .failure:
+                self.error = "Не удалось открыть сохранённый черновик. Данные на диске не изменены."
+            }
+        }
+        if composerDraftLoadID == requestID { composerDraftLoad.set(disposable) } else { disposable.dispose() }
+    }
+
+    private func acknowledgeComposerDraft(text: String, submitted: TelegramComposerDraft) {
+        guard let cleared = drafts.acknowledge(sentText: text, revision: submitted.revision,
+            accountID: submitted.accountID, chatID: submitted.chatID) else { return }
+        persistComposerDraft(cleared)
+        if draftAccountID == submitted.accountID, selectedChatID == submitted.chatID,
+           draft.utf8.elementsEqual(text.utf8) { displayDraft("") }
     }
 
     /// Explicit profile opening reads only the selected account's local peer.
@@ -285,14 +394,18 @@ public final class TelegramModel: ObservableObject {
             guard let chat = forwardDestinations.first(where: { $0.id == destination }) else { return false }
             knownChats[destination] = chat
         }
-        if case let .reply(text) = action { drafts.save(text, accountID: source.accountID, chatID: source.chatID) }
-        return messageActions.perform(action, source: source)
+        replyComposerSubmission = nil
+        if case let .reply(text) = action, let snapshot = composerSubmission(text: text, accountID: source.accountID, chatID: source.chatID) {
+            replyComposerSubmission = (source, snapshot)
+        }
+        let accepted = messageActions.perform(action, source: source)
+        if !accepted { replyComposerSubmission = nil }
+        return accepted
     }
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String, contextID: UUID) {
         guard contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
               target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
-        if selectedChatID == target.chatID { drafts.save(draft, accountID: target.accountID, chatID: target.chatID) }
         upload.prepare(source: source, mode: mode, target: target, caption: caption)
     }
 
@@ -303,10 +416,19 @@ public final class TelegramModel: ObservableObject {
         return captured.hasValidReplySource ? captured : nil
     }
 
+    func captureUploadDraft(target: TelegramUploadTarget, caption: String) {
+        uploadComposerSubmission = nil
+        guard target.accountID == draftAccountID,
+              let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
+              snapshot.text.utf8.elementsEqual(caption.utf8) else { return }
+        uploadComposerSubmission = snapshot
+    }
+
     func acknowledgeUpload(target: TelegramUploadTarget, caption: String) {
-        guard target.accountID == draftAccountID else { return }
-        drafts.acknowledge(sentText: caption, accountID: target.accountID, chatID: target.chatID)
-        if selectedChatID == target.chatID, draft.utf8.elementsEqual(caption.utf8) { draft = "" }
+        guard target.accountID == draftAccountID, let submitted = uploadComposerSubmission,
+              submitted.accountID == target.accountID, submitted.chatID == target.chatID else { return }
+        uploadComposerSubmission = nil
+        acknowledgeComposerDraft(text: caption, submitted: submitted)
     }
 
     public func connectUsingSavedAPIConfiguration() {
@@ -330,7 +452,7 @@ public final class TelegramModel: ObservableObject {
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
         account?.network.shouldKeepConnection.set(.single(false))
-        for disposable in [session, authState, action, chatList, history, connection, outgoing, contactProfileSubscription] { disposable.dispose() }
+        for disposable in [session, authState, action, chatList, history, connection, outgoing, contactProfileSubscription, composerDraftLoad] { disposable.dispose() }
     }
 
     public func connect(apiID: String, apiHash: String) {
@@ -474,15 +596,14 @@ public final class TelegramModel: ObservableObject {
         let accountToken = accountGeneration
         let chat = selectedChatID
         let accountID = account.peerId.toInt64()
-        drafts.save(text, accountID: accountID, chatID: chat)
+        let submitted = composerSubmission(text: text, accountID: accountID, chatID: chat)
         isBusy = true; error = nil
         let message = EnqueueMessage.message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
         outgoing.set((enqueueMessages(account: account, peerId: PeerId(chat), messages: [message]) |> deliverOnMainQueue).start(next: { [weak self] ids in
             guard let self, self.generation == token, self.accountGeneration == accountToken else { return }
             self.isBusy = false
             if ids.contains(where: { $0 != nil }) {
-                self.drafts.acknowledge(sentText: text, accountID: accountID, chatID: chat)
-                if self.selectedChatID == chat, self.draft.utf8.elementsEqual(text.utf8) { self.draft = "" }
+                if let submitted { self.acknowledgeComposerDraft(text: text, submitted: submitted) }
             } else { self.error = "Сообщение не поставлено в очередь. Текст сохранён в поле ввода." }
         }))
         return true // Accepted for enqueue; only its acknowledgement clears the draft.
@@ -520,6 +641,7 @@ public final class TelegramModel: ObservableObject {
         authorizationGeneration = UUID()
         action.set(nil)
         self.unauthorized = nil; self.account = account
+        bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: account.postbox, accountID: account.peerId.toInt64()))
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
         setupAccount(account)
@@ -567,7 +689,9 @@ public final class TelegramModel: ObservableObject {
         historyPageTimeout?.cancel(); historyPageTimeout = nil
         chatPages.reset(); historyPages.reset()
         chatPage = .idle; historyPage = .idle
-        selectedChatID = nil // Saves the draft while its account identity is available.
+        selectedChatID = nil
+        bindComposerDraftRepository(nil)
+        replyComposerSubmission = nil; uploadComposerSubmission = nil
         account = nil
         knownChats = [:]; chats = []; messages = []; draft = ""
         refreshMediaSources()

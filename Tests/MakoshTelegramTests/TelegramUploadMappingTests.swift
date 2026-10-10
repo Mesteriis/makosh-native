@@ -69,8 +69,11 @@ final class TelegramUploadMappingTests: XCTestCase {
         model.selectedChatID = try XCTUnwrap(model.chats.first).id
         let target = try XCTUnwrap(model.uploadTarget)
         model.draft = "caption"
+        model.captureUploadDraft(target: target, caption: "caption")
         model.acknowledgeUpload(target: target, caption: "caption")
         XCTAssertEqual(model.draft, "")
+        model.draft = "caption"
+        model.captureUploadDraft(target: target, caption: "caption")
         model.draft = "edited"
         model.acknowledgeUpload(target: target, caption: "caption")
         XCTAssertEqual(model.draft, "edited")
@@ -80,6 +83,7 @@ final class TelegramUploadMappingTests: XCTestCase {
         model.selectedChatID = try XCTUnwrap(model.chats.first).id
         let first = try XCTUnwrap(model.uploadTarget)
         model.draft = "first"
+        model.captureUploadDraft(target: first, caption: "first")
         model.selectedChatID = model.chats[1].id
         model.draft = "second"
         model.acknowledgeUpload(target: first, caption: "first")
@@ -95,6 +99,7 @@ final class TelegramUploadMappingTests: XCTestCase {
         model.selectedChatID = try XCTUnwrap(model.chats.first).id
         let target = try XCTUnwrap(model.uploadTarget)
         model.draft = "e\u{301}"
+        model.captureUploadDraft(target: target, caption: "é")
         model.acknowledgeUpload(target: target, caption: "é")
         XCTAssertEqual(Array(model.draft.utf8), Array("e\u{301}".utf8))
     }

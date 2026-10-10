@@ -17,7 +17,9 @@ struct MakoshApp: App {
     var body: some Scene {
         WindowGroup("Макош") {
             #if DEBUG
-            if CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") {
+            if CommandLine.arguments.contains("--telegram-drafts-synthetic-preview") {
+                TelegramDraftsSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
+            } else if CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") {
                 VStack(spacing: 0) {
                     Text("СИНТЕТИЧЕСКАЯ ПРОВЕРКА • отдельная схема PostgreSQL • личные аккаунты, сеть Telegram и отправка не используются")
                         .font(.caption.bold()).padding(10).frame(maxWidth: .infinity).background(.yellow.opacity(0.15))

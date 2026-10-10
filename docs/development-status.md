@@ -1017,3 +1017,72 @@ Preceding dossier head `94fa9945409e2c71ca3400ddef6c45ae52fba917` passed
 [PR CI 38071236523](https://github.com/Mesteriis/makosh-native/actions/runs/38071236523)
 and [push CI 38071233642](https://github.com/Mesteriis/makosh-native/actions/runs/38071233642).
 Hosted CI for the later code/quote change is tracked separately after publication.
+
+## Telegram reference composer persistence — 2026-10-10
+
+The existing composer now restores its ordinary text after app restart, following
+the reference's Postbox state-saving workflow. Own versioned snapshots use the
+engine's account-local persistent interface preference, preserving exact UTF8,
+spaces and newlines. This does not invoke server draft synchronization. Unknown,
+malformed, foreign-account or future data is preserved and reported. The 64 KiB
+UTF8 storage limit rejects oversized persistence without truncating visible text.
+
+Each edit has a fresh revision; an explicit empty snapshot prevents a delayed
+load from resurrecting cleared text. Chat/account/binding/request checks reject
+stale reads. Plain send, reply and file enqueue clear only their captured matching
+revision, including A → B → A and a composer edited before submission. Failed
+or pending snapshots remain dirty and can be retried explicitly or on account
+rebind. Writes capture the original Postbox and continue after UI unbinding.
+The small retry action appears in the existing error area; no input/navigation
+redesign was introduced.
+
+Actual evidence:
+
+- `scripts/dev-db.sh up`: exit 0, PostgreSQL and S3 healthy.
+- Final `scripts/test.sh`: exit 0, **286 XCTest (223 Telegram + 63 core),
+  0 failures**, and **22 Python regressions**. Nineteen new tests exercise
+  revision/tombstone behavior, stale and synchronous restoration, retry/rebind,
+  captured reply/ABA acknowledgements, and the production repository on encrypted
+  Postbox. Reopen verifies release of the previous public Postbox; tests also
+  check ordered writes and preservation of unknown/foreign data. Sixteen upstream
+  t19 fixture-teardown diagnostics remain after the passing Telegram suite.
+- An initial build rejected transferring a raw non-Sendable Postbox through the
+  DEBUG fixture continuation. Returning its MainActor repository resolved that
+  compiler error; no unchecked Sendable exemption was introduced. The first
+  focused filter selected only 21 existing/pure tests; the corrected filter
+  selected all 32 tests at that point. Later regression additions are included
+  in the final full suite. Failed/raw intermediate outputs remain private.
+- Final `scripts/build-app.sh`: exit 0; native bundle built, ad-hoc signed and
+  strictly verified. A separate current-source checkout also built and passed
+  all 286 XCTest/22 Python tests with research/source-cache directories absent
+  and closed proxy endpoints; its original source cache was restored.
+- Final native QA executable payload matched the built app. Two different chat
+  drafts, including combining Unicode, emoji, leading/trailing spaces and a
+  newline, visibly returned after process exit/relaunch. Clearing one draft and
+  restarting again kept it empty while preserving the other. Both synthetic
+  drafts were then cleared. This explicit DEBUG route uses only a distinctly
+  named private synthetic encrypted Postbox; ordinary synthetic preview remains
+  memory-only. No personal account, Keychain, PostgreSQL or Telegram network was
+  used in this UI test. Native error/retry injection remains unverified.
+- Bounded reviews identified the missing failed-write retry and insufficient
+  reopen-release assertion; both were fixed and reviewed. Root additionally
+  fixed captured submitted text overwriting a composer changed before submission.
+  Final source hashes for twelve reviewed files were verified. Workers did not
+  independently run runtime gates; observed model/provider/usage are unknown,
+  and no quorum was used.
+- Final project XERJ refresh/check: exit 0, **170 files, 140/140 code**;
+  unchanged engine freshness also passed. Actual persistent-preference and
+  own restore/retry queries were checked against source. Credential-match audit
+  covered **175 publishable files**, with zero selected-secret matches.
+
+The completed NoError transaction is not a promise of disk-full diagnosis or
+survival of a power loss while a write is pending. Server drafts, restart
+restoration of reply target/edit/attachment caption, selected-dialog restoration,
+remaining reference UI/capabilities, archive backup/file opening, live-account
+acceptance and later channels remain open. The sequential migration goal remains
+active.
+
+The preceding code/quote head `e998e9c34d03f1f385f145d7ae1b81ad56acacd3`
+passed [PR CI 38072274699](https://github.com/Mesteriis/makosh-native/actions/runs/38072274699)
+and [push CI 38072272059](https://github.com/Mesteriis/makosh-native/actions/runs/38072272059).
+Hosted CI for this later composer change is tracked after publication.

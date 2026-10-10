@@ -286,12 +286,26 @@ Channel deletion never offers a misleading local-only option.
 
 Reply uses the current chat draft and shows the original author/text. Canceling
 reply keeps the text; a local enqueue acknowledgement clears only the exact
-submitted draft in its captured account/chat. Edit has a separate in-process
+submitted revision in its captured account/chat, including protection against
+typing A → B → A while the acknowledgement is pending. The ordinary plain-text
+composer is saved on every change in that account's encrypted Postbox and
+restored when opening the dialog after restart. Explicit empty snapshots prevent
+late reads from resurrecting cleared text; account/binding/request guards reject
+stale results. This uses the engine's local persistent interface preferences,
+without server draft synchronization. Unknown/malformed/future state is retained
+and reported, never replaced. Text over 64 KiB UTF8 stays in memory with an error
+instead of being truncated on disk. Failed/pending revisions stay dirty; an
+explicit retry or account rebind resubmits only the latest snapshot, including
+an empty snapshot after enqueue. A completed upstream NoError transaction is
+not a guarantee of disk-full diagnosis or survival of abrupt power loss while a
+write is pending. Edit has a separate in-process
 draft keyed by account and native message identity. Rejection, uncertainty,
 closing/reopening the editor and controller rebind preserve it; an exact applied
 acknowledgement clears it. Drafts include exact text and typed entities; a newer
-format-only change survives acknowledgement of an older edit. These drafts do
-not yet persist across app exit.
+format-only change survives acknowledgement of an older edit. Edit drafts,
+reply target selection and pending attachment captions do not yet persist across
+app exit; this slice persists only the ordinary composer text. It does not
+restore the selected dialog automatically.
 
 Reply and edit use the lower composer with a compact source accessory, following
 TelegramSwift. Message actions use the row context menu; attachment choices share

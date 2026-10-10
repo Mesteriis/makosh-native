@@ -1,0 +1,138 @@
+import XCTest
+import Foundation
+import TelegramCore
+import SwiftSignalKit
+@testable import Postbox
+@testable import MakoshTelegram
+
+private func composerFixtureRaw(_ box: Postbox, chatID: Int64, data: Data?) -> Signal<Data?, NoError> {
+    box.transaction { transaction in
+        let key = PreferencesKeys.persistentChatInterfaceData(peerId: PeerId(chatID))
+        if let data { transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: data)) }
+        return transaction.getPreferencesEntry(key: key)?.data
+    }
+}
+
+@MainActor final class TelegramComposerDraftPostboxTests: XCTestCase {
+    private weak var previousBox: Postbox?
+    private func open(_ root: URL) async throws -> Postbox {
+        initializeAccountManagement()
+        let key = try XCTUnwrap(ValueBoxEncryptionParameters.Key(data: Data(repeating: 7, count: 32)))
+        let salt = try XCTUnwrap(ValueBoxEncryptionParameters.Salt(data: Data(repeating: 8, count: 16)))
+        let opened = expectation(description: "Encrypted draft fixture")
+        var box: Postbox?
+        let opening = (openPostbox(basePath: root.path, seedConfiguration: telegramPostboxSeedConfiguration,
+            encryptionParameters: ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: key, salt: salt),
+            timestampForAbsoluteTimeBasedOperations: 1, isMainProcess: true, isTemporary: false,
+            isReadOnly: false, useCopy: false, useCaches: false, removeDatabaseOnError: false)
+            |> deliverOnMainQueue).start(next: { if case let .postbox(value) = $0 { box = value; opened.fulfill() } })
+        defer { opening.dispose() }
+        await fulfillment(of: [opened], timeout: 20)
+        let result = try XCTUnwrap(box)
+        let ready = expectation(description: "Both MediaBox stores ready"); ready.expectedFulfillmentCount = 2
+        let storage = (result.mediaBox.storageBox.all() |> take(1) |> deliverOnMainQueue).start(next: { _ in ready.fulfill() })
+        let cache = (result.mediaBox.cacheStorageBox.all() |> take(1) |> deliverOnMainQueue).start(next: { _ in ready.fulfill() })
+        defer { storage.dispose(); cache.dispose() }
+        await fulfillment(of: [ready], timeout: 20)
+        return result
+    }
+    private func root() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        addTeardownBlock { try FileManager.default.removeItem(at: url) }
+        return url
+    }
+    private func save(_ draft: TelegramComposerDraft, to repository: TelegramPostboxComposerDraftRepository) async -> Result<Void, TelegramComposerDraftPersistenceError> {
+        let done = expectation(description: "Draft transaction completed")
+        var result: Result<Void, TelegramComposerDraftPersistenceError> = .failure(.unavailable)
+        repository.save(draft) { result = $0; done.fulfill() }
+        await fulfillment(of: [done], timeout: 20)
+        return result
+    }
+    private func load(_ chat: Int64, from repository: TelegramPostboxComposerDraftRepository) async -> Result<TelegramComposerDraft?, TelegramComposerDraftPersistenceError> {
+        let done = expectation(description: "Draft loaded")
+        var result: Result<TelegramComposerDraft?, TelegramComposerDraftPersistenceError> = .failure(.unavailable)
+        let read = repository.load(chatID: chat) { result = $0; done.fulfill() }
+        defer { read.dispose() }
+        await fulfillment(of: [done], timeout: 20)
+        return result
+    }
+    private func raw(_ box: Postbox, chat: Int64, data: Data? = nil) async -> Data? {
+        let done = expectation(description: "Raw fixture preference transaction")
+        var result: Data?
+        let op = (composerFixtureRaw(box, chatID: chat, data: data) |> deliverOnMainQueue).start(next: { result = $0; done.fulfill() })
+        defer { op.dispose() }
+        await fulfillment(of: [done], timeout: 20)
+        return result
+    }
+    private func seedThenRelease(_ path: URL, draft: TelegramComposerDraft) async throws {
+        let box = try await open(path)
+        previousBox = box
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: draft.accountID)
+        try await save(draft, to: repository).get()
+        let loaded = try await load(draft.chatID, from: repository).get()
+        XCTAssertEqual(loaded, draft)
+    }
+
+    func testRestartPreservesExactUnicodeAndEmptyTombstone() async throws {
+        let path = try root()
+        let draft = TelegramComposerDraft(accountID: 1, chatID: 42, text: "😀 e\u{301}\n  trailing  ")
+        try await seedThenRelease(path, draft: draft)
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox, "The first public Postbox must be released before reopening")
+        let box = try await open(path)
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let read = try await load(42, from: repository).get()
+        XCTAssertEqual(read, draft)
+        let empty = TelegramComposerDraft(accountID: 1, chatID: 42, text: "")
+        try await save(empty, to: repository).get()
+        let tombstone = try await load(42, from: repository).get()
+        XCTAssertEqual(tombstone, empty)
+    }
+
+    func testAccountAndChatIsolationAndOversizeRefusal() async throws {
+        let box = try await open(root())
+        let one = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let other = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 2)
+        let draft = TelegramComposerDraft(accountID: 1, chatID: 42, text: "first")
+        try await save(draft, to: one).get()
+        let missing = try await load(43, from: one).get()
+        XCTAssertNil(missing)
+        if case .failure(.incompatibleData) = await load(42, from: other) {} else { XCTFail("Wrong account must not read") }
+        let wrong = TelegramComposerDraft(accountID: 2, chatID: 42, text: "replace")
+        if case .failure(.incompatibleData) = await save(wrong, to: other) {} else { XCTFail("Wrong account must not overwrite") }
+        let oversized = TelegramComposerDraft(accountID: 1, chatID: 42, text: String(repeating: "😀", count: 16385))
+        if case .failure(.incompatibleData) = await save(oversized, to: one) {} else { XCTFail("Oversize must fail") }
+        let unchanged = try await load(42, from: one).get()
+        XCTAssertEqual(unchanged, draft)
+    }
+
+    func testMalformedAndUnknownDataRemainUntouchedOnLoadAndSave() async throws {
+        let box = try await open(root())
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let valid = try JSONEncoder().encode(TelegramComposerDraft(accountID: 1, chatID: 42, text: "future"))
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: valid) as? [String: Any])
+        fields["schemaVersion"] = 99
+        let unknown = Data("MakoshComposerDraft.v1\n".utf8) + (try JSONSerialization.data(withJSONObject: fields))
+        for data in [Data([0xff, 0, 7]), Data("MakoshComposerDraft.v1\n{".utf8), unknown] {
+            _ = await raw(box, chat: 42, data: data)
+            if case .failure(.incompatibleData) = await load(42, from: repository) {} else { XCTFail("Unknown format must fail") }
+            if case .failure(.incompatibleData) = await save(.init(accountID: 1, chatID: 42, text: "replacement"), to: repository) {} else { XCTFail("Unknown data must not be erased") }
+            let unchanged = await raw(box, chat: 42)
+            XCTAssertEqual(unchanged, data)
+        }
+    }
+
+    func testImmediateWritesPreserveInvocationOrder() async throws {
+        let box = try await open(root())
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let done = expectation(description: "Both writes complete"); done.expectedFulfillmentCount = 2
+        let first = TelegramComposerDraft(accountID: 1, chatID: 42, text: "old")
+        let second = TelegramComposerDraft(accountID: 1, chatID: 42, text: "new")
+        repository.save(first) { result in if case .failure = result { XCTFail("Write failed") }; done.fulfill() }
+        repository.save(second) { result in if case .failure = result { XCTFail("Write failed") }; done.fulfill() }
+        await fulfillment(of: [done], timeout: 20)
+        let latest = try await load(42, from: repository).get()
+        XCTAssertEqual(latest, second)
+    }
+}

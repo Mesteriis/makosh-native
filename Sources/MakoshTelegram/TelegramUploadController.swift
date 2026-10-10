@@ -45,6 +45,7 @@ enum TelegramUploadEvent {
     private var committed = false
     private var sentCaption = ""
     var didQueue: ((TelegramUploadTarget, String) -> Void)?
+    var willSubmit: ((TelegramUploadTarget, String) -> Void)?
     // Per-instance deterministic staging seam, with identical ownership semantics.
     var stage: (URL, TelegramUploadMode) async throws -> TelegramUploadFile = TelegramUploadFileIO.stage
     var discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard
@@ -95,6 +96,7 @@ enum TelegramUploadEvent {
             guard let self, self.token == request else { return }
             self.expireSubmission()
         }
+        willSubmit?(target, sentCaption)
         let returned = provider.submit(file: file, target: target, caption: sentCaption) { [weak self] event in
             guard let self, self.token == request else { return }
             self.receive(event)

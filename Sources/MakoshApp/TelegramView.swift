@@ -114,7 +114,14 @@ struct TelegramDetailView: View {
             TelegramUploadView(model: model)
             TelegramMessageActionsStatus(controller: messageActions, synthetic: model.isSyntheticPreview)
             if let error = model.error {
-                HStack(alignment: .top) { Image(systemName: "exclamationmark.circle"); Text(error).textSelection(.enabled); Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.help("Закрыть сообщение") }
+                HStack(alignment: .top) {
+                    Image(systemName: "exclamationmark.circle"); Text(error).textSelection(.enabled)
+                    if model.canRetryComposerDraftPersistence {
+                        Button("Повторить сохранение", action: model.retryComposerDraftPersistence)
+                            .accessibilityIdentifier("telegram.draft.retry")
+                    }
+                    Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.help("Закрыть сообщение")
+                }
                     .font(.callout).padding(16).background(.red.opacity(0.08)).accessibilityIdentifier("telegram.error")
             }
             if attachmentActions.isBusy {
@@ -369,10 +376,16 @@ struct TelegramDetailView: View {
 
 #if DEBUG
 struct TelegramSyntheticPreviewView: View {
-    @StateObject private var model = TelegramModel.syntheticPreview()
+    @StateObject private var model: TelegramModel
+    private let persistentDrafts: Bool
+    init(model: TelegramModel = .syntheticPreview(), persistentDrafts: Bool = false) {
+        _model = StateObject(wrappedValue: model); self.persistentDrafts = persistentDrafts
+    }
     var body: some View {
         VStack(spacing: 0) {
-            Text("СИНТЕТИЧЕСКАЯ ПРОВЕРКА • личные аккаунты, база данных, сеть и отправка не используются")
+            Text(persistentDrafts
+                ? "СИНТЕТИЧЕСКАЯ ПРОВЕРКА • отдельный Postbox черновиков • личные аккаунты, PostgreSQL, сеть и отправка не используются"
+                : "СИНТЕТИЧЕСКАЯ ПРОВЕРКА • личные аккаунты, база данных, сеть и отправка не используются")
                 .font(.caption.bold()).padding(10).frame(maxWidth: .infinity).background(.yellow.opacity(0.15))
             Button("QA: ошибка следующего поискового запроса", action: model.search.failNextSyntheticMessageSearch)
                 .controlSize(.small).padding(6).accessibilityIdentifier("telegram.qa.failSearch")
@@ -381,6 +394,27 @@ struct TelegramSyntheticPreviewView: View {
                 Divider()
                 TelegramDetailView(model: model)
             }
+        }
+    }
+}
+
+struct TelegramDraftsSyntheticPreviewView: View {
+    @State private var model: TelegramModel?
+    @State private var failure: String?
+    var body: some View {
+        Group {
+            if let model { TelegramSyntheticPreviewView(model: model, persistentDrafts: true) }
+            else if let failure { Text(failure).padding(24) }
+            else { ProgressView("Открытие отдельного синтетического Postbox…") }
+        }.task {
+            guard model == nil, failure == nil else { return }
+            do {
+                let arguments = CommandLine.arguments
+                guard let index = arguments.firstIndex(of: "--telegram-drafts-synthetic-preview"), arguments.indices.contains(index + 1) else {
+                    throw CocoaError(.fileReadUnknown)
+                }
+                model = try await TelegramModel.syntheticDraftPreview(directory: URL(fileURLWithPath: arguments[index + 1]))
+            } catch { failure = "Не удалось открыть отдельное синтетическое хранилище черновиков." }
         }
     }
 }

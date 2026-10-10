@@ -86,4 +86,81 @@ import Postbox
         XCTAssertEqual(c.session?.revision, invalidated)
     }
 
+    func testShiftAddsCachedHalfOpenRangeAndPreservesFrozenPriorSelection() throws {
+        let c = TelegramMessageSelectionController(), context = UUID()
+        XCTAssertTrue(c.begin(source: source(2), contextID: context)); let id = try XCTUnwrap(c.session?.id)
+        XCTAssertTrue(c.toggle(source: source(8), sessionID: id, contextID: context, extendingRange: true))
+        let request = try XCTUnwrap(c.rangeRequest)
+        XCTAssertEqual(request.lowerBound, 2); XCTAssertEqual(request.upperBoundExclusive, 8)
+        XCTAssertTrue(c.applyRange(sources: [source(2, fingerprint: "new"),source(4),source(6, allowed: false),source(7, namespace: 1)], request: request))
+        XCTAssertEqual(c.session?.sources.map(\.messageID), [2,4,6,8,7])
+        XCTAssertEqual(c.session?.sources.first?.fingerprint, "version")
+        XCTAssertFalse(c.session?.canForward == true); XCTAssertFalse(c.isResolvingRange)
+        XCTAssertEqual(c.session?.lastSelectedID?.messageID, 2)
+        XCTAssertTrue(c.toggle(source: source(8), sessionID: id, contextID: context, extendingRange: true))
+        XCTAssertNil(c.rangeRequest); XCTAssertEqual(c.session?.lastSelectedID?.messageID, 2)
+        XCTAssertTrue(c.contains(source(4)))
+    }
+    func testRangeFillsDescendingUntilCapWithoutRemovingEndpointOrPriorItems() throws {
+        let c = TelegramMessageSelectionController(), context = UUID()
+        XCTAssertTrue(c.begin(source: source(1), contextID: context)); let id = try XCTUnwrap(c.session?.id)
+        XCTAssertTrue(c.toggle(source: source(150), sessionID: id, contextID: context, extendingRange: true))
+        let request = try XCTUnwrap(c.rangeRequest)
+        XCTAssertTrue(c.applyRange(sources: (1..<150).map { source(Int32($0)) }, request: request))
+        XCTAssertEqual(c.session?.count, 100); XCTAssertNotNil(c.error)
+        XCTAssertTrue(c.contains(source(1))); XCTAssertTrue(c.contains(source(150)))
+        XCTAssertTrue(c.contains(source(52))); XCTAssertFalse(c.contains(source(51)))
+        XCTAssertFalse(c.applyRange(sources: [], request: request))
+    }
+    func testRangeFailureStaleRevisionAndAnchorRules() throws {
+        let c = TelegramMessageSelectionController(), context = UUID()
+        XCTAssertTrue(c.begin(source: source(2), contextID: context, extendingRange: true))
+        XCTAssertNil(c.session?.lastSelectedID)
+        let id = try XCTUnwrap(c.session?.id)
+        XCTAssertTrue(c.toggle(source: source(8), sessionID: id, contextID: context, extendingRange: true))
+        XCTAssertNil(c.rangeRequest)
+        XCTAssertTrue(c.toggle(source: source(3), sessionID: id, contextID: context))
+        XCTAssertEqual(c.session?.lastSelectedID?.messageID, 3)
+        XCTAssertTrue(c.toggle(source: source(10), sessionID: id, contextID: context, extendingRange: true))
+        let old = try XCTUnwrap(c.rangeRequest)
+        c.observe(sources: [source(3, fingerprint: "changed")], contextID: context, chatID: 7)
+        XCTAssertNil(c.rangeRequest); XCTAssertFalse(c.applyRange(sources: [source(4)], request: old))
+        XCTAssertTrue(c.toggle(source: source(12), sessionID: id, contextID: context, extendingRange: true))
+        let foreign = try XCTUnwrap(c.rangeRequest)
+        XCTAssertFalse(c.applyRange(sources: [source(4, account: 2)], request: foreign))
+        XCTAssertNotNil(c.error); XCTAssertTrue(c.contains(source(12)))
+        XCTAssertTrue(c.toggle(source: source(14), sessionID: id, contextID: context, extendingRange: true))
+        let cancelled = try XCTUnwrap(c.rangeRequest)
+        XCTAssertTrue(c.toggle(source: source(8), sessionID: id, contextID: context))
+        XCTAssertNil(c.rangeRequest); XCTAssertEqual(c.session?.lastSelectedID?.messageID, 10)
+        c.failRange(request: cancelled); XCTAssertNil(c.error)
+    }
+
+    func testDownwardRangeDedupAndCloudPreferenceAtCapacity() throws {
+        let c = TelegramMessageSelectionController(), context = UUID()
+        XCTAssertTrue(c.begin(source: source(101), contextID: context)); let id = try XCTUnwrap(c.session?.id)
+        for n in 200...296 { XCTAssertTrue(c.toggle(source: source(Int32(n)), sessionID: id, contextID: context, extendingRange: true)) }
+        XCTAssertTrue(c.toggle(source: source(1), sessionID: id, contextID: context, extendingRange: true))
+        let request = try XCTUnwrap(c.rangeRequest)
+        XCTAssertEqual(request.lowerBound, 1); XCTAssertEqual(request.upperBoundExclusive, 101)
+        XCTAssertTrue(c.applyRange(sources: [source(100, namespace: 1),source(100),source(100)], request: request))
+        XCTAssertEqual(c.session?.count, 100)
+        XCTAssertTrue(c.contains(source(100))); XCTAssertFalse(c.contains(source(100, namespace: 1)))
+        XCTAssertNotNil(c.error)
+    }
+
+    func testRangeReadInvalidatesChangedOffPageSourceWithoutReplacingFrozenBytes() throws {
+        let c = TelegramMessageSelectionController(), context = UUID(), original = source(2, fingerprint: "é")
+        XCTAssertTrue(c.begin(source: original, contextID: context))
+        let id = try XCTUnwrap(c.session?.id)
+        XCTAssertTrue(c.toggle(source: source(8), sessionID: id, contextID: context, extendingRange: true))
+        XCTAssertTrue(c.applyRange(sources: [source(2, fingerprint: "e\u{301}"), source(4)], request: try XCTUnwrap(c.rangeRequest)))
+        XCTAssertEqual(c.session?.sources.map(\.messageID), [2, 4, 8])
+        XCTAssertTrue(try XCTUnwrap(c.session?.sources.first).fingerprint.utf8.elementsEqual(original.fingerprint.utf8))
+        XCTAssertEqual(c.session?.invalidIDs, [TelegramMessageSelectionID(source: original)])
+        XCTAssertFalse(try XCTUnwrap(c.session).canForward)
+        c.observe(sources: [original], contextID: context, chatID: 7)
+        XCTAssertFalse(try XCTUnwrap(c.session).canForward)
+    }
+
 }

@@ -21,9 +21,12 @@ struct TelegramMessageSelectionPanel: View {
                     Button { forward(session) } label: { Image(systemName: "arrowshape.turn.up.right").frame(width: 28, height: 28) }
                         .buttonStyle(.plain).accessibilityLabel("Переслать выбранные сообщения")
                         .accessibilityIdentifier("telegram.selection.forward")
-                        .disabled(!session.canForward || model.isBusy || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil)
+                        .disabled(selection.isResolvingRange || !session.canForward || model.isBusy || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil)
                 }
-                if let error = selection.error {
+                if selection.isResolvingRange {
+                    Text("Выбираем диапазон…").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("telegram.selection.resolving")
+                } else if let error = selection.error {
                     Text(error).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("telegram.selection.error")
                 } else if session.count > 0 && !session.canForward {
                     Text("Некоторые выбранные сообщения нельзя переслать. Снимите с них выбор.")
@@ -51,7 +54,7 @@ struct TelegramSelectableHistoryRow<Content: View>: View {
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
                 .background(selected ? Color.accentColor.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 12))
-                .disabled(source.map { !TelegramComposerForwardSource(source: $0).isValid } ?? true)
+                .disabled(!selected && (source.map { !TelegramComposerForwardSource(source: $0).isValid } ?? true))
                 .accessibilityLabel(TelegramMessagePresentation.selectionLabel(for: message))
                 .accessibilityValue(selected ? "Выбрано" : "Не выбрано")
                 .accessibilityIdentifier("telegram.selection.message.\(message.id)")

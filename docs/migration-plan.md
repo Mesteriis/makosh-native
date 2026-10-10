@@ -158,5 +158,13 @@ native порядок и все source fingerprints; picker только отк�
 composer с batch. Защищённый или изменённый source блокирует весь batch. Cancel,
 поиск, смена чата/account очищают выбор; restart его не сохраняет. AX использует
 маскирование spoilers и безопасный fallback при недоступном formatting.
-Shift-range, album individual/group selection, copy/delete выбранных сообщений
-и Saved Messages immediate exception ещё впереди. Общий порядок переноса сохранён.
+Shift-click добавляет сохранённый диапазон через границы страниц: endpoint
+переключается первым, затем cached Cloud/Local IDs добавляются по убыванию до
+лимита 100. Shift-deselect снимает только endpoint; anchor сохраняется.
+Recipe 7 использует ограниченный native ID index без перебора пропущенных чисел
+или сетевой загрузки. Поздний ответ требует прежние session/revision/account/
+window; смена страницы отменяет только pending range, сохраняя уже выбранное.
+Forward блокируется до завершения; изменённая off-page версия инвалидирует frozen
+source. Scheduled/topic/migrated-peer ranges, album individual/group selection,
+copy/delete выбранных сообщений и Saved Messages immediate exception ещё впереди.
+Общий порядок переноса сохранён.

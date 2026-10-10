@@ -288,9 +288,10 @@ made by an older recipe. Preserve `.local/telegram-engine` under an unused backu
 directory name, then rerun `scripts/build-app.sh` or `scripts/test.sh`; the locked
 source/compiler caches can be reused. Do not edit the generated engine or remove
 the application-support session directory, PostgreSQL volume or Keychain items.
-Fresh checkouts prepare recipe 6 directly, retaining the recipe-4 journal and
-recipe-5 read scan. Preserve older prepared source under an unused ignored backup
-name before preparing recipe 6.
+Fresh checkouts prepare recipe 7 directly, retaining the recipe-4 journal,
+recipe-5 read scan and recipe-6 enqueue hooks. Recipe 7 adds the hash-checked
+cached ID index lookup used by Shift selection. Preserve older prepared source
+under an unused ignored backup name before preparing recipe 7.
 
 Archive tables share the configured PostgreSQL service/schema, without changing
 the contact aggregate. AES-GCM encrypts text and metadata with separate HKDF
@@ -915,8 +916,31 @@ belongs to a chat controller, whose disappearance alone does not clear it.
 Selection accessibility labels use the same default spoiler mask as the reader;
 unavailable formatting never falls back to raw source text.
 
+Shift-click first toggles the endpoint, then adds cached IDs in the half-open
+numeric range between that endpoint and the previous anchor. Candidates are
+added in descending numeric order, Cloud before Local for the same number, until
+the selection reaches 100. Existing sources and the clicked endpoint survive a
+partial fill. Shift-deselect removes only that endpoint and leaves the anchor.
+The reference's arbitrary greater selected anchor on an ordinary deselect is
+adapted to the deterministic minimum native greater ID. Initial Shift-Select
+has no anchor. Local candidates remain selectable/deselectable but disable the
+whole forward batch; protected candidates are not silently omitted.
+
+The provider reads only the account's cached Postbox ID index through the
+recipe-7 API: at most 200 Cloud and 200 Local candidates, then at most 200 merged
+sources. No network history or iteration over missing integers is involved.
+Selection session/revision, account context and captured history window must
+still match on completion. New clicks, pagination, chat/account changes or
+explicit cancellation dispose the pending lookup. A 30-second failure preserves
+the endpoint and earlier selection with a visible error. Forward is blocked
+until the range finishes. A freshly observed changed off-page source invalidates
+its frozen version instead of replacing it. Synchronous callbacks are supported.
+
 Reference evidence: ChatMessageMenuItems.swift:1005-1011; ChatPresentationInterfaceState.swift:
 1684-1694,1702-1718; ChatController.swift:9753-9788; ChatInputView.swift:638-658;
-MessageActionsPanelView.swift:61-118; SenderController.swift:492-523. No GPLv2 UI
-source was copied. Shift-range selection, album individual/group selection,
-selected copy/delete and Saved Messages' immediate-forward exception remain open.
+MessageActionsPanelView.swift:61-118; SenderController.swift:492-523;
+ChatController.swift:6531-6577; ChatPresentationInterfaceState.swift:1684-1738.
+No GPLv2 UI source was copied. Scheduled/topic/migrated-peer range parity,
+album individual/group selection, selected copy/delete and Saved Messages'
+immediate-forward exception remain open. Cross-native-peer numeric ranges are
+refused instead of mixing unrelated message IDs.

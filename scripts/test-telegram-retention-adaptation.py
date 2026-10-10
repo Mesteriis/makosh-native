@@ -7,6 +7,7 @@ import unittest
 from telegram_retention_adaptation import (
     POSTBOX, HISTORY, SOURCE_SHA256, ADAPTED_SHA256, adapt_retention_source, journal_source, _replace,
 )
+from telegram_selection_adaptation import strip_selection_source
 ROOT = Path(__file__).resolve().parent.parent
 
 class RetentionAdaptationTests(unittest.TestCase):
@@ -17,7 +18,8 @@ class RetentionAdaptationTests(unittest.TestCase):
             path = ROOT / '.local/telegram-engine' / name
             if path.is_symlink():
                 raise RuntimeError('Retention fixture symlink refused')
-            cls.sources[name] = path.read_text()
+            source = path.read_text()
+            cls.sources[name] = strip_selection_source(source) if name == POSTBOX else source
 
     def testExactHashesAndIdempotency(self):
         for name, source in self.sources.items():

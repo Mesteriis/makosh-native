@@ -61,6 +61,12 @@ Build adaptations in the generated copy:
   receipt in the same Postbox transaction. Existing callers use nil defaults.
   The GPL-3.0-or-later patch in `scripts/telegram_enqueue_adaptation.py` checks
   exact input/output SHA256; no generated engine source is edited by hand.
+- Expose a cached numeric-ID index lookup on Postbox transactions. Recipe 7
+  composes the exact recipe-4 journal file with the GPL-3.0-or-later adaptation
+  in `scripts/telegram_selection_adaptation.py`, checking both file hashes.
+  Shift selection uses two bounded Cloud/Local reads (at most 200 each), without
+  scanning missing integers, allocating all cached history or fetching network
+  history. No schema or dependency pin changes are introduced.
 - Link OpenSSLEncryptionProvider explicitly to Homebrew OpenSSL 3, using its
   Apache-2.0 implementation rather than the upstream Bazel BoringSSL target.
 - Generate FlatSerialization using official `flatc 24.12.23`; source archive

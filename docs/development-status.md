@@ -1,6 +1,68 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram history selection and batch forwarding
+## Current stage: Telegram cached Shift-range selection
+
+Telegram remains inside the shared service-selector/list/conversation window.
+Shift-click toggles the endpoint first, then adds cached numeric IDs between it
+and the previous anchor in descending order, filling up to 100. Cloud wins an
+identical Local number; protected/Local sources remain in selection and prevent
+the entire forward. Shift-deselect removes only its endpoint and preserves the
+anchor. Recipe 7 adds exact-hash-checked native cached ID lookup, retaining all
+prior adaptations and the independent dependency pin. Two index reads are
+bounded to 200 each, with a merged maximum of 200 sources; there is no network
+history fetch, full-history allocation or iteration over missing integers.
+
+Request/session/revision/account context and captured page guards reject late
+callbacks. New click/page/chat/account or explicit cancel disposes pending work;
+page changes retain already selected endpoints/items. Forward waits for range
+completion. A 30-second timeout keeps the prior selection with a visible error.
+A newly observed changed off-page source invalidates its frozen version rather
+than replacing it. Synchronous provider callbacks dispose their returned lease
+once. Ordinary-deselect uses the deterministic minimum native greater anchor;
+the reference picks an arbitrary greater element from its Set.
+
+`scripts/dev-db.sh up`, final focused/full `scripts/test.sh`,
+`scripts/build-app.sh` and strict deep signature verification exit 0:
+**487 XCTest (424 Telegram + 63 core), zero failures; 28 Python regressions**.
+The focused run passes 33 cases. Thirteen new tests cover controller range rules,
+off-page changed bytes, encrypted Postbox sparse-ID/namespace/order/bounds and
+synthetic model cross-page/lifecycle/synchronous callbacks. The first focused
+run failed compilation of a new test's tuple flatMap expression because Swift
+could not typecheck it in reasonable time. Explicitly typed tuple appends fix
+the fixture without changing its assertions; final gates pass. The full run
+prints 74 upstream t19 teardown diagnostics without failure/trap. Earlier
+independent failures remain recorded below.
+
+Actual native AX/screenshots verified a physical Shift-click from selected130
+to previous-page40 (count91), Shift-deselect40 (count90), Mail → Telegram
+preservation and Shift39 (count92, reselecting40 proves the anchor survived).
+Extending to1 partially fills100; another page shows31 unselected and32 selected.
+Latest retains protected120 and masked spoiler121; deselect120 produces99 and
+enables Forward. Escape restores the original ordinary draft and reply130.
+QA used the same owned encrypted synthetic Postbox and isolated PostgreSQL/S3,
+with matching unsigned executable payload and strict signatures. No personal
+account, Keychain, Telegram network or server send was used. Pending callback
+and namespace behavior are established by regressions, not live-account QA.
+
+Readonly scoped review reported no confirmed actionable defect. Root amended
+the original controller to invalidate freshly changed off-page versions and
+simplified the reviewed provider test fixture after its compile failure. Worker
+runtime gates were SKIP; root ran integration gates and native acceptance.
+Observed worker provider/model/usage remain unknown. The original project
+freshness log was stale during integration; final refreshed evidence is separate.
+Scheduled/topic/migrated-peer ranges, album selection, selected copy/delete,
+Saved Messages exception and live-account acceptance remain open. Later channels,
+backups and standalone packaging also remain open; the sequential goal is active.
+Previous head `79fc7d4` passed both hosted PR/push CI runs. Current-slice hosted
+CI is recorded separately after publication.
+
+Final project XERJ refresh exits0:267 files,237/237 classified code. The
+selection resolver and native shim query hits were confirmed against current
+source; final project/engine/TelegramSwift freshness checks exit0. Publication
+audit checked272 publishable files and the private PR body against five selected
+credential fields, with zero matches. Machine configuration/QA data stay ignored.
+
+## Historical Telegram history selection and batch forwarding
 
 Telegram remains inside the shared service-selector/list/conversation window.
 The history context menu now starts selection of up to 100 typed native IDs.

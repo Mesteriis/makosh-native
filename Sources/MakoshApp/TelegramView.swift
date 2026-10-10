@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import MakoshTelegram
 
 struct TelegramDetailView: View {
@@ -210,7 +211,8 @@ struct TelegramDetailView: View {
                                         TelegramSelectableHistoryRow(selection: messageSelection, message: item, source: model.actionSource(for: item)) {
                                             if let windowID, let selectionID {
                                                 _ = model.toggleMessageSelection(messageID: item.id, sessionID: selectionID,
-                                                    contextID: contextID, windowID: windowID)
+                                                    contextID: contextID, windowID: windowID,
+                                                    extendingRange: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
                                             }
                                         } content: {
                                         HStack(alignment: .top) {
@@ -367,7 +369,10 @@ struct TelegramDetailView: View {
             }
             Divider()
             Button("Выбрать", systemImage: "checkmark.circle") {
-                if let windowID { _ = model.beginMessageSelection(messageID: item.id, contextID: contextID, windowID: windowID) }
+                if let windowID {
+                    _ = model.beginMessageSelection(messageID: item.id, contextID: contextID, windowID: windowID,
+                        extendingRange: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
+                }
             }.disabled(disabled || windowID == nil || search.hasMessageQuery || !TelegramComposerForwardSource(source: source).isValid)
                 .accessibilityIdentifier("telegram.selection.begin.\(item.id)")
         }

@@ -80,6 +80,9 @@ public final class TelegramModel: ObservableObject {
     public let composerReply = TelegramComposerReplyController()
     public let composerForward = TelegramComposerForwardController()
     public let messageSelection = TelegramMessageSelectionController()
+    private var selectionRangeProvider: (any TelegramMessageSelectionRangeProvider)?
+    private let selectionRangeDisposable = MetaDisposable()
+    private var selectionRangeDeadline: Task<Void, Never>?
     @Published public private(set) var composerForwardIntent: TelegramComposerForwardIntent?
     @Published public private(set) var composerForwardDisposition: TelegramComposerForwardDisposition?
     @Published public private(set) var isRestoringComposerDraft = false
@@ -140,6 +143,7 @@ public final class TelegramModel: ObservableObject {
     @Published public var selectedChatID: Int64? {
         didSet {
             guard oldValue != selectedChatID else { return }
+            cancelMessageSelectionRange()
             messageSelection.cancel()
             cancelContactProfile()
             playback.stop()
@@ -590,28 +594,70 @@ public final class TelegramModel: ObservableObject {
     }
 
     @discardableResult
-    public func beginMessageSelection(messageID: String, contextID: UUID, windowID: UUID) -> Bool {
+    public func beginMessageSelection(messageID: String, contextID: UUID, windowID: UUID, extendingRange: Bool = false) -> Bool {
         guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
               messageSelection.session == nil, let message = messages.first(where: { $0.id == messageID }),
               let source = actionSource(for: message) else { return false }
-        return messageSelection.begin(source: source, contextID: contextID)
+        return messageSelection.begin(source: source, contextID: contextID, extendingRange: extendingRange)
     }
 
     @discardableResult
-    public func toggleMessageSelection(messageID: String, sessionID: UUID, contextID: UUID, windowID: UUID) -> Bool {
+    public func toggleMessageSelection(messageID: String, sessionID: UUID, contextID: UUID, windowID: UUID, extendingRange: Bool = false) -> Bool {
         guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
+              messageSelection.session?.id == sessionID,
               let message = messages.first(where: { $0.id == messageID }), let source = actionSource(for: message) else { return false }
-        return messageSelection.toggle(source: source, sessionID: sessionID, contextID: contextID)
+        cancelMessageSelectionRange()
+        let changed = messageSelection.toggle(source: source, sessionID: sessionID, contextID: contextID, extendingRange: extendingRange)
+        if changed { resolveMessageSelectionRange(windowID: windowID) }
+        return changed
+    }
+
+    func bindMessageSelectionRangeProvider(_ provider: (any TelegramMessageSelectionRangeProvider)?) {
+        cancelMessageSelectionRange()
+        selectionRangeProvider = provider
+    }
+
+    private func cancelMessageSelectionRange() {
+        messageSelection.cancelRange()
+        selectionRangeDeadline?.cancel(); selectionRangeDeadline = nil
+        selectionRangeDisposable.set(nil)
+    }
+
+    private func resolveMessageSelectionRange(windowID: UUID) {
+        guard let request = messageSelection.rangeRequest else { return }
+        guard let provider = selectionRangeProvider, provider.accountID == request.accountID else {
+            messageSelection.failRange(request: request); return
+        }
+        selectionRangeDeadline = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            guard let self, self.messageSelection.rangeRequest == request else { return }
+            self.messageSelection.failRange(request: request)
+            self.cancelMessageSelectionRange()
+        }
+        let lease = provider.resolve(request: request) { [weak self] sources in
+            guard let self, self.messageSelection.rangeRequest == request else { return }
+            guard self.canChangeMessageSelection, self.accountGeneration == request.contextID,
+                  self.draftAccountID == request.accountID, self.selectedChatID == request.chatID,
+                  self.historyWindowID == windowID else {
+                self.cancelMessageSelectionRange(); return
+            }
+            _ = self.messageSelection.applyRange(sources: sources, request: request)
+            self.cancelMessageSelectionRange()
+        }
+        // A provider may finish synchronously before returning its disposable.
+        if messageSelection.rangeRequest == request { selectionRangeDisposable.set(lease) }
+        else { lease.dispose() }
     }
 
     public func cancelMessageSelection(sessionID: UUID, contextID: UUID) {
         guard contextID == accountGeneration, messageSelection.session?.id == sessionID else { return }
+        cancelMessageSelectionRange()
         messageSelection.cancel()
     }
 
     @discardableResult
     public func stageSelectedMessagesForward(destinationChatID: Int64, sessionID: UUID, contextID: UUID, expectedRevision: UUID? = nil) -> Bool {
-        guard contextID == accountGeneration, let session = messageSelection.session,
+        guard !messageSelection.isResolvingRange, contextID == accountGeneration, let session = messageSelection.session,
               session.id == sessionID, session.contextID == contextID, session.accountID == draftAccountID,
               session.chatID == selectedChatID, session.canForward,
               expectedRevision == nil || expectedRevision == session.revision else { return false }
@@ -988,6 +1034,8 @@ public final class TelegramModel: ObservableObject {
     }
 
     isolated deinit {
+        selectionRangeDeadline?.cancel()
+        selectionRangeDisposable.dispose()
         playback.stop()
         openingTimeout?.cancel()
         chatPageTimeout?.cancel()
@@ -1199,6 +1247,7 @@ public final class TelegramModel: ObservableObject {
         authorizationGeneration = UUID()
         action.set(nil)
         self.unauthorized = nil; self.account = account
+        bindMessageSelectionRangeProvider(TelegramPostboxSelectionRangeProvider(postbox: account.postbox, accountID: account.peerId.toInt64()))
         let replyProvider = TelegramPostboxComposerReplyProvider(postbox: account.postbox, accountID: account.peerId.toInt64())
         composerReply.bind(replyProvider)
         composerForward.bind(TelegramEngineForwardProvider(account: account))
@@ -1244,6 +1293,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        bindMessageSelectionRangeProvider(nil)
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
         profilePhotos.bind(nil)
@@ -1389,6 +1439,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func loadHistory(anchor: MessageIndex? = nil, clear: Bool = true, focusID: String? = nil) {
+        cancelMessageSelectionRange()
         playback.stop()
         historyReadIndexes = [:]
         historyFocusID = focusID
@@ -1455,6 +1506,7 @@ public final class TelegramModel: ObservableObject {
         if let chatID = selectedChatID {
             messageSelection.observe(sources: items.compactMap(actionSource), contextID: accountGeneration, chatID: chatID)
         }
+        if messageSelection.rangeRequest == nil || historyPage.isLoading { cancelMessageSelectionRange() }
         refreshMediaSources()
     }
 
@@ -1491,6 +1543,7 @@ public final class TelegramModel: ObservableObject {
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
         model.composerReply.bind(TelegramSyntheticComposerReplyProvider())
         model.composerForward.bind(TelegramSyntheticForwardProvider())
+        model.bindMessageSelectionRangeProvider(TelegramSyntheticSelectionRangeProvider())
         model.bindSyntheticHistoryRead()
         model.isSyntheticPreview = true
         model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)

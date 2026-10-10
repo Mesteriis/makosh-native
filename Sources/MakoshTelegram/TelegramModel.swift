@@ -10,14 +10,14 @@ public enum TelegramPhase: Equatable {
     case configuration, connecting, phone, code, password(hint: String), ready, unsupported(String)
 }
 
-public struct TelegramChat: Identifiable, Equatable {
+public struct TelegramChat: Identifiable, Equatable, Sendable {
     public let id: Int64
     public let title: String
     public let preview: String
     public let unreadCount: Int
 }
 
-public struct TelegramMessage: Identifiable, Equatable {
+public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public let id: String
     public let date: Date
     public let text: String
@@ -59,6 +59,7 @@ enum TelegramSetupError: LocalizedError {
 /// performs no account, Keychain, filesystem or network access until Connect.
 @MainActor
 public final class TelegramModel: ObservableObject {
+    public let search = TelegramSearchModel()
     @Published public private(set) var phase: TelegramPhase = .configuration
     @Published public private(set) var isBusy = false
     @Published public var error: String?
@@ -67,18 +68,26 @@ public final class TelegramModel: ObservableObject {
     @Published public private(set) var chatPage: TelegramPageNavigation = .idle
     @Published public private(set) var historyPage: TelegramPageNavigation = .idle
     @Published public var chatFolder: TelegramChatFolder = .inbox {
-        didSet { if oldValue != chatFolder { loadChatList(clear: true) } }
+        didSet { if oldValue != chatFolder { loadChatList(clear: true); search.setFolder(chatFolder) } }
     }
     public var selectedChat: TelegramChat? { selectedChatID.flatMap { knownChats[$0] } }
     public var historyWindowID: UUID? { historyPages.requestID }
+    @Published public private(set) var historyFocusID: String?
+    public var readyHistoryFocusID: String? {
+        guard !historyPage.isLoading, !historyPage.timedOut,
+              let id = historyFocusID, messages.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
     var chatWindowID: UUID? { chatPages.requestID }
     @Published public var selectedChatID: Int64? {
         didSet {
             guard oldValue != selectedChatID else { return }
+            if let id = selectedChatID, let found = search.chats.first(where: { $0.id == id }) { knownChats[id] = found }
             if let accountID = draftAccountID {
                 if let oldValue { drafts.save(draft, accountID: accountID, chatID: oldValue) }
                 draft = selectedChatID.map { drafts.draft(accountID: accountID, chatID: $0) } ?? ""
             } else { draft = "" }
+            search.selectChat(selectedChatID)
             loadHistory()
         }
     }
@@ -329,6 +338,8 @@ public final class TelegramModel: ObservableObject {
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
         setupAccount(account)
+        search.bind(account: account)
+        search.setFolder(chatFolder)
         let accountToken = accountGeneration
         self.authState.set(nil); self.isBusy = false; self.phase = .ready
         account.shouldBeServiceTaskMaster.set(.single(.always))
@@ -348,6 +359,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        search.bind(account: nil)
         accountGeneration = UUID()
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
@@ -388,6 +400,16 @@ public final class TelegramModel: ObservableObject {
     public func showLatestMessages() { loadHistory(clear: false) }
     public func retryHistoryPage() { loadHistory(anchor: historyPages.anchor, clear: false) }
 
+    public func openSearchMessage(id: String) {
+        // Migrated-group matches have the old peer ID. Postbox includes that
+        // associated history; validate the search's selected chat, not the index peer.
+        guard let index = search.messageIndex(id: id, inChat: selectedChatID) else { return }
+        search.messageQuery = ""
+        loadHistory(anchor: index, clear: false, focusID: id)
+    }
+
+    public func clearHistoryFocus() { historyFocusID = nil }
+
     private func loadChatList(anchor: ChatListIndex? = nil, clear: Bool = false) {
         chatList.set(nil)
         chatPageTimeout?.cancel(); chatPageTimeout = nil
@@ -418,14 +440,15 @@ public final class TelegramModel: ObservableObject {
             let hasHole = view.entries.contains { if case .HoleEntry = $0 { return true }; return false }
             let chats = view.entries.reversed().compactMap { entry -> TelegramChat? in
                 guard case let .MessageEntry(data) = entry, let peer = data.renderedPeer.peer else { return nil }
-                return TelegramChat(id: peer.id.toInt64(), title: Self.title(peer), preview: data.messages.last?.text ?? "", unreadCount: Int(data.readState?.state.count ?? 0))
+                return TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: data.messages.last?.text ?? "", unreadCount: Int(data.readState?.state.count ?? 0))
             }
             self.receiveChats(chats, requestID: requestID, previous: view.earlierIndex,
                 next: view.laterIndex, isLoading: hasHole)
         }))
     }
 
-    private func loadHistory(anchor: MessageIndex? = nil, clear: Bool = true) {
+    private func loadHistory(anchor: MessageIndex? = nil, clear: Bool = true, focusID: String? = nil) {
+        historyFocusID = focusID
         history.set(nil)
         historyPageTimeout?.cancel(); historyPageTimeout = nil
         if clear { messages = [] }
@@ -454,13 +477,7 @@ public final class TelegramModel: ObservableObject {
                 let view = value.0
                 let waiting = view.isLoading || view.isLoadingEarlier ||
                     (view.earlierId == nil && view.holeEarlier) || (view.laterId == nil && view.holeLater)
-                let messages = view.entries.map { entry in
-                    let message = entry.message
-                    let delivery = message.flags.contains(.Failed) ? "Не отправлено" : message.flags.contains(.Unsent) ? "В очереди отправки" : ""
-                    return TelegramMessage(id: "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id)",
-                        date: Date(timeIntervalSince1970: TimeInterval(message.timestamp)), text: message.text,
-                        author: message.author.map(Self.title) ?? "Telegram", isOutgoing: !message.flags.contains(.Incoming), delivery: delivery)
-                }
+                let messages = view.entries.map { TelegramMessage($0.message) }
                 self.receiveMessages(messages, requestID: requestID, previous: view.earlierId,
                     next: view.laterId, isLoading: waiting, hasPreviousGap: view.holeEarlier, hasNextGap: view.holeLater)
             }))
@@ -515,6 +532,7 @@ public final class TelegramModel: ObservableObject {
     public static func syntheticPreview() -> TelegramModel {
         let model = TelegramModel()
         model.preview = TelegramSyntheticPages()
+        model.search.useSyntheticPreview()
         model.isSyntheticPreview = true
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"
@@ -523,12 +541,6 @@ public final class TelegramModel: ObservableObject {
     }
     #endif
 
-    private static func title(_ peer: Peer) -> String {
-        if let user = peer as? TelegramUser { return [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ") }
-        if let group = peer as? TelegramGroup { return group.title }
-        if let channel = peer as? TelegramChannel { return channel.title }
-        return "Диалог \(peer.id.toInt64())"
-    }
 }
 
 private enum TelegramSessionKey {

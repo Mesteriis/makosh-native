@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from telegram_search_adaptation import adapt_search_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -25,7 +26,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 2
+RECIPE = 3
 
 
 def run(*args):
@@ -143,6 +144,8 @@ def main():
     DEST.mkdir(parents=True)
     archive = subprocess.check_output(source_git("archive", SHA, *sorted(packages), "README.md"))
     extract_committed(archive, DEST)
+    search = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Messages/SearchMessages.swift"
+    search.write_text(adapt_search_source(search.read_text()))
     replace_exact(DEST / "submodules/ManagedFile/Package.swift",
                   '../../submodules/telegram-ios/submodules/SSignalKit', '../SSignalKit')
     replace_exact(DEST / "submodules/TelegramCore/Sources/Account/Account.swift",
@@ -200,6 +203,7 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
         "adaptations": ["ManagedFile relative SSignalKit path", "Postbox never deletes session on open failure",
                         "OpenSSLEncryption SwiftPM uses EncryptionProvider and Homebrew OpenSSL 3",
                         "Authorization neither reads iCloud nor stores future-login tokens",
+                        "Message search reports RPC failure without consuming either history cursor",
                         "FlatSerialization generated with pinned official flatc 24.12.23"]}, indent=2) + "\n")
     print(f"Telegram engine: prepared {len(packages)} pinned packages in ignored local storage")
 

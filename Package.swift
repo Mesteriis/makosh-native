@@ -14,6 +14,7 @@ let package = Package(
         .package(name: "OpenSSLEncryption", path: ".local/telegram-engine/submodules/OpenSSLEncryptionProvider"),
         .package(name: "SSignalKit", path: ".local/telegram-engine/submodules/SSignalKit"),
         .package(name: "Postbox", path: ".local/telegram-engine/submodules/Postbox"),
+        .package(name: "TelegramApi", path: ".local/telegram-engine/submodules/TelegramApi"),
         .package(name: "EncryptionProvider", path: ".local/telegram-engine/submodules/EncryptionProvider")
     ],
     targets: [
@@ -29,6 +30,7 @@ let package = Package(
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshTelegram",
             .product(name: "TelegramCore", package: "TelegramCore"),
+            .product(name: "TelegramApi", package: "TelegramApi"),
             .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
             .product(name: "EncryptionProvider", package: "EncryptionProvider")])
     ]

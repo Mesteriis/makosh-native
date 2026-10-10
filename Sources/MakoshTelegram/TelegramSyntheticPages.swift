@@ -40,5 +40,32 @@ struct TelegramSyntheticPages {
     private func messageIndex(chatID: Int64, id: Int) -> MessageIndex {
         MessageIndex(id: MessageId(peerId: PeerId(chatID), namespace: 0, id: Int32(id)), timestamp: Int32(id))
     }
+
+    func searchChats(folder: TelegramChatFolder, query: String) -> [TelegramChat] {
+        var result: [TelegramChat] = []
+        var anchor: ChatListIndex?
+        repeat {
+            let page = chats(folder: folder, anchor: anchor)
+            result.append(contentsOf: page.items)
+            anchor = page.previous
+        } while anchor != nil
+        return result.filter { $0.title.localizedCaseInsensitiveContains(query) }
+    }
+
+    func searchMessages(chatID: Int64, query: String) -> (items: [TelegramMessage], indexes: [String: MessageIndex]) {
+        var result: [TelegramMessage] = []
+        var anchor: MessageIndex?
+        repeat {
+            let page = messages(chatID: chatID, anchor: anchor)
+            result.append(contentsOf: page.items.reversed())
+            anchor = page.previous
+        } while anchor != nil
+        result = result.filter { $0.text.localizedCaseInsensitiveContains(query) }
+        let indexes = Dictionary(uniqueKeysWithValues: result.compactMap { item -> (String, MessageIndex)? in
+            guard let id = item.id.split(separator: ":").last.flatMap({ Int($0) }) else { return nil }
+            return (item.id, messageIndex(chatID: chatID, id: id))
+        })
+        return (result, indexes)
+    }
 }
 #endif

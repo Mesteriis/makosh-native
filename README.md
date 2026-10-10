@@ -2,7 +2,7 @@
 
 Native macOS workspace for a unified contact dossier and communications. The contact book is backed by a local PostgreSQL service: create/edit/search, multiple phones/emails, organization, role, tags, notes, source-scoped identities, JSON import, duplicate review, transactional merge and guarded undo.
 
-Telegram is the first implemented channel: native account setup, paged dialogs/archive, paged text history and a text composer backed by the actual TelegramCore from the selected TelegramSwift reference. Connect your own separate session explicitly in the app. Real authorization/sync/send acceptance is still unverified; see [Telegram setup and limits](docs/telegram.md). Mail, WhatsApp and Teams remain disconnected. Meetings open an official Telemost link in the browser. Existing Telegram/mail sessions and macOS Contacts are not read. All included examples are synthetic.
+Telegram is the first implemented channel: native account setup, paged dialogs/archive, paged text history, local chat search, per-dialog message search and a text composer backed by the actual TelegramCore from the selected TelegramSwift reference. Connect your own separate session explicitly in the app. Real authorization/sync/send acceptance is still unverified; see [Telegram setup and limits](docs/telegram.md). Mail, WhatsApp and Teams remain disconnected. Meetings open an official Telemost link in the browser. Existing Telegram/mail sessions and macOS Contacts are not read. All included examples are synthetic.
 
 ## Requirements and run
 

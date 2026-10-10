@@ -41,6 +41,9 @@ Build adaptations in the generated copy:
 - Correct ManagedFile's relative SSignalKit dependency.
 - Prevent Postbox from deleting the session database after an open failure.
 - Disable iCloud login-token reads and future-login-token storage.
+- Distinguish message-search RPC failure from an empty/completed result, preserving
+  both search cursors on failure. The bounded GPL adaptation is tracked in
+  `scripts/telegram_search_adaptation.py`; recipe 3 verifies input and output hashes.
 - Link OpenSSLEncryptionProvider explicitly to Homebrew OpenSSL 3, using its
   Apache-2.0 implementation rather than the upstream Bazel BoringSSL target.
 - Generate FlatSerialization using official `flatc 24.12.23`; source archive

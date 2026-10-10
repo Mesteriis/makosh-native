@@ -112,8 +112,17 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   Selected chat and draft survive list/folder changes. Empty loading snapshots
   retain displayed data; stable empty snapshots clear it. A 30-second deadline
   offers an explicit retry, keeps the subscription alive and permits later recovery.
-  Search, media download/upload, secret-chat UI, replies and read receipts are
-  not implemented. Non-text entries show an attachment/service-message label.
+  Media download/upload, secret-chat UI, replies and read receipts are not
+  implemented. Non-text entries show an attachment/service-message label.
+- Chat search reads all known Postbox peers in the selected main/archive list,
+  independently of the visible page. It does not discover remote peers and may
+  omit dialogs not yet in the local cache. Message search calls the selected
+  peer's engine search API (secret chats use its existing local branch), requests
+  50 more matches per page and can open a match in the live history window.
+  Query/chat/account changes cancel the old request and reject stale tokens.
+  Errors and 30-second deadlines offer explicit retry; successful empty results
+  remain distinct. A failed RPC preserves both engine cursors and displayed
+  results, including migrated peer pairs. There is no automatic search retry.
 - Text sending uses TelegramCore's genuine durable local outbox. Captured
   account/recipient identity is retained across selection changes. The draft
   clears only after enqueue acknowledgement; pending/failed flags are shown in
@@ -140,7 +149,7 @@ open -n .build/Makosh.app --args --telegram-synthetic-preview
 
 This DEBUG-only branch uses the real Telegram views, navigation and snapshot
 receivers with fixed in-memory data (125 main dialogs, 65 archive dialogs and
-130 messages per dialog). It bypasses the contact workspace and opens no
+130 messages per dialog), search and explicit search-failure injection. It bypasses the contact workspace and opens no
 PostgreSQL, API file, Keychain, account/session or network. Sending and connection
 are blocked in the model as well as the UI. It is visibly labeled synthetic and
 does not prove server pagination or hole filling. The branch and fixture are

@@ -196,3 +196,71 @@ run. Real account authorization, server-side pagination/hole filling, incoming
 sync, delivery and media remain unverified. Search, media/file UI, message
 actions, dossier linking and the other service transfers remain open in
 `migration-plan.md`; this slice does not complete the user's active goal.
+
+The pagination head `616a2e91d0818f917e4bdc330c8ce4105416e2df` passed
+[PR CI 38056547261](https://github.com/Mesteriis/makosh-native/actions/runs/38056547261):
+reference-free cold build, 54 XCTest tests and 15 Python regressions.
+
+## Telegram search — 2026-10-10
+
+Native chat search covers known Postbox dialogs in the selected main/archive
+folder beyond the displayed page; it is cache-local and does not discover remote
+peers. Per-dialog message search uses TelegramCore, accumulates cursor pages,
+shows a total and offers an explicit history jump. Query/chat/account changes
+cancel requests and invalidate tokens. Search has separate loading, ready,
+failed and timed-out states. Failed pages retain results and the last successful
+cursor; successful zero matches are distinct. A bounded recipe-3 adaptation
+uses exact input/output SHA256 and counted contexts to keep RPC failure from
+becoming an empty completed result. Either migrated-peer RPC failure retains
+both cursors atomically. Hashtag search and local secret/saved-reaction branches
+remain unchanged. History jumps accept associated migrated history while
+checking the active search's chat; that real-account case is not runtime-tested.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0, existing Docker PostgreSQL healthy.
+- `scripts/test.sh`: exit 0, **73 XCTest tests, 0 failures** (24 real-PostgreSQL
+  contact tests and 49 Telegram tests), plus **18 Python regressions**. The 19
+  new Swift tests cover engine failure reduction/equality, cursor preservation,
+  stale requests, debounce cancellation, page accumulation, successful zero,
+  retry, folder/query/selection, composer retention and history-focus readiness.
+- `scripts/build-app.sh`: exit 0; native app and strict ad-hoc signature check
+  passed. Initial recipe preparation used the wrong upstream search-file path
+  and failed before adaptation; that incomplete output was preserved and the
+  tracked path was corrected. Generated engine files were never hand-edited.
+- In a separate publishable source copy, `.references/` was absent and the bare
+  source cache temporarily moved aside, with HTTP(S) proxy at a closed loopback
+  port. Build/sign and all 73 XCTest/18 Python tests passed without recreating
+  excluded directories. The first test attempt stopped because that copy had
+  no database config; the retry supplied the test DSN only in process memory.
+  The source cache was restored. Default search-adaptation regressions require
+  only the verified prepared engine, with no source cache or skipped tests.
+- Actual isolated native UI found dialog 125 outside the first page and archive
+  dialog 65, displayed search pages 50 → 100 → 130, retained 50 matches after an
+  injected next-page failure, and reached 100 after explicit retry. A successful
+  unmatched query showed zero results. Changing the sidebar filter to omit the
+  selected chat retained its history and draft. The history button opened
+  message 25 outside the latest window, with the composer unchanged and sending
+  disabled. Synthetic mode uses no account, credentials, Keychain, database or
+  network. Screenshots and accessibility observations confirm those states.
+- UI inspection found a List row did not expose/activate the history button via
+  accessibility. Search results now use a lazy scroll stack with explicit
+  accessible buttons; the final button activation succeeded. A coordinate probe
+  returned `noWindowsAvailable`; button accessibility remained usable.
+- Scoped same-model source reviews found a retained-window focus race: initial
+  rendering could consume the focus before the new anchor was ready. Root gates
+  focus on current navigation readiness, observes that computed value, and added
+  a regression for loading/stale/ready emissions. Observed worker model/provider
+  and usage remain unknown. Root owns integration and execution evidence.
+
+Final project XERJ refresh: exit 0, 77 indexed files, 50/50 classified code.
+Project and recipe-3 engine freshness checks passed; actual search queries were
+confirmed against current controller, reducer and history source. Two earlier
+project refreshes stopped with exit 1 because files changed during indexing;
+those logs were preserved and not reused as fresh evidence.
+
+Real server search, authorization, migrated history, incoming messages, delivery,
+reconnect and timeout recovery on a connected account remain unverified. A
+release build and broader OS/accessibility/resize matrix were not run. Media,
+message actions, dossier linking and later service transfers remain open; this
+slice does not complete the active migration goal.

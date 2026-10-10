@@ -3,6 +3,9 @@ import MakoshTelegram
 
 struct TelegramSidebarView: View {
     @ObservedObject var model: TelegramModel
+    @ObservedObject private var search: TelegramSearchModel
+    init(model: TelegramModel) { self.model = model; self.search = model.search }
+    private var visibleChats: [TelegramChat] { search.hasChatQuery ? search.chats : model.chats }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
@@ -15,16 +18,26 @@ struct TelegramSidebarView: View {
                 Picker("Список диалогов", selection: $model.chatFolder) {
                     ForEach(TelegramChatFolder.allCases) { folder in Text(folder.title).tag(folder) }
                 }.pickerStyle(.segmented).padding(12).accessibilityIdentifier("telegram.folder")
+                TextField("Найти диалог", text: $search.chatQuery).textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 12).accessibilityIdentifier("telegram.chatSearch")
+                if search.hasChatQuery {
+                    Text("Поиск по диалогам в локальном кэше выбранного списка.")
+                        .font(.caption).foregroundStyle(.secondary).padding(12)
+                    TelegramSearchStatusView(status: search.chatStatus, retry: search.retryChats)
+                        .padding(.horizontal, 12)
+                }
             }
-            if model.chats.isEmpty {
-                if model.chatPage.isLoading {
+            if visibleChats.isEmpty {
+                if search.hasChatQuery {
+                    ContentUnavailableView(search.chatStatus == .ready ? "Диалоги не найдены" : "Поиск диалогов", systemImage: "magnifyingglass", description: Text(search.chatStatus == .ready ? "Попробуйте другое название. В кэше могут быть ещё не загружены все диалоги." : "Результаты появятся после завершения запроса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if model.chatPage.isLoading {
                     ProgressView("Загрузка диалогов…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ContentUnavailableView(model.chatFolder == .archive ? "Нет загруженных архивных диалогов" : "Нет загруженных диалогов", systemImage: "bubble.left.and.bubble.right", description: Text(model.phase == .ready ? "В этом списке пока нет диалогов. Можно обновить загрузку." : "Диалоги появятся после подключения вашего отдельного сеанса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
                 List(selection: $model.selectedChatID) {
-                    ForEach(model.chats) { chat in
+                    ForEach(visibleChats) { chat in
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "bubble.left").foregroundStyle(.secondary).frame(width: 22)
                             VStack(alignment: .leading, spacing: 5) {
@@ -35,7 +48,7 @@ struct TelegramSidebarView: View {
                     }
                 }.listStyle(.inset).accessibilityIdentifier("telegram.chats")
             }
-            if model.phase == .ready {
+            if model.phase == .ready && !search.hasChatQuery {
                 TelegramPaginationBar(page: model.chatPage, prefix: "telegram.chatPage",
                     previous: model.loadOlderChats, next: model.loadNewerChats,
                     latest: model.showLatestChats, retry: model.retryChatPage)
@@ -51,6 +64,8 @@ struct TelegramSidebarView: View {
 
 struct TelegramDetailView: View {
     @ObservedObject var model: TelegramModel
+    @ObservedObject private var search: TelegramSearchModel
+    init(model: TelegramModel) { self.model = model; self.search = model.search }
     @State private var apiID = ""
     @State private var apiHash = ""
     @State private var phone = ""
@@ -120,35 +135,52 @@ struct TelegramDetailView: View {
     @ViewBuilder private var conversation: some View {
         if let chat = model.selectedChat {
             VStack(spacing: 0) {
-                HStack { VStack(alignment: .leading, spacing: 4) { Text(chat.title).font(.title2.bold()); Text(model.connectionDescription).font(.caption).foregroundStyle(.secondary) }; Spacer() }.padding(20)
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) { Text(chat.title).font(.title2.bold()); Text(model.connectionDescription).font(.caption).foregroundStyle(.secondary) }
+                    Spacer()
+                    TextField("Поиск сообщений в диалоге", text: $search.messageQuery)
+                        .textFieldStyle(.roundedBorder).frame(maxWidth: 300).accessibilityIdentifier("telegram.messageSearch")
+                }.padding(20)
                 Divider()
-                TelegramPaginationBar(page: model.historyPage, prefix: "telegram.historyPage",
-                    previous: model.loadOlderMessages, next: model.loadNewerMessages,
-                    latest: model.showLatestMessages, retry: model.retryHistoryPage).padding(12)
-                if model.messages.isEmpty {
-                    if model.historyPage.isLoading {
-                        ProgressView("Загрузка истории…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ContentUnavailableView("Нет загруженных сообщений", systemImage: "text.bubble", description: Text(model.historyPage.timedOut ? "Telegram пока не завершил загрузку. Можно повторить запрос этой страницы." : "В этом окне истории пока нет сообщений.")).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                if search.hasMessageQuery {
+                    messageSearchResults
                 } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 16) {
-                            ForEach(model.messages) { item in
-                                HStack(alignment: .top) {
-                                    if item.isOutgoing { Spacer(minLength: 44) }
-                                    VStack(alignment: .leading, spacing: 7) {
-                                        Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                        Text(item.text.isEmpty ? "Вложение или служебное сообщение" : item.text).textSelection(.enabled)
-                                        Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(.secondary)
-                                        if !item.delivery.isEmpty { Text(item.delivery).font(.caption).foregroundStyle(.secondary) }
-                                    }.padding(14).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                                    if !item.isOutgoing { Spacer(minLength: 44) }
-                                }.accessibilityIdentifier("telegram.message.\(item.id)")
-                            }
-                        }.padding(22)
-                    }.id(model.historyWindowID).defaultScrollAnchor(model.historyPage.isAtLatest ? .bottom : .top)
-                        .accessibilityIdentifier("telegram.messages")
+                    TelegramPaginationBar(page: model.historyPage, prefix: "telegram.historyPage",
+                        previous: model.loadOlderMessages, next: model.loadNewerMessages,
+                        latest: model.showLatestMessages, retry: model.retryHistoryPage).padding(12)
+                    if model.messages.isEmpty {
+                        if model.historyPage.isLoading {
+                            ProgressView("Загрузка истории…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            ContentUnavailableView("Нет загруженных сообщений", systemImage: "text.bubble", description: Text(model.historyPage.timedOut ? "Telegram пока не завершил загрузку. Можно повторить запрос этой страницы." : "В этом окне истории пока нет сообщений.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 16) {
+                                    ForEach(model.messages) { item in
+                                        HStack(alignment: .top) {
+                                            if item.isOutgoing { Spacer(minLength: 44) }
+                                            VStack(alignment: .leading, spacing: 7) {
+                                                Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                                Text(item.text.isEmpty ? "Вложение или служебное сообщение" : item.text).textSelection(.enabled)
+                                                Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(.secondary)
+                                                if !item.delivery.isEmpty { Text(item.delivery).font(.caption).foregroundStyle(.secondary) }
+                                            }.padding(14).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                                            if !item.isOutgoing { Spacer(minLength: 44) }
+                                        }.id(item.id).accessibilityIdentifier("telegram.message.\(item.id)")
+                                    }
+                                }.padding(22)
+                            }.id(model.historyWindowID).defaultScrollAnchor(model.historyPage.isAtLatest ? .bottom : .top)
+                                .accessibilityIdentifier("telegram.messages")
+                                .onChange(of: model.readyHistoryFocusID, initial: true) { _, focusID in
+                                    if let id = focusID {
+                                        proxy.scrollTo(id, anchor: .center)
+                                        model.clearHistoryFocus()
+                                    }
+                                }
+                        }
+                    }
                 }
                 Divider()
                 HStack(alignment: .bottom, spacing: 12) {
@@ -161,6 +193,41 @@ struct TelegramDetailView: View {
             ContentUnavailableView("Выберите диалог", systemImage: "bubble.left.and.bubble.right", description: Text("Здесь будет история выбранного диалога Telegram.")).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
+
+    private var messageSearchResults: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Найдено: \(search.totalMessages). Показано: \(search.messages.count)").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Закрыть поиск") { search.messageQuery = "" }.accessibilityIdentifier("telegram.messageSearch.close")
+            }.padding(.horizontal, 16).padding(.top, 12)
+            TelegramSearchStatusView(status: search.messageStatus, retry: search.retryMessages).padding(.horizontal, 16)
+            if search.messages.isEmpty {
+                ContentUnavailableView(search.messageStatus == .ready ? "Сообщения не найдены" : "Поиск сообщений", systemImage: "magnifyingglass", description: Text(search.messageStatus == .ready ? "Попробуйте другой запрос." : "Ожидаем результат запроса Telegram.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(search.messages) { item in
+                            HStack(alignment: .top, spacing: 16) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+                                    Text(item.text).lineLimit(4).multilineTextAlignment(.leading)
+                                }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+                                Button("В истории") { model.openSearchMessage(id: item.id) }
+                                    .buttonStyle(.bordered).controlSize(.small)
+                                    .accessibilityIdentifier("telegram.searchResult.\(item.id)")
+                            }
+                            Divider()
+                        }
+                    }.padding(16)
+                }.accessibilityIdentifier("telegram.searchResults")
+            }
+            if search.canLoadMoreMessages {
+                Button("Ещё результаты", action: search.loadMoreMessages).padding(.horizontal, 16).padding(.bottom, 12)
+                    .accessibilityIdentifier("telegram.messageSearch.more")
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 #if DEBUG
@@ -170,6 +237,8 @@ struct TelegramSyntheticPreviewView: View {
         VStack(spacing: 0) {
             Text("СИНТЕТИЧЕСКАЯ ПРОВЕРКА • личные аккаунты, база данных, сеть и отправка не используются")
                 .font(.caption.bold()).padding(10).frame(maxWidth: .infinity).background(.yellow.opacity(0.15))
+            Button("QA: ошибка следующего поискового запроса", action: model.search.failNextSyntheticMessageSearch)
+                .controlSize(.small).padding(6).accessibilityIdentifier("telegram.qa.failSearch")
             HStack(spacing: 0) {
                 TelegramSidebarView(model: model).frame(width: 320)
                 Divider()
@@ -179,6 +248,22 @@ struct TelegramSyntheticPreviewView: View {
     }
 }
 #endif
+
+private struct TelegramSearchStatusView: View {
+    let status: TelegramSearchStatus
+    let retry: () -> Void
+    var body: some View {
+        if status == .loading {
+            HStack { ProgressView().controlSize(.mini); Text("Поиск…").font(.caption).foregroundStyle(.secondary) }
+        } else if status == .failed || status == .timedOut {
+            HStack {
+                Text(status == .failed ? "Не удалось выполнить поиск. Показанные результаты сохранены." : "Поиск занимает больше времени. Можно повторить запрос.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Повторить", action: retry).controlSize(.small).accessibilityIdentifier("telegram.search.retry")
+            }
+        }
+    }
+}
 
 private struct TelegramPaginationBar: View {
     let page: TelegramPageNavigation

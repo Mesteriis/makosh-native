@@ -478,14 +478,21 @@ matrix remain unmeasured. See the status ledger for actual checks and failures.
 
 ## Peer profile and explicit dossier linking
 
-Click the conversation header to open the person's profile, following
-TelegramSwift's title-bar entry and profile/phone/username ordering. This slice
-reads the selected account's cached `TelegramUser` only after that action. Its
-observation timestamp describes the local cache read, not a fresh server fetch.
-No contact-list scan, system Contacts access or extra profile network request is
-performed. Group/channel/secret-chat profiles and bots as person dossiers are
-not supported here. A profile without a name can be viewed but not linked yet.
-Photos, presence, about text and other reference profile actions remain open.
+Click the conversation header to open the selected peer's profile, following
+TelegramSwift's title-bar entry and profile/phone/username ordering. The card
+supports people, bots, basic groups, supergroups and channels. Available native
+cached descriptions and participant/subscriber counts are shown; an unknown
+count remains unavailable rather than becoming zero. Native scam/fake flags
+are displayed and suppress the description, following the reference.
+
+Opening the card subscribes to the selected account's native
+`viewTracker.peerView(updateData: true)`: cached observations arrive immediately
+and the engine can refresh the peer data. The timestamp describes a local cache
+observation, not an acknowledged server fetch. No contact-list scan or system
+Contacts access is performed. Groups, channels and bots cannot be linked to a
+person dossier; a person without a name can be viewed but not linked yet.
+Secret-chat profiles, photos, presence, member lists, administration and other
+reference profile actions remain open.
 
 The profile offers explicit creation of a new dossier or selection of an existing
 PostgreSQL contact. Existing-source ownership opens that dossier or permits an
@@ -499,12 +506,16 @@ under its row lock, including concurrent app instances. Duplicate snapshots are
 idempotent; older snapshots cannot replace newer source data. New observations
 and attachments advance revisions so stale merge undo stops.
 
-Profile requests have account/chat/request guards and a 30-second deadline.
-Closing the profile, changing the chat or stopping the account cancels the read;
-the same context is checked immediately before a dossier write. The Postbox
-transaction body is built outside MainActor and tested against an actual
-encrypted synthetic Postbox. A known committed write disables repeat linking
-even if refreshing the workspace fails afterwards.
+Profile observations have account/chat/request guards and a 30-second deadline
+for the first value. Later native peer/cache updates retain the same guarded
+request. Closing the card, changing the chat, hiding Telegram through the service
+selector or stopping the account disposes observation; this does not guarantee
+cancellation of an already issued engine RPC. Only the immutable Sendable DTO
+crosses to MainActor. The current snapshot and person kind are checked again
+immediately before a dossier write. A real encrypted synthetic Postbox regression
+observes initial and changed peer/description values; it does not exercise a real
+Account/ViewTracker RPC. A known committed write disables repeat linking even
+if refreshing the workspace fails afterwards.
 
 The DEBUG-only `--telegram-dossier-synthetic-preview` branch exercises the real
 workspace/profile controls with in-memory Telegram fixtures and PostgreSQL.
@@ -516,6 +527,11 @@ network, real sending or normal archive configuration are opened in this branch.
 Release builds exclude it. Native create/link/persistence checks passed;
 opening the full dossier still has the UI-automation limitation recorded in
 `development-status.md` and is not claimed accepted.
+
+The DEBUG-only `--telegram-peer-profiles-synthetic-preview` flag uses that same
+workspace and explicit isolated database contract. Dialogs 1–7 cover a person,
+group, channel, supergroup, bot, unknown-count scam channel and zero-count fake
+supergroup. These are in-memory fixtures, not server-refresh acceptance.
 
 ## Offline navigation UI check
 

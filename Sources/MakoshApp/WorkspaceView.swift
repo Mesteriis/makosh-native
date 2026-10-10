@@ -88,7 +88,7 @@ final class WorkspaceModel: ObservableObject {
     }
     func linkTelegramProfile(_ profile: TelegramContactProfile, telegram: TelegramModel,
                              contextID: UUID, contactID: UUID?) -> UUID? {
-        guard telegram.isCurrentContactProfile(profile, contextID: contextID), !profile.isBot else {
+        guard telegram.isCurrentContactProfile(profile, contextID: contextID), profile.isPerson else {
             error = "Карточка собеседника изменилась. Откройте её заново."
             return nil
         }

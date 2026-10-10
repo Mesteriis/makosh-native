@@ -1387,3 +1387,65 @@ Quick Look format coverage beyond synthetic text, large-media performance,
 crash cleanup, portable archive/key backup and the remaining Telegram/reference
 features are open. The sequential migration goal remains active. Hosted CI is
 checked separately for each published head.
+
+## Reactive Telegram peer cards in the shared workspace — 2026-10-10
+
+The existing conversation-header card now supports people, bots, basic groups,
+supergroups and channels. It follows the selected reference's native peer-view
+subscription and displays available descriptions/counts, distinguishes unknown
+counts from zero, and preserves native scam/fake warnings while hiding their
+descriptions. The engine maps the peer/cache observation to an immutable
+Sendable DTO before main delivery. Account/chat/request and exact-snapshot guards
+remain active for subsequent updates. Closing the card or leaving Telegram
+disposes observation; an already issued engine RPC is not claimed cancelled.
+Groups, channels and bots cannot be attached to a person dossier, including at
+the workspace write boundary. The existing person linking workflow remains.
+
+Normal Telegram stays inside WorkspaceView: shared service selector, dialog list
+and conversation. The new DEBUG fixture uses that same root and an explicitly
+isolated PostgreSQL schema, without personal account or Telegram network access.
+No outer GPLv2 UI/assets were copied and no research-folder runtime dependency
+was added.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; PostgreSQL/S3 healthy.
+- Final `scripts/test.sh`: exit 0, **312 XCTest (249 Telegram + 63 core),
+  0 failures; 24 Python regressions**. Mapping tests cover native peer kinds,
+  description/count availability, namespace rejection and scam/fake suppression.
+  Three new model regressions cover later guarded updates, initially unavailable
+  data recovering on the same request, and dismissed/reloaded request rejection.
+  An actual encrypted synthetic Postbox test observes initial and changed
+  name/about values. It does not exercise a real Account/ViewTracker RPC or a
+  separate group/channel cached-data update integration. Twenty upstream t19
+  fixture-teardown diagnostics remain separately visible after the passing suite.
+- Intermediate compile failures remain private: passing a native PeerView across
+  actor isolation, using a switch directly as an argument, and an incorrectly
+  named engine flag type in a test. Moving DTO mapping before main delivery,
+  assigning the switch value and using pinned `UserInfoFlags` resolved them.
+- Final `scripts/build-app.sh`: exit 0, signed Debug build with strict ad-hoc
+  verification. No production edits followed the passing full tests/build.
+- Native AX and screenshots established **11 focused conditions**: group,
+  channel, supergroup, bot, unknown count, zero count, preserved person dossier
+  action, exact draft input, honest unconnected mail, retained chat/draft after
+  Mail/Telegram switching, and profile reopening after return. The draft was
+  cleared afterward. Root verified the copied unsigned executable payload,
+  exact synthetic process arguments and private isolated configuration. No
+  personal account, Keychain, private Telegram content or Telegram send was used.
+- Final project XERJ refresh/check: exit 0, **191 files, 161/161 classified code**;
+  prepared engine and locked TelegramSwift freshness checks passed. Retrieved
+  peer-view, description and count behavior was confirmed against current source.
+  Root verified all eleven final reviewed source/test hashes. Worker runtime
+  gates were not run; route/model/usage remain unknown and no quorum was used.
+- `git diff --check`: exit 0. Publication audit checked **196 publishable files**
+  and the private PR body against five selected local credential fields, with
+  zero matches. Hosted checks are recorded separately for the published head.
+
+Live server-refresh acceptance, secret-chat profiles, photos/presence, member
+lists/administration, other reference screens, archive/key backup and subsequent
+channels remain open. The sequential migration goal remains active.
+
+The preceding head `fc12c2d84b4fec9242acb00204711a16ba270ccd` passed
+[PR CI 38077756700](https://github.com/Mesteriis/makosh-native/actions/runs/38077756700)
+and [push CI 38077753148](https://github.com/Mesteriis/makosh-native/actions/runs/38077753148).
+These results do not establish hosted CI for the new peer-card change.

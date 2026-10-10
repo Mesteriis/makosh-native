@@ -64,5 +64,69 @@ final class TelegramContactProfileModelTests: XCTestCase {
         XCTAssertEqual(model.contactProfileState, .idle)
         XCTAssertFalse(model.isCurrentContactProfile(profile, contextID: context))
     }
+    @MainActor func testReactiveGroupAndChannelUpdatesRetainRequestAndInvalidateOlderSnapshot() throws {
+        for kind: TelegramContactProfile.Kind in [.group, .channel, .supergroup, .bot] {
+            let model = TelegramModel.syntheticPreview()
+            let chatID = try XCTUnwrap(model.chats.first).id
+            model.selectedChatID = chatID
+            let request = UUID(), context = model.contactProfileContextID
+            model.contactProfileRequestID = request
+            let first = TelegramContactProfile(accountID: -1, peerID: chatID, displayName: "Initial",
+                username: nil, phone: nil, kind: kind, about: "First description", memberCount: nil,
+                observedAt: Date(timeIntervalSince1970: 100))
+            model.receiveContactProfile(first, requestID: request, contextID: context, accountID: -1, chatID: chatID)
+            XCTAssertEqual(model.contactProfileState, .ready(first))
+            XCTAssertEqual(model.contactProfileRequestID, request)
+            XCTAssertTrue(model.isCurrentContactProfile(first, contextID: context))
+            XCTAssertFalse(first.isPerson, "Group/channel/bot profiles must not become human dossier candidates")
+            let second = TelegramContactProfile(accountID: -1, peerID: chatID, displayName: "Updated",
+                username: "synthetic", phone: nil, kind: kind, about: "Updated description", memberCount: 42,
+                isScam: false, isFake: true, observedAt: Date(timeIntervalSince1970: 101))
+            model.receiveContactProfile(second, requestID: request, contextID: context, accountID: -1, chatID: chatID)
+            XCTAssertEqual(model.contactProfileState, .ready(second))
+            XCTAssertEqual(model.contactProfileRequestID, request)
+            XCTAssertFalse(model.isCurrentContactProfile(first, contextID: context))
+            XCTAssertTrue(model.isCurrentContactProfile(second, contextID: context))
+        }
+    }
+
+    @MainActor func testInitiallyUnavailableProfileRecoversOnSameRequestButRejectsWrongScope() throws {
+        let model = TelegramModel.syntheticPreview()
+        let chatID = try XCTUnwrap(model.chats.first).id
+        model.selectedChatID = chatID
+        let request = UUID(), context = model.contactProfileContextID
+        model.contactProfileRequestID = request
+        model.receiveContactProfile(nil, requestID: request, contextID: context, accountID: -1, chatID: chatID)
+        guard case .unavailable = model.contactProfileState else { return XCTFail("Expected initial missing cache") }
+        XCTAssertEqual(model.contactProfileRequestID, request)
+        let recovered = TelegramContactProfile(accountID: -1, peerID: chatID, displayName: "Recovered group",
+            username: nil, phone: nil, kind: .group, observedAt: Date(timeIntervalSince1970: 102))
+        let unavailable = model.contactProfileState
+        for scope in [(UUID(), context, Int64(-1), chatID), (request, UUID(), -1, chatID),
+                      (request, context, -2, chatID), (request, context, -1, chatID + 1)] {
+            model.receiveContactProfile(recovered, requestID: scope.0, contextID: scope.1, accountID: scope.2, chatID: scope.3)
+            XCTAssertEqual(model.contactProfileState, unavailable)
+        }
+        model.receiveContactProfile(recovered, requestID: request, contextID: context, accountID: -1, chatID: chatID)
+        XCTAssertEqual(model.contactProfileState, .ready(recovered))
+    }
+
+    @MainActor func testDismissAndReloadSameSelectionRejectsOldReactiveCallbacks() throws {
+        let model = TelegramModel.syntheticPreview()
+        let chatID = try XCTUnwrap(model.chats.first).id
+        model.selectedChatID = chatID; model.loadContactProfile()
+        let oldRequest = try XCTUnwrap(model.contactProfileRequestID), context = model.contactProfileContextID
+        guard case let .ready(oldProfile) = model.contactProfileState else { return XCTFail("Expected synthetic profile") }
+        model.cancelContactProfile(); model.loadContactProfile()
+        let newRequest = try XCTUnwrap(model.contactProfileRequestID)
+        XCTAssertNotEqual(oldRequest, newRequest)
+        let current = model.contactProfileState
+        model.receiveContactProfile(nil, requestID: oldRequest, contextID: context, accountID: -1, chatID: chatID)
+        XCTAssertEqual(model.contactProfileState, current)
+        model.receiveContactProfile(oldProfile, requestID: oldRequest, contextID: context, accountID: -1, chatID: chatID)
+        XCTAssertEqual(model.contactProfileState, current)
+        XCTAssertEqual(model.contactProfileRequestID, newRequest)
+    }
+
 }
 #endif

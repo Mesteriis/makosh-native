@@ -188,6 +188,7 @@ public final class TelegramModel: ObservableObject {
     private var contactProfileTimeout: Task<Void, Never>?
     #if DEBUG
     private var preview: TelegramSyntheticPages?
+    private var peerProfilesPreview = false
     #endif
     private var draftAccountID: Int64? {
         if isSyntheticPreview { return -1 }
@@ -313,8 +314,8 @@ public final class TelegramModel: ObservableObject {
            draft.utf8.elementsEqual(text.utf8) { displayDraft("") }
     }
 
-    /// Explicit profile opening reads only the selected account's local peer.
-    /// The timestamp records this cache observation, not a fresh server fetch.
+    /// Explicit opening observes only the selected account's peer view and asks
+    /// the native tracker to refresh it. Observation time is not a server ACK.
     public func loadContactProfile() {
         cancelContactProfile()
         guard phase == .ready, let chat = selectedChat, let accountID = draftAccountID else { return }
@@ -323,9 +324,11 @@ public final class TelegramModel: ObservableObject {
         contactProfileState = .loading
         #if DEBUG
         if isSyntheticPreview {
-            receiveContactProfile(TelegramContactProfile(accountID: accountID, peerID: chat.id,
+            let profile = peerProfilesPreview ? telegramSyntheticPeerProfile(chat: chat, accountID: accountID)
+                : TelegramContactProfile(accountID: accountID, peerID: chat.id,
                 displayName: chat.title, username: "synthetic_\(chat.id)", phone: "10000000000",
-                isBot: false, observedAt: Date()), requestID: requestID,
+                isBot: false, observedAt: Date())
+            receiveContactProfile(profile, requestID: requestID,
                 contextID: contextID, accountID: accountID, chatID: chat.id)
             return
         }
@@ -339,11 +342,10 @@ public final class TelegramModel: ObservableObject {
             self.contactProfileTimeout = nil
             self.contactProfileState = .unavailable("Карточка пока не загрузилась. Повторите запрос.")
         }
-        contactProfileSubscription.set((telegramContactProfilePeer(postbox: account.postbox, peerID: chat.id)
-            |> deliverOnMainQueue).start(next: { [weak self] peer in
+        contactProfileSubscription.set(telegramPeerProfileSignal(account: account, peerID: chat.id,
+            accountID: accountID).start(next: { [weak self] profile in
             MainActor.assumeIsolated {
-                self?.receiveContactProfile(peer.flatMap { telegramContactProfile(peer: $0,
-                    accountID: accountID, observedAt: Date()) }, requestID: requestID,
+                self?.receiveContactProfile(profile, requestID: requestID,
                     contextID: contextID, accountID: accountID, chatID: chat.id)
             }
         }))
@@ -355,9 +357,9 @@ public final class TelegramModel: ObservableObject {
               accountID == draftAccountID, chatID == selectedChatID,
               profile == nil || (profile?.accountID == accountID && profile?.peerID == chatID) else { return }
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
-        contactProfileRequestID = nil
+        // The same guarded request owns subsequent native peer/cache updates.
         contactProfileState = profile.map(TelegramContactProfileState.ready)
-            ?? .unavailable("Карточка человека недоступна. Группы, каналы и секретные чаты пока не поддерживаются.")
+            ?? .unavailable("Сведения о диалоге пока недоступны. Секретные чаты в этой карточке ещё не поддерживаются.")
     }
 
     public func isCurrentContactProfile(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
@@ -924,6 +926,12 @@ public final class TelegramModel: ObservableObject {
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"
         model.loadChatList(clear: true)
+        return model
+    }
+
+    public static func syntheticPeerProfilesPreview() -> TelegramModel {
+        let model = syntheticPreview()
+        model.peerProfilesPreview = true
         return model
     }
     #endif

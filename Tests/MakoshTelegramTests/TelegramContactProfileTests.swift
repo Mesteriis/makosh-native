@@ -9,12 +9,12 @@ import TelegramCore
 
     private func user(first: String? = "Synthetic", last: String? = "Person",
                       username: String? = "synthetic_user", phone: String? = "10000000000",
-                      bot: Bool = false, secretNamespace: Bool = false) -> TelegramUser {
+                      bot: Bool = false, flags: UserInfoFlags = [], secretNamespace: Bool = false) -> TelegramUser {
         TelegramUser(id: PeerId(namespace: secretNamespace ? Namespaces.Peer.SecretChat : Namespaces.Peer.CloudUser,
             id: ._internalFromInt64Value(42)), accessHash: nil, firstName: first, lastName: last,
             username: username, phone: phone, photo: [],
             botInfo: bot ? BotUserInfo(flags: [], inlinePlaceholder: nil) : nil,
-            restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil,
+            restrictionInfo: nil, flags: flags, emojiStatus: nil, usernames: [], storiesHidden: nil,
             nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
             subscriberCount: nil, verificationIconFileId: nil)
     }
@@ -50,7 +50,7 @@ import TelegramCore
         XCTAssertEqual(raw.username, ""); XCTAssertEqual(raw.phone, "")
     }
 
-    func testGroupChannelAndWrongUserNamespaceAreRejected() {
+    func testGroupChannelAndWrongUserNamespaceAreRejected() throws {
         let group = TelegramGroup(id: PeerId(namespace: Namespaces.Peer.CloudGroup, id: ._internalFromInt64Value(42)),
             title: "Synthetic", photo: [], participantCount: 2, role: .member, membership: .Member,
             flags: [], defaultBannedRights: nil, migrationReference: nil, creationDate: 0, version: 1)
@@ -61,8 +61,47 @@ import TelegramCore
             usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil,
             profileBackgroundEmojiId: nil, emojiStatus: nil, approximateBoostLevel: nil,
             subscriptionUntilDate: nil, verificationIconFileId: nil, sendPaidMessageStars: nil, linkedMonoforumId: nil)
-        XCTAssertNil(telegramContactProfile(peer: group, accountID: 1, observedAt: observed))
-        XCTAssertNil(telegramContactProfile(peer: channel, accountID: 1, observedAt: observed))
+        let basic = try XCTUnwrap(telegramContactProfile(peer: group, accountID: 1, observedAt: observed,
+            cachedData: CachedGroupData().withUpdatedAbout("Group about")))
+        XCTAssertEqual(basic.kind, .group); XCTAssertEqual(basic.memberCount, 2)
+        XCTAssertEqual(basic.about, "Group about"); XCTAssertFalse(basic.isPerson)
+        XCTAssertNil(basic.phone); XCTAssertNil(basic.username)
+        let broadcast = try XCTUnwrap(telegramContactProfile(peer: channel, accountID: 1, observedAt: observed,
+            cachedData: CachedChannelData().withUpdatedAbout("Channel about").withUpdatedParticipantsSummary(
+                CachedChannelParticipantsSummary(memberCount: 37, adminCount: nil, bannedCount: nil, kickedCount: nil))))
+        XCTAssertEqual(broadcast.kind, .channel); XCTAssertEqual(broadcast.memberCount, 37)
+        XCTAssertEqual(broadcast.about, "Channel about")
+        XCTAssertEqual(telegramContactProfile(peer: channel, accountID: 1, observedAt: observed,
+            cachedData: CachedChannelData().withUpdatedParticipantsSummary(
+                CachedChannelParticipantsSummary(memberCount: 0, adminCount: nil, bannedCount: nil, kickedCount: nil)))?.memberCount, 0)
+        XCTAssertNil(telegramContactProfile(peer: channel, accountID: 1, observedAt: observed)?.memberCount)
+        let supergroup = channel.withUpdatedInfo(.group(TelegramChannelGroupInfo(flags: [])))
+        let discussion = try XCTUnwrap(telegramContactProfile(peer: supergroup, accountID: 2, observedAt: observed,
+            cachedData: CachedChannelData().withUpdatedParticipantsSummary(
+                CachedChannelParticipantsSummary(memberCount: -1, adminCount: nil, bannedCount: nil, kickedCount: nil))))
+        XCTAssertEqual(discussion.kind, .supergroup); XCTAssertNil(discussion.memberCount)
+        XCTAssertEqual(discussion.peerID, supergroup.id.toInt64()); XCTAssertEqual(discussion.accountID, 2)
+        for flags: TelegramChannelFlags in [.isScam, .isFake] {
+            let flagged = try XCTUnwrap(telegramContactProfile(peer: channel.withUpdatedFlags(flags),
+                accountID: 1, observedAt: observed, cachedData: CachedChannelData().withUpdatedAbout("Hidden")))
+            XCTAssertNil(flagged.about)
+            XCTAssertEqual(flagged.isScam, flags.contains(.isScam))
+            XCTAssertEqual(flagged.isFake, flags.contains(.isFake))
+        }
         XCTAssertNil(telegramContactProfile(peer: user(secretNamespace: true), accountID: 1, observedAt: observed))
+    }
+
+    func testUserAboutAndScamFakeSuppression() throws {
+        let cached = CachedUserData().withUpdatedAbout("Synthetic biography")
+        let normal = try XCTUnwrap(telegramContactProfile(peer: user(), accountID: 1, observedAt: observed, cachedData: cached))
+        XCTAssertTrue(normal.isPerson); XCTAssertEqual(normal.about, "Synthetic biography")
+        XCTAssertNil(normal.memberCount)
+        for flags: UserInfoFlags in [.isScam, .isFake] {
+            let flagged = try XCTUnwrap(telegramContactProfile(peer: user(flags: flags), accountID: 1,
+                observedAt: observed, cachedData: cached))
+            XCTAssertNil(flagged.about)
+            XCTAssertEqual(flagged.isScam, flags.contains(.isScam))
+            XCTAssertEqual(flagged.isFake, flags.contains(.isFake))
+        }
     }
 }

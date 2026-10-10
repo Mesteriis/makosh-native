@@ -35,19 +35,39 @@ struct TelegramContactProfileView: View {
                             TelegramChatAvatar(title: profile.displayName, size: 72)
                             Text(profile.displayName.isEmpty ? "Имя не опубликовано" : profile.displayName)
                                 .font(.title2.weight(.semibold)).textSelection(.enabled)
-                            if profile.isBot { Text("Бот").foregroundStyle(.secondary) }
+                            Text(profile.kind.profileTitle).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("telegram.profile.kind")
+                            if profile.isScam || profile.isFake {
+                                Label(profile.isScam ? "Пометка Telegram: мошенничество" : "Пометка Telegram: поддельный аккаунт",
+                                    systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                                    .accessibilityIdentifier("telegram.profile.warning")
+                            }
                         }.frame(maxWidth: .infinity).padding(.vertical, 12)
                     }
                     Section {
-                        if let phone = profile.phone, !phone.isEmpty {
-                            LabeledContent("Телефон") { Text(phone).textSelection(.enabled) }
-                        } else { LabeledContent("Телефон", value: "Недоступен") }
+                        if profile.isPerson || profile.isBot {
+                            if let phone = profile.phone, !phone.isEmpty {
+                                LabeledContent("Телефон") { Text(phone).textSelection(.enabled) }
+                            } else { LabeledContent("Телефон", value: "Недоступен") }
+                        } else {
+                            LabeledContent(profile.kind == .channel ? "Подписчики" : "Участники",
+                                value: profile.memberCount.map { $0.formatted() } ?? "Недоступно")
+                                .accessibilityIdentifier("telegram.profile.memberCount")
+                        }
                         if let username = profile.username, !username.isEmpty {
                             LabeledContent("Имя пользователя") { Text("@" + username).textSelection(.enabled) }
                         }
                     }
+                    if let about = profile.about, !about.isEmpty {
+                        Section {
+                            Text(about).textSelection(.enabled).accessibilityIdentifier("telegram.profile.about")
+                        } header: { Text("Описание") }
+                    }
                     Section {
-                        if let dossier {
+                        if !profile.isPerson {
+                            Text("Этот диалог не связывается с досье человека.").foregroundStyle(.secondary)
+                                .accessibilityIdentifier("telegram.profile.notPerson")
+                        } else if let dossier {
                             TelegramDossierLinkView(workspace: dossier, telegram: model, profile: profile,
                                 contextID: contextID) { id in dismiss(); openDossier(id) }
                         } else {
@@ -55,7 +75,9 @@ struct TelegramContactProfileView: View {
                         }
                     } header: { Text("Досье Макоша") }
                     Section {
-                        Text("Сведения из локального кэша Telegram · \(profile.observedAt.formatted(date: .abbreviated, time: .shortened))")
+                        Text("Наблюдение кэша Telegram · \(profile.observedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text("Карточка обновляется при получении сведений от Telegram.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }.formStyle(.grouped)
@@ -84,7 +106,7 @@ private struct TelegramDossierLinkView: View {
     }
     private var canLink: Bool {
         workspace.ready && telegram.isCurrentContactProfile(profile, contextID: contextID)
-            && !profile.isBot && !profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && profile.isPerson && !profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (!existing || workspace.contacts.contains { $0.id == targetID })
     }
     var body: some View {
@@ -104,8 +126,9 @@ private struct TelegramDossierLinkView: View {
                 Text("Источник связан с досье.").font(.caption).foregroundStyle(.secondary)
                     .accessibilityIdentifier("telegram.profile.linked")
             }
-        } else if profile.isBot {
-            Text("Досье человека для бота не создаётся.").foregroundStyle(.secondary)
+        } else if !profile.isPerson {
+            Text("Этот диалог не связывается с досье человека.").foregroundStyle(.secondary)
+                .accessibilityIdentifier("telegram.profile.notPerson")
         } else if profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text("В карточке нет имени. Привязка станет доступна после его появления в Telegram.").foregroundStyle(.secondary)
         } else {
@@ -137,5 +160,17 @@ private struct TelegramDossierLinkView: View {
     private func link(to id: UUID?) {
         guard canLink else { return }
         committedID = workspace.linkTelegramProfile(profile, telegram: telegram, contextID: contextID, contactID: id)
+    }
+}
+
+private extension TelegramContactProfile.Kind {
+    var profileTitle: String {
+        switch self {
+        case .person: "Пользователь"
+        case .bot: "Бот"
+        case .group: "Группа"
+        case .supergroup: "Супергруппа"
+        case .channel: "Канал"
+        }
     }
 }

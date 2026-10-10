@@ -5,14 +5,15 @@ import SwiftSignalKit
 @testable import Postbox
 @testable import MakoshTelegram
 
-private func seedContactProfile(_ box: Postbox, peerID: PeerId) -> Signal<Void, NoError> {
+private func seedContactProfile(_ box: Postbox, peerID: PeerId, name: String = "Synthetic", about: String? = nil) -> Signal<Void, NoError> {
     box.transaction { transaction in
-        let peer = TelegramUser(id: peerID, accessHash: nil, firstName: "Synthetic", lastName: "Profile",
+        let peer = TelegramUser(id: peerID, accessHash: nil, firstName: name, lastName: "Profile",
             username: "synthetic_profile", phone: "10000000000", photo: [], botInfo: nil,
             restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil,
             nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
             subscriberCount: nil, verificationIconFileId: nil)
         transaction.updatePeersInternal([peer], update: { _, new in new })
+        transaction.updatePeerCachedData(peerIds: [peerID], update: { _, _ in CachedUserData().withUpdatedAbout(about) })
     }
 }
 
@@ -66,6 +67,27 @@ private func seedContactProfile(_ box: Postbox, peerID: PeerId) -> Signal<Void, 
         XCTAssertEqual(profile?.phone, "10000000000")
         XCTAssertEqual(profile?.accountID, 99); XCTAssertEqual(profile?.peerID, peerID.toInt64())
         XCTAssertEqual(profile?.observedAt, observedAt)
+        let initialView = expectation(description: "Reactive initial profile")
+        let changedView = expectation(description: "Reactive cached data and peer update")
+        var sawInitial = false
+        var sawChange = false
+        let reactive = (box.peerView(id: peerID) |> deliverOnMainQueue).start(next: { view in
+            guard let peer = view.peers[peerID], let value = telegramContactProfile(peer: peer,
+                accountID: 99, observedAt: observedAt, cachedData: view.cachedData) else { return }
+            if value.displayName == "Synthetic Profile", !sawInitial {
+                sawInitial = true; initialView.fulfill()
+            }
+            if value.displayName == "Updated Profile", value.about == "Updated biography", !sawChange {
+                sawChange = true; changedView.fulfill()
+            }
+        })
+        defer { reactive.dispose() }
+        await fulfillment(of: [initialView], timeout: 20)
+        let updated = expectation(description: "Reactive profile update commits")
+        let updater = (seedContactProfile(box, peerID: peerID, name: "Updated", about: "Updated biography")
+            |> deliverOnMainQueue).start(next: { updated.fulfill() })
+        defer { updater.dispose() }
+        await fulfillment(of: [updated, changedView], timeout: 20)
         let missing = expectation(description: "Missing peer returns nil")
         let absent = (telegramContactProfilePeer(postbox: box, peerID: peerID.toInt64() + 1)
             |> deliverOnMainQueue).start(next: { peer in XCTAssertNil(peer); missing.fulfill() })

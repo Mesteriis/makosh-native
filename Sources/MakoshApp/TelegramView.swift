@@ -87,7 +87,10 @@ struct TelegramDetailView: View {
                 attachmentActions.cancel(); playback.stop()
                 if search.hasMessageQuery { messageSearchPresented = true }
             }
-            .onDisappear { attachmentActions.cancel(); model.cancelMediaLoads() }
+            .onDisappear {
+                attachmentActions.cancel(); model.cancelMediaLoads()
+                profilePresented = false; model.cancelContactProfile()
+            }
             .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
                 TelegramContactProfileView(model: model, dossier: dossier,

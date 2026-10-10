@@ -21,18 +21,29 @@ public struct TelegramContactProfile: Equatable, Sendable {
     public let displayName: String
     public let username: String?
     public let phone: String?
-    public let isBot: Bool
+    public enum Kind: Equatable, Sendable { case person, bot, group, supergroup, channel }
+    public let kind: Kind
+    public let about: String?
+    public let memberCount: Int?
+    public let isScam: Bool
+    public let isFake: Bool
+    public var isBot: Bool { kind == .bot }
+    public var isPerson: Bool { kind == .person }
     public let observedAt: Date
 
     public init(accountID: Int64, peerID: Int64, displayName: String, username: String?,
                 phone: String?, isBot: Bool, observedAt: Date) {
-        self.accountID = accountID
-        self.peerID = peerID
-        self.displayName = displayName
-        self.username = username
-        self.phone = phone
-        self.isBot = isBot
-        self.observedAt = observedAt
+        self.init(accountID: accountID, peerID: peerID, displayName: displayName, username: username,
+            phone: phone, kind: isBot ? .bot : .person, observedAt: observedAt)
+    }
+
+    public init(accountID: Int64, peerID: Int64, displayName: String, username: String?,
+                phone: String?, kind: Kind, about: String? = nil, memberCount: Int? = nil,
+                isScam: Bool = false, isFake: Bool = false, observedAt: Date) {
+        self.accountID = accountID; self.peerID = peerID; self.displayName = displayName
+        self.username = username; self.phone = phone; self.kind = kind
+        self.about = about; self.memberCount = memberCount
+        self.isScam = isScam; self.isFake = isFake; self.observedAt = observedAt
     }
 
     public var dossierIdentity: ServiceIdentity {
@@ -46,10 +57,29 @@ public struct TelegramContactProfile: Equatable, Sendable {
     }
 }
 
-@MainActor public func telegramContactProfile(peer: Peer, accountID: Int64,
-                                            observedAt: Date) -> TelegramContactProfile? {
-    guard let user = peer as? TelegramUser, user.id.namespace == Namespaces.Peer.CloudUser else { return nil }
-    return TelegramContactProfile(accountID: accountID, peerID: user.id.toInt64(),
-        displayName: [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " "),
-        username: user.username, phone: user.phone, isBot: user.botInfo != nil, observedAt: observedAt)
+public func telegramContactProfile(peer: Peer, accountID: Int64,
+    observedAt: Date, cachedData: CachedPeerData? = nil) -> TelegramContactProfile? {
+    let kind: TelegramContactProfile.Kind, name: String, username: String?, phone: String?
+    let about: String?, count: Int?, scam: Bool, fake: Bool
+    if let user = peer as? TelegramUser, user.id.namespace == Namespaces.Peer.CloudUser {
+        kind = user.botInfo == nil ? .person : .bot
+        name = [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+        username = user.username; phone = user.phone
+        about = (cachedData as? CachedUserData)?.about; count = nil
+        scam = user.flags.contains(.isScam); fake = user.flags.contains(.isFake)
+    } else if let group = peer as? TelegramGroup, group.id.namespace == Namespaces.Peer.CloudGroup {
+        kind = .group; name = group.title; username = nil; phone = nil
+        about = (cachedData as? CachedGroupData)?.about
+        count = group.participantCount >= 0 ? group.participantCount : nil
+        scam = false; fake = false
+    } else if let channel = peer as? TelegramChannel, channel.id.namespace == Namespaces.Peer.CloudChannel {
+        switch channel.info { case .broadcast: kind = .channel; case .group: kind = .supergroup }
+        name = channel.title; username = channel.username; phone = nil
+        about = (cachedData as? CachedChannelData)?.about
+        count = (cachedData as? CachedChannelData)?.participantsSummary.memberCount.flatMap { $0 >= 0 ? Int($0) : nil }
+        scam = channel.flags.contains(.isScam); fake = channel.flags.contains(.isFake)
+    } else { return nil }
+    return TelegramContactProfile(accountID: accountID, peerID: peer.id.toInt64(), displayName: name,
+        username: username, phone: phone, kind: kind, about: scam || fake ? nil : about,
+        memberCount: count, isScam: scam, isFake: fake, observedAt: observedAt)
 }

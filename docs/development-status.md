@@ -1510,3 +1510,76 @@ The preceding head `41bd0f1d3d9d5e13b0d1144034c7c806dc8441ad` passed
 [PR CI 38078692061](https://github.com/Mesteriis/makosh-native/actions/runs/38078692061)
 and [push CI 38078688295](https://github.com/Mesteriis/makosh-native/actions/runs/38078688295).
 These results do not establish hosted CI for this avatar/status change.
+
+## Static peer-photo gallery and calendar presence — 2026-10-10
+
+The peer-card avatar now opens a static native-photo gallery inside the shared
+WorkspaceView. Its guarded account session supplies immutable metadata and
+complete-file events, prefers cached personal/photo data, uses a current-avatar
+fallback and preserves historical avatar-list references. The gallery offers
+name/date/position, partial total count, mouse/keyboard navigation and separate
+list/image retry. Empty RPC results remain ambiguous in the UI. Closing, changing
+the peer or rebinding the account cancels the selected lease/session and rejects
+late results. Synchronous list callbacks are covered. These transient MediaBox
+photos are separate from retained message attachment bytes in encrypted S3.
+
+Cached presence now follows reference calendar wording: same-day hours,
+yesterday with local time, then day/month/year. Hour, midnight and year refresh
+deadlines preserve native Unix timestamps and account for server offset and
+23/25-hour DST days. No new personal-account access is involved.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; existing PostgreSQL/S3 healthy.
+- Final `scripts/test.sh`: exit 0, **344 XCTest (281 Telegram + 63 core),
+  zero failures; 24 Python regressions**. Thirteen new tests cover native photo
+  mapping, cache/reference fallbacks, list/image/context cancellation and stale
+  events, corrupt-image recovery, synchronous callbacks, navigation bounds,
+  current-profile admission and calendar/offset/DST boundaries. Initial mapping
+  compilation failed on inherited optional Media.id; native imageId fixed it
+  before the passing run. Twenty upstream t19 teardown diagnostics remain
+  separately visible.
+- Final `scripts/build-app.sh` and strict ad-hoc signature verification: exit 0.
+  Native QA first found a blank gallery title. The final UI-only fix passes the
+  name in an immutable Identifiable sheet item; this followed the full suite
+  and was covered by the final build and actual native checks below.
+- Final native AX/screenshots verified **25 focused conditions**: common service
+  selector; avatar/dossier actions; named gallery; initial position/date/partial
+  count; first image proportions; second photo/video-frame label; keyboard-right
+  corrupt third image without stale pixels; selected-image retry; recovered image
+  proportions; keyboard-left; mouse-back/boundary; Escape to profile; reopening
+  at the first photo; mouse close; profile close preserving conversation; empty
+  gallery without old pixels; empty retry; correct group-profile return; hours;
+  yesterday; exact draft input; honest disconnected mail; retained chat/draft/
+  status on return; draft cleanup; and gallery reopening after service switching.
+  An initial QA assertion incorrectly expected a person-link action on the
+  group card; actual group return was reinspected and correctly verified via its
+  not-person state. This was an assertion correction, not a product patch.
+  Unsigned final copied/built payloads matched. Root verified mode-0600 explicit
+  isolated configuration and exact synthetic process flags. No personal account,
+  Keychain, Telegram network or send was used.
+- Root reviewed the complete change and verified **11 final worker-reviewed
+  source/test hashes**, including the final title fix. The two new appearance
+  fixtures were reviewed by root. Worker runtime gates were not run; observed
+  model/provider and usage remain unknown, with no quorum. Root owns integration
+  checks; private evidence remains outside Git.
+- Final project XERJ refresh/check: exit 0, **210 files, 180/180 code**.
+  Engine and locked TelegramSwift fingerprints are current. Actual final query
+  retrieved the gallery controller and model opening guard, confirmed against
+  source. `git diff --check` passed. Publication audit checked **215 publishable
+  files** and the private PR body against five selected local credential fields,
+  with zero matches. Hosted CI is recorded for the exact published head separately.
+
+The gallery currently uses a sheet. Reference fullscreen/transition, thumbnail
+strip, zoom/rotation/save/share, extra public fallback photos, stories, animated
+avatars and list online badges remain open. The engine returns a bounded first
+page; complete photo-history pagination is not claimed. Gallery decoder admission
+is 20 MiB/8192 pixels per dimension/40 MP/1280-pixel thumbnail, not a network-byte
+cap. Native pending-fetch timeouts, real account/server refresh and clock changes
+without peer emissions remain unverified. Archive/key backup, other Telegram
+screens and later channels remain open; the sequential migration goal is active.
+
+The preceding avatar/status head `3eb5b6e3ea51ce1050cd6d083a5932c5fbfc35c0`
+passed [PR CI 38079890192](https://github.com/Mesteriis/makosh-native/actions/runs/38079890192)
+and [push CI 38079886120](https://github.com/Mesteriis/makosh-native/actions/runs/38079886120).
+These results do not establish hosted CI for this gallery change.

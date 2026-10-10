@@ -75,10 +75,24 @@ large representation. Собственный provider наблюдает native 
 `TextUtils.swift:1354–1439` и `ChatTitleBarView.swift:869–897` подтверждают expiry,
 approximate buckets, self/bot/support и optional counts. Макош использует
 immutable DTO, проверенный native server offset и отменяемый timer; отсутствие
-presence явно обозначено. Видеоаватары, галерея профиля и online badges в списке
-ещё не перенесены; live presence не заявлено проверенным.
-Для присутствия старше часа пока используется абсолютная дата: относительные
-часы и формулировки «сегодня»/«вчера» из референса ещё предстоит перенести.
+presence явно обозначено. `PresenceStrings.swift:104–137` также задаёт часы
+в текущем календарном дне, «вчера в HH:mm» и даты с годом для прошлых лет.
+Макош повторяет эти формулировки и обновляет их на границе часа, полуночи и года;
+календарные дни учитывают timezone/DST. Native Unix timestamp не сдвигается
+на server offset. Live presence отдельно не принято.
+
+Нажатие аватара карточки следует `PeerInfoHeadItem.swift:1734–1778` и
+`PeerPhotos.swift`: native список фото, приоритет cached personal/photo и fallback
+текущего аватара. `MGalleryPeerPhotoItem.swift:27,58,117` подтверждает representation
+1280 и avatar-list reference для исторического фото. Собственная SwiftUI-галерея
+показывает статический кадр, имя, доступную дату, позицию и неполный total count;
+стрелки мышью/клавиатурой и Escape следуют `GalleryViewer.swift:411–412`.
+Отдельные list/image retry не выдают ошибку RPC за доказанное отсутствие фото.
+Внешний GPLv2 UI/decoder не копируется. Сейчас это sheet внутри карточки:
+полноэкранное окно/переход из `GalleryViewer.swift:268–284`, полоса миниатюр,
+zoom/rotation/save/share, дополнительные public fallback фото, stories,
+видеовоспроизведение и online badges в списке ещё не перенесены. Native API
+возвращает первую ограниченную страницу; полная история фотографий не заявлена.
 
 Это сверка конкретных элементов, не заявление о полном визуальном совпадении.
 Собственная явная локальная пагинация пока видна отдельно. Полный перенос тем,

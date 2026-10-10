@@ -15,6 +15,8 @@ func telegramSyntheticPeerStatus(peerID: Int64) -> TelegramPeerStatus {
     let presence: TelegramPeerStatus.Presence? = switch number {
     case 9: .recently(isHidden: true)
     case 10: nil
+    case 12: .present(until: Int32(Date().timeIntervalSince1970) - 7_200)
+    case 13: .present(until: Int32((Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()).timeIntervalSince1970))
     default: .present(until: Int32(Date().timeIntervalSince1970) + (number == 8 ? 4 : 3_600))
     }
     let count: Int? = switch number {

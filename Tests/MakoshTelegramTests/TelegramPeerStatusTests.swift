@@ -30,7 +30,7 @@ final class TelegramPeerStatusTests: XCTestCase {
         XCTAssertEqual(minute.text, "Был(а) 1 мин. назад")
         XCTAssertGreaterThan(try XCTUnwrap(minute.nextRefresh), Date(timeIntervalSince1970: 1059))
         let old = value.presentation(now: Date(timeIntervalSince1970: 5000))
-        XCTAssertFalse(old.isOnline); XCTAssertNil(old.nextRefresh)
+        XCTAssertFalse(old.isOnline); XCTAssertGreaterThan(try XCTUnwrap(old.nextRefresh), Date(timeIntervalSince1970: 5000))
         XCTAssertFalse(status(.present(until: Int32.max), offset: .infinity).presentation(now: now).isOnline)
     }
     func testPrivacyBucketsRemainApproximateAndActivityExpires() {
@@ -110,12 +110,12 @@ final class TelegramPeerStatusTests: XCTestCase {
     func testAbsoluteUnixLastSeenDoesNotShiftByServerClockOffset() throws {
         let utc = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
         let value = status(.present(until: 10000), offset: 3600)
-        let presented = value.presentation(now: Date(timeIntervalSince1970: 20000), timeZone: utc)
-        XCTAssertEqual(presented.text, "Был(а) 01.01.1970 02:46")
+        let presented = value.presentation(now: Date(timeIntervalSince1970: 40_000_000), timeZone: utc)
+        XCTAssertEqual(presented.text, "Был(а) 01.01.1970")
         XCTAssertFalse(presented.isOnline)
         XCTAssertNil(presented.nextRefresh)
         let oppositeOffset = status(.present(until: 10000), offset: -3600)
-        XCTAssertEqual(oppositeOffset.presentation(now: Date(timeIntervalSince1970: 20000), timeZone: utc).text, presented.text)
+        XCTAssertEqual(oppositeOffset.presentation(now: Date(timeIntervalSince1970: 40_000_000), timeZone: utc).text, presented.text)
     }
     func testRussianMemberAndSubscriberPluralForms() {
         for (count, suffix) in [(1, "участник"), (2, "участника"), (5, "участников"), (11, "участников"),
@@ -125,6 +125,63 @@ final class TelegramPeerStatusTests: XCTestCase {
         for (count, suffix) in [(1, "подписчик"), (2, "подписчика"), (5, "подписчиков"), (11, "подписчиков"), (21, "подписчик")] {
             XCTAssertEqual(status(kind: .channel, count: count).presentation(now: now).text, "\(count) \(suffix)")
         }
+    }
+
+    private func date(_ text: String) throws -> Date {
+        try XCTUnwrap(ISO8601DateFormatter().date(from: text))
+    }
+    private func timedStatus(last: Date, offset: Double = 0) -> TelegramPeerStatus {
+        status(.present(until: Int32(last.timeIntervalSince1970)), offset: offset)
+    }
+    func testHourBoundaryMidnightYesterdayAndYearRefresh() throws {
+        let utc = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let last = try date("2026-10-10T10:15:00Z")
+        let value = timedStatus(last: last)
+        XCTAssertEqual(value.presentation(now: last.addingTimeInterval(3599), timeZone: utc).text, "Был(а) 59 мин. назад")
+        let hour = value.presentation(now: last.addingTimeInterval(3600), timeZone: utc)
+        XCTAssertEqual(hour.text, "Был(а) 1 час назад")
+        XCTAssertEqual(hour.nextRefresh, last.addingTimeInterval(7200))
+        XCTAssertEqual(value.presentation(now: last.addingTimeInterval(7200), timeZone: utc).text, "Был(а) 2 часа назад")
+        let late = value.presentation(now: try date("2026-10-10T23:50:00Z"), timeZone: utc)
+        XCTAssertEqual(late.nextRefresh, try date("2026-10-11T00:00:00Z"))
+        let yesterday = value.presentation(now: try date("2026-10-11T00:00:00Z"), timeZone: utc)
+        XCTAssertEqual(yesterday.text, "Был(а) вчера в 10:15")
+        XCTAssertEqual(yesterday.nextRefresh, try date("2026-10-12T00:00:00Z"))
+        let older = value.presentation(now: try date("2026-10-12T00:00:00Z"), timeZone: utc)
+        XCTAssertEqual(older.text, "Был(а) 10.10")
+        XCTAssertEqual(older.nextRefresh, try date("2027-01-01T00:00:00Z"))
+        let oldYear = value.presentation(now: try date("2027-01-01T00:00:00Z"), timeZone: utc)
+        XCTAssertEqual(oldYear.text, "Был(а) 10.10.2026"); XCTAssertNil(oldYear.nextRefresh)
+    }
+    func testOffsetChangesDeadlineNotNativeClockTextAcrossMidnight() throws {
+        let utc = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let last = try date("2026-10-10T21:00:00Z")
+        let serverNow = try date("2026-10-11T00:30:00Z")
+        for offset in [-7200.0, 7200.0] {
+            let now = serverNow.addingTimeInterval(-offset)
+            let result = timedStatus(last: last, offset: offset).presentation(now: now, timeZone: utc)
+            XCTAssertEqual(result.text, "Был(а) вчера в 21:00")
+            XCTAssertEqual(result.nextRefresh, try date("2026-10-12T00:00:00Z").addingTimeInterval(-offset))
+            XCTAssertGreaterThan(try XCTUnwrap(result.nextRefresh), now)
+        }
+    }
+    func testTimeZoneCalendarDaysAndDSTUseMidnightsNotFixedDaySeconds() throws {
+        let ny = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        // Spring-forward day lasts 23 hours, fall-back day lasts 25 hours.
+        for (lastText, nowText, midnightText, expectedTime) in [
+            ("2026-03-07T17:00:00Z", "2026-03-08T16:00:00Z", "2026-03-09T04:00:00Z", "12:00"),
+            ("2026-10-31T16:00:00Z", "2026-11-01T17:00:00Z", "2026-11-02T05:00:00Z", "12:00")
+        ] {
+            let now = try date(nowText)
+            let result = timedStatus(last: try date(lastText)).presentation(now: now, timeZone: ny)
+            XCTAssertEqual(result.text, "Был(а) вчера в " + expectedTime)
+            XCTAssertEqual(result.nextRefresh, try date(midnightText))
+            XCTAssertGreaterThan(try XCTUnwrap(result.nextRefresh), now)
+        }
+        let last = try date("2026-10-10T23:00:00Z"), now = try date("2026-10-11T01:00:00Z")
+        let utc = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        XCTAssertEqual(timedStatus(last: last).presentation(now: now, timeZone: utc).text, "Был(а) вчера в 23:00")
+        XCTAssertEqual(timedStatus(last: last).presentation(now: now, timeZone: ny).text, "Был(а) 2 часа назад")
     }
 
 }

@@ -71,6 +71,7 @@ public final class TelegramModel: ObservableObject {
     public let media = TelegramMediaController()
     public let avatars = TelegramAvatarStore()
     public let peerStatus = TelegramPeerStatusController()
+    public let profilePhotos = TelegramProfilePhotosController()
     public let playback = TelegramPlaybackController()
     public let upload = TelegramUploadController()
     public let archive = TelegramArchiveController()
@@ -370,7 +371,14 @@ public final class TelegramModel: ObservableObject {
             && profile.peerID == selectedChatID && contactProfileState == .ready(profile)
     }
 
+    public func openProfilePhotos(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
+        guard isCurrentContactProfile(profile, contextID: contextID) else { return false }
+        profilePhotos.open(peerID: profile.peerID)
+        return true
+    }
+
     public func cancelContactProfile() {
+        profilePhotos.close()
         contactProfileSubscription.set(nil)
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
         contactProfileRequestID = nil
@@ -666,6 +674,7 @@ public final class TelegramModel: ObservableObject {
         setupAccount(account)
         avatars.bind(TelegramEngineAvatarProvider(account: account))
         peerStatus.bind(account: account)
+        profilePhotos.bind(TelegramEngineProfilePhotoProvider(account: account))
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
@@ -696,6 +705,7 @@ public final class TelegramModel: ObservableObject {
     private func stopAuthorizedAccount() {
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
+        profilePhotos.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -945,6 +955,7 @@ public final class TelegramModel: ObservableObject {
         let model = syntheticPeerProfilesPreview()
         model.avatars.bind(TelegramSyntheticAvatarProvider())
         model.peerStatus.useSyntheticPreview()
+        model.profilePhotos.bind(TelegramSyntheticProfilePhotoProvider())
         return model
     }
     #endif

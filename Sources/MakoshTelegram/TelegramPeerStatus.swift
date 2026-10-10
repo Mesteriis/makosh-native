@@ -61,12 +61,42 @@ public struct TelegramPeerStatus: Equatable, Sendable {
                 let minutes = max(1, Int(elapsed / 60))
                 return result("Был(а) \(minutes) мин. назад", refresh: Date(timeIntervalSince1970: expiry + Double((minutes + 1) * 60) - serverTimeOffset))
             }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "ru_RU")
-            formatter.calendar = Calendar(identifier: .gregorian)
-            formatter.timeZone = timeZone
-            formatter.dateFormat = "dd.MM.yyyy HH:mm"
-            return result("Был(а) " + formatter.string(from: Date(timeIntervalSince1970: expiry)))
+            // Native timestamps remain Unix dates. Only server-now comparisons
+            // and conversion of a refresh deadline use the sampled clock offset.
+            let lastSeen = Date(timeIntervalSince1970: expiry)
+            let serverNow = Date(timeIntervalSince1970: timestamp)
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = timeZone
+            func deviceDeadline(_ boundary: Date?) -> Date? {
+                guard let boundary else { return nil }
+                let local = Date(timeIntervalSince1970: boundary.timeIntervalSince1970 - serverTimeOffset)
+                return local > now ? local : nil
+            }
+            func formatted(_ pattern: String) -> String {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "ru_RU")
+                formatter.calendar = calendar
+                formatter.timeZone = timeZone
+                formatter.dateFormat = pattern
+                return formatter.string(from: lastSeen)
+            }
+            let sameYear = calendar.component(.year, from: lastSeen) == calendar.component(.year, from: serverNow)
+            guard sameYear else { return result("Был(а) " + formatted("dd.MM.yyyy")) }
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: serverNow))
+            if calendar.isDate(lastSeen, inSameDayAs: serverNow) {
+                let hours = max(1, Int(elapsed / 3600))
+                let lastTwo = hours % 100, last = hours % 10
+                let noun = (11...14).contains(lastTwo) ? "часов" : (last == 1 ? "час" : ((2...4).contains(last) ? "часа" : "часов"))
+                let nextHour = Date(timeIntervalSince1970: expiry + Double((hours + 1) * 3600))
+                let boundary = tomorrow.map { min($0, nextHour) } ?? nextHour
+                return result("Был(а) \(hours) \(noun) назад", refresh: deviceDeadline(boundary))
+            }
+            if let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: serverNow)),
+               calendar.isDate(lastSeen, inSameDayAs: yesterday) {
+                return result("Был(а) вчера в " + formatted("HH:mm"), refresh: deviceDeadline(tomorrow))
+            }
+            let nextYear = calendar.date(from: DateComponents(year: calendar.component(.year, from: serverNow) + 1, month: 1, day: 1))
+            return result("Был(а) " + formatted("dd.MM"), refresh: deviceDeadline(nextYear))
         case .recently?:
             let activeUntil = Double(lastActivity) + 30
             if lastActivity > 0, activeUntil > timestamp {

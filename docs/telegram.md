@@ -491,8 +491,9 @@ and the engine can refresh the peer data. The timestamp describes a local cache
 observation, not an acknowledged server fetch. No contact-list scan or system
 Contacts access is performed. Groups, channels and bots cannot be linked to a
 person dossier; a person without a name can be viewed but not linked yet.
-Secret-chat profiles, photo galleries/video avatars, member lists,
-administration and other reference profile actions remain open.
+Secret-chat profiles, fullscreen gallery controls/video avatars, member lists,
+administration and other reference profile actions remain open. The static
+profile-photo gallery below is available from the card's avatar.
 
 The profile offers explicit creation of a new dossier or selection of an existing
 PostgreSQL contact. Existing-source ownership opens that dossier or permits an
@@ -557,8 +558,12 @@ are written to PostgreSQL or dossiers. Retained message attachments still use S3
 The header and person card show cached native presence rather than connection
 state. Server clock offset is added when comparing native Unix expiry/activity
 times; it is subtracted for device-clock timer deadlines. Absolute last-seen
-dates preserve the original Unix timestamp. Online expiry and relative minute
-boundaries refresh without a new peer event. Privacy buckets remain approximate,
+dates preserve the original Unix timestamp. Online expiry, relative minute/hour
+boundaries, calendar midnight and year changes refresh without a new peer event.
+Older presence shows hours in the same day, yesterday with its native local
+time, then day/month (including the year for past years). Gregorian calendar
+boundaries use the selected timezone and handle 23/25-hour DST days.
+Privacy buckets remain approximate,
 missing presence is explicitly unavailable, and Saved Messages hides presence.
 Bot/support/service and group/channel counts have separate presentation.
 Leaving Telegram or changing account/chat cancels the selected-peer subscription
@@ -569,10 +574,45 @@ unaccepted; this is a cache observation, not a live-availability guarantee.
 The DEBUG-only `--telegram-peer-appearance-synthetic-preview` uses the same
 explicit isolated database contract and shared workspace. Dialog 1 has a generated
 photo/online status, 2 no photo, 3 corrupt bytes, 8 a four-second online expiry,
-9 approximate recently, 10 missing presence and 11 a self peer. Generated photos
-are temporary private fixture files; no personal account, Keychain or Telegram
-network is opened. Animated avatars, profile photo galleries and list online
-badges remain open.
+9 approximate recently, 10 missing presence, 11 a self peer, 12 two hours ago
+and 13 the previous calendar day. Dialog 12 follows the calendar and can show
+yesterday near midnight. Gallery fixtures provide three photos with a reported
+total of five; the second marks a static video-avatar frame and the third fails
+decoding on its first attempt, then recovers on retry. Dialog 2 has an empty
+gallery. Generated photos are temporary private fixture files; no personal
+account, Keychain or Telegram network is opened. Animated avatars and list
+online badges remain open.
+
+## Static profile-photo gallery
+
+Click the peer-card avatar to open its static gallery. Native user/group/channel
+photo metadata is mapped before main delivery; cached personal/photo data takes
+precedence, with the current large avatar as a fallback when the list is empty.
+Historical images retain an avatar-list reference for native revalidation.
+Missing peer access hashes allow cache-only image access. The engine's first
+request is bounded to 100 user photos or 1000 group/channel photo messages;
+the adapter does not invent pagination. A total larger than the available list
+is displayed explicitly. Empty results can also represent a caught RPC failure,
+so the UI offers retry without claiming that the peer has no photos.
+
+The gallery shows the peer name, a static image, available date, position and
+previous/next controls, with left/right arrow keys and Escape. Video avatars are
+labelled as static frames. List and selected-image loads have 30-second deadlines
+and separate retries. One selected resource lease keeps its cache file available
+through decoding/display; switching, closing, changing the peer or rebinding
+the account cancels the lease/session and rejects stale callbacks. Synchronous
+cache/fixture list delivery is supported before the provider returns its session.
+Native protocol objects remain private to that session; UI receives immutable
+DTOs and complete-file events.
+
+The existing generic image admission accepts at most 20 MiB, 8192 pixels per
+dimension and 40 million pixels, with a 1280-pixel thumbnail. These are decoder
+limits, not a native network-byte cap. Gallery images remain transient MediaBox
+cache, separate from encrypted S3 retention of received message attachments;
+PostgreSQL does not receive photo bytes. Fullscreen/transition, thumbnail strip,
+zoom/rotation/save/share, extra public fallback images, stories and animated
+video playback remain open. Real account/network fetch, pagination beyond the
+native first page and native pending-fetch timeout acceptance are unverified.
 
 ## Offline navigation UI check
 

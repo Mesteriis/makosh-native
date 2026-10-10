@@ -52,6 +52,7 @@ complete full download → frozen read-only FD → encrypted durable queue
   → PostgreSQL pending metadata → conditional S3 PUT / HEAD reconciliation
   → PostgreSQL stored receipt → remove acknowledged local queue item
 archive export → S3 GET → hash + authenticated decryption → native Save panel
+archive preview → same authenticated S3 path → private plaintext lease → Quick Look
 ```
 
 The identity is the original service/account/typed conversation/message and
@@ -62,6 +63,19 @@ size, frame index/count and length, including an empty file. A domain-separated
 key derives from the existing archive vault key, independently of Telegram's
 session key. Streaming hash/read buffers are bounded; whole-file buffering is
 not used. Source mutation is checked; already unlinked open inodes remain usable.
+
+**Посмотреть** in the local archive opens the retained S3 copy through native
+Quick Look, independently of Telegram authorization/cache. The stored receipt,
+encrypted-body hash, authenticated envelope and plaintext hash must validate
+before a preview is published. Each preview owns a separate temporary directory
+with mode 0700 and a regular plaintext file with mode 0600. Its disk basename
+uses only a generic name and a bounded ASCII extension; the display title uses
+the existing sanitized attachment name. Cancellation/failure removes partial
+preview files. Quick Look retains the lease until its view closes; ordinary
+dismissal releases the temporary copy without deleting the encrypted S3 object.
+Cleanup is best effort at release, not a guarantee after crash or forced process
+termination. Quick Look format support/rendering and large-media performance
+depend on macOS; unsupported previews can still use the existing Save action.
 
 PostgreSQL `archive_file_events` contains append-only pending/stored encrypted
 metadata and keyed lookup tokens, with no BYTEA/file-content column. S3 object
@@ -99,6 +113,9 @@ reopen/export, no file payloads in PostgreSQL, append-only guards, exact account
 scope, S3 conditional conflicts, integrity/tamper/framing, pre-queue failure and
 retry, uncertain receipt-directory sync, and S3 success followed by PostgreSQL
 rollback/restart reconciliation.
+Preview regressions also cover a source unlink/deletion event followed by a new
+repository instance, forged metadata rejection, private modes, hostile file
+labels, independent leases, and failure/cancellation cleanup.
 `scripts/test.sh` selects local S3 automatically when its private config exists;
 otherwise the S3 integration cases explicitly skip. Hosted macOS CI downloads a
 checksum-verified pinned SeaweedFS binary and starts an isolated native service

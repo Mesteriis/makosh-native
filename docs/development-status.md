@@ -1335,3 +1335,54 @@ The shared-sidebar head `027e5baa4c940503dd56ff45493f8c04b5ff0bbb` passed
 [PR CI 38075646435](https://github.com/Mesteriis/makosh-native/actions/runs/38075646435)
 and [push CI 38075644661](https://github.com/Mesteriis/makosh-native/actions/runs/38075644661).
 Hosted CI for this read-marking change is tracked after publication.
+
+## Retained S3 attachment preview — 2026-10-10
+
+The existing local archive now offers **Посмотреть** beside **Сохранить из
+архива…**. It reads the retained S3 copy through the authenticated repository
+export boundary, then presents native Quick Look inside a SwiftUI sheet. It
+requires no Telegram authorization or cache fetch. Each preview owns an
+independent 0700 directory/0600 plaintext file; a sanitized display title is
+separate from the generic disk basename and bounded ASCII extension. Quick
+Look's item retains the lease until the view closes. Cancellation/failure removes
+partial files, and ordinary dismissal releases the plaintext without removing
+the encrypted S3 object. Forced termination/crash cleanup is not guaranteed.
+
+Reference XERJ retrieval and source reads confirmed TelegramSwift's
+`ChatFileContentView.swift:79–99` and `QuickLookPreview.swift:68–145` native
+file-preview workflow. The archive sheet/lease are own code; no outer GPLv2 UI
+was copied. Normal Telegram remains in the shared WorkspaceView service
+selector/list/conversation layout; the standalone S3 route is a DEBUG QA fixture.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; development PostgreSQL/S3 available.
+- `scripts/test.sh`: exit 0, **308 XCTest (245 Telegram + 63 core), 24 Python**.
+  Three new regressions exercise real isolated PostgreSQL/S3 with deterministic
+  synthetic keys: cache unlink plus a deletion event, new repository instance,
+  forged metadata rejection, private modes, hostile labels, independent leases,
+  failure and cancellation cleanup. Upstream t19 teardown diagnostics remain
+  separately visible after the passing Telegram suite.
+- `scripts/build-app.sh`: exit 0, Debug build and strict ad-hoc signature check.
+  The final build includes the additional export cancellation-publication guard;
+  this UI-only guard followed the full test run and was exercised by native
+  Save-panel cancellation. No release-signing/notarization claim is made.
+- Final native QA used an explicitly isolated synthetic S3/PG fixture, unique
+  bundle identifier, exact executable/config flags and verified unsigned payload.
+  **14 recorded conditions passed**: Quick Look displayed the exact retained
+  text/bytes after the fixture deleted its source cache; private modes matched;
+  button close removed the first directory, reopen created a different lease,
+  Escape removed it, Save panel opened/cancelled, and archive dismissal returned
+  to the fixture. Screenshots confirmed the existing archive actions and preview.
+  No private account, Keychain or Telegram network/send was used.
+- Fresh project/engine/reference index checks preceded source selection; project
+  refresh completed exit 0 with **189 files, 159/159 classified code**. Root
+  verified all six reviewed source hashes. Private worker records retain route
+  and usage as unknown; no quorum was used.
+
+Native dismissal while an S3 fetch is still in progress was not established by
+this fast local fixture; the cancellation seam is covered by regression tests.
+Quick Look format coverage beyond synthetic text, large-media performance,
+crash cleanup, portable archive/key backup and the remaining Telegram/reference
+features are open. The sequential migration goal remains active. Hosted CI is
+checked separately for each published head.

@@ -164,6 +164,8 @@ private struct TelegramArchivedAttachment: View {
                 Label(attachment.name,systemImage: "paperclip")
                 if let record {
                     Text("Копия в S3").foregroundStyle(.secondary)
+                    Button("Посмотреть") { actions.previewArchived(files: files, record: record) }.disabled(actions.isBusy)
+                        .accessibilityIdentifier("telegram.archive.file.preview.\(attachment.id)")
                     Button("Сохранить из архива…") { actions.saveArchived(files: files,record: record) }.disabled(actions.isBusy)
                         .accessibilityIdentifier("telegram.archive.file.export.\(attachment.id)")
                 } else { Text(checked || synthetic ? "Копия файла в S3 не найдена" : "Проверка копии…").foregroundStyle(.secondary) }
@@ -172,7 +174,10 @@ private struct TelegramArchivedAttachment: View {
             }.font(.caption)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             if let error = actions.error { Text(error).font(.caption).foregroundStyle(.red) }
-        }.task(id: files.revision) {
+        }.sheet(item: $actions.archivedPreview) { preview in
+            TelegramArchivedFilePreviewView(preview: preview)
+        }.onDisappear(perform: actions.cancel)
+        .task(id: files.revision) {
             guard !synthetic else { return }
             do { record = try await files.file(identity: identity,attachmentID: attachment.id); checked = true; error = nil }
             catch { checked = true; self.error = "Не удалось проверить копию файла в архиве." }

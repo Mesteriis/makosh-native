@@ -8,6 +8,7 @@ import MakoshCore
 final class TelegramAttachmentActions: ObservableObject {
     @Published private(set) var isBusy = false
     @Published var preview: TelegramImagePreview?
+    @Published var archivedPreview: TelegramArchivedFilePreview?
     @Published var error: String?
     @Published private(set) var saved = false
     private var task: Task<Void, Never>?
@@ -61,16 +62,38 @@ final class TelegramAttachmentActions: ObservableObject {
                 guard let destination = await chooseDestination(name: record.attachment.name,title: "Сохранить файл из архива S3") else { return }
                 try Task.checkCancellation()
                 try await files.export(record,to: destination)
+                try Task.checkCancellation()
                 self.saved = true
             } catch is CancellationError { }
-            catch { self.error = "Не удалось получить и проверить копию файла из S3. Существующий файл не заменён." }
+            catch {
+                guard !Task.isCancelled else { return }
+                self.error = "Не удалось получить и проверить копию файла из S3. Существующий файл не заменён."
+            }
+        }
+    }
+
+    func previewArchived(files: TelegramFileArchiveController, record: ArchiveFileRecord) {
+        guard !isBusy, archivedPreview == nil else { return }
+        begin()
+        task = Task { [weak self] in
+            guard let self else { return }
+            defer { finish() }
+            do {
+                let preview = try await files.preview(record)
+                try Task.checkCancellation()
+                archivedPreview = preview
+            } catch is CancellationError { }
+            catch {
+                guard !Task.isCancelled else { return }
+                self.error = "Не удалось получить и проверить копию файла из S3. Повторите просмотр после восстановления хранилища."
+            }
         }
     }
 
     func cancel() {
         task?.cancel()
         panel?.cancel(nil)
-        preview = nil; error = nil; saved = false
+        preview = nil; archivedPreview = nil; error = nil; saved = false
         // Keep busy until the worker has stopped; rapid clicks cannot multiply decoders.
     }
 

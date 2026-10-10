@@ -327,7 +327,11 @@ Current boundaries:
   first suspension; subsequent Telegram cache unlink does not remove its bytes.
   PostgreSQL stores encrypted metadata/object references only. Preview-only or
   never-downloaded media remain metadata. Opening the archive never fetches
-  media from Telegram; exporting a stored attachment reads S3 explicitly.
+  media from Telegram; exporting or previewing a stored attachment reads S3
+  explicitly. **Посмотреть** uses native Quick Look after authenticated
+  decryption and retains a private temporary file until the preview closes.
+  Cancellation/failure cleans partial files; crash/forced termination cleanup
+  and large-media preview performance are not established.
   See [storage and recovery boundaries](object-storage.md).
 - Graceful disk-full backpressure is not established: upstream ValueBox uses
   void/assertion IO and commit paths. Capture encoding/sequence failures stop

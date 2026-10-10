@@ -94,6 +94,13 @@ import MakoshCore
     public func file(identity: MessageArchiveIdentity,attachmentID: String) async throws -> ArchiveFileRecord? {
         try await open().files(identity: identity,attachmentID: attachmentID).first
     }
+    /// Authenticated retained-S3 bytes; no MediaBox cache borrowing or fetch.
+    public func preview(_ record: ArchiveFileRecord) async throws -> TelegramArchivedFilePreview {
+        let repository = try open()
+        return try await TelegramArchivedFilePreview.create(name: record.attachment.name) { destination in
+            try await repository.export(record, to: destination)
+        }
+    }
     public func export(_ record: ArchiveFileRecord,to destination: URL) async throws {
         let repository = try open()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-archive-export-\(UUID().uuidString)",isDirectory: true)

@@ -70,7 +70,7 @@ struct TelegramMessageActionSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text(title).font(.title2.weight(.semibold))
             Text(request.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            Text(request.source.text.isEmpty ? "Сообщение с вложением" : request.source.text)
+            Text(request.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(request.source))
                 .lineLimit(4).textSelection(.enabled).padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             switch request.mode {

@@ -73,7 +73,7 @@ struct TelegramUploadView: View {
                         }
                     }
                     if let source = target.replySource {
-                        Label("Ответ на: \(source.text.isEmpty ? "Сообщение с вложением" : source.text)", systemImage: "arrowshape.turn.up.left")
+                        Label("Ответ на: \(source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(source))", systemImage: "arrowshape.turn.up.left")
                             .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
                     }
                 }

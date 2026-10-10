@@ -43,7 +43,17 @@ struct TelegramSyntheticPages {
             }
             let caption = !message.attachments.isEmpty
             let unsupported = message.attachments.contains { $0.kind == .unsupported }
-            let entities: [TelegramTextEntity] = id == 122 ? [TelegramTextEntity(offset: 0, length: 8, kind: .bold)] : []
+            let entities: [TelegramTextEntity]
+            if id == 121 {
+                let secret = "СЕКРЕТ_QA_121", link = "Открыть документацию"
+                message = TelegramMessage(id: message.id, date: message.date,
+                    text: message.text + "\nСкрытый фрагмент: " + secret + "\n" + link,
+                    author: message.author, isOutgoing: message.isOutgoing, delivery: message.delivery)
+                let text = message.text as NSString, hidden = text.range(of: secret), linked = text.range(of: link)
+                entities = [.init(offset: 0, length: 8, kind: .bold),
+                    .init(offset: hidden.location, length: hidden.length, kind: .spoiler),
+                    .init(offset: linked.location, length: linked.length, kind: .textURL(url: "https://example.invalid/docs"))]
+            } else { entities = id == 122 ? [.init(offset: 0, length: 8, kind: .bold)] : [] }
             message.actionMetadata = TelegramMessageActionMetadata(peerID: chatID, namespace: 0, messageID: Int32(id),
                 fingerprint: "synthetic-version-1-\(chatID)-\(id)", text: message.text,
                 authorID: message.isOutgoing ? -1 : 999, canReply: true, canEdit: message.isOutgoing && !unsupported,

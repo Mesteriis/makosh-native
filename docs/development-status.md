@@ -807,3 +807,68 @@ fields. Final project XERJ refresh/check passed: **153 files, 123/123 code**;
 engine freshness also passed. Actual inline-draft and upload-preflight queries
 were checked against the current source. No generated engine/dependency lock or
 reference checkout was changed in this slice.
+
+The reference-input head `4121afb81942bb96830ea4e3d4d33740550421b3` passed
+[PR CI 38068709500](https://github.com/Mesteriis/makosh-native/actions/runs/38068709500)
+and [push CI 38068706569](https://github.com/Mesteriis/makosh-native/actions/runs/38068706569).
+These results apply to that head, not the subsequent reading slice.
+
+## Reference message reading — 2026-10-10
+
+History/search now use independently written reading presentation over captured
+Telegram entities. Combined fonts, underline/strike, code/pre, safe links and
+spoiler masks follow verified TelegramSwift scenarios. Hidden TextUrl activation
+asks with the actual target; unsupported schemes stay text. Chat previews and
+reply/action/upload source summaries mask spoilers. Original text/entities are
+unchanged. Malformed or mismatched formatted metadata fails closed. The full
+quote/code renderer and custom emoji remain unfinished; paragraph attributes do
+not establish SwiftUI visual parity.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; development PostgreSQL and S3 healthy.
+- `scripts/test.sh`: exit 0, **244 XCTest / 0 failures** (189 Telegram, 55 core)
+  and **22 Python regressions**. New checks cover actual native Message mapping,
+  malformed surrogate boundaries, exact UTF8 metadata, nested/adjacent spoilers,
+  removal of hidden URL attributes, supported/unsafe URL handling, combined
+  styles and reveal keys rejecting a changed context, text, entities or Unicode
+  bytes. Source values remain unchanged after presentation and reveal.
+- Native build/strict ad-hoc signature verification passed. A later direct-Text
+  menu build first failed because generic Swift types do not permit stored static
+  properties; changing the fixed reveal URL to a computed static property passed.
+  The failed log remains separate. No generated engine/lock/dependency changed.
+- Final separate source snapshot with `.references/` and bare source cache absent
+  and closed outbound proxy settings passed build/sign and the same **244
+  XCTest / 22 Python** checks, with no S3 skips; original cache restored.
+- Actual isolated DEBUG native QA visibly showed bold text and masked spoilers
+  in search/history. AX reveal exposed only the selected synthetic message;
+  changing results reset concealment. Hidden-link activation displayed the exact
+  `https://example.invalid/docs` confirmation and Cancel returned without an
+  external open. Final native selection-copy pasted masks, not original spoiler
+  text, into the synthetic composer; the draft was then cleared.
+- The final QA unsigned executable matched the built app. Right-click actions
+  worked on the bubble author. Direct right-click on selectable rich text did
+  not show a menu through the bridge, even after placing the same context menu
+  directly on Text. This remains unverified, not a passing acceptance check.
+  Coordinate pointer attempts also returned `noWindowsAvailable`; no conclusion
+  about actual spoiler/link pointer activation is drawn from AX-action success.
+
+A bounded source review found the initial reveal Bool could apply to a newly
+updated message before onChange reset. Reveal and pending-link state now use a
+context plus exact-version key, checked before rendering, with key regressions.
+Six upstream temporary Postbox-fixture `no such table: t19` teardown diagnostics
+remain after passing tests. No personal account, message, Keychain or Telegram
+network was used. Full reference UI, archive rich entities, quote/code folding,
+protected-copy parity, app-restart drafts, topics/secret/paid capabilities,
+live account acceptance, dossier linking and subsequent channels remain in the
+active sequential goal.
+
+Final bounded reviews checked eleven source/test files; root verified all final
+SHA256 values against worker reports, with no remaining confirmed source
+must-fix. Workers did not run independent build/native tests; observed model,
+provider and usage remain unavailable, and no quorum was used. Final project
+XERJ refresh/check passed: **156 files, 126/126 code**; unchanged engine freshness
+also passed. Actual reveal-key and masked-preview query hits were checked against
+current source. Credential-match audit of **161 publishable files** found zero
+matches to the selected local credential fields. Private QA, raw logs, worker
+records, indexes and configuration remain ignored.

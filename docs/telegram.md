@@ -335,6 +335,35 @@ text currently allows 4096 UTF16 units; supported captions allow 1024. Protected
 paid and service-action messages are not forwarded. Replies/deletion do not
 depend on the media renderer's supported types. No real account action was run.
 
+## Formatted message reading
+
+History and search render captured UTF16 entities without changing the original
+message: combined bold/italic, underline/strike and fixed-pitch code/pre. Quote
+paragraph attributes are prepared; full Telegram quote/code chrome, folding,
+language headers, inline code-copy and custom emoji rendering are unfinished.
+SwiftUI paragraph-layout parity has not been visually established. Unknown
+entities retain their original text. Invalid entities or an exact UTF8 mismatch
+between message and metadata produce an unavailable label rather than a plain
+fallback that could reveal a spoiler.
+
+Spoilers initially display UTF16-length masks. Presentation, AX and selection
+copy contain the mask; source data remains intact. A reveal is tied to account/
+chat/message context and the exact formatted version before rendering, so a
+later edit cannot inherit the earlier reveal. The same masking is used for chat
+list previews and action/reply/upload source summaries. Explicit editing still
+loads the original content. The separate retained archive does not yet store
+entities and is outside this reading-presentation boundary.
+
+Validated HTTP(S) and simple mailto links are active; schemeless domain paths
+are normalized to HTTPS. Credential-bearing URLs, unsupported schemes, controls,
+format characters and whitespace are not activated. Telegram deep links,
+mentions and commands currently stay text. If a TextUrl label differs from its
+target, confirmation shows the actual URL. Links intersecting hidden spoilers
+carry no source target until reveal. Accessible reveal/link actions use the same
+activation path. These are native reading controls, without a browser renderer
+or remote preview fetch. The synthetic QA exercised confirmation and Cancel;
+opening an external application was deliberately not tested.
+
 ## Offline navigation UI check
 
 After a debug build, launch the explicit synthetic view:

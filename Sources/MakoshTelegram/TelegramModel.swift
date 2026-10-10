@@ -27,6 +27,11 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public let delivery: String
     public var attachments: [TelegramAttachment] = []
     public var actionMetadata: TelegramMessageActionMetadata? = nil
+    public var formattedTextForDisplay: TelegramFormattedText? {
+        guard let metadata = actionMetadata else { return try? TelegramFormattedText(text: text) }
+        guard let value = metadata.formattedText, value.text.utf8.elementsEqual(text.utf8) else { return nil }
+        return value
+    }
 }
 
 public struct TelegramAPIConfiguration: Equatable {
@@ -600,7 +605,7 @@ public final class TelegramModel: ObservableObject {
             let hasHole = view.entries.contains { if case .HoleEntry = $0 { return true }; return false }
             let chats = view.entries.reversed().compactMap { entry -> TelegramChat? in
                 guard case let .MessageEntry(data) = entry, let peer = data.renderedPeer.peer else { return nil }
-                return TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: data.messages.last?.text ?? "", unreadCount: Int(data.readState?.state.count ?? 0))
+                return TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: telegramMessagePreview(data.messages.last), unreadCount: Int(data.readState?.state.count ?? 0))
             }
             self.receiveChats(chats, requestID: requestID, previous: view.earlierIndex,
                 next: view.laterIndex, isLoading: hasHole)

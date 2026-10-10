@@ -175,4 +175,27 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
         XCTAssertFalse(incoming.canEdit); XCTAssertFalse(incoming.canDeleteForEveryone)
     }
 
+    @MainActor func testReadingMappingPreservesSourceAndMasksPreviewAndRejectsInvalidEntities() throws {
+        let native = fixture(text: "😀 hidden", attributes: [TextEntitiesMessageAttribute(entities: [
+            MessageTextEntity(range: 0..<2, type: .Bold), MessageTextEntity(range: 3..<9, type: .Spoiler)])])
+        let mapped = TelegramMessage(native)
+        XCTAssertEqual(mapped.text, "😀 hidden")
+        XCTAssertEqual(try XCTUnwrap(mapped.formattedTextForDisplay).entities.count, 2)
+        XCTAssertEqual(telegramMessagePreview(native), "😀 ██████")
+        let malformed = fixture(text: "😀 hidden", attributes: [TextEntitiesMessageAttribute(entities: [
+            MessageTextEntity(range: 1..<2, type: .Spoiler)])])
+        XCTAssertNil(TelegramMessage(malformed).formattedTextForDisplay)
+        XCTAssertEqual(telegramMessagePreview(malformed), "Форматирование сообщения недоступно")
+    }
+
+    func testReadingMappingDoesNotSubstituteUnicodeEquivalentOrMissingFormattedSource() throws {
+        var message = TelegramMessage(id: "fixture", date: now, text: "é", author: "Synthetic", isOutgoing: false, delivery: "")
+        XCTAssertEqual(message.formattedTextForDisplay?.text, "é")
+        message.actionMetadata = TelegramMessageActionMetadata(peerID: 1, namespace: 0, messageID: 1,
+            fingerprint: "fixture", text: "é", authorID: 1, canReply: false, canEdit: false,
+            canForward: false, canDeleteLocally: false, canDeleteForEveryone: false,
+            formattedText: try TelegramFormattedText(text: "e\u{301}"))
+        XCTAssertNil(message.formattedTextForDisplay)
+    }
+
 }

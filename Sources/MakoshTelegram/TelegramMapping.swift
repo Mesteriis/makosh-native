@@ -19,3 +19,12 @@ extension TelegramMessage {
         actionMetadata = telegramMessageActionMetadata(message)
     }
 }
+
+@MainActor func telegramMessagePreview(_ message: Message?) -> String {
+    guard let message else { return "" }
+    let entities = message.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.flatMap(\.entities)
+    guard let value = try? telegramFormattedText(text: message.text, entities: entities) else {
+        return "Форматирование сообщения недоступно"
+    }
+    return TelegramMessagePresentation.plainText(value)
+}

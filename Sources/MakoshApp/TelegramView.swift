@@ -224,7 +224,12 @@ struct TelegramDetailView: View {
                                             if item.isOutgoing { Spacer(minLength: 44) }
                                             VStack(alignment: .leading, spacing: 7) {
                                                 Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                                Text(item.text.isEmpty ? "Вложение или служебное сообщение" : item.text).textSelection(.enabled)
+                                                if !item.text.isEmpty {
+                                                    TelegramMessageTextView(value: item.formattedTextForDisplay,
+                                                        identity: model.messageActionContextID.uuidString + item.id) {
+                                                            messageActionItems(item)
+                                                        }
+                                                }
                                                 ForEach(item.attachments) { attachment in
                                                     TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
                                                 }
@@ -232,7 +237,8 @@ struct TelegramDetailView: View {
                                                 if !item.delivery.isEmpty { Text(item.delivery).font(.caption).foregroundStyle(.secondary) }
                                             }.padding(11).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                                             if !item.isOutgoing { Spacer(minLength: 44) }
-                                        }.id(item.id).accessibilityIdentifier("telegram.message.\(item.id)")
+                                        }.id(item.id).accessibilityElement(children: .contain)
+                                            .accessibilityIdentifier("telegram.message.\(item.id)")
                                             .contextMenu { messageActionItems(item) }
                                     }
                                 }.padding(.horizontal, 16).padding(.vertical, 12)
@@ -254,7 +260,7 @@ struct TelegramDetailView: View {
                 } else {
                     if let replyRequest {
                         TelegramInputAccessoryView(title: replyRequest.author,
-                            detail: replyRequest.source.text.isEmpty ? "Сообщение с вложением" : replyRequest.source.text,
+                            detail: replyRequest.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(replyRequest.source),
                             symbol: "arrowshape.turn.up.left", cancelLabel: "Отменить ответ",
                             cancelID: "telegram.actions.cancelReply") { self.replyRequest = nil }
                             .accessibilityIdentifier("telegram.actions.replySubject")
@@ -300,7 +306,10 @@ struct TelegramDetailView: View {
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
-                                    Text(item.text).lineLimit(4).multilineTextAlignment(.leading)
+                                    TelegramMessageTextView(value: item.formattedTextForDisplay,
+                                        identity: model.messageActionContextID.uuidString + item.id, lineLimit: 4) {
+                                            messageActionItems(item)
+                                        }
                                     ForEach(item.attachments) { attachment in
                                         TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions, playback: playback)
                                     }
@@ -308,7 +317,8 @@ struct TelegramDetailView: View {
                                 Button("В истории") { model.openSearchMessage(id: item.id) }
                                     .buttonStyle(.bordered).controlSize(.small)
                                     .accessibilityIdentifier("telegram.searchResult.\(item.id)")
-                            }.contextMenu { messageActionItems(item) }
+                            }.accessibilityElement(children: .contain)
+                                .contextMenu { messageActionItems(item) }
                             Divider()
                         }
                     }.padding(16)

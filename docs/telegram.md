@@ -571,6 +571,26 @@ and the view's timer. The clock offset is refreshed on peer emissions, with no
 separate clock-change subscription. Actual account/network behavior remains
 unaccepted; this is a cache observation, not a live-availability guarantee.
 
+Chat-list online badges have their own reference policy. Native list entries
+already carry reactive presence, so normal rows add no per-peer subscriptions.
+Search owns one combined cached Postbox presence view for its current result
+set; replacing the query/folder/account disposes it. An associated peer supplies
+presence while the DTO retains the original account/chat identity. The list
+excludes self and the exact CloudUser 777000 service identity; it does not inherit
+the header's separate bot/support/phone-number exclusions. Missing, none, last-week
+and last-month observations have no badge. Present/recently timestamps use the
+reference's inclusive integer-second boundary and truncated server offset, with
+overflow-safe arithmetic. Recently activity lasts 30 seconds.
+
+Own SwiftUI circles reproduce the 12-point outer/8-point inner badge at the
+avatar's bottom-right, inset 3 points horizontally, with a selected variant.
+Visible rows own cancellable expiry tasks; system clock changes, wake and scene
+activation restart the device-clock calculation. Server offset is sampled on
+native emissions; a server-offset change without an emission is not separately
+observed. Actual clock/wake and live account/network acceptance remain open.
+Exact custom themes and badge transitions are not claimed. No third-party
+UI/assets or additional dependency is copied.
+
 The DEBUG-only `--telegram-peer-appearance-synthetic-preview` uses the same
 explicit isolated database contract and shared workspace. Dialog 1 has a generated
 photo/online status, 2 no photo, 3 corrupt bytes, 8 a four-second online expiry,
@@ -581,8 +601,11 @@ total of five; the second marks a static video-avatar frame and the third fails
 decoding on its first attempt, then recovers on retry. Dialog 2 has an empty
 gallery. The strip uses actual generated thumbnail pixels and independent leases.
 Generated photos are temporary private fixture files; no personal
-account, Keychain or Telegram network is opened. Animated avatars and list
-online badges remain open.
+account, Keychain or Telegram network is opened. List badges use a fixed observation
+time for the fixture session: dialogs 8/9 expire after 30 seconds without list
+updates, while 1 stays online and group/bot/missing/self fixtures have no badge.
+Header dialog 8 retains its independent four-second fixture. Animated avatars
+remain open.
 
 ## Static profile-photo gallery
 

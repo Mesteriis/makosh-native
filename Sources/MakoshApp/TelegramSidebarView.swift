@@ -50,7 +50,7 @@ struct TelegramSidebarView: View {
                     if showsArchiveEntry { archiveEntry.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)) }
                     ForEach(visibleChats) { chat in
                         HStack(spacing: 10) {
-                            TelegramChatAvatar(title: chat.title, peerID: chat.id, store: model.avatars, size: 50)
+                            TelegramChatListAvatar(chat: chat, store: model.avatars, isSelected: model.selectedChatID == chat.id)
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack { Text(chat.title).font(.headline).lineLimit(1); Spacer(minLength: 4) }
                                 HStack(alignment: .top) {

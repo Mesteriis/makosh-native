@@ -1654,3 +1654,67 @@ The preceding static-gallery head `83796c729eb6406374eddaf062b44231ad45ad81`
 passed [PR CI 38080923160](https://github.com/Mesteriis/makosh-native/actions/runs/38080923160)
 and [push CI 38080920058](https://github.com/Mesteriis/makosh-native/actions/runs/38080920058).
 These results do not establish hosted CI for this fullscreen-gallery change.
+
+## Reference chat-list online badges — 2026-10-10
+
+Telegram remains inside the shared channel selector/list/conversation workspace.
+The list now displays own 12/8-point online circles at the reference avatar
+position, with a selected variant. A dedicated immutable account/chat observation
+preserves the reference's self/exact CloudUser 777000 exclusions, inclusive native
+integer seconds, truncated server offset and recently-activity expiry. It does
+not reuse the header formatter's different bot/support/service policy.
+
+Normal chat entries supply reactive native presence without extra per-row peer
+subscriptions. Search owns one cached combined presence view, disposed when its
+query/folder/account is replaced; associated presence retains the original chat
+identity. Row expiry tasks cancel with the view and recalculate on device clock,
+wake and scene activation. No reference UI/assets or new dependencies are copied.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; local PostgreSQL/S3 available.
+- `scripts/test.sh`: exit 0, **353 XCTest (290 Telegram + 63 core), zero failures;
+  24 Python regressions**. Five new tests cover exact boundaries/offset rounding,
+  privacy buckets, overflow/nonfinite clocks, account/native namespace isolation,
+  stale search request/folder guards, and a real encrypted Postbox combined view
+  through missing/present/none/recently/activity updates and disposal. Twenty-two
+  upstream t19 teardown diagnostics and the prior unreachable-catch warning remain
+  separately visible after passing tests.
+- `scripts/build-app.sh` and strict ad-hoc signature verification: exit 0.
+  Native AX/screenshots verified **14 focused conditions**: shared selector;
+  initial timed presence; group absence; selected/unselected pixels; expiry
+  without emissions; search presence/expiry; search beyond the first page;
+  empty search without old badges; archive chat identity; pagination; exact
+  synthetic draft input; honest disconnected mail; retained chat/draft/badge
+  after channel switching; draft cleanup. The copied/built unsigned payloads
+  match, with explicit mode-0600 isolated database configuration and synthetic
+  flags. No personal account, Keychain, Telegram network or send was used.
+  An initial offscreen AX timer observation was not counted. A fresh visible
+  search row was observed before and 42.9 seconds after its fixed 30-second
+  expiry, with no intervening UI actions; its badge disappeared while the
+  adjacent long-lived status remained. Native input verification used exact
+  pasted text after a typeText attempt did not establish the expected value.
+- Root reviewed the entire patch and verified **10 current worker-reviewed
+  source/test hashes**. Worker source/hash checks passed; workers did not run
+  integration/runtime gates. Observed provider/model and usage remain unknown,
+  without quorum. Root owns integration results and private evidence.
+- Final project XERJ refresh/check: exit 0, **216 files, 186/186 code**. Locked
+  TelegramSwift and prepared engine checks are fresh. The actual final query
+  retrieved the new presence mapper/provider, confirmed against source.
+  `git diff --check` passed. Publication audit checked **221 publishable files**
+  and the private PR body against five selected local credential fields, with
+  zero matches. Hosted CI is recorded separately for the published head.
+
+Actual clock/wake events, server-offset changes without native emissions,
+live-account presence delivery, exact theme/badge transitions and secret-chat
+workflows remain unaccepted. The associated-peer test supplies the association
+explicitly; it does not establish construction from a real secret peer. Gallery
+transitions/theme/animations/F mode, fallback/stories/video and complete photo
+pagination remain open, as do the other Telegram workflows, archive/key backup,
+later channels and standalone packaging in `migration-plan.md`. The full
+sequential goal remains active.
+
+The preceding fullscreen-gallery head `7fa3117feae88a0d3258a3f77e6996497fc3afbd`
+passed [PR CI 38082465063](https://github.com/Mesteriis/makosh-native/actions/runs/38082465063)
+and [push CI 38082462388](https://github.com/Mesteriis/makosh-native/actions/runs/38082462388).
+These results do not establish hosted CI for the list-presence change.

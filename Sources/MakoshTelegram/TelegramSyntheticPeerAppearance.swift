@@ -2,6 +2,17 @@
 import Foundation
 import CoreGraphics
 import ImageIO
+import TelegramCore
+
+func telegramSyntheticChatPresence(peerID: Int64, observedAt: Date) -> TelegramChatPresence? {
+    let number = peerID % 10_000
+    guard ![2, 3, 4, 5, 6, 7, 10, 11].contains(number) else { return nil }
+    let now = Int32(observedAt.timeIntervalSince1970)
+    let native: TelegramUserPresence
+    if number == 9 { native = TelegramUserPresence(status: .recently(isHidden: true), lastActivity: now) }
+    else { native = TelegramUserPresence(status: .present(until: now + (number == 8 ? 30 : (number == 12 || number == 13 ? -7200 : 3600))), lastActivity: 0) }
+    return telegramChatPresence(presence: native, accountID: -1, peerID: peerID, serverTimeOffset: 0)
+}
 
 func telegramSyntheticPeerStatus(peerID: Int64) -> TelegramPeerStatus {
     let number = peerID % 10_000

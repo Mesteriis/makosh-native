@@ -16,6 +16,7 @@ public struct TelegramChat: Identifiable, Equatable, Sendable {
     public let title: String
     public let preview: String
     public let unreadCount: Int
+    public var presence: TelegramChatPresence? = nil
 }
 
 public struct TelegramMessage: Identifiable, Equatable, Sendable {
@@ -831,7 +832,9 @@ public final class TelegramModel: ObservableObject {
             let hasHole = view.entries.contains { if case .HoleEntry = $0 { return true }; return false }
             let chats = view.entries.reversed().compactMap { entry -> TelegramChat? in
                 guard case let .MessageEntry(data) = entry, let peer = data.renderedPeer.peer else { return nil }
-                return TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: telegramMessagePreview(data.messages.last), unreadCount: Int(data.readState?.state.count ?? 0))
+                return TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: telegramMessagePreview(data.messages.last), unreadCount: Int(data.readState?.state.count ?? 0),
+                    presence: telegramChatPresence(presence: data.presence, accountID: account.peerId.toInt64(),
+                        peerID: peer.id.toInt64(), serverTimeOffset: account.network.globalTimeDifference))
             }
             self.receiveChats(chats, requestID: requestID, previous: view.earlierIndex,
                 next: view.laterIndex, isLoading: hasHole)
@@ -953,6 +956,10 @@ public final class TelegramModel: ObservableObject {
 
     public static func syntheticPeerAppearancePreview() -> TelegramModel {
         let model = syntheticPeerProfilesPreview()
+        let observedAt = Date()
+        model.preview = TelegramSyntheticPages(presenceObservedAt: observedAt)
+        model.search.useSyntheticPreview(presenceObservedAt: observedAt)
+        model.loadChatList(clear: true)
         model.avatars.bind(TelegramSyntheticAvatarProvider())
         model.peerStatus.useSyntheticPreview()
         model.profilePhotos.bind(TelegramSyntheticProfilePhotoProvider())

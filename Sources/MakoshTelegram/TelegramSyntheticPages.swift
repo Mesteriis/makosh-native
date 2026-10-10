@@ -6,6 +6,7 @@ import Postbox
 /// Compiled out of release builds and never used by the account adapter.
 struct TelegramSyntheticPages {
     private let size = 50
+    var presenceObservedAt: Date? = nil
 
     func chats(folder: TelegramChatFolder, anchor: ChatListIndex?) ->
         (items: [TelegramChat], previous: ChatListIndex?, next: ChatListIndex?) {
@@ -15,7 +16,8 @@ struct TelegramSyntheticPages {
         let base: Int64 = folder == .inbox ? 10_000 : 20_000
         let items = (start..<end).map { offset in
             TelegramChat(id: base + Int64(offset + 1), title: "Тестовый диалог \(offset + 1)",
-                preview: folder == .inbox ? "Синтетическая история" : "Синтетический архив", unreadCount: offset == 0 ? 3 : 0)
+                preview: folder == .inbox ? "Синтетическая история" : "Синтетический архив", unreadCount: offset == 0 ? 3 : 0,
+                presence: presenceObservedAt.flatMap { telegramSyntheticChatPresence(peerID: base + Int64(offset + 1), observedAt: $0) })
         }
         func cursor(_ offset: Int) -> ChatListIndex {
             ChatListIndex(pinningIndex: nil, messageIndex: messageIndex(chatID: base, id: offset + 1))

@@ -133,15 +133,22 @@ public final class TelegramSearchModel: ObservableObject {
             let group: PeerGroupId = self.folder == .inbox ? .root : Namespaces.PeerGroup.archive
             let signal = account.postbox.searchPeers(query: query)
                 |> mapToSignal { peers in
-                    account.postbox.transaction { transaction -> [TelegramChat] in
+                    account.postbox.transaction { transaction -> [TelegramSearchChatPresenceSource] in
                         peers.compactMap { rendered in
                             guard let peer = rendered.peer,
                                   transaction.getPeerChatListIndex(peer.id)?.0 == group else { return nil }
                             let preview = transaction.getTopPeerMessageIndex(peerId: peer.id).flatMap { transaction.getMessage($0.id) }?.text ?? ""
                             let unread = transaction.getCombinedPeerReadState(peer.id)?.count ?? 0
-                            return TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: preview, unreadCount: Int(unread))
+                            let presencePeerID = peer.associatedPeerOverridesIdentity ? (peer.associatedPeerId ?? peer.id) : peer.id
+                            return TelegramSearchChatPresenceSource(
+                                chat: TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: preview, unreadCount: Int(unread)),
+                                presencePeerID: presencePeerID)
                         }
                     }
+                }
+                |> mapToSignal { sources in
+                    telegramSearchChatPresenceSignal(postbox: account.postbox, sources: sources,
+                        accountID: account.peerId.toInt64(), serverTimeOffset: { account.network.globalTimeDifference })
                 }
             self.chatRequest.set((signal |> deliverOnMainQueue).start(next: { [weak self] chats in
                 self?.receiveChats(chats, requestID: token)
@@ -220,9 +227,9 @@ public final class TelegramSearchModel: ObservableObject {
     }
 
     #if DEBUG
-    func useSyntheticPreview() {
+    func useSyntheticPreview(presenceObservedAt: Date? = nil) {
         bind(account: nil)
-        preview = TelegramSyntheticPages()
+        preview = TelegramSyntheticPages(presenceObservedAt: presenceObservedAt)
     }
 
     public func failNextSyntheticMessageSearch() {

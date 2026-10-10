@@ -307,12 +307,31 @@ import SwiftSignalKit
         model.cancelComposerReply()
         XCTAssertEqual(repository.writes.last?.0.input,input)
         XCTAssertNil(repository.writes.last?.0.replyTarget)
-        XCTAssertFalse(model.composerSupportsAttachments)
-        XCTAssertNil(model.uploadTarget(replyTo: nil,contextID: model.messageActionContextID))
+        XCTAssertTrue(model.composerSupportsAttachments)
+        XCTAssertNotNil(model.uploadTarget(replyTo: nil,contextID: model.messageActionContextID))
         model.messageActions.bind(provider: provider)
         XCTAssertTrue(model.performMessageAction(.reply(input.formattedText.text),source: source,contextID: model.messageActionContextID))
         provider.callback?(.queued)
         XCTAssertEqual(model.composerInput,input)
+    }
+
+    func testRichUploadAcknowledgementProtectsFormattingAndSelectionOnlyChanges() throws {
+        for change in 0..<3 {
+            let (model,repository) = fixture()
+            let input = try richInput(selection: .init(location: 0,length: 2))
+            XCTAssertTrue(model.updateComposerInput(input,contextID: model.messageActionContextID,chatID: 10001))
+            let target = try XCTUnwrap(model.uploadTarget(replyTo: nil,contextID: model.messageActionContextID))
+            model.captureUploadDraft(target: target,caption: input.formattedText)
+            if change == 1 {
+                XCTAssertTrue(model.updateComposerInput(try richInput(.italic,selection: input.selection),contextID: model.messageActionContextID,chatID: 10001))
+            } else if change == 2 {
+                XCTAssertTrue(model.updateComposerInput(try richInput(selection: .init(location: 3,length: 2)),contextID: model.messageActionContextID,chatID: 10001))
+            }
+            let current = model.composerInput
+            model.acknowledgeUpload(target: target,caption: input.formattedText)
+            XCTAssertEqual(model.composerInput,change == 0 ? .empty : current)
+            XCTAssertEqual(repository.writes.last?.0.input,change == 0 ? .empty : current)
+        }
     }
 
     private final class Lease: TelegramMessageActionsLease { func cancel() {} }

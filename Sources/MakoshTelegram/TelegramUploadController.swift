@@ -23,7 +23,7 @@ public enum TelegramUploadPhase: Equatable, Sendable {
 @MainActor protocol TelegramUploadLease: AnyObject { func stop() }
 @MainActor protocol TelegramUploadProvider: AnyObject {
     var accountID: Int64 { get }
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: String,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease
 }
 enum TelegramUploadEvent {
@@ -34,7 +34,17 @@ enum TelegramUploadEvent {
     @Published public private(set) var phase: TelegramUploadPhase = .idle
     @Published public private(set) var file: TelegramUploadFile?
     @Published public private(set) var target: TelegramUploadTarget?
-    @Published public var caption = ""
+    @Published public private(set) var captionInput: TelegramComposerInput = .empty
+    public var caption: String {
+        get { captionInput.formattedText.text }
+        set {
+            guard !newValue.utf8.elementsEqual(caption.utf8) else { return }
+            guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: newValue)) else {
+                error = "Не удалось сохранить подпись."; return
+            }
+            captionInput = input
+        }
+    }
     @Published public private(set) var messageID: String?
     @Published public private(set) var error: String?
     private var provider: (any TelegramUploadProvider)?
@@ -43,16 +53,23 @@ enum TelegramUploadEvent {
     private var deadline: Task<Void, Never>?
     private var token = UUID()
     private var committed = false
-    private var sentCaption = ""
-    var didQueue: ((TelegramUploadTarget, String) -> Void)?
-    var willSubmit: ((TelegramUploadTarget, String) -> Void)?
+    private var sentCaption = TelegramComposerInput.empty.formattedText
+    var didQueue: ((TelegramUploadTarget, TelegramFormattedText) -> Void)?
+    var willSubmit: ((TelegramUploadTarget, TelegramFormattedText) -> Void)?
     // Per-instance deterministic staging seam, with identical ownership semantics.
     var stage: (URL, TelegramUploadMode) async throws -> TelegramUploadFile = TelegramUploadFileIO.stage
     var discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard
 
     public init() {}
-    public var canSend: Bool { phase == .ready && provider?.accountID == target?.accountID && caption.utf16.count <= 1024 }
+    public var canSend: Bool { phase == .ready && provider?.accountID == target?.accountID && telegramFormattedCaptionCanSend(captionInput.formattedText) }
     public var canCancel: Bool { phase == .preparing || phase == .ready || phase == .storing }
+    public var captionContextID: UUID { token }
+
+    @discardableResult
+    public func updateCaptionInput(_ input: TelegramComposerInput, contextID: UUID) -> Bool {
+        guard token == contextID, phase == .ready else { return false }
+        captionInput = input; error = nil; return true
+    }
 
     func bind(provider: (any TelegramUploadProvider)?) {
         clear()
@@ -60,11 +77,18 @@ enum TelegramUploadEvent {
     }
 
     public func prepare(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String) {
+        guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: caption)) else {
+            error = "Не удалось подготовить подпись."; return
+        }
+        prepare(source: source, mode: mode, target: target, captionInput: input)
+    }
+
+    public func prepare(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput) {
         guard preparation == nil, phase == .idle || phase == .cancelled || phase == .failed || phase == .rejected,
               provider?.accountID == target.accountID, target.hasValidReplySource else { return }
         clear()
         guard file == nil else { phase = .failed; return }
-        self.target = target; self.caption = caption; phase = .preparing
+        self.target = target; self.captionInput = captionInput; phase = .preparing
         let request = token, stage = self.stage, discard = self.discard
         preparation = Task { [weak self] in
             do {
@@ -87,9 +111,11 @@ enum TelegramUploadEvent {
     }
 
     public func send() {
-        guard caption.utf16.count <= 1024 else { error = "Подпись не должна превышать 1024 символа UTF-16."; return }
+        guard telegramFormattedCaptionCanSend(captionInput.formattedText) else {
+            error = "Подпись или её форматирование не поддерживаются. Максимум — 1024 знака UTF16."; return
+        }
         guard canSend, let provider, let file, let target else { return }
-        let request = UUID(); token = request; sentCaption = caption; committed = false
+        let request = UUID(); token = request; sentCaption = captionInput.formattedText; committed = false
         phase = .storing; error = nil
         deadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(30)) } catch { return }
@@ -116,7 +142,7 @@ enum TelegramUploadEvent {
         let possiblyQueued = committed || messageID != nil
         token = UUID(); preparation?.cancel(); deadline?.cancel(); deadline = nil
         let old = lease; lease = nil; old?.stop()
-        let cleaned = cleanup(); target = nil; caption = ""; messageID = nil; committed = false
+        let cleaned = cleanup(); target = nil; captionInput = .empty; messageID = nil; committed = false
         phase = .idle
         let notice = "Отправка могла остаться в очереди Telegram. Повторно автоматически не отправляем."
         error = !cleaned ? "Не удалось удалить временный файл." + (possiblyQueued ? " " + notice : "") : possiblyQueued ? notice : nil

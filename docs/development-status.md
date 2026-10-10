@@ -1864,3 +1864,76 @@ rich attachment captions/inline media, other Telegram workflows and gallery
 gaps, live-account acceptance, archive/key backup, later channels and standalone
 packaging remain open in `migration-plan.md`. The full sequential goal remains
 active.
+
+
+## Formatted file/photo captions in the common workspace — 2026-10-10
+
+Attachment preparation now copies the complete typed composer input and UTF16
+selection into the same owned AppKit editor. The controller freezes formatted
+caption entities on send and rejects callbacks from older preparations or after
+ready phase. Native upload attributes preserve nested Unicode entities. Current
+Postbox validation rejects missing/hashless mentions before fresh reply preflight;
+invalid replies never become ordinary media messages. Empty/whitespace captions
+remain valid. Exact full draft revision acknowledgements protect newer formatting,
+selection and reply targets. Inline custom emoji and premium limits remain open.
+
+The reference source was verified at SenderController.swift:606–617 and
+PreviewSenderController.swift:1524–1543,2169–2180. The reference transfers input
+into its preview, clears ordinary input and restores the original on cancellation.
+This slice preserves an independently editable caption while leaving the ordinary
+draft visible. An edited caption therefore retains the ordinary draft after queue
+acceptance. Full temporaryInputState transfer/restore, pending-caption restart
+recovery and media preview remain explicit differences, not completed parity.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; PostgreSQL and S3 healthy.
+- Final `scripts/test.sh`: exit 0, **389 XCTest (326 Telegram + 63 core), zero
+  failures; 24 Python regressions**. Coverage includes real encrypted Postbox
+  caption mention admission, nested native entities and stale reply refusal,
+  immutable caption/token behavior, unsupported/empty captions, and exact-revision
+  formatting/selection ACK races. Thirty-four upstream SQL `t19` teardown
+  diagnostics follow the passing Telegram suite. The first integration attempt
+  failed at two missing `try` calls in the new mapping test; it was repaired and
+  is not counted as a pass.
+- `scripts/build-app.sh`, strict deep codesign verification and unsigned built/QA
+  payload comparison: exit 0. Native AX/screenshots established **21 focused
+  conditions across two passes**: common service selector; Unicode/rich file
+  caption transfer; frozen recipient; caption italic/undo/redo; separate ordinary
+  draft; honest mail and return; labelled simulated file queue preserving a
+  differently edited ordinary draft; ordinary draft restart; Unicode paste over
+  bold selection and after clearing; ordinary formatted simulated queue clear;
+  formatted photo preparation; cancellation preserving the draft; exact photo
+  queue ACK clear; cleared restart and synthetic cleanup. The first twelve
+  conditions used the caption integration build; the remaining nine used the
+  final emoji-corrected build. Same owned Postbox and explicit isolated schema;
+  no personal account, Keychain, Telegram network or real send.
+- Native QA found a real paste failure: AppKit's color-emoji font has no
+  bold/italic/monospace traits. The bridge now retains the original marker only
+  for native Apple emoji fonts containing actual emoji clusters. Removing styles
+  from ordinary letters or replacing emoji with an ordinary font still rejects.
+  Actual NSTextView/storage fixAttributes and replacement regressions pass;
+  the previously failing native paste scenarios pass in the final build.
+- Root reviewed the complete patch and verified **14 current worker-reviewed
+  source/test hashes**. Final readonly review reported no scoped findings.
+  Workers did not run SwiftPM/runtime gates; observed provider/model/usage remain
+  unknown, without quorum. Native live enqueue and additional emoji sequences
+  remain unaccepted. Private merged evidence stays ignored.
+- Final project XERJ refresh/check: exit 0, **227 files, 197/197 code**. Locked
+  reference/engine fingerprints are fresh. Actual final queries retrieved the
+  caption helper and emoji bridge, confirmed against source. The readonly worker
+  explicitly used current source for the two attributed-text files while their
+  index was stale; root subsequently refreshed and checked that scope.
+
+- `git diff --check`: exit 0. Publication audit checked **232 publishable files**
+  and the private PR body against five selected credential fields, with zero
+  matches. Machine configuration, caches and QA artifacts remain ignored.
+
+The preceding rich-composer head `f083b891ec17e8a955cb4996abe88e3e568caf84`
+passed [PR CI 38085984601](https://github.com/Mesteriis/makosh-native/actions/runs/38085984601)
+and [push CI 38085981236](https://github.com/Mesteriis/makosh-native/actions/runs/38085981236).
+These are results for that exact preceding head, not this caption patch.
+
+Full caption transfer/recovery, other Telegram flows and live-account acceptance,
+archive/key backup, later channels and standalone packaging remain open in
+migration-plan.md. The full sequential goal remains active.

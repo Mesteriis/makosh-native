@@ -45,13 +45,13 @@ struct TelegramAttachButtons: View {
     }
     private func choose(_ mode: TelegramUploadMode) {
         guard !choosing, let target = capturedTarget else { return }
-        let caption = model.draft
+        let captionInput = model.composerInput
         let contextID = model.uploadContextID
         choosing = true
         Task { @MainActor in
             defer { choosing = false }
             guard let source = await TelegramUploadPanel.choose(mode: mode) else { return }
-            model.prepareUpload(source: source, mode: mode, target: target, caption: caption, contextID: contextID)
+            model.prepareUpload(source: source, mode: mode, target: target, captionInput: captionInput, contextID: contextID)
         }
     }
 }
@@ -59,6 +59,7 @@ struct TelegramAttachButtons: View {
 struct TelegramUploadView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var upload: TelegramUploadController
+    @State private var captionError: String?
     init(model: TelegramModel) { self.model = model; upload = model.upload }
     var body: some View {
         if upload.phase != .idle || upload.error != nil {
@@ -86,8 +87,13 @@ struct TelegramUploadView: View {
                     }
                 }
                 if upload.phase == .ready {
-                    TextField("Подпись к вложению", text: $upload.caption, axis: .vertical)
-                        .lineLimit(1...4).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.upload.caption")
+                    let contextID = upload.captionContextID
+                    TelegramRichTextEditor(value: Binding(get: { upload.captionInput.formattedText },set: { _ in }),
+                        error: $captionError,selection: upload.captionInput.selection,accessibilityID: "telegram.upload.caption",
+                        placeholder: "Подпись к вложению",inputChanged: { input in
+                            _ = upload.updateCaptionInput(input,contextID: contextID)
+                        })
+                        .id(contextID)
                     Text("Подпись: \(upload.caption.utf16.count)/1024. Проверьте получателя перед отправкой.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -99,7 +105,7 @@ struct TelegramUploadView: View {
                     Spacer()
                     if upload.phase == .ready {
                         Button(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить вложение") { upload.send() }
-                            .buttonStyle(.borderedProminent).disabled(!upload.canSend)
+                            .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
                             .accessibilityIdentifier("telegram.upload.send")
                     }
                     if upload.canCancel {
@@ -111,7 +117,10 @@ struct TelegramUploadView: View {
                     }
                 }
                 if let error = upload.error { Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.error") }
+                if let captionError { Text(captionError).font(.caption).foregroundStyle(.red) }
             }.padding(16).background(Color.accentColor.opacity(0.06))
+                .onAppear { captionError = nil }
+                .onChange(of: upload.captionContextID) { _,_ in captionError = nil }
         }
     }
     private var status: String {

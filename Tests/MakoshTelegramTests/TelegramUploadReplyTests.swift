@@ -24,6 +24,19 @@ final class TelegramUploadReplyMappingTests: XCTestCase {
         XCTAssertEqual(subject?.messageId, MessageId(peerId: PeerId(2), namespace: Namespaces.Message.Cloud, id: 42))
         XCTAssertNil(subject?.quote); XCTAssertNil(subject?.todoItemId)
     }
+    func testTypedCaptionPreservesNestedUnicodeEntitiesAndNeverFallsBack() throws {
+        let target = TelegramUploadTarget(accountID: 1, chatID: 2, title: "Fixture", replySource: source())
+        let rich = try TelegramFormattedText(text: "e\u{301} 😀", entities: [
+            .init(offset: 0, length: 5, kind: .bold), .init(offset: 3, length: 2, kind: .italic)])
+        let message = try XCTUnwrap(telegramUploadMessage(caption: rich, reference: reference(), target: target, replySource: source()))
+        guard case let .message(text, attributes, _, _, _, reply, _, _, _, _) = message else { return XCTFail("Expected media") }
+        let entities = try XCTUnwrap(attributes.first as? TextEntitiesMessageAttribute)
+        XCTAssertEqual(try telegramFormattedText(text: text, entities: entities.entities), rich)
+        XCTAssertNotNil(reply)
+        XCTAssertNil(telegramUploadMessage(caption: rich, reference: try reference(), target: target, replySource: nil))
+        let unsupported = try TelegramFormattedText(text: "x", entities: [.init(offset: 0, length: 1, kind: .customEmoji(stickerPack: nil, fileID: 1))])
+        XCTAssertNil(telegramUploadMessage(caption: unsupported, reference: try reference(), target: target, replySource: source()))
+    }
     func testMissingStaleOrForeignReplyCannotDegradeToOrdinaryUpload() throws {
         let reference = try reference(), target = TelegramUploadTarget(accountID: 1, chatID: 2, title: "Fixture", replySource: source())
         XCTAssertNil(telegramUploadMessage(caption: "caption", reference: reference, target: target, replySource: nil))

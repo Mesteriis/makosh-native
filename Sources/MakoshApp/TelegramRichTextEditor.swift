@@ -57,7 +57,8 @@ private struct NativeTelegramText: NSViewRepresentable {
             coordinator.measure(text,in: scroll)
         }
         text.setAccessibilityIdentifier(accessibilityID)
-        text.setAccessibilityLabel(accessibilityID == "telegram.composer" ? "Сообщение в Telegram" : "Изменить сообщение")
+        text.setAccessibilityLabel(accessibilityID == "telegram.composer" ? "Сообщение в Telegram" :
+            accessibilityID == "telegram.upload.caption" ? "Подпись к вложению" : "Изменить сообщение")
         text.delegate = context.coordinator
         text.format = { [weak coordinator = context.coordinator,weak text] kind in
             guard let coordinator,let text else { return }

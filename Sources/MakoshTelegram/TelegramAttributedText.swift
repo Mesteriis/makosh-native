@@ -42,6 +42,14 @@ private final class TelegramEntityAttribute: NSObject, NSCopying {
         }
         return result
     }
+    private static func emojiFallbackText(_ text: String) -> Bool {
+        !text.isEmpty && text.allSatisfy { character in
+            let scalars = character.unicodeScalars
+            return scalars.contains(where: { ($0.properties.isEmoji && $0.value > 0x7f) || $0.value == 0xfe0f }) &&
+                scalars.allSatisfy { $0.properties.isEmoji || $0.value == 0x200d ||
+                    $0.value == 0xfe0f || $0.value == 0x20e3 || (0xe0020...0xe007f).contains($0.value) }
+        }
+    }
     public static func formattedText(_ value: NSAttributedString) throws -> TelegramFormattedText {
         var found: [String: (TelegramEntityAttribute, NSRange)] = [:]
         var invalid = false
@@ -90,7 +98,22 @@ private final class TelegramEntityAttribute: NSObject, NSCopying {
                 return false
             }
             for entity in originals {
-                guard ranges.contains(where: { NSLocationInRange(entity.offset,$0) && NSMaxRange($0) >= entity.offset + entity.length }) else { throw TelegramAttributedTextError.invalid }
+                let originalRange = NSRange(location: entity.offset, length: entity.length)
+                var preservesStyle = true
+                value.enumerateAttributes(in: originalRange) { attributes, run, _ in
+                    if ranges.contains(where: { $0.location <= run.location && NSMaxRange($0) >= NSMaxRange(run) }) { return }
+                    // AppKit substitutes its color-emoji font during fixAttributes.
+                    // That font cannot express bold/italic/monospace traits; the
+                    // immutable native marker still owns those semantics. Never
+                    // excuse a missing style on ordinary letters or other fonts.
+                    guard [.bold, .italic, .code].contains(kind),
+                          let font = attributes[.font] as? NSFont,
+                          ["AppleColorEmoji", ".AppleColorEmojiUI"].contains(font.fontName),
+                          emojiFallbackText((value.string as NSString).substring(with: run)) else {
+                        preservesStyle = false; return
+                    }
+                }
+                guard preservesStyle else { throw TelegramAttributedTextError.invalid }
             }
             for range in ranges where !originals.contains(where: { $0.offset <= range.location && $0.offset + $0.length >= NSMaxRange(range) }) {
                 guard !originals.contains(where: { NSIntersectionRange(NSRange(location: $0.offset,length: $0.length),range).length > 0 }) else { throw TelegramAttributedTextError.invalid }

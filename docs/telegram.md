@@ -174,7 +174,7 @@ Destroying the model also shuts down subscriptions through isolated deinit.
   of at most 1,024 UTF-16 units. It first copies into MediaBox and verifies a
   complete zero-offset regular cache file with the exact measured size. Only then
   can TelegramCore enqueue the file/photo. A local MessageId acknowledges the
-  outbox, clears only a byte-identical caption in its original chat, and releases
+  outbox, clears only the captured full draft revision in its original chat, and releases
   the temporary copy. Queue progress, 100% or absent progress never mean delivery.
   Before enqueue, cancellation stops preparation; after possible enqueue, closing
   observation never recalls/deletes the message. A 30-second enqueue deadline
@@ -429,9 +429,18 @@ the caption may be empty. After copying the prepared file into MediaBox, dispatc
 freshly validates the source before enqueueing the exact native reply/thread.
 A stale or deleted source rejects the upload; it never becomes an ordinary
 message. Closing or switching chats cannot retarget a captured attachment.
-Attachment captions currently accept plain text. Attaching while the ordinary
-draft contains entities is explicitly unavailable, preserving the rich draft
-until caption-entity support is implemented.
+Attachment preparation copies the ordinary formatted input and its UTF16
+selection into the same owned native rich editor. File/photo captions enqueue
+native entities and validate text mentions against current Postbox peers before
+reply preflight. Empty/whitespace captions remain valid, without trimming.
+The 1,024 UTF16 limit remains; unresolved custom emoji cannot be sent.
+Caption callbacks are bound to the current preparation token and ready phase;
+send freezes the formatted value. Only an exact captured ordinary draft revision
+can clear after acknowledgement, protecting newer formatting/selection/reply.
+Unlike the reference's temporaryInputState workflow, the ordinary draft remains
+visible during preparation; a separately edited caption retains it after queue
+acceptance. Complete input transfer/restore and pending-caption restart recovery
+remain open.
 
 Forward requires explicit selection among loaded dialogs in the same account;
 the confirmation shows the recipient. Deletion requires choosing local-only or

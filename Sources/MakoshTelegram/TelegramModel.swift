@@ -159,7 +159,7 @@ public final class TelegramModel: ObservableObject {
         }
     }
     public var composerCanSend: Bool { telegramFormattedTextCanSend(composerInput.formattedText) }
-    public var composerSupportsAttachments: Bool { composerInput.formattedText.entities.isEmpty }
+    public var composerSupportsAttachments: Bool { composerInput.formattedText.isEditable }
     @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
     public private(set) var isSyntheticPreview = false
@@ -493,9 +493,14 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String, contextID: UUID) {
+        guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: caption)) else { return }
+        prepareUpload(source: source,mode: mode,target: target,captionInput: input,contextID: contextID)
+    }
+
+    public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID) {
         guard contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
               target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
-        upload.prepare(source: source, mode: mode, target: target, caption: caption)
+        upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput)
     }
 
     public func uploadTarget(replyTo source: TelegramMessageActionSource?, contextID: UUID) -> TelegramUploadTarget? {
@@ -510,21 +515,29 @@ public final class TelegramModel: ObservableObject {
     }
 
     func captureUploadDraft(target: TelegramUploadTarget, caption: String) {
+        guard let formatted = try? TelegramFormattedText(text: caption) else { return }
+        captureUploadDraft(target: target,caption: formatted)
+    }
+
+    func captureUploadDraft(target: TelegramUploadTarget, caption: TelegramFormattedText) {
         uploadComposerSubmission = nil
         guard target.accountID == draftAccountID,
               let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
-              snapshot.input.formattedText.entities.isEmpty,
-              snapshot.text.utf8.elementsEqual(caption.utf8),
+              snapshot.input.formattedText == caption,
               snapshot.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
         uploadComposerSubmission = snapshot
     }
 
     func acknowledgeUpload(target: TelegramUploadTarget, caption: String) {
+        guard let formatted = try? TelegramFormattedText(text: caption) else { return }
+        acknowledgeUpload(target: target,caption: formatted)
+    }
+
+    func acknowledgeUpload(target: TelegramUploadTarget, caption: TelegramFormattedText) {
         guard target.accountID == draftAccountID, let submitted = uploadComposerSubmission,
               submitted.accountID == target.accountID, submitted.chatID == target.chatID else { return }
         uploadComposerSubmission = nil
-        guard let formatted = try? TelegramFormattedText(text: caption) else { return }
-        acknowledgeComposerDraft(formatted: formatted, submitted: submitted)
+        acknowledgeComposerDraft(formatted: caption, submitted: submitted)
     }
 
     public func connectUsingSavedAPIConfiguration() {

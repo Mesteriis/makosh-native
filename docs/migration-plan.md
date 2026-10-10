@@ -68,7 +68,11 @@
    по текущему Postbox; inline custom emoji требует отдельного media registry.
    Режим edit после restart сбрасывается и в референсе; его восстановление внутри
    процесса, quote/forward state, серверные черновики, настройки клавиши отправки,
-   actual IME acceptance и форматированная подпись вложения ещё впереди.
+   actual IME acceptance ещё впереди. Подготовка фото/файла сохраняет typed
+   подпись и выделение, очередь передаёт native entities и проверяет упоминания;
+   точный revision ACK защищает новый ввод. Полный temporaryInputState перенос
+   и восстановление обычного поля, restart pending-caption, inline media,
+   premium caption limits и предпросмотр отправляемых медиа ещё впереди.
    Индикаторы отправки/ошибки и одна/две галочки рядом со временем следуют
    `ChatRightView`; прочтение берётся из native history entry. Видимая граница
    обычной cloud-истории отмечается через native interactive read только в

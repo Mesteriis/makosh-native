@@ -12,11 +12,12 @@ import XCTest
         var leases: [Lease] = []
         var targets: [TelegramUploadTarget] = []
         var captions: [String] = []
+        var formattedCaptions: [TelegramFormattedText] = []
         var synchronous: [TelegramUploadEvent] = []
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: String,
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
                     receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
             let lease = Lease(); leases.append(lease); callbacks.append(receive)
-            targets.append(target); captions.append(caption)
+            targets.append(target); captions.append(caption.text); formattedCaptions.append(caption)
             for event in synchronous { receive(event) }
             return lease
         }
@@ -41,7 +42,7 @@ import XCTest
     func testExplicitSendFreezesTargetCaptionAndQueuesOnlyOnce() async {
         let (controller, provider) = await ready()
         var queued: [(TelegramUploadTarget, String)] = []
-        controller.didQueue = { queued.append(($0, $1)) }
+        controller.didQueue = { queued.append(($0, $1.text)) }
         controller.send(); controller.send(); controller.caption = "edited"
         XCTAssertEqual(provider.callbacks.count, 1)
         XCTAssertEqual(provider.targets, [recipient]); XCTAssertEqual(provider.captions, ["original"])
@@ -58,6 +59,42 @@ import XCTest
         provider.callbacks[0](.progress(2)); XCTAssertEqual(controller.phase, .queued(1))
         provider.callbacks[0](.progress(.nan)); XCTAssertEqual(controller.phase, .queued(nil))
         provider.callbacks[0](.queueFailed); XCTAssertEqual(controller.phase, .queueFailed)
+    }
+
+    func testRichCaptionFreezesEntitiesAndRejectsStaleEditorCallbacks() async throws {
+        let (controller, provider) = await ready()
+        let formatted = try TelegramFormattedText(text: "e\u{301} 😀 caption",entities: [
+            .init(offset: 0,length: 2,kind: .bold), .init(offset: 3,length: 2,kind: .italic)
+        ])
+        let input = try TelegramComposerInput(formattedText: formatted,selection: .init(location: 3,length: 2))
+        let context = controller.captionContextID
+        XCTAssertFalse(controller.updateCaptionInput(input,contextID: UUID()))
+        XCTAssertTrue(controller.updateCaptionInput(input,contextID: context))
+        controller.caption = formatted.text
+        XCTAssertEqual(controller.captionInput,input,"Same-text compatibility updates retain entities/selection")
+        var queued: TelegramFormattedText?
+        controller.didQueue = { _,caption in queued = caption }
+        controller.send()
+        XCTAssertEqual(provider.formattedCaptions,[formatted])
+        XCTAssertFalse(controller.updateCaptionInput(.empty,contextID: context))
+        controller.caption = "later"
+        provider.callbacks[0](.committing); provider.callbacks[0](.accepted("rich"))
+        XCTAssertEqual(queued,formatted)
+        XCTAssertEqual(controller.caption,"later")
+    }
+
+    func testEmptyCaptionAllowedAndUnsupportedRichCaptionCannotReachProvider() async throws {
+        let (controller,provider) = await ready()
+        let unsupported = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "x",entities: [
+            .init(offset: 0,length: 1,kind: .customEmoji(stickerPack: nil,fileID: 123))
+        ]))
+        XCTAssertTrue(controller.updateCaptionInput(unsupported,contextID: controller.captionContextID))
+        XCTAssertFalse(controller.canSend); controller.send()
+        XCTAssertTrue(provider.callbacks.isEmpty)
+        XCTAssertNotNil(controller.error)
+        XCTAssertTrue(controller.updateCaptionInput(.empty,contextID: controller.captionContextID))
+        XCTAssertTrue(controller.canSend); controller.send()
+        XCTAssertEqual(provider.formattedCaptions,[TelegramComposerInput.empty.formattedText])
     }
 
     func testDeadlineBeforeCommitStopsAndRejectsLateEvents() async {

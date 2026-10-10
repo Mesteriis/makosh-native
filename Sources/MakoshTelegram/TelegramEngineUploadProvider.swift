@@ -32,13 +32,13 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
     var accountID: Int64 { account.peerId.toInt64() }
     init(account: Account) { self.account = account }
 
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: String,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = EngineUploadLease(receive: receive)
         let peerID = PeerId(target.chatID)
         guard target.accountID == accountID, target.hasValidReplySource,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(peerID.namespace),
-              caption.utf16.count <= 1024, let (resource, reference) = telegramUploadMedia(file) else {
+              telegramFormattedCaptionCanSend(caption), let (resource, reference) = telegramUploadMedia(file) else {
             receive(.rejected); return lease
         }
         let mediaBox = account.postbox.mediaBox
@@ -81,10 +81,15 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
                             }))
                     }))
                 }
-                if let source = target.replySource {
-                    lease.validation.set((validateTelegramReplySource(postbox: account.postbox, accountID: target.accountID, source: source)
-                        |> deliverOnMainQueue).start(next: { fresh in commit(fresh) }))
-                } else { commit(nil) }
+                lease.captionValidation.set((telegramValidateOutgoingCaption(postbox: account.postbox, formatted: caption)
+                    |> deliverOnMainQueue).start(next: { [weak lease, account] valid in
+                        guard let lease, !lease.stopped else { return }
+                        guard valid else { lease.receive(.rejected); lease.stop(); return }
+                        if let source = target.replySource {
+                            lease.validation.set((validateTelegramReplySource(postbox: account.postbox, accountID: target.accountID, source: source)
+                                |> deliverOnMainQueue).start(next: { fresh in commit(fresh) }))
+                        } else { commit(nil) }
+                    }))
             }))
         return lease
     }
@@ -93,7 +98,13 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
 /// A failed reply preflight must never degrade into an ordinary media message.
 func telegramUploadMessage(caption: String, reference: AnyMediaReference, target: TelegramUploadTarget,
                            replySource: TelegramMessageActionSource?) -> EnqueueMessage? {
-    guard caption.utf16.count <= 1024, target.hasValidReplySource else { return nil }
+    guard let value = try? TelegramFormattedText(text: caption) else { return nil }
+    return telegramUploadMessage(caption: value, reference: reference, target: target, replySource: replySource)
+}
+
+func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference, target: TelegramUploadTarget,
+                           replySource: TelegramMessageActionSource?) -> EnqueueMessage? {
+    guard telegramFormattedCaptionCanSend(caption), target.hasValidReplySource else { return nil }
     if let captured = target.replySource {
         guard let replySource, replySource.accountID == captured.accountID,
               replySource.chatID == captured.chatID, replySource.peerID == captured.peerID,
@@ -105,7 +116,7 @@ func telegramUploadMessage(caption: String, reference: AnyMediaReference, target
         EngineMessageReplySubject(messageId: MessageId(peerId: PeerId($0.peerID), namespace: $0.namespace, id: $0.messageID),
             quote: nil, todoItemId: nil)
     }
-    return .message(text: caption, attributes: [], inlineStickers: [:], mediaReference: reference,
+    return .message(text: caption.text, attributes: telegramOutgoingTextAttributes(caption), inlineStickers: [:], mediaReference: reference,
         threadId: replySource?.threadID, replyToMessageId: reply, replyToStoryId: nil,
         localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
 }
@@ -121,7 +132,7 @@ func validUploadCacheFile(_ path: String, size: Int64) -> Bool {
 
 @MainActor
 private final class EngineUploadLease: TelegramUploadLease {
-    let keep = MetaDisposable(), data = MetaDisposable(), validation = MetaDisposable(), enqueue = MetaDisposable(), pending = MetaDisposable()
+    let keep = MetaDisposable(), data = MetaDisposable(), captionValidation = MetaDisposable(), validation = MetaDisposable(), enqueue = MetaDisposable(), pending = MetaDisposable()
     let receive: @MainActor (TelegramUploadEvent) -> Void
     var committing = false
     var validating = false
@@ -131,7 +142,7 @@ private final class EngineUploadLease: TelegramUploadLease {
     func stop() {
         guard !stopped else { return }
         stopped = true
-        keep.dispose(); data.dispose(); validation.dispose(); enqueue.dispose(); pending.dispose()
+        keep.dispose(); data.dispose(); captionValidation.dispose(); validation.dispose(); enqueue.dispose(); pending.dispose()
         // This disposes observations only. A committed Postbox send is not recalled.
     }
     isolated deinit { stop() }

@@ -17,7 +17,7 @@ struct TelegramComposerView: View {
             TelegramAttachButtons(model: model, replySource: reply.resolved?.source,
                 replyContextID: model.messageActionContextID)
                 .disabled(reply.preventsSend || !model.composerSupportsAttachments || actions.isBusy || actions.phase == .uncertain)
-                .help(model.composerSupportsAttachments ? "Прикрепить фото или файл" : "Подпись вложения пока поддерживает только обычный текст.")
+                .help(model.composerSupportsAttachments ? "Прикрепить фото или файл" : "Форматирование этого черновика пока не поддерживается для вложений.")
             if let chatID = model.selectedChatID {
                 let contextID = model.messageActionContextID
                 TelegramRichTextEditor(value: Binding(get: { model.composerInput.formattedText },set: { _ in }),

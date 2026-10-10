@@ -5,9 +5,12 @@ import Foundation
 @MainActor
 final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
     let accountID: Int64 = -1
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: String,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, caption: TelegramFormattedText,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = SyntheticUploadLease()
+        guard target.accountID == accountID, target.hasValidReplySource, telegramFormattedCaptionCanSend(caption) else {
+            receive(.rejected); return lease
+        }
         lease.task = Task { [weak lease] in
             do {
                 try await Task.sleep(for: .milliseconds(600))

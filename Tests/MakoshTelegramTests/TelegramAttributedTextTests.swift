@@ -69,4 +69,33 @@ import AppKit
         XCTAssertThrowsError(try TelegramAttributedText.formattedText(attachment))
     }
 
+    func testActualTextStorageEmojiFontFallbackRetainsMarkedStylesAfterReplacement() throws {
+        let source = "Формат QA e\u{301} 😀\nВторая строка"
+        for kind: TelegramTextEntityKind in [.bold, .italic, .code] {
+            let value = try TelegramFormattedText(text: source, entities: [.init(offset: 0, length: source.utf16.count, kind: kind)])
+            let text = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 100))
+            let storage = try XCTUnwrap(text.textStorage)
+            storage.setAttributedString(try TelegramAttributedText.attributedString(value))
+            storage.fixAttributes(in: NSRange(location: 0, length: storage.length))
+            XCTAssertEqual(try TelegramAttributedText.formattedText(storage), value)
+            // Clearing/replacing the same native storage must not corrupt markers
+            // or split a UTF16 entity around AppKit's color-emoji font run.
+            storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: "")
+            storage.append(try TelegramAttributedText.attributedString(value))
+            storage.fixAttributes(in: NSRange(location: 0, length: storage.length))
+            XCTAssertEqual(try TelegramAttributedText.formattedText(storage), value)
+        }
+    }
+    func testEmojiFallbackExceptionDoesNotPermitRemovedLetterStylesOrForgedFonts() throws {
+        let value = try TelegramFormattedText(text: "A😀B", entities: [.init(offset: 0, length: 4, kind: .bold)])
+        let storage = NSTextStorage(attributedString: try TelegramAttributedText.attributedString(value))
+        storage.fixAttributes(in: NSRange(location: 0, length: storage.length))
+        storage.addAttribute(.font, value: NSFont.systemFont(ofSize: 14), range: NSRange(location: 0, length: 1))
+        XCTAssertThrowsError(try TelegramAttributedText.formattedText(storage))
+        let emoji = try TelegramFormattedText(text: "😀", entities: [.init(offset: 0, length: 2, kind: .bold)])
+        let regular = NSMutableAttributedString(attributedString: try TelegramAttributedText.attributedString(emoji))
+        regular.addAttribute(.font, value: NSFont.systemFont(ofSize: 14), range: NSRange(location: 0, length: 2))
+        XCTAssertThrowsError(try TelegramAttributedText.formattedText(regular))
+    }
+
 }

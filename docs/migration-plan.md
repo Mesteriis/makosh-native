@@ -75,7 +75,12 @@
    ordinary/reply. Cancel/Escape возвращает исходный draft; edited-caption ACK
    очищает только его revision. Durable original переживает завершение процесса.
    Restart pending-caption/file, inline media, albums и premium caption limits
-   ещё впереди.
+   ещё впереди. Для restart готова и проверена storage-основа: точные bytes в
+   зашифрованном S3, метаданные в PostgreSQL, typed caption/original/reply/state в
+   отдельном account/chat Postbox key с CAS и cancellation tombstone. Сквозной
+   тест закрывает и заново открывает Postbox и archive repository; runtime/UI,
+   предочередное сохранение и восстановление неопределённого результата ещё
+   не подключены. Отмена сохраняет immutable S3 copy.
    Индикаторы отправки/ошибки и одна/две галочки рядом со временем следуют
    `ChatRightView`; прочтение берётся из native history entry. Видимая граница
    обычной cloud-истории отмечается через native interactive read только в

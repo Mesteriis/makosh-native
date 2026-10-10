@@ -450,6 +450,23 @@ stage with the existing bounded image decoder. Pending-caption/file restart
 recovery remains open: a restart restores the original ordinary draft, not edits
 to the unfinished attachment caption.
 
+The recovery storage foundation is implemented and integration-tested separately
+from that UI. `TelegramPendingUploadFiles` stores the exact owned staged file in
+the existing encrypted S3 archive; PostgreSQL contains only authenticated file
+metadata. An opaque `pending-upload:<preparation UUID>` draft-resource identity
+is separate from received-message observations and is never an engine MessageId.
+Photo restore authenticates the archive record and retains the normalized JPEG
+bytes without a second encoding, in a new mode-0700/0600 owned stage.
+`TelegramPostboxPendingUploadRepository` uses a separate account/chat preference
+key for schema-1 caption entities/selection, original draft, reply target, file
+reference and prepared/submissionStarted/accepted/cancelled disposition. Atomic
+revision compare-and-swap, exact-byte idempotent retries and cancellation
+tombstones reject stale writers; unknown/foreign bytes remain untouched. Cancelling
+the pointer retains the immutable archived file. Transaction completion is not
+an fsync or disk-full guarantee. The runtime upload/model do not yet call these
+adapters: persisting edits before submission, resolving current reply authority,
+reconciling uncertain queue outcomes and showing restart recovery remain open.
+
 Forward requires explicit selection among loaded dialogs in the same account;
 the confirmation shows the recipient. Deletion requires choosing local-only or
 everyone, where available, and explicitly says previously retained versions and

@@ -1,5 +1,40 @@
 # Development status — 2026-10-10
 
+## Current stage: pending attachment recovery storage
+
+Telegram remains in the shared native workspace. Recovery adapters now preserve
+an owned pending file/photo in encrypted S3 with authenticated PostgreSQL metadata
+and a separate account/chat Postbox schema-1 pointer containing typed caption,
+selection, original draft, reply target and lifecycle disposition. Revision CAS,
+exact-byte retry and cancellation tombstones protect existing data. The opaque
+`pending-upload:<UUID>` identity is a draft resource, not a received-message event
+or engine mutation target. Cancellation retains the immutable archived bytes.
+
+Current checks: `scripts/dev-db.sh up`, `scripts/test.sh`,
+`scripts/build-app.sh` all exit 0; **405 XCTest (342 Telegram + 63 core), zero
+failures; 24 Python regressions**. Seven new tests include actual encrypted
+Postbox release/reopen, real PostgreSQL/S3 file and exact normalized-JPEG restore,
+unknown/foreign payload preservation, CAS/ABA/idempotence and a combined
+caption/selection/reply/submissionStarted/file recovery with cancellation/archive
+retention. The passing suite prints **40 upstream SQL t19 teardown diagnostics**.
+Strict deep bundle signature verification exits 0. Final project XERJ refresh
+exits 0 (**234 files, 204/204 code**); project/reference/engine fingerprints and
+source-confirmed recovery queries are current. Publication audit checked
+**239 publishable files** and the private PR body against five selected local
+credential fields, with zero matches.
+Readonly cross-reviews of the seven changed source/test files found no scoped
+defects; workers did not run the integration gates and observed model/provider/
+usage remain unknown. This storage change does not alter a native UI flow;
+the previous modal UI acceptance is recorded below, not relabeled as recovery
+acceptance.
+
+Runtime/model/UI recovery wiring, saving before submission, current reply
+resolution and uncertain queue reconciliation remain the next slice. Neither
+this adapter nor its `submissionStarted` value proves crash/power-loss or live
+delivery acceptance. Telegram's other recorded gaps, later channels, archive/key
+backup and standalone packaging remain open in [migration-plan.md](migration-plan.md).
+The full sequential migration goal remains active.
+
 ## Historical contact-book slice
 
 Native SwiftUI/AppKit contact workspace, PostgreSQL persistence, contact create/edit/search, multiple phones/emails, organization/title/tags, notes, provenance, schema-1 JSON import, reasoned duplicate queue, explicit merge and guarded undo. Communication sections truthfully remain disconnected. Telemost provides an official-link browser handoff; no account/API integration is claimed.

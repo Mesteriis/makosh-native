@@ -50,6 +50,37 @@ public enum TelegramUploadFileIO {
         return try await TelegramDownloadedFileIO.image(source: file.url, expectedSize: file.size)
     }
 
+    static func validateOwnedStage(_ file: TelegramUploadFile) throws {
+        let expected = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + file.id.uuidString, isDirectory: true)
+        guard file.directory.isFileURL, file.url.isFileURL,
+              file.directory.standardizedFileURL == expected.standardizedFileURL,
+              file.url.standardizedFileURL == expected.appendingPathComponent("payload-" + file.id.uuidString).standardizedFileURL else { throw TelegramUploadFileError.unavailable }
+        var info = stat()
+        guard lstat(file.directory.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+              info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else { throw TelegramUploadFileError.unavailable }
+        let fd = Darwin.open(file.url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw TelegramUploadFileError.unavailable }
+        defer { Darwin.close(fd) }
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(),
+              info.st_mode & 0o777 == 0o600, info.st_size == file.size, file.size >= 0,
+              file.size <= (file.mode == .photo ? 20 * 1024 * 1024 : 4 * 1024 * 1024 * 1024) else { throw TelegramUploadFileError.unavailable }
+    }
+
+    static func restoredStage(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, url: URL, directory: URL) async throws -> TelegramUploadFile {
+        let provisional = TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: nil, pixelHeight: nil, url: url, directory: directory)
+        try validateOwnedStage(provisional)
+        if mode == .file { return provisional }
+        _ = try await TelegramDownloadedFileIO.image(source: url, expectedSize: size)
+        try Task.checkCancellation()
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetType(source) as String? == "public.jpeg",
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int32Value,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int32Value,
+              width > 0, height > 0, width <= 2560, height <= 2560 else { throw TelegramUploadFileError.invalidImage }
+        return TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: width, pixelHeight: height, url: url, directory: directory)
+    }
+
     static func discard(_ file: TelegramUploadFile) throws {
         let expected = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + file.id.uuidString, isDirectory: true)
         guard file.directory.standardizedFileURL == expected.standardizedFileURL,

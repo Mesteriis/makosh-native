@@ -64,6 +64,7 @@ public final class TelegramModel: ObservableObject {
     public let media = TelegramMediaController()
     public let playback = TelegramPlaybackController()
     public let upload = TelegramUploadController()
+    public let archive = TelegramArchiveController()
     public var uploadContextID: UUID { accountGeneration }
     @Published public private(set) var phase: TelegramPhase = .configuration
     @Published public private(set) var isBusy = false
@@ -371,6 +372,7 @@ public final class TelegramModel: ObservableObject {
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
         setupAccount(account)
+        archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
         media.bind(provider: mediaProvider)
@@ -396,6 +398,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        archive.bind(journal: nil)
         playback.stop()
         upload.bind(provider: nil)
         mediaProvider = nil; historyMediaSources = []
@@ -605,6 +608,7 @@ public final class TelegramModel: ObservableObject {
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.isSyntheticPreview = true
+        model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"
         model.loadChatList(clear: true)

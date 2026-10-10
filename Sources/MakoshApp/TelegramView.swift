@@ -77,6 +77,8 @@ struct TelegramDetailView: View {
     @State private var password = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            TelegramArchiveBar(archive: model.archive)
+            Divider()
             switch model.phase {
             case .configuration: setup
             case .connecting:

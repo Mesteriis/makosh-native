@@ -198,6 +198,77 @@ UI checks are distinct from real authorization, incoming sync, sending,
 reconnect or cache-corruption acceptance. See [`development-status.md`](development-status.md)
 for actual completed checks and outstanding runtime limits.
 
+## Independent local message retention
+
+**Локальный архив** opens a separate native viewer, including while Telegram is
+disconnected or no chat is selected. It shows retained text snapshots, versions,
+attachment metadata and source-cache removal markers, attributed to the full
+service/account/peer/message namespace identity. Its 100-record cursor pages are
+independent of the current Telegram history/search window. It has no delete,
+expiration or automatic retention-pruning action.
+
+Preparation recipe 4 captures central Postbox history writes and the old content
+before overwrite/removal in durable ValueBox tables in the **same transaction**.
+This starts with the prepared engine, rather than registering only visible or
+already known peers. The account-bound adapter drains immutable batches to
+PostgreSQL; exact source sequences are acknowledged only after archive commit.
+Stable event UUIDs and receipts make redelivery idempotent even if an earlier
+duplicate snapshot was suppressed. A→B→A versions remain distinct. PostgreSQL
+failure leaves the source journal pending and shows an explicit retry error;
+account/view changes do not cancel a write already accepted for its captured
+account. Disconnecting does not delete the independent archive.
+
+When updating an existing development checkout, preparation refuses an engine
+made by an older recipe. Preserve `.local/telegram-engine` under an unused backup
+directory name, then rerun `scripts/build-app.sh` or `scripts/test.sh`; the locked
+source/compiler caches can be reused. Do not edit the generated engine or remove
+the application-support session directory, PostgreSQL volume or Keychain items.
+Fresh checkouts prepare recipe 4 directly.
+
+Archive tables share the configured PostgreSQL service/schema, without changing
+the contact aggregate. AES-GCM encrypts text and metadata with separate HKDF
+encryption/lookup keys; authenticated data binds the vault, schema version,
+message token and sequence. Lookup identities use HMAC. SQL contains ciphertext,
+opaque keyed tokens, observation UUIDs and sequence/size information; this is
+not a guarantee against database-admin deletion or traffic/size analysis.
+Parameterized writes are atomic; append-only triggers reject ordinary event and
+receipt UPDATE/DELETE/TRUNCATE. Missing/wrong keys, unsupported versions and
+integrity failures stop without replacing existing data.
+
+The separate random 256-bit archive key is stored as a nonsynchronizing item in
+the **macOS login Keychain**, with the normal macOS ACL/unlock behavior. It is
+created only for a new vault, never substituted for a missing existing key.
+There is no file fallback, iCloud sync or reuse of Telegram protocol keys.
+Ad-hoc development signing cannot access the entitlement-gated data-protection
+Keychain; no iOS device-only or lock-screen accessibility guarantee is claimed.
+PostgreSQL data and this key are both necessary for recovery. Portable encrypted
+backup/key export and restore are still unimplemented; a database dump alone is
+insufficient to move the archive to another machine.
+
+Current boundaries:
+
+- Retention covers message states actually stored through the adapted central
+  Postbox history paths. Content deleted before reception, unrequested history,
+  and intermediate edits coalesced before Postbox are unavailable. Existing
+  untouched cache rows are not proactively backfilled; a later overwrite/removal
+  captures their prior content. Mutations confined to shared referenced media
+  outside history writes and raw API-version capture require further work.
+- A physical source-cache removal proves disappearance, not who deleted it.
+  The viewer says the cause is unknown; history pagination/filter changes never
+  create deletion markers. Author IDs and plain text are retained; resolved
+  author names and rich-text entities are not yet archived.
+- Attachment **metadata**, not downloaded file bytes, is archived in this slice.
+  MediaBox force-removal can defeat a cache borrow. Permanent encrypted copies
+  and crash recovery must be completed before claiming attachment retention.
+  Opening the archive does not initiate media downloads or network requests.
+- Graceful disk-full backpressure is not established: upstream ValueBox uses
+  void/assertion IO and commit paths. Capture encoding/sequence failures stop
+  rather than truncate, but synthetic tests do not prove physical disk-loss
+  recovery. Old binaries sharing this Postbox store lack the journal adaptation.
+- No real account or peer-deletion acceptance was performed. Automated tests
+  use generated schemas and encrypted temporary Postbox fixtures; UI inspection
+  uses visibly synthetic data. See the evidence ledger for exact results.
+
 ## Offline navigation UI check
 
 After a debug build, launch the explicit synthetic view:
@@ -219,3 +290,7 @@ staging and confirmation; **Имитировать очередь** invokes only
 DEBUG fake provider with no Postbox transaction or network. It is visibly labeled synthetic and
 does not prove server pagination or hole filling. The branch and fixture are
 excluded from release builds; regular launch still starts disconnected.
+
+The same preview includes an explicitly synthetic in-memory local archive with
+an original, an edit and a source-cache removal marker. It exercises the actual
+native archive viewer, refresh and dismissal without opening the user's archive.

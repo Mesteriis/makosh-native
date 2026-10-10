@@ -43,7 +43,13 @@ Build adaptations in the generated copy:
 - Disable iCloud login-token reads and future-login-token storage.
 - Distinguish message-search RPC failure from an empty/completed result, preserving
   both search cursors on failure. The bounded GPL adaptation is tracked in
-  `scripts/telegram_search_adaptation.py`; recipe 3 verifies input and output hashes.
+  `scripts/telegram_search_adaptation.py`; preparation verifies input and output hashes.
+- Record message snapshots before overwrite/removal and after central history
+  writes in the same Postbox transaction. Recipe 4 adds the durable journal in
+  `scripts/telegram-retention/MakoshMessageJournal.swift` through the hash-checked
+  `scripts/telegram_retention_adaptation.py`. Both are GPL-3.0-or-later engine
+  adaptations. Exact-sequence acknowledgement follows independent archive commit;
+  this does not claim capture of updates optimized before Postbox or media bytes.
 - Link OpenSSLEncryptionProvider explicitly to Homebrew OpenSSL 3, using its
   Apache-2.0 implementation rather than the upstream Bazel BoringSSL target.
 - Generate FlatSerialization using official `flatc 24.12.23`; source archive

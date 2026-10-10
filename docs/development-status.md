@@ -486,3 +486,88 @@ code**. Current project and unchanged recipe-3 engine fingerprints passed; actua
 queries resolved the playback controller/cache-borrow and engine attribute APIs,
 which were checked against source. Research indexes and clones remain optional,
 ignored tooling; product build/run/test uses neither.
+
+## Independent Telegram text/version retention — 2026-10-10
+
+The user's additional requirement is permanent local retention when a peer
+deletes a message. Before message actions, recipe 4 now captures central Postbox
+history snapshots before overwrite/removal and after writes, in the same ValueBox
+transaction, including unknown peers and more than one displayed page. A separate
+encrypted append-only PostgreSQL archive retains original text, edits, full
+scoped IDs and attachment metadata. Stable observation receipts make retries
+idempotent. Exact journal acknowledgement follows archive commit; PostgreSQL
+failure keeps the journal pending. The offline native viewer has 100-record
+pages and no automatic expiry/delete action. Removal is labeled source-cache
+removal with unknown cause, never inferred from a changing visible window.
+
+The random archive key uses a separate nonsynchronizing macOS login Keychain
+item. Missing/wrong keys and future schemas fail without replacing data. AES-GCM,
+HKDF-separated keys, HMAC identity tokens, authenticated sequence/vault binding,
+parameterized transactions and append-only event/receipt triggers are tested.
+Contacts retain their existing state schema. Normal login-Keychain ACL/unlock
+semantics apply; no iOS device-only/lock-screen guarantee is claimed.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0, existing Docker PostgreSQL healthy.
+- `scripts/test.sh`: exit 0, **173 XCTest tests / 0 failures** (136 Telegram,
+  37 core including real-PostgreSQL contacts/archive), plus **22 Python
+  regressions** (15 preparation, 3 search, 4 retention adaptation).
+- One joint integration test uses the production journal read/ACK builders,
+  encrypted temporary Postbox and a generated real PostgreSQL schema. It stores
+  55 unknown-peer messages, edits/deletes one in the same source transaction,
+  forces an archive insertion rollback, verifies zero ACK/no journal loss,
+  retries, reopens the independent archive, recovers original/edit/removal and
+  verifies UUID redelivery creates zero new records. Store tests also cover
+  A→B→A, dedup receipts, account/UTF-8 isolation, tamper, two-connection writes,
+  atomic bounds validation and rejection of ordinary archive rewriting.
+- `scripts/build-app.sh`: exit 0, native build and strict ad-hoc signature passed.
+- Separate source snapshot: recipe-4 app build/sign and **173 XCTest / 22 Python
+  tests** passed, both exit 0, with `.references/` absent, its bare source cache
+  moved outside the expected path and HTTP(S)/ALL_PROXY set to a closed loopback
+  port. Neither excluded path was recreated; the source cache was restored.
+- Actual final isolated DEBUG native UI, copied from the final built payload
+  and separately identified/signed, opened the archive without selecting a chat.
+  Screenshot and accessibility state showed the original, edit and removal
+  marker together. Refresh kept all three; dismissal returned to navigation.
+  Data were visibly synthetic; no Connect, private account/message read or real
+  peer deletion was performed. An earlier QA process was accidentally relaunched
+  without its preview argument during exit inspection and showed only a missing
+  database configuration error; no account connection occurred. The final check
+  used a fresh isolated bundle identity and explicit preview argument.
+- A task-owned synthetic Keychain item in an ad-hoc signed helper was created
+  and reopened through the final macOS login-Keychain API path, then deleted by
+  its exact generated UUID. No existing personal keys were retrieved. The probe
+  used a deterministic test key; system random generation is covered by source
+  inspection/injected tests, not claimed as exercised by this probe.
+- Final project XERJ refresh: exit 0, **121 files, 94/94 classified code**;
+  engine refresh: exit 0, **721 files, 686/686 classified code**. Fresh actual
+  own archive/transaction and engine replay/deletion queries were confirmed
+  against source. Postbox is outside the TelegramCore index and was read directly.
+- Bounded inherited-model worker reviews and root diff review covered journal,
+  storage, mapping and controller boundaries. Runtime tests exposed and fixed
+  test MainActor callbacks on a background Postbox queue; production transaction
+  builders are now nonisolated and exercised by the joint test. Worker provider,
+  actual model and usage metadata remain unknown; no quorum/voting was used.
+
+Failed probes remain separate: an early run preceded prepared journal generation;
+the first adapted build incorrectly converted existing MessageFlags; a new test
+initially failed Swift sending checks, then trapped on the queue boundary above.
+The entitlement-gated data-protection Keychain returned OSStatus -34018 for the
+ad-hoc helper; the final explicitly selected macOS login-Keychain path passed.
+After successful XCTest completion, temporary Postbox fixtures emit SQLite
+`no such table: t19` messages (four in the final full run). Exit 0 and passing
+assertions do not establish clean upstream fixture teardown; that remains open.
+
+Playback head `28dae6afd91052f3307b13d8342b8c1a51759298` passed
+[PR CI 38061439041](https://github.com/Mesteriis/makosh-native/actions/runs/38061439041).
+This is previous-head evidence; the retention head needs its own hosted check.
+
+This slice retains **text and attachment metadata**, not permanent attachment
+bytes. Downloaded-file retention is next, before reply/edit/delete/forward.
+Untouched historical cache backfill, author names/rich entities, referenced-media
+only mutations, raw versions optimized before Postbox, graceful disk-full
+backpressure, portable archive/key backup and real-account acceptance remain
+unfinished. Deleted-before-reception content cannot be reconstructed. No physical
+loss/admin-deletion immunity is claimed. The complete sequential goal, message
+actions, dossier linking and subsequent channels remain active.

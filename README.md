@@ -4,6 +4,15 @@ Native macOS workspace for a unified contact dossier and communications. The con
 
 Telegram is the first implemented channel: native account setup, paged dialogs/archive and history, local chat search, per-dialog message search, explicit attachment downloads, bounded image previews, file saving, local native audio/video playback, explicit file/photo preparation and sending, and a text composer backed by the actual TelegramCore from the selected TelegramSwift reference. Connect your own separate session explicitly in the app. Real authorization/sync/send/download acceptance is still unverified; see [Telegram setup and limits](docs/telegram.md). Mail, WhatsApp and Teams remain disconnected. Meetings open an official Telemost link in the browser. Existing Telegram/mail sessions and macOS Contacts are not read. All included examples are synthetic.
 
+Received Telegram text has a separate encrypted, append-only PostgreSQL archive,
+accessible through **Локальный архив** even while disconnected. Stored versions
+survive edits and removal from Telegram's cache. A durable same-transaction
+Postbox journal waits for the archive commit before acknowledgement, including
+when PostgreSQL is unavailable. Attachment metadata is retained; permanent file
+bytes, historical backfill and portable archive/key backup remain unfinished.
+Content removed before this client receives it cannot be recovered. See the
+[retention boundaries](docs/telegram.md#independent-local-message-retention).
+
 ## Requirements and run
 
 Apple Silicon, macOS 26+, Xcode 26+ with Swift 6.2+, Python 3.11+, Docker with Compose, and Homebrew `libpq`, `pkg-config`, `openssl@3`, `cmake` and `ninja`. First local verification uses Xcode 27 / Swift 6.4 on macOS 27.0.1; macOS 26 is the configured minimum and CI target, not a claim of a full OS/device matrix. Intel and older macOS are unverified.

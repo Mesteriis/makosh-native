@@ -13,6 +13,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var error: String?
     @Published var notice: String?
     private var store: ContactStore?
+    private var archiveConfiguration: DatabaseConfiguration?
     private struct DatabaseConfiguration: Decodable {
         let connectionString: String
         let schema: String
@@ -43,6 +44,7 @@ final class WorkspaceModel: ObservableObject {
                 self.error = setupMessage; return
             }
             store = try ContactStore(connectionString: configuration.connectionString, schema: configuration.schema)
+            archiveConfiguration = configuration
             try reload()
         } catch {
             // Connection strings and decoding diagnostics may contain credentials.
@@ -52,6 +54,10 @@ final class WorkspaceModel: ObservableObject {
     }
     var selected: Contact? { contacts.first { $0.id == selectedID } }
     var ready: Bool { store != nil }
+    func configureArchive(_ archive: TelegramArchiveController) {
+        guard let configuration = archiveConfiguration else { return }
+        archive.configure(connectionString: configuration.connectionString, schema: configuration.schema)
+    }
     func reload() throws {
         guard let store else { throw StoreError.invalid("Хранилище не открыто. Перезапустите приложение после устранения ошибки.") }
         contacts = try store.contacts(); duplicates = try store.duplicateCandidates(); merges = try store.mergeHistory()
@@ -178,6 +184,7 @@ struct WorkspaceView: View {
             else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
         }
         .tint(accent).background(Color(nsColor: .windowBackgroundColor))
+        .onAppear { model.configureArchive(telegram.archive) }
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model) }
         .sheet(isPresented: $review) { MergeReviewView(model: model) }
         .alert("Макош", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("Понятно", role: .cancel) { model.error = nil } } message: { Text(model.error ?? "") }

@@ -20,7 +20,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "CPostgres", pkgConfig: "libpq", providers: [.brew(["libpq"])]),
         .target(name: "MakoshCore", dependencies: ["CPostgres"]),
-        .target(name: "MakoshTelegram", dependencies: [
+        .target(name: "MakoshTelegram", dependencies: ["MakoshCore",
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
             .product(name: "SwiftSignalKit", package: "SSignalKit"),
@@ -28,7 +28,7 @@ let package = Package(
         ]),
         .executableTarget(name: "MakoshApp", dependencies: ["MakoshCore", "MakoshTelegram"]),
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),
-        .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshTelegram",
+        .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshTelegram", "MakoshCore", "CPostgres",
             .product(name: "Postbox", package: "Postbox"),
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "TelegramApi", package: "TelegramApi"),

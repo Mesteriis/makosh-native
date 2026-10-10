@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import MakoshTelegram
+import MakoshCore
 
 /// A single conversation owns one panel/worker. Cache leases span the async work.
 @MainActor
@@ -50,6 +51,22 @@ final class TelegramAttachmentActions: ObservableObject {
         }
     }
 
+    func saveArchived(files: TelegramFileArchiveController,record: ArchiveFileRecord) {
+        guard !isBusy else { return }
+        begin()
+        task = Task { [weak self] in
+            guard let self else { return }
+            defer { finish() }
+            do {
+                guard let destination = await chooseDestination(name: record.attachment.name,title: "Сохранить файл из архива S3") else { return }
+                try Task.checkCancellation()
+                try await files.export(record,to: destination)
+                self.saved = true
+            } catch is CancellationError { }
+            catch { self.error = "Не удалось получить и проверить копию файла из S3. Существующий файл не заменён." }
+        }
+    }
+
     func cancel() {
         task?.cancel()
         panel?.cancel(nil)
@@ -66,19 +83,22 @@ final class TelegramAttachmentActions: ObservableObject {
         if safe == .unavailable { media.cancel(key) }
     }
 
-    private func chooseDestination(name: String) async -> URL? {
+    private func chooseDestination(name: String,title: String = "Сохранить вложение Telegram") async -> URL? {
         guard !Task.isCancelled else { return nil }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = telegramAttachmentName(name)
         panel.canCreateDirectories = true
-        panel.title = "Сохранить вложение Telegram"
+        panel.title = title
         self.panel = panel
         defer { self.panel = nil }
         return await withCheckedContinuation { continuation in
             let complete: (NSApplication.ModalResponse) -> Void = { response in
                 continuation.resume(returning: response == .OK ? panel.url : nil)
             }
-            if let window = NSApp.keyWindow { panel.beginSheetModal(for: window, completionHandler: complete) }
+            if var window = NSApp.keyWindow ?? NSApp.mainWindow {
+                while let child = window.attachedSheet { window = child }
+                panel.beginSheetModal(for: window, completionHandler: complete)
+            }
             else { panel.begin(completionHandler: complete) }
         }
     }

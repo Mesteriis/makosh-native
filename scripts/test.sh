@@ -14,6 +14,8 @@ import subprocess
 import sys
 
 environment = dict(os.environ)
+if not environment.get("MAKOSH_TEST_S3_CONFIG") and Path(".local/s3-app.json").exists():
+    environment["MAKOSH_TEST_S3_CONFIG"] = str(Path(".local/s3-app.json").resolve())
 if not environment.get("MAKOSH_TEST_DATABASE_URL"):
     config = Path(".local/postgres-app.json")
     if not config.exists():

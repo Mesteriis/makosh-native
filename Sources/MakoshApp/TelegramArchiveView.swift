@@ -1,6 +1,7 @@
 import SwiftUI
 import MakoshCore
 import MakoshTelegram
+import AppKit
 
 struct TelegramArchiveBar: View {
     @ObservedObject var archive: TelegramArchiveController
@@ -23,6 +24,7 @@ struct TelegramArchiveBar: View {
                         .accessibilityIdentifier("telegram.archive.retry")
                 }
             }
+            TelegramFileArchiveStatus(files: archive.files)
         }.padding(12)
             .sheet(isPresented: $showingArchive) { TelegramArchiveView(archive: archive) }
     }
@@ -44,10 +46,10 @@ private struct TelegramArchiveView: View {
             Text("Сохранённые снимки остаются здесь при правках и удалениях в Telegram. Архив доступен без подключения к Telegram.")
                 .font(.callout).foregroundStyle(.secondary)
             if archive.isSynthetic {
-                Text("СИНТЕТИЧЕСКИЙ АРХИВ • данные в памяти, личные аккаунты и PostgreSQL не используются")
+                Text(archive.usesSyntheticS3 ? "СИНТЕТИЧЕСКИЙ АРХИВ • изолированные PostgreSQL/S3, личные аккаунты и Связка ключей не используются" : "СИНТЕТИЧЕСКИЙ АРХИВ • данные в памяти, личные аккаунты и PostgreSQL не используются")
                     .font(.caption.bold()).foregroundStyle(.secondary)
             }
-            Text("Пока сохраняются текст и сведения о вложениях. Постоянное сохранение самих файлов ещё не подключено.")
+            Text("Полностью загруженные файлы сохраняются зашифрованными в S3; PostgreSQL хранит только сведения и ссылки. Превью и ещё не загруженные файлы остаются сведениями о вложениях.")
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
             if archive.isLoading && archive.records.isEmpty {
@@ -96,8 +98,7 @@ private struct TelegramArchiveView: View {
                     Text("Время правки источника: \(editedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(Array(content.attachments.enumerated()), id: \.offset) { _, attachment in
-                    Label("\(attachment.name) · сведения о вложении, файл ещё не в архиве", systemImage: "paperclip")
-                        .font(.caption).foregroundStyle(.secondary)
+                    TelegramArchivedAttachment(files: archive.files,identity: identity,attachment: attachment,synthetic: archive.isSynthetic && !archive.usesSyntheticS3)
                 }
             case .deleted:
                 Label("Удалено в Telegram. Сохранённые версии остаются в архиве.", systemImage: "archivebox")
@@ -108,5 +109,52 @@ private struct TelegramArchiveView: View {
                 .font(.caption2).foregroundStyle(.secondary)
             Divider()
         }.accessibilityIdentifier("telegram.archive.record.\(record.sequence)")
+    }
+}
+
+private struct TelegramFileArchiveStatus: View {
+    @ObservedObject var files: TelegramFileArchiveController
+    var body: some View {
+        VStack(alignment: .leading,spacing: 6) {
+            HStack {
+                Label(files.status,systemImage: "externaldrive.badge.icloud").font(.caption).foregroundStyle(.secondary)
+                if files.isBusy { ProgressView().controlSize(.mini) }
+                Spacer()
+                Button("Проверить очередь файлов",action: files.retry).controlSize(.small).disabled(files.isBusy)
+                    .accessibilityIdentifier("telegram.archive.files.retry")
+            }
+            if let error = files.error { Text(error).font(.caption).foregroundStyle(.red) }
+        }
+    }
+}
+
+private struct TelegramArchivedAttachment: View {
+    @ObservedObject var files: TelegramFileArchiveController
+    let identity: MessageArchiveIdentity
+    let attachment: MessageArchiveAttachment
+    let synthetic: Bool
+    @State private var record: ArchiveFileRecord?
+    @State private var checked = false
+    @StateObject private var actions = TelegramAttachmentActions()
+    @State private var error: String?
+    var body: some View {
+        VStack(alignment: .leading,spacing: 4) {
+            HStack {
+                Label(attachment.name,systemImage: "paperclip")
+                if let record {
+                    Text("Копия в S3").foregroundStyle(.secondary)
+                    Button("Сохранить из архива…") { actions.saveArchived(files: files,record: record) }.disabled(actions.isBusy)
+                        .accessibilityIdentifier("telegram.archive.file.export.\(attachment.id)")
+                } else { Text(checked || synthetic ? "Копия файла в S3 не найдена" : "Проверка копии…").foregroundStyle(.secondary) }
+                if actions.isBusy { ProgressView().controlSize(.mini) }
+                if actions.saved { Text("Сохранено").foregroundStyle(.secondary) }
+            }.font(.caption)
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error = actions.error { Text(error).font(.caption).foregroundStyle(.red) }
+        }.task(id: files.revision) {
+            guard !synthetic else { return }
+            do { record = try await files.file(identity: identity,attachmentID: attachment.id); checked = true; error = nil }
+            catch { checked = true; self.error = "Не удалось проверить копию файла в архиве." }
+        }
     }
 }

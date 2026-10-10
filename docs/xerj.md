@@ -17,7 +17,7 @@ python3 scripts/xerj-index.py MMail --check
 xerj search --url http://127.0.0.1:19320 --prefix mk-com-mail 'IMAPSession connectAndLogin' -k 3
 python3 scripts/xerj-index.py project
 python3 scripts/xerj-index.py project --check
-xerj search --url http://127.0.0.1:19320 --prefix mk-own-v3 'undoMerge expectedRevision' -k 3
+xerj search --url http://127.0.0.1:19320 --prefix mk-own-v4 'undoMerge expectedRevision' -k 3
 ```
 
 Reference preparation is optional research work. Application build/run/test uses
@@ -30,7 +30,7 @@ Adding retained `.notice` license files caused the original `mk-own` frozen
 dataset to refuse new text fields (actual exit 1, unsupported schema evolution).
 The separate `mk-own-v2` scope then completed successfully. Adding Makosh's own
 dependency lock later caused v2 to reject the new JSON fields (actual exit 1).
-The current project therefore uses a separate `mk-own-v3` prefix/state, following
+The subsequent S3 dependency lock also introduced new JSON fields; v3 refused the unsupported schema evolution (exit 1). The current project therefore uses a separate `mk-own-v4` prefix/state, following
 the diagnostic's new-prefix instruction. Both failures remain recorded locally;
 old prefixes are not reused as current evidence. Reference/engine scopes are
 unchanged. The dependency lock stays within the indexed project scope.

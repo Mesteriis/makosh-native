@@ -8,8 +8,10 @@ Received Telegram text has a separate encrypted, append-only PostgreSQL archive,
 accessible through **Локальный архив** even while disconnected. Stored versions
 survive edits and removal from Telegram's cache. A durable same-transaction
 Postbox journal waits for the archive commit before acknowledgement, including
-when PostgreSQL is unavailable. Attachment metadata is retained; permanent file
-bytes, historical backfill and portable archive/key backup remain unfinished.
+when PostgreSQL is unavailable. Completed full-file downloads receive independent
+encrypted copies in S3; PostgreSQL contains metadata, object keys and receipts,
+never attachment payload bytes. Historical backfill and portable archive/key
+backup remain unfinished.
 Content removed before this client receives it cannot be recovered. See the
 [retention boundaries](docs/telegram.md#independent-local-message-retention).
 
@@ -26,9 +28,11 @@ brew install libpq pkg-config openssl@3 cmake ninja
 
 Build/test scripts use Makosh's own [Telegram dependency lock](Dependencies/TelegramEngine.lock.json), prepare the engine and FlatBuffers compiler in ignored local storage, verify source checksums, and supply Homebrew libpq/OpenSSL `PKG_CONFIG_PATH`. The first build downloads locked source into `.local/telegram-source.git`; `.references/` is never read or created by the build. A verified prepared engine can be reused without the source cache or network. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and OpenSSL 3 and needs both libraries on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
 
-The development service uses PostgreSQL 18.6, binds only `127.0.0.1:55439`, and persists data in a Docker named volume mounted at `/var/lib/postgresql` (the PostgreSQL 18 layout). `./scripts/dev-db.sh down` stops the service while preserving its data. Do not remove the volume to upgrade or reset a test.
+Development services are PostgreSQL 18.6 (`127.0.0.1:55439`) and S3-compatible SeaweedFS 4.48 (`127.0.0.1:55440`), both pinned by image digest with separate persistent Docker volumes. `scripts/dev-db.sh up` starts both and initializes the private `makosh-files` bucket. Versioning is enabled; bucket policy denies deletion, expiration rules and suspending versioning. `scripts/dev-db.sh down` preserves both volumes and local credentials. Do not remove volumes to upgrade or reset a test. See [file storage](docs/object-storage.md) for configuration, encryption and recovery boundaries.
 
 Development scripts use ignored `.local/postgres-app.json`. Its object has `connectionString` and optional `schema` (default `makosh`); never commit this file or its password. To choose another configuration, run `./scripts/run.sh --database-config /path/to/database.json`. A direct app launch without this argument reads `~/Library/Application Support/Makosh/database.json`. A missing or invalid configuration shows a setup error; there is no embedded database fallback. Use a separate database/schema and configuration for isolated synthetic testing. Start with one app window for editing; transactional writes keep the latest database state across store instances, but an already-open editor does not offer field-level conflict resolution for competing edits of the same card.
+
+The default `scripts/run.sh` also supplies ignored private `.local/s3-app.json` through `--storage-config`. When supplying your own database arguments, also supply `--storage-config /path/to/s3.json`. A direct app launch reads `~/Library/Application Support/Makosh/s3.json`. S3 keys are generated separately from PostgreSQL and Telegram credentials; they are never embedded in the app or committed.
 
 ## Try the first stage
 

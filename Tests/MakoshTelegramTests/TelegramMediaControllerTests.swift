@@ -42,6 +42,22 @@ final class TelegramMediaControllerTests: XCTestCase {
         XCTAssertEqual(provider.callbacks.count, 0)
     }
 
+    func testFullCompletionFreezesHandlerAndNeverCapturesPreviewOrStaleCallbacks() {
+        let (controller,provider) = setup()
+        var calls: [String] = []
+        controller.completedFullFile = { id,_,size in calls.append("old:\(id):\(size)") }
+        controller.start(attachment(),purpose: .full)
+        controller.completedFullFile = { _,_,_ in calls.append("new") }
+        provider.callbacks[0](.data(url,offset: 0,size: 8,complete: true))
+        provider.callbacks[0](.data(url,offset: 0,size: 8,complete: true))
+        XCTAssertEqual(calls,["old:resource:8"])
+        controller.start(attachment(),purpose: .preview)
+        provider.callbacks[1](.data(url,offset: 0,size: 8,complete: true))
+        controller.reset()
+        provider.callbacks[0](.data(url,offset: 0,size: 8,complete: true))
+        XCTAssertEqual(calls,["old:resource:8"])
+    }
+
     func testOnlyCompleteZeroOffsetDataBecomesReadyAndRetainsLease() {
         let (controller, provider) = setup()
         controller.start(attachment(), purpose: .full); controller.start(attachment(), purpose: .full)

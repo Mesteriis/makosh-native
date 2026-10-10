@@ -43,6 +43,7 @@ private actor TelegramPostgresArchiveRepository: TelegramArchiveRepository {
 /// A source journal is acknowledged only after the independent archive commits.
 /// UI dismissal/account switches never cancel already accepted archive writes.
 @MainActor public final class TelegramArchiveController: ObservableObject {
+    public let files = TelegramFileArchiveController()
     @Published public private(set) var records: [MessageArchiveRecord] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var isArchiving = false
@@ -50,6 +51,7 @@ private actor TelegramPostgresArchiveRepository: TelegramArchiveRepository {
     @Published public private(set) var error: String?
     @Published public private(set) var status = "Локальный архив не открыт"
     @Published public private(set) var isSynthetic = false
+    @Published public private(set) var usesSyntheticS3 = false
     private var repository: (any TelegramArchiveRepository)?
     private var journal: (any TelegramArchiveJournal)?
     private var binding = UUID()
@@ -64,6 +66,24 @@ private actor TelegramPostgresArchiveRepository: TelegramArchiveRepository {
     var pollDelay: Duration = .seconds(1)
 
     public init() {}
+
+    #if DEBUG
+    /// Explicit local-only QA: synthetic text plus an isolated S3/PG file fixture.
+    public func configureSyntheticS3(connectionString: String,schema: String,configurationFile: URL,spoolDirectory: URL) throws {
+        guard schema.hasPrefix("makosh_qa_"), repository == nil else { throw MessageArchiveError.invalid }
+        configure(repository: TelegramSyntheticArchiveRepository(includeFile: true),synthetic: true)
+        try files.configureSynthetic(connectionString: connectionString,schema: schema,configurationFile: configurationFile,spoolDirectory: spoolDirectory)
+        usesSyntheticS3 = true
+        let directory = spoolDirectory.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory,withIntermediateDirectories: true,attributes: [.posixPermissions: 0o700])
+        let source = directory.appendingPathComponent("synthetic-cache-\(UUID().uuidString)")
+        let bytes = Data("Makosh synthetic file retained in S3 after Telegram cache removal.\n".utf8)
+        try bytes.write(to: source,options: .withoutOverwriting)
+        files.accept(file: source,byteCount: Int64(bytes.count),identity: MessageArchiveIdentity(service: "telegram",accountID: "-1",conversationID: "1",messageID: "0:9001"),
+            attachment: MessageArchiveAttachment(id: "synthetic-s3-file",kind: "file",name: "synthetic-retained.txt",size: Int64(bytes.count)))
+        try FileManager.default.removeItem(at: source)
+    }
+    #endif
 
     /// Composition supplies configuration, without connecting or accessing Keychain.
     public func configure(connectionString: String, schema: String) {

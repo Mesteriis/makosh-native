@@ -1,4 +1,5 @@
 import Foundation
+import MakoshCore
 import Combine
 import Security
 import TelegramCore
@@ -474,6 +475,18 @@ public final class TelegramModel: ObservableObject {
         let attachments = (messages + search.messages).flatMap(\.attachments)
         playback.retain(attachments: attachments)
         media.retain(attachments: attachments)
+        if let accountID = draftAccountID, !isSyntheticPreview {
+            let archivedSources = Dictionary(sources.map { source in
+                let id = source.messageID, a = source.attachment
+                return (a.id,(MessageArchiveIdentity(service: "telegram",accountID: String(accountID),
+                    conversationID: String(id.peerId.toInt64()),messageID: "\(id.namespace):\(id.id)"),
+                    MessageArchiveAttachment(id: a.id,kind: a.kind == .photo ? "photo" : a.kind == .file ? "file" : "unsupported",name: a.name,size: a.byteCount)))
+            },uniquingKeysWith: { _, last in last })
+            media.completedFullFile = { [files = archive.files] id,url,size in
+                guard let (identity,attachment) = archivedSources[id] else { return }
+                files.accept(file: url,byteCount: size,identity: identity,attachment: attachment)
+            }
+        } else { media.completedFullFile = nil }
     }
 
     private func loadChatList(anchor: ChatListIndex? = nil, clear: Bool = false) {

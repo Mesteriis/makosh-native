@@ -4,7 +4,9 @@ cd "$(dirname "$0")/.."
 case "${1:-up}" in
     up)
         python3 scripts/configure-dev-db.py
+        python3 scripts/configure-dev-s3.py
         docker compose --env-file .local/postgres.env up -d --wait --wait-timeout 60
+        python3 scripts/dev-s3.py init
         ;;
     status)
         docker compose --env-file .local/postgres.env ps

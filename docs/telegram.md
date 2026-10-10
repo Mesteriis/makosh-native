@@ -257,10 +257,13 @@ Current boundaries:
   The viewer says the cause is unknown; history pagination/filter changes never
   create deletion markers. Author IDs and plain text are retained; resolved
   author names and rich-text entities are not yet archived.
-- Attachment **metadata**, not downloaded file bytes, is archived in this slice.
-  MediaBox force-removal can defeat a cache borrow. Permanent encrypted copies
-  and crash recovery must be completed before claiming attachment retention.
-  Opening the archive does not initiate media downloads or network requests.
+- Completed explicit **full-file downloads** now receive independent encrypted
+  copies in S3. An open file descriptor is captured synchronously before the
+  first suspension; subsequent Telegram cache unlink does not remove its bytes.
+  PostgreSQL stores encrypted metadata/object references only. Preview-only or
+  never-downloaded media remain metadata. Opening the archive never fetches
+  media from Telegram; exporting a stored attachment reads S3 explicitly.
+  See [storage and recovery boundaries](object-storage.md).
 - Graceful disk-full backpressure is not established: upstream ValueBox uses
   void/assertion IO and commit paths. Capture encoding/sequence failures stop
   rather than truncate, but synthetic tests do not prove physical disk-loss

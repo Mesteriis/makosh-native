@@ -16,7 +16,9 @@ struct MakoshApp: App {
     var body: some Scene {
         WindowGroup("Макош") {
             #if DEBUG
-            if CommandLine.arguments.contains("--telegram-synthetic-preview") {
+            if CommandLine.arguments.contains("--telegram-s3-synthetic-preview") {
+                TelegramS3SyntheticPreview().frame(minWidth: 1000,minHeight: 640)
+            } else if CommandLine.arguments.contains("--telegram-synthetic-preview") {
                 TelegramSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
             } else {
                 WorkspaceView().frame(minWidth: 1000, minHeight: 640)

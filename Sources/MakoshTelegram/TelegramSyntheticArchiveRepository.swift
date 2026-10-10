@@ -4,11 +4,11 @@ import MakoshCore
 
 actor TelegramSyntheticArchiveRepository: TelegramArchiveRepository {
     private var stored: [MessageArchiveRecord]
-    init() {
+    init(includeFile: Bool = false) {
         let identity = MessageArchiveIdentity(service: "telegram", accountID: "-1", conversationID: "1", messageID: "0:9001")
         let date = Date(timeIntervalSince1970: 1_790_000_000)
         let original = MessageArchiveContent(date: date, text: "Синтетический оригинал: это сообщение должно остаться в Макоше.",
-            author: "Синтетический собеседник", isOutgoing: false)
+            author: "Синтетический собеседник", isOutgoing: false,attachments: includeFile ? [MessageArchiveAttachment(id: "synthetic-s3-file",kind: "file",name: "synthetic-retained.txt",size: nil)] : [])
         let edit = MessageArchiveContent(date: date, editedAt: date.addingTimeInterval(10),
             text: "Синтетическая правка. Оригинал хранится отдельным снимком.", author: "Синтетический собеседник", isOutgoing: false)
         stored = [

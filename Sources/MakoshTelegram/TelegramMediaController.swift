@@ -55,11 +55,13 @@ public final class TelegramMediaController: ObservableObject {
         var size: Int64 = 0
         var holder = LeaseHolder()
         var deadline: Task<Void, Never>?
+        var completedFile: (@MainActor (String,URL,Int64) -> Void)?
     }
     @Published private var revision = 0
     private var provider: (any TelegramMediaProvider)?
     private var attachments: [String: TelegramAttachment] = [:]
     private var jobs: [TelegramMediaKey: Job] = [:]
+    var completedFullFile: (@MainActor (String,URL,Int64) -> Void)?
 
     public init() {}
 
@@ -93,6 +95,7 @@ public final class TelegramMediaController: ObservableObject {
         jobs.removeAll()
         attachments.removeAll()
         provider = nil
+        completedFullFile = nil
         revision &+= 1
         for job in previous.values { job.deadline?.cancel(); job.holder.release() }
     }
@@ -117,7 +120,7 @@ public final class TelegramMediaController: ObservableObject {
         }
         remove(key)
         let token = UUID()
-        jobs[key] = Job(token: token, phase: .downloading(nil))
+        jobs[key] = Job(token: token, phase: .downloading(nil), completedFile: completedFullFile)
         jobs[key]?.deadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(60)) } catch { return }
             self?.timeout(key, token: token)
@@ -161,6 +164,9 @@ public final class TelegramMediaController: ObservableObject {
             jobs[key]?.size = size
             jobs[key]?.deadline?.cancel()
             jobs[key]?.deadline = nil
+            // Freeze the descriptor before any asynchronous archive work. An open
+            // FD survives Telegram's force-unlink even when its cache lease cannot.
+            if key.purpose == .full { job.completedFile?(key.attachmentID,url,size) }
         case .failed:
             finish(key, phase: .failed)
             return

@@ -77,6 +77,8 @@ Reachability text is from Apple's [published sample license](https://developer.a
 
 ## Distribution boundary
 
+Development object storage uses the external [SeaweedFS 4.48 service](https://github.com/seaweedfs/seaweedfs/tree/530be3e37337488ecc34d58441e0bc476e121c93), copyright Chris Lu, under [Apache 2.0](LICENSES/Apache-2.0.txt). Its image digest and official macOS CI archive checksums are pinned in `Dependencies/ObjectStorage.lock.json`. SeaweedFS and its bundled image dependencies are downloaded from the upstream distribution and are not linked into or republished with Makosh source/app bundles. The narrow SigV4 client and encrypted file format are independently authored Makosh code; AWS public example signing vectors are used only for synthetic tests.
+
 This repository publishes Makosh source, build adaptations and notices. Prepared
 engine files, generator caches and local app bundles remain ignored; no binary
 release is published. The local development bundle dynamically links installed

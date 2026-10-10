@@ -571,3 +571,104 @@ backpressure, portable archive/key backup and real-account acceptance remain
 unfinished. Deleted-before-reception content cannot be reconstructed. No physical
 loss/admin-deletion immunity is claimed. The complete sequential goal, message
 actions, dossier linking and subsequent channels remain active.
+
+## S3 attachment retention — 2026-10-10
+
+Local development now starts PostgreSQL and an independently pinned SeaweedFS
+4.48 S3 container together. Only the authenticated S3 API is published, on
+loopback port 55440, with a separate persistent volume and private generated
+administrator/application credentials. Application access is bucket-scoped;
+the initialized bucket enables versioning and denies object/version/bucket
+deletion and lifecycle/versioning changes. This is protection against ordinary
+client deletion, not immunity to administrator policy changes or volume loss.
+
+Full Telegram downloads are captured synchronously by an open file descriptor
+before async work. AES-GCM frames, per-object HKDF keys and authenticated sizes
+allow streaming encryption without loading the complete file. S3 receives only
+the encrypted envelope; PostgreSQL receives encrypted append-only metadata and
+receipts, never attachment payload bytes. Previews and files not downloaded
+remain attachment metadata. Automatic fetching of all remote history is not
+implemented.
+
+An encrypted disk queue survives S3/PostgreSQL failure after receipt publication.
+Conditional PUT and HEAD/hash reconciliation recover an uncertain upload without
+blindly replacing the object. A stored PostgreSQL receipt precedes queue cleanup.
+Before durable publication, up to eight open captures survive cache unlink and
+can be retried while the process remains open. Failure is visible; closing the
+process at that stage can lose the unqueued capture. A crash between envelope
+creation and receipt publication can leave orphan encrypted envelopes; these
+are not silently deleted. Portable backup of S3, PostgreSQL and the archive key
+remains a later migration task.
+
+Actual checks for this slice:
+
+- `scripts/dev-db.sh up`: exit 0 after fixing the container's volume/identity
+  ownership boundary. Both development services are healthy. Authenticated S3
+  PUT/GET and exact hash checks passed before and after a container restart;
+  anonymous/invalid signatures and prohibited deletion returned denial.
+- `scripts/test.sh`: exit 0, **193 XCTest tests / 0 failures** (138 Telegram,
+  55 core), plus **22 Python regressions**. Real S3/PostgreSQL tests cover
+  capture-before-unlink, encrypted round trip, metadata-only schema, immutable
+  receipt guards, account isolation, post-upload database rollback and retry
+  through a new repository instance. Official AWS signing vectors, frame
+  tamper/truncation/reordering, wrong keys/UUIDs and unsafe paths are covered.
+- A missing-configuration regression retains the prequeue descriptor, unlinks
+  the source, restores configuration and successfully retries/exports. Duplicate
+  descriptors use positional reads, so the original capture can be retried.
+- `scripts/build-app.sh`: exit 0, native build and strict ad-hoc signing passed
+  after the final shared save-panel change.
+- The pinned official macOS SeaweedFS binary used by hosted CI was verified and
+  exercised locally in a separate native service. Its S3 initialization/probe
+  and **11 S3/repository tests** passed; the Docker service was restored and its
+  authenticated probe passed afterward. This is local CI-strategy evidence,
+  not a hosted result for the new commit.
+- Actual final isolated DEBUG native UI showed the original/edit/removal
+  archive entries and `Копия в S3`. The native Save sheet was enabled and export
+  completed with `Сохранено`. The restored synthetic file matched all 67 bytes
+  and SHA256 `60e30bfd36666396a06fcd74993d83788296599be1e7a13a24e6c687ceefd8aa`;
+  the synthetic Telegram cache copy was absent and the encrypted queue empty.
+  No personal account, Keychain item, message or Telegram connection was used.
+- Final project XERJ refresh: exit 0, **137 files, 108/108 classified code**;
+  project and unchanged engine fingerprints passed. Actual current queries on
+  capture duplication, pending retry and archive export were source-confirmed.
+- Two bounded inherited-model source reviews found the prequeue retry gap and
+  non-atomic receipt publication. Both were fixed and covered by regressions;
+  final follow-up reviews and root diff review are recorded separately. Worker
+  runtime model/provider/usage remain unknown; no quorum was used.
+
+A final review also identified a post-publication directory-fsync error being
+misclassified as a prequeue failure. A new injected-failure test first failed at
+the queued-state assertion (exit 1). The publication callback now marks the
+receipt as queued immediately after `link`; uncertain sync recovers that exact
+object instead of recapturing. The complete **4 repository tests** then passed
+(exit 0), including source unlink, restart, exact object ID and exported bytes.
+The reviewer confirmed the fix by source/hash checks; runtime gates are root's.
+The earlier reference-free snapshot also passed build/sign and **192 XCTest /
+22 Python** tests with research/source-cache paths absent and then restored.
+That snapshot predates this final fsync fix. The final source snapshot then built
+and signed, and passed **193 XCTest / 22 Python** tests (both exit 0, no S3 test
+skips) with research/source-cache paths absent, closed outbound proxy routes and
+the original source cache restored afterward. The main checkout independently
+passed the same full tests and app build after the fix. Both successful full
+test runs retained the four upstream `t19` teardown diagnostics noted above.
+
+Failed probes remain separate: the initial container could not write its volume;
+the second could not traverse the changed ownership with dropped capabilities.
+The final launcher copies identities into private tmpfs and drops to the service
+UID. Initial native CI probes observed S3 before bucket creation; initialization
+now waits with bounded read-only readiness checks before applying policy. One
+new async test initially used an unsupported XCTest autoclosure and was fixed.
+The first native archive export opened a disabled standalone save panel; the
+final shared, retained sheet path passed the real export check above. Temporary
+Postbox fixtures still emit four `no such table: t19` teardown messages after
+successful XCTest completion; clean upstream teardown remains unverified.
+
+Retention head `70e85c0133af524de367c6fabed1c6a87fbcd4c3` passed
+[PR CI 38063471351](https://github.com/Mesteriis/makosh-native/actions/runs/38063471351)
+and [push CI 38063467369](https://github.com/Mesteriis/makosh-native/actions/runs/38063467369).
+Those are previous-head results. Hosted CI for the new S3 head is pending.
+
+Real-account media/download/deletion acceptance, untouched cache backfill,
+secret/protected media, administrator/disaster recovery and portable backup
+remain unverified. Reply/edit/delete/forward, dossier linking and subsequent
+channels remain in the active sequential goal.

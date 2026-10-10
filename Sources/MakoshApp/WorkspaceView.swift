@@ -57,6 +57,14 @@ final class WorkspaceModel: ObservableObject {
     func configureArchive(_ archive: TelegramArchiveController) {
         guard let configuration = archiveConfiguration else { return }
         archive.configure(connectionString: configuration.connectionString, schema: configuration.schema)
+        let args = CommandLine.arguments
+        let support = FileManager.default.urls(for: .applicationSupportDirectory,in: .userDomainMask)[0].appendingPathComponent("Makosh",isDirectory: true)
+        let storage: URL
+        if let index = args.firstIndex(of: "--storage-config"), args.indices.contains(index+1), !args[index+1].hasPrefix("--") {
+            storage = URL(fileURLWithPath: args[index+1])
+        } else { storage = support.appendingPathComponent("s3.json") }
+        archive.files.configure(connectionString: configuration.connectionString,schema: configuration.schema,
+            configurationFile: storage,spoolDirectory: support.appendingPathComponent("FileArchiveQueue",isDirectory: true))
     }
     func reload() throws {
         guard let store else { throw StoreError.invalid("Хранилище не открыто. Перезапустите приложение после устранения ошибки.") }

@@ -42,6 +42,7 @@ public final class MessageArchiveStore {
                 guard let uuid = UUID(uuidString: meta[1]) else { throw MessageArchiveError.integrity }; vault = uuid
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_events (sequence BIGSERIAL PRIMARY KEY, observation UUID NOT NULL UNIQUE, account_token TEXT NOT NULL, stream_token TEXT NOT NULL, message_token TEXT NOT NULL, event_digest TEXT NOT NULL, ciphertext TEXT NOT NULL)")
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_receipts (observation UUID PRIMARY KEY, digest TEXT NOT NULL)")
+                _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_file_events (sequence BIGSERIAL PRIMARY KEY, object UUID NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','stored')), attachment_token TEXT NOT NULL, ciphertext TEXT NOT NULL, UNIQUE(object,state))")
                 let populated = try query("SELECT 1 FROM \(prefix)archive_events LIMIT 1")
                 let mayCreate = !inserted.isEmpty && meta[2].isEmpty && populated.isEmpty
                 let raw: Data
@@ -59,12 +60,65 @@ public final class MessageArchiveStore {
                 _ = try query("CREATE TRIGGER archive_no_rewrite BEFORE UPDATE OR DELETE OR TRUNCATE ON \(prefix)archive_events FOR EACH STATEMENT EXECUTE FUNCTION \(prefix)archive_no_rewrite()")
                 _ = try query("DROP TRIGGER IF EXISTS archive_no_rewrite ON \(prefix)archive_receipts")
                 _ = try query("CREATE TRIGGER archive_no_rewrite BEFORE UPDATE OR DELETE OR TRUNCATE ON \(prefix)archive_receipts FOR EACH STATEMENT EXECUTE FUNCTION \(prefix)archive_no_rewrite()")
+                _ = try query("DROP TRIGGER IF EXISTS archive_no_rewrite ON \(prefix)archive_file_events")
+                _ = try query("CREATE TRIGGER archive_no_rewrite BEFORE UPDATE OR DELETE OR TRUNCATE ON \(prefix)archive_file_events FOR EACH STATEMENT EXECUTE FUNCTION \(prefix)archive_no_rewrite()")
+                _ = try query("CREATE INDEX IF NOT EXISTS archive_file_attachment ON \(prefix)archive_file_events(attachment_token,sequence DESC)")
                 _ = try query("CREATE INDEX IF NOT EXISTS archive_stream_sequence ON \(prefix)archive_events(stream_token,sequence DESC)")
             }
             initialized = true
         } catch { PQfinish(db); self.db = nil; throw error }
     }
     deinit { if let db { PQfinish(db) } }
+
+    public func fileVault() throws -> ArchiveFileVault {
+        lock.lock(); defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let key = HKDF<SHA256>.deriveKey(inputKeyMaterial: encryptionKey, salt: Data(vault.uuidString.utf8), info: Data("makosh-file-vault-v1".utf8), outputByteCount: 32)
+            return ArchiveFileVault(id: vault, key: key.withUnsafeBytes { Data($0) })
+        }
+    }
+
+    @discardableResult public func appendFile(_ record: ArchiveFileRecord) throws -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let i = record.identity
+            guard [i.service,i.accountID,i.conversationID,i.messageID,record.attachment.id].allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1024 }),
+                  record.attachment.name.utf8.count <= 1024, record.attachment.kind.utf8.count <= 64,
+                  record.capturedAt.timeIntervalSince1970.isFinite,
+                  record.plaintextByteCount >= 0, record.plaintextByteCount <= 4 * 1024 * 1024 * 1024,
+                  record.byteCount > record.plaintextByteCount, record.byteCount <= 4 * 1024 * 1024 * 1024 + 1024 * 1024,
+                  [record.sha256,record.plaintextSHA256,record.storageID].allSatisfy({ $0.utf8.count == 64 && $0.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) }),
+                  record.objectKey == "vaults/\(vault.uuidString.lowercased())/files/\(record.id.uuidString.lowercased())" else { throw MessageArchiveError.invalid }
+            let payload = try encode(record)
+            guard payload.count <= 16384 else { throw MessageArchiveError.invalid }
+            let aad = binding("file-\(record.id.uuidString)-\(record.state.rawValue)",0)
+            let existing = try query("SELECT ciphertext FROM \(prefix)archive_file_events WHERE object=$1::uuid AND state=$2", [record.id.uuidString,record.state.rawValue])
+            if let prior = existing.first {
+                guard try open(prior[0],aad: aad) == payload else { throw MessageArchiveError.integrity }
+                return false
+            }
+            _ = try query("INSERT INTO \(prefix)archive_file_events(object,state,attachment_token,ciphertext) VALUES($1::uuid,$2,$3,$4)", [record.id.uuidString,record.state.rawValue,token([i.service,i.accountID,i.conversationID,i.messageID,record.attachment.id]),try seal(payload,aad: aad)])
+            return true
+        }
+    }
+
+    public func files(identity: MessageArchiveIdentity, attachmentID: String) throws -> [ArchiveFileRecord] {
+        lock.lock(); defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let lookup = token([identity.service,identity.accountID,identity.conversationID,identity.messageID,attachmentID])
+            let rows = try query("SELECT object,state,ciphertext FROM \(prefix)archive_file_events WHERE attachment_token=$1 AND state='stored' ORDER BY sequence DESC LIMIT 100", [lookup])
+            return try rows.map { row in
+                let record: ArchiveFileRecord
+                do { record = try JSONDecoder().decode(ArchiveFileRecord.self, from: open(row[2],aad: binding("file-\(row[0].uppercased())-\(row[1])",0))) }
+                catch { throw MessageArchiveError.integrity }
+                guard record.identity == identity, record.attachment.id.utf8.elementsEqual(attachmentID.utf8), record.id.uuidString.lowercased() == row[0], record.state == .stored else { throw MessageArchiveError.integrity }
+                return record
+            }
+        }
+    }
 
     public func append(_ observations: [MessageArchiveObservation]) throws -> Int {
         guard observations.count <= 1000 else { throw MessageArchiveError.invalid }

@@ -49,6 +49,7 @@ public func telegramAttachmentName(_ name: String?) -> String {
 
 struct TelegramAttachmentSource {
     let attachment: TelegramAttachment
+    let messageID: MessageId
     let full: MediaResourceReference?
     let preview: MediaResourceReference?
     let location: MediaResourceUserLocation
@@ -137,7 +138,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         let attachment = TelegramAttachment(id: id, kind: kind, name: name,
             byteCount: size.flatMap { $0 >= 0 ? $0 : nil }, mimeType: mimeType,
             hasPreview: preview != nil, canDownload: full != nil, playback: playback)
-        return TelegramAttachmentSource(attachment: attachment, full: full, preview: preview,
+        return TelegramAttachmentSource(attachment: attachment, messageID: message.id, full: full, preview: preview,
             location: .peer(message.id.peerId), contentType: contentType)
     }
 }

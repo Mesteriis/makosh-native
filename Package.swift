@@ -29,6 +29,7 @@ let package = Package(
         .executableTarget(name: "MakoshApp", dependencies: ["MakoshCore", "MakoshTelegram"]),
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshTelegram",
+            .product(name: "Postbox", package: "Postbox"),
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "TelegramApi", package: "TelegramApi"),
             .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),

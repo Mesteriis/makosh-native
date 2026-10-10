@@ -15,5 +15,6 @@ extension TelegramMessage {
             date: Date(timeIntervalSince1970: TimeInterval(message.timestamp)), text: message.text,
             author: message.author.map(telegramPeerTitle) ?? "Telegram", isOutgoing: !message.flags.contains(.Incoming),
             delivery: message.flags.contains(.Failed) ? "Не отправлено" : message.flags.contains(.Unsent) ? "В очереди отправки" : "")
+        attachments = telegramAttachments(message).map(\.attachment)
     }
 }

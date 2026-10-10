@@ -24,6 +24,7 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public let author: String
     public let isOutgoing: Bool
     public let delivery: String
+    public var attachments: [TelegramAttachment] = []
 }
 
 public struct TelegramAPIConfiguration: Equatable {
@@ -60,6 +61,7 @@ enum TelegramSetupError: LocalizedError {
 @MainActor
 public final class TelegramModel: ObservableObject {
     public let search = TelegramSearchModel()
+    public let media = TelegramMediaController()
     @Published public private(set) var phase: TelegramPhase = .configuration
     @Published public private(set) var isBusy = false
     @Published public var error: String?
@@ -105,6 +107,8 @@ public final class TelegramModel: ObservableObject {
     private var authorizationGeneration = UUID()
     private var drafts = TelegramDraftStore()
     private var knownChats: [Int64: TelegramChat] = [:]
+    private var mediaProvider: TelegramEngineMediaProvider?
+    private var historyMediaSources: [TelegramAttachmentSource] = []
     private var chatPages = TelegramPageTracker<ChatListIndex>()
     private var historyPages = TelegramPageTracker<MessageIndex>()
     private var openingTimeout: Task<Void, Never>?
@@ -125,7 +129,9 @@ public final class TelegramModel: ObservableObject {
     private let connection = MetaDisposable()
     private let outgoing = MetaDisposable()
 
-    public init() {}
+    public init() {
+        search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+    }
 
     public func connectUsingSavedAPIConfiguration() {
         guard !isSyntheticPreview else { return }
@@ -338,6 +344,9 @@ public final class TelegramModel: ObservableObject {
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
         setupAccount(account)
+        let mediaProvider = TelegramEngineMediaProvider(account: account)
+        self.mediaProvider = mediaProvider
+        media.bind(provider: mediaProvider)
         search.bind(account: account)
         search.setFolder(chatFolder)
         let accountToken = accountGeneration
@@ -359,6 +368,8 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        mediaProvider = nil; historyMediaSources = []
+        media.bind(provider: nil)
         search.bind(account: nil)
         accountGeneration = UUID()
         account?.shouldBeServiceTaskMaster.set(.single(.never))
@@ -372,6 +383,7 @@ public final class TelegramModel: ObservableObject {
         selectedChatID = nil // Saves the draft while its account identity is available.
         account = nil
         knownChats = [:]; chats = []; messages = []; draft = ""
+        refreshMediaSources()
     }
 
     public func loadOlderChats() {
@@ -409,6 +421,24 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func clearHistoryFocus() { historyFocusID = nil }
+
+    public func cancelMediaLoads() {
+        #if DEBUG
+        if isSyntheticPreview {
+            media.bind(provider: TelegramSyntheticMediaProvider())
+            refreshMediaSources()
+            return
+        }
+        #endif
+        media.bind(provider: mediaProvider)
+        refreshMediaSources()
+    }
+
+    private func refreshMediaSources() {
+        let sources = historyMediaSources + Array(search.mediaSources.values)
+        mediaProvider?.sources = Dictionary(sources.map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
+        media.retain(attachments: (messages + search.messages).flatMap(\.attachments))
+    }
 
     private func loadChatList(anchor: ChatListIndex? = nil, clear: Bool = false) {
         chatList.set(nil)
@@ -451,7 +481,7 @@ public final class TelegramModel: ObservableObject {
         historyFocusID = focusID
         history.set(nil)
         historyPageTimeout?.cancel(); historyPageTimeout = nil
-        if clear { messages = [] }
+        if clear { messages = []; historyMediaSources = []; refreshMediaSources() }
         #if DEBUG
         if let preview, let selectedChatID, knownChats[selectedChatID] != nil {
             let requestID = historyPages.begin(anchor: anchor)
@@ -473,11 +503,15 @@ public final class TelegramModel: ObservableObject {
         history.set((account.viewTracker.aroundMessageHistoryViewForLocation(.peer(peerId: PeerId(chat), threadId: nil),
                 index: index, anchorIndex: index, count: 50, fixedCombinedReadStates: nil)
             |> deliverOnMainQueue).start(next: { [weak self] value in
-                guard let self, self.generation == token, self.accountGeneration == accountToken, self.selectedChatID == chat else { return }
+                guard let self, self.generation == token, self.accountGeneration == accountToken,
+                      self.selectedChatID == chat, self.historyPages.requestID == requestID else { return }
                 let view = value.0
                 let waiting = view.isLoading || view.isLoadingEarlier ||
                     (view.earlierId == nil && view.holeEarlier) || (view.laterId == nil && view.holeLater)
                 let messages = view.entries.map { TelegramMessage($0.message) }
+                if !messages.isEmpty || !waiting {
+                    self.historyMediaSources = view.entries.flatMap { telegramAttachments($0.message) }
+                }
                 self.receiveMessages(messages, requestID: requestID, previous: view.earlierId,
                     next: view.laterId, isLoading: waiting, hasPreviousGap: view.holeEarlier, hasNextGap: view.holeLater)
             }))
@@ -503,6 +537,7 @@ public final class TelegramModel: ObservableObject {
         historyPage = historyPages.navigation
         updateHistoryDeadline(requestID: requestID)
         if !items.isEmpty || !isLoading { messages = items }
+        refreshMediaSources()
     }
 
     private func updateChatDeadline(requestID: UUID) {
@@ -533,6 +568,7 @@ public final class TelegramModel: ObservableObject {
         let model = TelegramModel()
         model.preview = TelegramSyntheticPages()
         model.search.useSyntheticPreview()
+        model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.isSyntheticPreview = true
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"

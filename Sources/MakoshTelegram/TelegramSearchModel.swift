@@ -34,6 +34,8 @@ public final class TelegramSearchModel: ObservableObject {
     private var chatTracker = TelegramSearchTracker<Void>()
     private var messageTracker = TelegramSearchTracker<MessageCursor>()
     private var indexes: [String: MessageIndex] = [:]
+    private(set) var mediaSources: [String: TelegramAttachmentSource] = [:]
+    var mediaSourcesDidChange: (() -> Void)?
     private var chatTask: Task<Void, Never>?
     private var messageTask: Task<Void, Never>?
     private var chatDeadline: Task<Void, Never>?
@@ -104,6 +106,7 @@ public final class TelegramSearchModel: ObservableObject {
         messageDeadline?.cancel(); messageDeadline = nil
         messageRequest.set(nil); messageTracker.reset()
         messages = []; indexes = [:]; totalMessages = 0; messageStatus = .idle
+        mediaSources = [:]; mediaSourcesDidChange?()
     }
 
     private func searchChats() {
@@ -195,9 +198,13 @@ public final class TelegramSearchModel: ObservableObject {
             self.messageRequest.set((TelegramEngine(account: account).messages.searchMessages(
                 location: location, query: query, state: state, centerId: nil, limit: 50)
                 |> deliverOnMainQueue).start(next: { [weak self] result, state in
+                    guard let self, self.messageTracker.requestID == token else { return }
+                    if !result.searchFailed {
+                        self.mediaSources = Dictionary(result.messages.flatMap(telegramAttachments).map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
+                    }
                     let items = result.messages.map(TelegramMessage.init)
                     let indexes = Dictionary(result.messages.map { (TelegramMessage($0).id, $0.index) }, uniquingKeysWith: { first, _ in first })
-                    self?.receiveMessages(items, indexes: indexes, cursor: .server(state), total: Int(result.totalCount),
+                    self.receiveMessages(items, indexes: indexes, cursor: .server(state), total: Int(result.totalCount),
                         completed: result.completed, failed: result.searchFailed, requestID: token)
                 }))
         }
@@ -209,6 +216,7 @@ public final class TelegramSearchModel: ObservableObject {
         messageDeadline?.cancel(); messageDeadline = nil
         if !failed { self.messages = messages; self.indexes = indexes; totalMessages = total }
         messageStatus = messageTracker.status
+        mediaSourcesDidChange?()
     }
 
     #if DEBUG

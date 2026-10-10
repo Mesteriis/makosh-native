@@ -29,9 +29,17 @@ struct TelegramSyntheticPages {
         let end = min(total, max(1, Int(anchor?.id.id ?? Int32(total))))
         let start = max(0, end - size)
         let items = ((start + 1)...end).map { id in
-            TelegramMessage(id: "synthetic:\(chatID):\(id)", date: Date(timeIntervalSince1970: 1_700_000_000 + Double(id * 60)),
+            var message = TelegramMessage(id: "synthetic:\(chatID):\(id)", date: Date(timeIntervalSince1970: 1_700_000_000 + Double(id * 60)),
                 text: "Тестовое сообщение \(id) • диалог \(chatID)", author: id.isMultiple(of: 2) ? "Макош QA" : "Тестовый собеседник",
                 isOutgoing: id.isMultiple(of: 2), delivery: "")
+            if [25, 128, 129, 130].contains(id) {
+                let kind: TelegramAttachmentKind = id == 130 ? .photo : id == 128 ? .unsupported : .file
+                message.attachments = [TelegramAttachment(id: "synthetic-attachment:\(chatID):\(id)", kind: kind,
+                    name: kind == .photo ? "Синтетическое фото QA.png" : kind == .file ? "Синтетический файл QA.txt" : "Вложение не поддерживается",
+                    byteCount: nil, mimeType: kind == .file ? "text/plain" : nil,
+                    hasPreview: kind == .photo, canDownload: kind != .unsupported)]
+            }
+            return message
         }
         return (items, start > 0 ? messageIndex(chatID: chatID, id: start) : nil,
             end < total ? messageIndex(chatID: chatID, id: min(total, end + size)) : nil)

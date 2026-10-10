@@ -264,3 +264,73 @@ reconnect and timeout recovery on a connected account remain unverified. A
 release build and broader OS/accessibility/resize matrix were not run. Media,
 message actions, dossier linking and later service transfers remain open; this
 slice does not complete the active migration goal.
+
+
+The search head `13b5d9052c11c900135f2b74e2d212643cb6a1fe` subsequently
+passed [PR CI 38057972256](https://github.com/Mesteriis/makosh-native/actions/runs/38057972256):
+reference-free cold build, 73 XCTest tests and 18 Python regressions.
+
+## Telegram photo/file download and export — 2026-10-10
+
+History and search share a pure attachment projection. Photo full/thumbnail
+resources and file resources retain message provenance for engine reference
+revalidation; opaque IDs include message/media/resource identity. Unknown and
+paid/locked media expose no runnable download. The account-bound provider uses
+TelegramCore's real fetchedMediaResource/MediaBox APIs. Only explicit actions
+fetch bytes; progress, cancellation, failure and a 60-second deadline are
+separate states. Complete zero-offset data is required for ready. Own disposable
+handles never cancel other resource consumers. UUID guards reject stale events;
+file leases survive an ongoing preview/export borrow during reset.
+
+A conversation owns one image/export operation. ImageIO validates regular-file
+size, 20 MiB encoded bytes, 8,192 per side and 40 million pixels, then downsamples
+to 1,280 on a worker. Arbitrary files never auto-open. A native Save panel copies
+bytes to a mode-0600 temporary file and atomically replaces the selected regular
+file; the cache source is never moved/overwritten. Symlinks, special files,
+size mismatch and a destination sharing the source inode are rejected. Panel
+cancellation creates nothing; already-cancelled callers start no file work.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0, existing Docker PostgreSQL healthy.
+- `scripts/test.sh`: exit 0, **99 XCTest tests, 0 failures** (24 real-PostgreSQL
+  contact tests and 75 Telegram), plus **18 Python regressions**. The 26 new
+  Swift tests cover actual-engine media projection, independent purpose/consumer
+  cancellation, synchronous completion, stale callbacks, timeout/retry, borrowed
+  leases, replacement/chat/search integration, atomic copy/source preservation,
+  safe special-file failures, decoder bounds and pre-cancelled file work.
+- `scripts/build-app.sh`: exit 0, complete native app and strict ad-hoc signature
+  verification. The first test compilation failed because a paid-media fixture
+  omitted the upstream `media:` argument label; the fixture was corrected and
+  the full checks above passed. Failed logs remain local.
+- A separate source copy with `.references/` absent, bare source cache moved
+  aside and HTTP(S)/ALL_PROXY set to a closed loopback port built/signed and
+  passed all 99 XCTest/18 Python tests. Neither excluded directory was created;
+  the preserved source cache was restored. Test DSN was supplied only in memory.
+- Actual isolated DEBUG native UI showed photo/file/unsupported attachments,
+  no automatic load, progress, explicit cancellation and successful retry.
+  A real image sheet displayed the generated synthetic image from full data
+  and separately from a search thumbnail. A native Save panel was cancelled,
+  then saved a separate 59-byte synthetic file. Its bytes matched the original,
+  original cache remained intact, output mode was 0600 and no export temporary
+  remained. Replacing the history window released all three fixture caches;
+  the exported copy remained. Returning to latest showed idle download actions.
+- Two scoped same-model source reviews confirmed subscription/borrow ownership,
+  export/decoder boundaries and projection/integration behavior. Root added the
+  current-history request guard before resource-map mutation and integration
+  regressions for replacement, failed search and independent attachment cancel.
+  Worker builds/account checks were not run; root owns all integration/runtime
+  evidence. Observed worker provider/model/usage are unknown, with no quorum.
+
+No account login, private message read or real media network fetch was performed.
+Cloud cache-miss/cached-hit, expired reference recovery, real progress/cancel,
+secret-media decryption and reconnect remain unverified. Media upload, audio/video
+playback, message actions, dossier linking and later channels remain open in the
+active sequential goal. A release build and broader OS/accessibility/resize
+matrix were not run; synthetic UI is not Telegram server acceptance.
+
+Final media project XERJ refresh: exit 0, 87 indexed files, 60/60 classified code.
+Project and unchanged recipe-3 engine freshness checks passed; actual queries
+resolved withDownloadedFile and fetchedMediaResource and were checked against
+current controller/provider and upstream source. Indexes and review artifacts
+remain ignored; product build/run/test does not use them or research clones.

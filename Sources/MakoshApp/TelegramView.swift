@@ -65,7 +65,9 @@ struct TelegramSidebarView: View {
 struct TelegramDetailView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var search: TelegramSearchModel
-    init(model: TelegramModel) { self.model = model; self.search = model.search }
+    @ObservedObject private var media: TelegramMediaController
+    @StateObject private var attachmentActions = TelegramAttachmentActions()
+    init(model: TelegramModel) { self.model = model; self.search = model.search; self.media = model.media }
     @State private var apiID = ""
     @State private var apiHash = ""
     @State private var phone = ""
@@ -88,7 +90,34 @@ struct TelegramDetailView: View {
                 HStack(alignment: .top) { Image(systemName: "exclamationmark.circle"); Text(error).textSelection(.enabled); Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.help("Закрыть сообщение") }
                     .font(.callout).padding(16).background(.red.opacity(0.08)).accessibilityIdentifier("telegram.error")
             }
+            if attachmentActions.isBusy {
+                HStack { ProgressView().controlSize(.small); Text("Обработка вложения…"); Spacer(); Button("Отменить", action: attachmentActions.cancel) }
+                    .font(.callout).padding(12).accessibilityIdentifier("telegram.media.processing")
+            }
+            if let error = attachmentActions.error {
+                HStack { Text(error); Spacer(); Button("Закрыть") { attachmentActions.error = nil } }
+                    .font(.callout).padding(12).background(.red.opacity(0.08)).accessibilityIdentifier("telegram.media.error")
+            }
+            if attachmentActions.saved {
+                Text("Вложение сохранено в выбранный файл.").font(.caption).foregroundStyle(.secondary).padding(12)
+                    .accessibilityIdentifier("telegram.media.saved")
+            }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
+            .onChange(of: model.selectedChatID) { _, _ in attachmentActions.cancel() }
+            .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
+            .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
+            .onChange(of: search.messageQuery) { _, _ in attachmentActions.cancel() }
+            .onDisappear { attachmentActions.cancel(); model.cancelMediaLoads() }
+            .sheet(isPresented: Binding(get: { attachmentActions.preview != nil }, set: { if !$0 { attachmentActions.preview = nil } })) {
+                VStack(spacing: 16) {
+                    if let preview = attachmentActions.preview {
+                        Image(decorative: preview.image, scale: 1).resizable().scaledToFit()
+                            .frame(maxWidth: 900, maxHeight: 650).accessibilityIdentifier("telegram.media.previewImage")
+                    }
+                    Button("Закрыть предпросмотр") { attachmentActions.preview = nil }
+                        .keyboardShortcut(.cancelAction).accessibilityIdentifier("telegram.media.closePreview")
+                }.padding(24).frame(minWidth: 440, minHeight: 280)
+            }
     }
     private var setup: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -164,6 +193,9 @@ struct TelegramDetailView: View {
                                             VStack(alignment: .leading, spacing: 7) {
                                                 Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                                                 Text(item.text.isEmpty ? "Вложение или служебное сообщение" : item.text).textSelection(.enabled)
+                                                ForEach(item.attachments) { attachment in
+                                                    TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions)
+                                                }
                                                 Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(.secondary)
                                                 if !item.delivery.isEmpty { Text(item.delivery).font(.caption).foregroundStyle(.secondary) }
                                             }.padding(14).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -212,6 +244,9 @@ struct TelegramDetailView: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack { Text(item.author).font(.caption.weight(.semibold)); Spacer(); Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
                                     Text(item.text).lineLimit(4).multilineTextAlignment(.leading)
+                                    ForEach(item.attachments) { attachment in
+                                        TelegramAttachmentRow(attachment: attachment, media: media, actions: attachmentActions)
+                                    }
                                 }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
                                 Button("В истории") { model.openSearchMessage(id: item.id) }
                                     .buttonStyle(.bordered).controlSize(.small)

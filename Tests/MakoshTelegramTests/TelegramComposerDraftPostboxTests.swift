@@ -135,4 +135,39 @@ private func composerFixtureRaw(_ box: Postbox, chatID: Int64, data: Data?) -> S
         let latest = try await load(42, from: repository).get()
         XCTAssertEqual(latest, second)
     }
+    func testReplyOnlySurvivesEncryptedReopenAndV1UpgradesWithoutChangingMarker() async throws {
+        let path = try root()
+        let draft = TelegramComposerDraft(accountID: 1, chatID: 42, text: "", replyTarget: .init(peerID: 42, namespace: 0, messageID: 7, threadID: 9))
+        try await seedThenRelease(path, draft: draft)
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let box = try await open(path)
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let reopened = try await load(42, from: repository).get()
+        XCTAssertEqual(reopened, draft)
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        fields["schemaVersion"] = 1; fields.removeValue(forKey: "replyTarget")
+        let marker = Data("MakoshComposerDraft.v1\n".utf8)
+        _ = await raw(box, chat: 42, data: marker + (try JSONSerialization.data(withJSONObject: fields)))
+        let loadedLegacy = try await load(42, from: repository).get()
+        let legacy = try XCTUnwrap(loadedLegacy)
+        XCTAssertEqual(legacy.schemaVersion, 1)
+        var store = TelegramDraftStore()
+        XCTAssertTrue(store.restore(legacy, accountID: 1, chatID: 42, expectedRevision: nil))
+        let upgraded = try XCTUnwrap(store.save("", accountID: 1, chatID: 42))
+        try await save(upgraded, to: repository).get()
+        let savedBytes = await raw(box, chat: 42)
+        let bytes = try XCTUnwrap(savedBytes)
+        XCTAssertTrue(bytes.starts(with: marker))
+        let latest = try await load(42, from: repository).get()
+        XCTAssertEqual(latest, upgraded)
+        fields["schemaVersion"] = 2
+        fields["replyTarget"] = ["peerID": 42, "namespace": 0, "messageID": 0]
+        let invalid = marker + (try JSONSerialization.data(withJSONObject: fields))
+        _ = await raw(box, chat: 42, data: invalid)
+        if case .failure(.incompatibleData) = await load(42, from: repository) {} else { XCTFail("Invalid target must fail") }
+        if case .failure(.incompatibleData) = await save(upgraded, to: repository) {} else { XCTFail("Invalid existing data must remain") }
+        let unchanged = await raw(box, chat: 42)
+        XCTAssertEqual(unchanged, invalid)
+    }
 }

@@ -356,12 +356,23 @@ Channel deletion never offers a misleading local-only option.
 Reply uses the current chat draft and shows the original author/text. Canceling
 reply keeps the text; a local enqueue acknowledgement clears only the exact
 submitted revision in its captured account/chat, including protection against
-typing A → B → A while the acknowledgement is pending. The ordinary plain-text
-composer is saved on every change in that account's encrypted Postbox and
+typing A → B → A or changing only the reply target while acknowledgement is
+pending. Plain text and the optional typed reply target (peer/namespace/message/
+thread) share one revision and transaction in that account's encrypted Postbox,
+including a reply-only draft with empty text. The ordinary composer is
 restored when opening the dialog after restart. Explicit empty snapshots prevent
 late reads from resurrecting cleared text; account/binding/request guards reject
 stale results. This uses the engine's local persistent interface preferences,
-without server draft synchronization. Unknown/malformed/future state is retained
+without server draft synchronization. Schema 2 reads schema-1 text drafts and
+upgrades them on the next local change/save; the envelope marker stays stable.
+Stored fingerprints/capabilities are never restored as authority: a cancellable,
+account-bound local Postbox lookup supplies fresh source text/author/permissions,
+checks thread/migration ownership and has a 30-second deadline. A missing or
+deleted cached source keeps the text and target, displays Retry/Cancel, and
+blocks ordinary send and attachment selection until it resolves or is explicitly
+cancelled. Dispatch still revalidates the resolved source before enqueue.
+Switching chats/channels does not lose reply context; editing temporarily hides
+the ordinary composer and returns to it when cancelled. Unknown/malformed/future state is retained
 and reported, never replaced. Text over 64 KiB UTF8 stays in memory with an error
 instead of being truncated on disk. Failed/pending revisions stay dirty; an
 explicit retry or account rebind resubmits only the latest snapshot, including
@@ -371,9 +382,12 @@ write is pending. Edit has a separate in-process
 draft keyed by account and native message identity. Rejection, uncertainty,
 closing/reopening the editor and controller rebind preserve it; an exact applied
 acknowledgement clears it. Drafts include exact text and typed entities; a newer
-format-only change survives acknowledgement of an older edit. Edit drafts,
-reply target selection and pending attachment captions do not yet persist across
-app exit; this slice persists only the ordinary composer text. It does not
+format-only change survives acknowledgement of an older edit. Reference
+`ChatInterfaceState` explicitly decodes `editState = nil` after restart; its
+temporary edit state lives in AccountContext memory. Makosh likewise keeps edit
+drafts in process, while restoring the ordinary text and reply target. Ordinary
+rich input/selection, reply quotes/forward state, complete in-process edit-mode
+restoration and pending attachment captions remain open. It does not
 restore the selected dialog automatically.
 
 Reply and edit use the lower composer with a compact source accessory, following
@@ -664,6 +678,21 @@ received runtime acceptance. Real account/network fetch, pagination beyond the
 native first page and native pending-fetch timeout acceptance are unverified.
 
 ## Offline navigation UI check
+
+Persistent composer QA uses the shared workspace, a separately created mode-0700
+Postbox directory named `qa_telegram_drafts_…`, and an explicit mode-0600 database
+configuration whose schema starts with `qa_telegram_dossier_`:
+
+```sh
+.build/Makosh.app/Contents/MacOS/Makosh --telegram-drafts-synthetic-preview /path/to/qa_telegram_drafts_example --database-config /path/to/isolated-database.json
+```
+
+Reusing that owned synthetic directory after quitting exercises actual restart
+persistence. Only that synthetic Postbox and isolated PostgreSQL schema are
+opened. No personal account, API file, Keychain, Telegram network or real send is
+used. Reply resolution uses fixed synthetic messages; native Postbox resolution
+has separate encrypted-cache tests. The fixed history does not change after a
+labelled simulated queue acknowledgement.
 
 After a debug build, launch the explicit synthetic view:
 

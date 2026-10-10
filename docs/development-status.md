@@ -1718,3 +1718,77 @@ The preceding fullscreen-gallery head `7fa3117feae88a0d3258a3f77e6996497fc3afbd`
 passed [PR CI 38082465063](https://github.com/Mesteriis/makosh-native/actions/runs/38082465063)
 and [push CI 38082462388](https://github.com/Mesteriis/makosh-native/actions/runs/38082462388).
 These results do not establish hosted CI for the list-presence change.
+
+## Durable ordinary reply drafts in the shared workspace — 2026-10-10
+
+Ordinary composer text and its typed reply target now share one versioned
+snapshot in the selected account's encrypted Postbox. A reply with no text
+survives restart. Schema 1 is readable and upgrades on the next save; unknown,
+foreign or malformed bytes remain untouched. Restored identities resolve against
+the current local message cache, including fresh text, author and capabilities.
+An unavailable source retains the draft and offers Retry/Cancel while blocking
+normal send and attachment selection. No cloud draft synchronization is added.
+
+Reply ownership moved from the detail view to TelegramModel, so channel/view
+recreation preserves it. Cancelling reply retains text; editing temporarily hides
+the ordinary reply and cancellation returns it. Queue acknowledgements clear only
+their captured revision, including protection against target-only changes and a
+rejected second dispatch. Attachment preparation captures the same reply identity.
+Reference ChatInterfaceState explicitly resets editState on restart; durable edit
+mode is therefore not an outstanding parity requirement. Complete in-process
+edit-mode restoration and rich ordinary input remain open.
+
+Actual checks:
+
+- `scripts/dev-db.sh up`: exit 0; PostgreSQL/S3 available.
+- Final `scripts/test.sh`: exit 0, **368 XCTest (305 Telegram + 63 core), zero
+  failures; 24 Python regressions**. New coverage includes encrypted Postbox
+  reopen/schema compatibility/fresh message resolution, missing source retention,
+  stale identity/thread/request/account callbacks, synchronous completion,
+  cancellation, and captured revision acknowledgement. Twenty-six upstream t19
+  teardown diagnostics remain visible after passing Telegram tests; the prior
+  unreachable-catch warning is unchanged.
+- Final `scripts/build-app.sh` and strict deep signature verification: exit 0.
+  The final native bundle's unsigned payload matches the built app. Native
+  AX/screenshots verified **17 focused conditions**: common selector; text/reply
+  restart; cancel retaining text; reply-only selection/restart; exact Unicode;
+  honest disconnected mail; channel return; chat isolation/return; edit hiding
+  reply and cancel restoring it; attachment reply/cancel; labelled simulated
+  queue clearing both; clear surviving restart; synthetic draft cleanup. The
+  same owned synthetic Postbox and explicit isolated PostgreSQL schema were
+  reused after confirmed process exit. No personal account, Keychain, Telegram
+  network or real send was used. Native attachment enqueue and live delivery
+  were not accepted by this check.
+- Native QA exposed an empty-search synthetic resolver that could not restore
+  a valid target. It now uses a bounded message page around the exact identity;
+  a regression exercises the actual provider for current/older/missing targets.
+  Initial compiler failures (accessory label and test call labels) were repaired
+  before the final gates. An early queue observation was not counted; acceptance
+  waited for the visible labelled queued result before testing restart.
+- Root reviewed the complete patch and verified **13 current worker-reviewed
+  source/test hashes**; a subsequent DTO comment-only change was reviewed by root.
+  Workers did not run integration/runtime gates; observed provider/model and
+  usage remain unknown, without quorum. Private merged evidence stays ignored.
+- Final project XERJ refresh/check: exit 0, **221 files, 191/191 code**. Locked
+  TelegramSwift and prepared engine fingerprints are fresh; the actual final
+  query retrieved the reply controller/provider and was confirmed against source.
+  A preceding refresh failed because sources changed during indexing; it was
+  superseded by the successful final refresh.
+- `git diff --check`: exit 0. Publication audit checked **226 publishable files**
+  and the private PR body against five selected local credential fields, with
+  zero matches. Local configuration, caches, clones and build artifacts stay
+  ignored.
+
+The preceding list-presence head `41542d7c1b9c62cf441b8f724ca65a9e3726fdb9`
+failed [PR CI 38083296209](https://github.com/Mesteriis/makosh-native/actions/runs/38083296209)
+and [push CI 38083293058](https://github.com/Mesteriis/makosh-native/actions/runs/38083293058):
+Swift 6.3 could not type-check the nested synthetic presence expression. Explicit
+typed locals now preserve its behavior and reduce type-checking complexity.
+Hosted CI for the new published head is tracked separately.
+
+Actual migrated-group/channel permission construction and live source changes
+remain unaccepted. Rich ordinary input/selection, reply quotes/forward state,
+server drafts, complete in-process edit-mode restoration, attachment captions,
+gallery gaps, other Telegram workflows, archive/key backup, later channels and
+standalone packaging remain open in `migration-plan.md`. The full sequential
+migration goal remains active.

@@ -77,6 +77,7 @@ public final class TelegramModel: ObservableObject {
     public let upload = TelegramUploadController()
     public let archive = TelegramArchiveController()
     public let messageActions = TelegramMessageActionsController()
+    public let composerReply = TelegramComposerReplyController()
     public var uploadContextID: UUID { accountGeneration }
     public var messageActionContextID: UUID { accountGeneration }
     public var contactProfileContextID: UUID { accountGeneration }
@@ -137,6 +138,7 @@ public final class TelegramModel: ObservableObject {
             if let accountID = draftAccountID {
                 displayDraft(selectedChatID.map { drafts.draft(accountID: accountID, chatID: $0) } ?? "")
             } else { displayDraft("") }
+            refreshComposerReply()
             restoreComposerDraft()
             search.selectChat(selectedChatID)
             peerStatus.selectPeer(selectedChatID)
@@ -163,7 +165,7 @@ public final class TelegramModel: ObservableObject {
     private var drafts = TelegramDraftStore()
     private struct ComposerDraftKey: Hashable { let accountID: Int64; let chatID: Int64 }
     @Published private var unsavedComposerDrafts: [ComposerDraftKey: TelegramComposerDraft] = [:]
-    private let composerPersistenceError = "Не удалось сохранить черновик на диске. Текст остаётся в памяти; повторите сохранение перед выходом."
+    private let composerPersistenceError = "Не удалось сохранить черновик на диске. Текст и выбранный ответ остаются в памяти; повторите сохранение перед выходом."
     public var canRetryComposerDraftPersistence: Bool {
         guard let accountID = draftAccountID, composerDraftRepository?.accountID == accountID else { return false }
         return unsavedComposerDrafts.values.contains { $0.accountID == accountID }
@@ -303,6 +305,7 @@ public final class TelegramModel: ObservableObject {
             case let .success(snapshot):
                 if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, expectedRevision: nil) {
                     self.displayDraft(self.drafts.draft(accountID: accountID, chatID: chatID))
+                    self.refreshComposerReply()
                 }
             case .failure:
                 self.error = "Не удалось открыть сохранённый черновик. Данные на диске не изменены."
@@ -316,7 +319,34 @@ public final class TelegramModel: ObservableObject {
             accountID: submitted.accountID, chatID: submitted.chatID) else { return }
         persistComposerDraft(cleared)
         if draftAccountID == submitted.accountID, selectedChatID == submitted.chatID,
-           draft.utf8.elementsEqual(text.utf8) { displayDraft("") }
+           draft.utf8.elementsEqual(text.utf8) { displayDraft(""); refreshComposerReply() }
+    }
+
+    private func refreshComposerReply(initial: TelegramComposerReply? = nil) {
+        let target = draftAccountID.flatMap { accountID in
+            selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0)?.replyTarget }
+        }
+        composerReply.select(target: target, chatID: selectedChatID, initial: initial)
+    }
+
+    @discardableResult
+    public func beginReply(to message: TelegramMessage, contextID: UUID) -> Bool {
+        guard contextID == accountGeneration, !isBusy, upload.phase == .idle,
+              let source = actionSource(for: message), source.canReply, !source.fingerprint.isEmpty,
+              source.chatID == source.peerID || source.metadata.migrationChatID == source.chatID else { return false }
+        let target = TelegramComposerReplyTarget(source: source)
+        guard target.isValid else { return false }
+        if let changed = drafts.setReplyTarget(target, accountID: source.accountID, chatID: source.chatID) {
+            persistComposerDraft(changed)
+        }
+        refreshComposerReply(initial: TelegramComposerReply(source: source, author: message.author))
+        return true
+    }
+
+    public func cancelComposerReply() {
+        guard let accountID = draftAccountID, let chatID = selectedChatID else { return }
+        if let changed = drafts.setReplyTarget(nil, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        refreshComposerReply()
     }
 
     /// Explicit opening observes only the selected account's peer view and asks
@@ -416,6 +446,7 @@ public final class TelegramModel: ObservableObject {
     @discardableResult
     public func performMessageAction(_ action: TelegramMessageAction, source: TelegramMessageActionSource, contextID: UUID) -> Bool {
         guard contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
+              !messageActions.isBusy, messageActions.phase != .uncertain,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
               knownChats[source.chatID] != nil else { return false }
         if case let .forward(destination) = action {
@@ -423,8 +454,13 @@ public final class TelegramModel: ObservableObject {
             knownChats[destination] = chat
         }
         replyComposerSubmission = nil
-        if case let .reply(text) = action, let snapshot = composerSubmission(text: text, accountID: source.accountID, chatID: source.chatID) {
-            replyComposerSubmission = (source, snapshot)
+        if case let .reply(text) = action {
+            if let target = drafts.snapshot(accountID: source.accountID, chatID: source.chatID)?.replyTarget {
+                guard target == TelegramComposerReplyTarget(source: source), composerReply.resolved?.source == source else { return false }
+            }
+            if let snapshot = composerSubmission(text: text, accountID: source.accountID, chatID: source.chatID) {
+                replyComposerSubmission = (source, snapshot)
+            }
         }
         let accepted = messageActions.perform(action, source: source)
         if !accepted { replyComposerSubmission = nil }
@@ -439,6 +475,10 @@ public final class TelegramModel: ObservableObject {
 
     public func uploadTarget(replyTo source: TelegramMessageActionSource?, contextID: UUID) -> TelegramUploadTarget? {
         guard contextID == accountGeneration, let target = uploadTarget else { return nil }
+        if let replyTarget = drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.replyTarget {
+            guard let source, TelegramComposerReplyTarget(source: source) == replyTarget,
+                  composerReply.resolved?.source == source else { return nil }
+        }
         let captured = TelegramUploadTarget(accountID: target.accountID, chatID: target.chatID,
             title: target.title, replySource: source)
         return captured.hasValidReplySource ? captured : nil
@@ -448,7 +488,8 @@ public final class TelegramModel: ObservableObject {
         uploadComposerSubmission = nil
         guard target.accountID == draftAccountID,
               let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
-              snapshot.text.utf8.elementsEqual(caption.utf8) else { return }
+              snapshot.text.utf8.elementsEqual(caption.utf8),
+              snapshot.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
         uploadComposerSubmission = snapshot
     }
 
@@ -615,6 +656,8 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func sendMessage(_ text: String) -> Bool {
+        guard let draftAccountID, let chatID = selectedChatID,
+              drafts.snapshot(accountID: draftAccountID, chatID: chatID)?.replyTarget == nil else { return false }
         guard !isSyntheticPreview else { error = "Синтетическая проверка: отправка отключена."; return false }
         guard !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, upload.phase == .idle,
               phase == .ready, let account, let selectedChatID,
@@ -669,6 +712,8 @@ public final class TelegramModel: ObservableObject {
         authorizationGeneration = UUID()
         action.set(nil)
         self.unauthorized = nil; self.account = account
+        composerReply.bind(TelegramPostboxComposerReplyProvider(postbox: account.postbox, accountID: account.peerId.toInt64()))
+        refreshComposerReply()
         bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: account.postbox, accountID: account.peerId.toInt64()))
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
@@ -713,6 +758,7 @@ public final class TelegramModel: ObservableObject {
         playback.stop()
         upload.bind(provider: nil)
         messageActions.bind(provider: nil)
+        composerReply.bind(nil)
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
         search.bind(account: nil)
@@ -939,6 +985,7 @@ public final class TelegramModel: ObservableObject {
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
+        model.composerReply.bind(TelegramSyntheticComposerReplyProvider())
         model.bindSyntheticHistoryRead()
         model.isSyntheticPreview = true
         model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)

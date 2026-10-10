@@ -14,10 +14,14 @@ struct TelegramSyntheticPages {
         let start = max(0, min(Int(anchor?.messageIndex.id.id ?? 1) - 1, total - 1))
         let end = min(start + size, total)
         let base: Int64 = folder == .inbox ? 10_000 : 20_000
-        let items = (start..<end).map { offset in
-            TelegramChat(id: base + Int64(offset + 1), title: "Тестовый диалог \(offset + 1)",
-                preview: folder == .inbox ? "Синтетическая история" : "Синтетический архив", unreadCount: offset == 0 ? 3 : 0,
-                presence: presenceObservedAt.flatMap { telegramSyntheticChatPresence(peerID: base + Int64(offset + 1), observedAt: $0) })
+        let preview = folder == .inbox ? "Синтетическая история" : "Синтетический архив"
+        let items: [TelegramChat] = (start..<end).map { offset -> TelegramChat in
+            let chatID = base + Int64(offset + 1)
+            let presence: TelegramChatPresence? = presenceObservedAt.flatMap {
+                telegramSyntheticChatPresence(peerID: chatID, observedAt: $0)
+            }
+            return TelegramChat(id: chatID, title: "Тестовый диалог \(offset + 1)",
+                preview: preview, unreadCount: offset == 0 ? 3 : 0, presence: presence)
         }
         func cursor(_ offset: Int) -> ChatListIndex {
             ChatListIndex(pinningIndex: nil, messageIndex: messageIndex(chatID: base, id: offset + 1))

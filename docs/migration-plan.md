@@ -58,7 +58,12 @@
    UI сверяется с TelegramSwift: [карта переноса](reference-interface.md).
    Обычный текст composer сохраняется в account Postbox между перезапусками;
    поздние чтения и подтверждения отправки защищены revision/request guards.
-   Серверные черновики, восстановление reply target/edit/подписи ещё впереди.
+   Typed reply target теперь сохраняется с текстом одной revision, включая
+   reply-only draft, и заново разрешается из текущего Postbox. Недоступный
+   источник блокирует отправку до retry/явной отмены; поздний ACK не очищает
+   новый target. Режим edit после restart сбрасывается и в референсе; его
+   восстановление внутри процесса, rich ordinary input, quote/forward state,
+   серверные черновики и подпись вложения ещё впереди.
    Индикаторы отправки/ошибки и одна/две галочки рядом со временем следуют
    `ChatRightView`; прочтение берётся из native history entry. Видимая граница
    обычной cloud-истории отмечается через native interactive read только в

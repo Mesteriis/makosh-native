@@ -156,6 +156,107 @@ import SwiftSignalKit
         XCTAssertEqual(model.draft, "new composition before submit")
         XCTAssertEqual(repository.writes.map { $0.0.text }, ["captured reply", "new composition before submit"])
     }
+    func testReplyOnlyDraftPersistsAndTextChangesKeepTargetAcrossChats() throws {
+        let (model, repository) = fixture()
+        let message = try XCTUnwrap(model.messages.last(where: { $0.isOutgoing }))
+        let source = try XCTUnwrap(model.actionSource(for: message))
+        XCTAssertTrue(model.beginReply(to: message, contextID: model.messageActionContextID))
+        let target = TelegramComposerReplyTarget(source: source)
+        XCTAssertEqual(repository.writes.last?.0.text, "")
+        XCTAssertEqual(repository.writes.last?.0.replyTarget, target)
+        let firstRevision = try XCTUnwrap(repository.writes.last?.0.revision)
+        model.draft = "reply composition"
+        XCTAssertEqual(repository.writes.last?.0.replyTarget, target)
+        XCTAssertNotEqual(repository.writes.last?.0.revision, firstRevision)
+        model.selectedChatID = 10002; model.draft = "other chat"
+        model.selectedChatID = 10001
+        XCTAssertEqual(model.draft, "reply composition")
+        model.cancelComposerReply()
+        XCTAssertNil(repository.writes.last?.0.replyTarget)
+        XCTAssertEqual(model.draft, "reply composition")
+    }
+    func testLateDiskRestoreCannotOverwritePickedOrCancelledReply() throws {
+        for cancel in [false, true] {
+            let (model, repository) = fixture()
+            let message = try XCTUnwrap(model.messages.last(where: { $0.isOutgoing }))
+            XCTAssertTrue(model.beginReply(to: message, contextID: model.messageActionContextID))
+            let picked = try XCTUnwrap(repository.writes.last?.0.replyTarget)
+            if cancel { model.cancelComposerReply() }
+            repository.reads[0].1(.success(.init(accountID: -1, chatID: 10001, text: "old disk",
+                replyTarget: .init(peerID: 10001, namespace: 0, messageID: 999))))
+            XCTAssertEqual(model.draft, "")
+            XCTAssertEqual(repository.writes.last?.0.replyTarget, cancel ? nil : picked)
+        }
+    }
+    func testMatchingQueuedReplyClearsTextAndTargetButTargetChangesProtectAck() throws {
+        for changeTarget in [false, true] {
+            let (model, repository) = fixture()
+            let messages = model.messages.filter { $0.isOutgoing }
+            let message = try XCTUnwrap(messages.last), other = try XCTUnwrap(messages.first)
+            let source = try XCTUnwrap(model.actionSource(for: message)), provider = ReplyProvider()
+            model.messageActions.bind(provider: provider)
+            XCTAssertTrue(model.beginReply(to: message, contextID: model.messageActionContextID))
+            model.draft = "reply"
+            XCTAssertTrue(model.performMessageAction(.reply("reply"), source: source, contextID: model.messageActionContextID))
+            if changeTarget { XCTAssertTrue(model.beginReply(to: other, contextID: model.messageActionContextID)) }
+            provider.callback?(.queued)
+            XCTAssertEqual(model.draft, changeTarget ? "reply" : "")
+            XCTAssertEqual(repository.writes.last?.0.replyTarget == nil, !changeTarget)
+        }
+    }
+    func testRejectedSecondSubmissionDoesNotLoseFirstAcknowledgement() throws {
+        let (model, repository) = fixture(), provider = ReplyProvider()
+        let message = try XCTUnwrap(model.messages.last)
+        let source = try XCTUnwrap(model.actionSource(for: message))
+        model.messageActions.bind(provider: provider)
+        XCTAssertTrue(model.beginReply(to: message, contextID: model.messageActionContextID))
+        model.draft = "captured once"
+        XCTAssertTrue(model.performMessageAction(.reply(model.draft), source: source, contextID: model.messageActionContextID))
+        XCTAssertFalse(model.performMessageAction(.reply(model.draft), source: source, contextID: model.messageActionContextID))
+        provider.callback?(.queued)
+        XCTAssertEqual(model.draft, "")
+        XCTAssertNil(repository.writes.last?.0.replyTarget)
+    }
+
+    private final class UnresolvedReplyProvider: TelegramComposerReplyProvider {
+        let accountID: Int64 = -1
+        var completion: (@MainActor (TelegramComposerReply?) -> Void)?
+        func resolve(target: TelegramComposerReplyTarget, chatID: Int64,
+                     completion: @escaping @MainActor (TelegramComposerReply?) -> Void) -> Disposable {
+            self.completion = completion; return EmptyDisposable
+        }
+    }
+    func testRestoredMissingReplyBlocksNormalSendAndUploadWithoutLosingText() throws {
+        let (model, repository) = fixture(), provider = UnresolvedReplyProvider()
+        model.composerReply.bind(provider)
+        repository.reads[0].1(.success(.init(accountID: -1, chatID: 10001, text: "retained caption",
+            replyTarget: .init(peerID: 10001, namespace: 0, messageID: 999))))
+        XCTAssertEqual(model.composerReply.state, .loading)
+        XCTAssertFalse(model.sendMessage(model.draft))
+        XCTAssertNil(model.uploadTarget(replyTo: nil, contextID: model.messageActionContextID))
+        provider.completion?(nil)
+        XCTAssertEqual(model.composerReply.state, .unavailable)
+        XCTAssertFalse(model.sendMessage(model.draft))
+        XCTAssertNil(model.uploadTarget(replyTo: nil, contextID: model.messageActionContextID))
+        XCTAssertEqual(model.draft, "retained caption")
+        XCTAssertTrue(repository.writes.isEmpty)
+    }
+    func testTargetOnlyReplyChangeProtectsCapturedUploadAcknowledgement() throws {
+        let (model, repository) = fixture()
+        let messages = model.messages.filter { $0.isOutgoing }
+        let first = try XCTUnwrap(messages.first), last = try XCTUnwrap(messages.last)
+        XCTAssertTrue(model.beginReply(to: first, contextID: model.messageActionContextID))
+        model.draft = "same caption"
+        let source = try XCTUnwrap(model.actionSource(for: first))
+        let target = try XCTUnwrap(model.uploadTarget(replyTo: source, contextID: model.messageActionContextID))
+        model.captureUploadDraft(target: target, caption: model.draft)
+        let originalRevision = try XCTUnwrap(repository.writes.last?.0.revision)
+        XCTAssertTrue(model.beginReply(to: last, contextID: model.messageActionContextID))
+        XCTAssertNotEqual(repository.writes.last?.0.revision, originalRevision)
+        model.acknowledgeUpload(target: target, caption: "same caption")
+        XCTAssertEqual(model.draft, "same caption")
+        XCTAssertEqual(repository.writes.last?.0.replyTarget, TelegramComposerReplyTarget(source: try XCTUnwrap(model.actionSource(for: last))))
+    }
     private final class Lease: TelegramMessageActionsLease { func cancel() {} }
     private final class SynchronousRepository: TelegramComposerDraftRepository {
         let accountID: Int64 = -1

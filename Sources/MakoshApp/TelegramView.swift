@@ -11,7 +11,6 @@ struct TelegramDetailView: View {
     @ObservedObject private var peerStatus: TelegramPeerStatusController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
-    @State private var replyRequest: TelegramMessageActionRequest?
     @State private var editRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
     @State private var messageSearchPresented = false
@@ -70,19 +69,10 @@ struct TelegramDetailView: View {
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
             .onChange(of: model.selectedChatID) { _, _ in
-                attachmentActions.cancel(); replyRequest = nil; editRequest = nil; profilePresented = false
+                attachmentActions.cancel(); editRequest = nil; profilePresented = false
                 closeMessageSearch()
             }
-            .onChange(of: model.messageActionContextID) { _, _ in replyRequest = nil; editRequest = nil; messageActionRequest = nil; profilePresented = false }
-            .onChange(of: messageActions.phase) { _, phase in
-                if phase == .queued, let replyRequest, messageActions.source == replyRequest.source,
-                   case .reply = messageActions.action { self.replyRequest = nil }
-            }
-            .onChange(of: upload.messageID) { _, messageID in
-                if messageID != nil, let replyRequest, upload.target?.replySource == replyRequest.source {
-                    self.replyRequest = nil
-                }
-            }
+            .onChange(of: model.messageActionContextID) { _, _ in editRequest = nil; messageActionRequest = nil; profilePresented = false }
             .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
             .onChange(of: search.messageQuery) { _, _ in
@@ -262,26 +252,7 @@ struct TelegramDetailView: View {
                     TelegramInlineEditView(model: model, request: editRequest) { self.editRequest = nil }
                         .id(editRequest.id)
                 } else {
-                    if let replyRequest {
-                        TelegramInputAccessoryView(title: replyRequest.author,
-                            detail: replyRequest.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(replyRequest.source),
-                            symbol: "arrowshape.turn.up.left", cancelLabel: "Отменить ответ",
-                            cancelID: "telegram.actions.cancelReply") { self.replyRequest = nil }
-                            .accessibilityIdentifier("telegram.actions.replySubject")
-                    }
-                    HStack(alignment: .bottom, spacing: 12) {
-                        TelegramAttachButtons(model: model, replySource: replyRequest?.source, replyContextID: replyRequest?.contextID)
-                            .disabled(messageActions.isBusy || messageActions.phase == .uncertain)
-                        TextField("Сообщение в Telegram", text: $model.draft, axis: .vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.composer")
-                        Button {
-                            if let replyRequest {
-                                _ = model.performMessageAction(.reply(model.draft), source: replyRequest.source, contextID: replyRequest.contextID)
-                            } else { _ = model.sendMessage(model.draft) }
-                        } label: { Image(systemName: "paperplane.fill").font(.system(size: 22)).frame(width: 32, height: 32) }
-                            .buttonStyle(.plain).foregroundStyle(.tint).accessibilityLabel("Отправить")
-                            .disabled((model.isSyntheticPreview && replyRequest == nil) || model.isBusy || messageActions.isBusy || messageActions.phase == .uncertain || upload.phase != .idle || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .accessibilityIdentifier("telegram.send")
-                    }.padding(.horizontal, 16).padding(.vertical, 10)
+                    TelegramComposerView(model: model)
                 }
                 if model.isSyntheticPreview {
                     Text("Синтетическая проверка: действия имитируются, отправки в Telegram нет.")
@@ -360,8 +331,9 @@ struct TelegramDetailView: View {
             TelegramMessageActionsItems(source: source, disabled: model.isBusy || upload.phase != .idle || messageActions.isBusy || messageActions.phase == .uncertain) { mode in
                 let request = TelegramMessageActionRequest(source: source, author: item.author, contextID: model.messageActionContextID, mode: mode)
                 switch mode {
-                case .reply: editRequest = nil; replyRequest = request
-                case .edit: replyRequest = nil; editRequest = request
+                case .reply:
+                    if model.beginReply(to: item, contextID: request.contextID) { editRequest = nil }
+                case .edit: editRequest = request
                 case .forward, .delete: messageActionRequest = request
                 }
             }
@@ -398,7 +370,16 @@ struct TelegramDraftsSyntheticPreviewView: View {
     @State private var failure: String?
     var body: some View {
         Group {
-            if let model { TelegramSyntheticPreviewView(model: model, persistentDrafts: true) }
+            if let model {
+                WorkspaceView(syntheticTelegram: model)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА ЧЕРНОВИКОВ", systemImage: "testtube.2")
+                                .font(.caption.bold())
+                                .help("Отдельные Postbox и схема PostgreSQL; личные аккаунты и сеть Telegram не используются")
+                        }
+                    }
+            }
             else if let failure { Text(failure).padding(24) }
             else { ProgressView("Открытие отдельного синтетического Postbox…") }
         }.task {

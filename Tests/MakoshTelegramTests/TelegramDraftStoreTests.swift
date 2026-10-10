@@ -96,7 +96,7 @@ final class TelegramDraftStoreTests: XCTestCase {
         XCTAssertFalse(store.restore(oversized,accountID: 2,chatID: 20,expectedRevision: nil))
         let encoded = try JSONEncoder().encode(remote)
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        object["schemaVersion"] = 2
+        object["schemaVersion"] = 99
         let future = try JSONDecoder().decode(TelegramComposerDraft.self,from: JSONSerialization.data(withJSONObject: object))
         XCTAssertFalse(future.isValid)
         XCTAssertFalse(store.restore(future,accountID: 1,chatID: 10,expectedRevision: remote.revision))
@@ -109,4 +109,34 @@ final class TelegramDraftStoreTests: XCTestCase {
         }
     }
 
+    func testReplyTargetChangesPreserveTextAndRejectStaleAcknowledgementABA() throws {
+        var store = TelegramDraftStore()
+        let target = TelegramComposerReplyTarget(peerID: 42, namespace: 0, messageID: 7, threadID: 9)
+        let first = try XCTUnwrap(store.setReplyTarget(target, accountID: 1, chatID: 42))
+        XCTAssertEqual(first.text, ""); XCTAssertEqual(first.replyTarget, target)
+        XCTAssertNil(store.setReplyTarget(target, accountID: 1, chatID: 42))
+        let typed = try XCTUnwrap(store.save("reply", accountID: 1, chatID: 42))
+        XCTAssertEqual(typed.replyTarget, target)
+        _ = store.setReplyTarget(nil, accountID: 1, chatID: 42)
+        let restored = try XCTUnwrap(store.setReplyTarget(target, accountID: 1, chatID: 42))
+        XCTAssertEqual(restored.text, "reply")
+        XCTAssertNil(store.acknowledge(sentText: "reply", revision: typed.revision, accountID: 1, chatID: 42))
+        let cleared = try XCTUnwrap(store.acknowledge(sentText: "reply", revision: restored.revision, accountID: 1, chatID: 42))
+        XCTAssertEqual(cleared.text, ""); XCTAssertNil(cleared.replyTarget)
+        let replyOnly = try XCTUnwrap(store.setReplyTarget(target, accountID: 1, chatID: 42))
+        XCTAssertNotNil(store.acknowledge(sentText: "", revision: replyOnly.revision, accountID: 1, chatID: 42))
+        XCTAssertNil(store.setReplyTarget(.init(peerID: 42, namespace: 0, messageID: 0), accountID: 1, chatID: 42))
+        XCTAssertNil(store.snapshot(accountID: 2, chatID: 42))
+    }
+
+    func testKnownV1UpgradesOnSameTextSave() throws {
+        let draft = TelegramComposerDraft(accountID: 1, chatID: 42, text: "legacy")
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        fields["schemaVersion"] = 1
+        let legacy = try JSONDecoder().decode(TelegramComposerDraft.self, from: JSONSerialization.data(withJSONObject: fields))
+        var store = TelegramDraftStore()
+        XCTAssertTrue(store.restore(legacy, accountID: 1, chatID: 42, expectedRevision: nil))
+        let upgraded = try XCTUnwrap(store.save("legacy", accountID: 1, chatID: 42))
+        XCTAssertEqual(upgraded.schemaVersion, 2); XCTAssertNotEqual(upgraded.revision, legacy.revision)
+    }
 }

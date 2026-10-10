@@ -25,7 +25,7 @@ private let composerDraftMarker = Data("MakoshComposerDraft.v1\n".utf8)
 private func decodeComposerDraft(_ entry: PreferencesEntry, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
     guard entry.data.count <= 512 * 1024, entry.data.starts(with: composerDraftMarker),
           let value = try? JSONDecoder().decode(TelegramComposerDraft.self, from: entry.data.dropFirst(composerDraftMarker.count)),
-          value.schemaVersion == 1, value.accountID == accountID, value.chatID == chatID,
+          value.isValid, value.accountID == accountID, value.chatID == chatID,
           value.text.utf8.count <= 64 * 1024 else { return nil }
     return value
 }
@@ -41,7 +41,7 @@ private func composerDraftLoad(postbox: Postbox, accountID: Int64, chatID: Int64
 
 private func composerDraftSave(postbox: Postbox, accountID: Int64, draft: TelegramComposerDraft) -> Signal<Result<Void, TelegramComposerDraftPersistenceError>, NoError> {
     postbox.transaction { transaction in
-        guard draft.schemaVersion == 1, draft.accountID == accountID, draft.text.utf8.count <= 64 * 1024 else { return .failure(.incompatibleData) }
+        guard draft.isValid, draft.accountID == accountID, draft.text.utf8.count <= 64 * 1024 else { return .failure(.incompatibleData) }
         let key = PreferencesKeys.persistentChatInterfaceData(peerId: PeerId(draft.chatID))
         if let existing = transaction.getPreferencesEntry(key: key),
            decodeComposerDraft(existing, accountID: accountID, chatID: draft.chatID) == nil { return .failure(.incompatibleData) }

@@ -12,8 +12,18 @@ struct TelegramDraftStore: Sendable {
     @discardableResult
     mutating func save(_ text: String, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
         let key = Key(accountID: accountID,chatID: chatID)
-        guard drafts[key]?.text.utf8.elementsEqual(text.utf8) != true else { return nil }
-        let snapshot = TelegramComposerDraft(accountID: accountID,chatID: chatID,text: text)
+        guard drafts[key]?.text.utf8.elementsEqual(text.utf8) != true || drafts[key]?.schemaVersion == 1 else { return nil }
+        let snapshot = TelegramComposerDraft(accountID: accountID,chatID: chatID,text: text, replyTarget: drafts[key]?.replyTarget)
+        drafts[key] = snapshot
+        return snapshot
+    }
+
+    @discardableResult
+    mutating func setReplyTarget(_ target: TelegramComposerReplyTarget?, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
+        guard target?.isValid ?? true else { return nil }
+        let key = Key(accountID: accountID, chatID: chatID)
+        if let current = drafts[key], current.replyTarget == target, current.schemaVersion == 2 { return nil }
+        let snapshot = TelegramComposerDraft(accountID: accountID, chatID: chatID, text: drafts[key]?.text ?? "", replyTarget: target)
         drafts[key] = snapshot
         return snapshot
     }
@@ -42,8 +52,10 @@ struct TelegramDraftStore: Sendable {
     mutating func acknowledge(sentText: String, revision: UUID, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
         let key = Key(accountID: accountID,chatID: chatID)
         guard let current = drafts[key], current.revision == revision,
-              current.text.utf8.elementsEqual(sentText.utf8), !current.text.isEmpty else { return nil }
-        return save("",accountID: accountID,chatID: chatID)
+              current.text.utf8.elementsEqual(sentText.utf8), (!current.text.isEmpty || current.replyTarget != nil) else { return nil }
+        let cleared = TelegramComposerDraft(accountID: accountID, chatID: chatID, text: "")
+        drafts[key] = cleared
+        return cleared
     }
 
     /// Compatibility only; asynchronous senders must capture and pass the revision.

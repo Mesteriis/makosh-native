@@ -6,13 +6,16 @@ public enum TelegramRecordedVoiceIO {
     public static func prepare(samples: [Int16]) async throws -> TelegramUploadFile {
         let bytes = try await TelegramRecordedVoiceCodec.encode(samples: samples)
         try Task.checkCancellation()
-        let worker = Task.detached(priority: .utility) { try stage(bytes, sampleCount: Int32(samples.count)) }
+        let worker = Task.detached(priority: .utility) {
+            let waveform = try TelegramVoiceWaveform.make(samples: samples)
+            return try stage(bytes, sampleCount: Int32(samples.count), waveform: waveform)
+        }
         let file = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
         do { try Task.checkCancellation(); return file }
         catch { try? TelegramUploadFileIO.discard(file); throw error }
     }
 
-    private static func stage(_ bytes: Data, sampleCount: Int32) throws -> TelegramUploadFile {
+    private static func stage(_ bytes: Data, sampleCount: Int32, waveform: Data) throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let id = UUID()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + id.uuidString, isDirectory: true)
@@ -35,7 +38,7 @@ public enum TelegramRecordedVoiceIO {
             }
         }
         try Task.checkCancellation()
-        let metadata = TelegramUploadVoiceMetadata(sampleCount: sampleCount, plaintextSHA256: digest(bytes))
+        let metadata = TelegramUploadVoiceMetadata(sampleCount: sampleCount, plaintextSHA256: digest(bytes), waveform: waveform)
         let file = TelegramUploadFile(id: id, name: "Voice.ogg", size: Int64(bytes.count), mode: .file,
             pixelWidth: nil, pixelHeight: nil, url: url, directory: directory, metadata: .voice(metadata))
         try TelegramUploadFileIO.validateOwnedStage(file)

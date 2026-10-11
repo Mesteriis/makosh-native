@@ -1996,7 +1996,7 @@ full ordered source options, Archive and image editing remain open.
 The internal `TelegramRecordedVoiceCodec` now encodes explicit mono48kHz Int16
 PCM into Ogg/Opus, then independently parses and decodes its own recordings.
 The separate explicit-recording path below connects it to durable preparations
-and native Voice attributes. Microphone capture, waveform and playback UI remain open.
+and native Voice attributes. Microphone capture and recorder/playback UI remain open.
 Existing picked audio remains ordinary music/file; filename/MIME never grants
 recorded provenance. No microphone or account action is enabled.
 
@@ -2030,7 +2030,7 @@ native decoder to check audio correlation and exact trim. Silence, sub-frame
 lengths, PCM/byte bounds, damaged/truncated/trailing data, rechecksummed header/
 sequence/stream/EOS forgeries, bitrate bounds and pre-cancellation are covered.
 In-flight cancellation and full600-second native playback remain unproved.
-Recorder interaction, waveform and live delivery remain open; an offline codec
+Recorder interaction and live delivery remain open; an offline codec
 and synthetic native admission do not establish a completed recorder flow.
 
 ### Explicit recorded preparation and native Voice
@@ -2051,7 +2051,8 @@ restore and MediaBox preparation decode actual owned Ogg bytes and compare exact
 PCM count/digest, holding a no-follow descriptor and checking source snapshot.
 Malformed envelopes are refused before archive capture. Optional waveform, when
 present, must be exactly100 packed5-bit values in63 bytes with zero unused bits;
-this slice emits null and does not claim waveform computation.
+new explicit recordings compute it from original PCM as described below. Existing
+null-waveform schema11 preparations remain readable and are not recomputed.
 
 The chat flag selects authenticated encrypted S3 or encrypted local preparation.
 OFF forbids every new S3 copy, including this preparation. Local records survive
@@ -2067,4 +2068,31 @@ read back native Voice attributes/MediaBox bytes and refuse stale resubmission.
 The accepted pointer survives another reopen. Invalid captions and changed PCM
 facts create no archive record. Exact main-actor test-fixture and hosted compiler
 failures, gates and UI evidence are recorded in development-status.md. There is
-no live Account/server, microphone, waveform or recorder interaction proof yet.
+no live Account/server, microphone or recorder interaction proof yet.
+
+### Recorded PCM waveform
+
+New explicit recordings freeze100 five-bit waveform values in63 bytes before
+staging. The independently authored calculation matches pinned
+`AudioRecorder.swift:594–745` and `AudioWaveform.swift:67–85`: preview only complete
+960-sample packets, continuous100-sample peak windows, signed-minimum saturation,
+and the reference's virtual zero/peak pair positions. Window peaks reduce into
+100 bins; normalization sums running maxima, multiplies by1.8/100 and applies a
+2500 floor. Integral values clamp to31 and pack least-significant bit first with
+four unused high bits zero. The implementation uses fixed100-bin storage and
+byte-safe packing; no reference pointer/helper/UI code was copied.
+
+Incomplete encoder packets and the final incomplete100-sample peak window do
+not affect waveform. The codec still encodes partial PCM to preserve exact audio
+count, an existing independent difference from the reference recorder. Empty,
+over600s and pre-cancelled inputs are refused; a complete600s waveform calculation
+has a real native regression. This does not establish600s audio playback.
+
+Waveform belongs to original PCM, not decoded lossy Opus. New preparations carry
+it through existing authenticated local/S3 storage, schema11 and native Voice
+receipts. Capture/restore decode for audio count/digest only and retain frozen
+waveform. A native synthetic pulse yields original first value12 and decoded15;
+the test asserts exact original bytes survive restoration and native enqueue in
+both storage modes. Old explicit null waveform stays null. S3 OFF still forbids
+all new copies and enabling later never promotes local preparations. No schema,
+dependency, license, microphone action or recorder UI change is introduced.

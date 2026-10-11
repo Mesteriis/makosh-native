@@ -1,6 +1,64 @@
 # Development status — 2026-10-11
 
-## Current stage: explicit durable Voice path; recorder interaction remains open
+## Current stage: original-PCM waveform; recorder interaction remains open
+
+New explicit voice preparations now retain100 five-bit waveform values in63
+bytes from original PCM. Source-confirmed AudioRecorder:594–745 and
+AudioWaveform:67–85 inform complete960-sample packet preview, continuous100-sample
+peak windows, signed-minimum saturation, virtual zero/peak bin positions, running
+maximum normalization ×1.8/100 with floor2500, and LSB packing/zero padding.
+The independent implementation uses fixed100-bin storage and safe byte packing;
+no reference helper/UI code was copied. Utility workers check cancellation
+between peak windows. The codec's existing exact partial-PCM audio preservation
+remains distinct from waveform's ignored incomplete packet/window tails.
+
+Waveform stays frozen through schema11, authenticated local/S3 preparation,
+restore, native Voice admission and complete receipts. Real ON/OFF encrypted
+Postbox/PostgreSQL/S3 reopen tests now assert a nonzero literal waveform and exact
+native bytes. A native pulse has original first value12 and decoded15; re-probe
+retains original PCM waveform instead of recomputing it from lossy Opus. Existing
+explicit null-waveform preparations retain null. S3 OFF forbids all new copies;
+local records never promote on re-enable. No schema, dependency, license, engine
+recipe, microphone action or recorder UI change is introduced.
+
+Actual compiled stub RED13 tests/17 failures(11 unexpected), plus separate
+lossy/bounds RED2/3(2 unexpected). First implementation passes waveform8/0 but
+combined28/1: the initial3000-amplitude fixture incorrectly assumes lossy output
+changes its coarse waveform. A temporary native five-candidate probe identifies
+the sensitive1000-amplitude fixture; that diagnostic is removed after retaining
+its raw output. Literal first byte0x0c independently defines the corrected
+expectation. Focused GREEN28/0; full gates additionally cover old null restoration.
+Tests verify exact bit positions/padding, running normalization, short/constant/
+signed-extreme PCM, packet/window boundaries,600s waveform calculation,
+oversized refusal and pre-cancellation. In-flight cancellation and600s audio
+playback remain unproved.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**969 XCTest (893 Telegram +76 core), zero failures;38 Python regressions**.
+Current full/build logs have zero compile warnings. Existing upstream t19
+teardown diagnostics remain without failures; prior cold C warnings are retained
+below. Both hosted runs for f7828e3 succeed, confirming its prior test-expression
+compiler fix. Hosted CI for this new publication is separate.
+
+Owned synthetic app update passes strict signatures and raw unsigned built–QA
+payload equality. Actual screenshots/AX inspected: chat7 S3 OFF, Mail selects its
+existing disconnected surface, then Telegram returns to chat7/off. No personal
+account, Telegram network or microphone was used. This is common-window smoke,
+not recorder/live waveform/playback UI proof. Host27.0.1 does not prove minimum26.
+
+Root reviews waveform math/bounds/packing/cancellation, original-PCM provenance,
+legacy null behavior, native ON/OFF recovery and focused diff. No independent
+new worker/quorum is claimed. Frozen XERJ refresh/check/query and reference/engine
+freshness checks exit0:400 files,366/366 classified code. Own waveform and pinned
+reference recorder/packing hits are source-confirmed. The corrected source line
+range was followed by a new frozen refresh; no stale index is reused.
+
+Next: reference recorder interaction, explicit microphone capability, recording/
+locked/preview controls and playback within the existing common window. Full
+ordered classifier, Archive/caption normalization, live Account/server validation,
+remaining channels and the sequential migration goal remain open.
+
+## Historical explicit durable Voice path (f7828e3)
 
 Explicit recorded PCM now creates an owned Ogg/Opus stage with schema11 voice
 provenance: exact sampleCount, plaintext SHA256 and explicit nullable waveform.

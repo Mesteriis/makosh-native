@@ -706,8 +706,17 @@ Schema1–10 не принимают voice; внутренний File payload н
 повторным decode при capture/restore/MediaBox. Файлы из picker не переопределяются
 как voice по имени или MIME.
 
+Новые explicit recordings теперь формируют100 значений по5 bit в63 bytes из
+исходного PCM. Сверены AudioRecorder:594–745 и AudioWaveform:67–85: полные960-sample
+пакеты, continuous100-sample peak windows, saturation Int16.min, виртуальные
+zero/peak позиции, сумма running maxima ×1.8/100 с floor2500 и LSB packing.
+Хвосты packet/window не входят в waveform; точный partial PCM сохраняется в Opus
+как уже зафиксированное отличие кодека. Реализация использует100 bins без
+pointer-overrun референсного helper. GPLv2 helper/recorder UI не копировались.
+Waveform рассчитан из исходного PCM и не пересчитывается при restore; старый null
+schema11 остаётся null. Native pulse regression подтверждает original12/decoded15,
+exact frozen bytes и оба storage режима.
+
 Интерфейс этой частью не менялся: кнопка, recording/locked/preview-состояния и
-waveform ещё открыты. Waveform пока null, хотя референс формирует100 значений
-по5 bit в63 bytes; nullable native field сверено отдельно. Ни GPLv2 AudioWaveform helper,
-ни recorder UI не копировались. Общая оболочка/чат сохраняются. Реальный микрофон,
-live Account/server и minimum26 runtime ещё не проверены.
+live waveform/playback ещё открыты. Общая оболочка/чат сохраняются. Реальный
+микрофон, live Account/server и minimum26 runtime ещё не проверены.

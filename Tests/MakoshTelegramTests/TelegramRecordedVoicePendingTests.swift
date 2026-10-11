@@ -72,11 +72,14 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
         try await archive.setConversationFileSavingEnabled(identity: identity, enabled: s3Enabled)
         let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic voice")
         let input = try TelegramComposerInput(formattedText: .init(text: ""))
+        var expectedWaveform = Data(repeating: 0, count: 63); expectedWaveform[0] = 0x0c
         var saved: TelegramPendingUploadDraft?, bytes = Data()
         do {
             let box = try await open(path); previousBox = box
             let store = session(box, archive: archive)
-            let file = try await TelegramRecordedVoiceIO.prepare(samples: [Int16](repeating: 0, count: 48_137))
+            var pcm = [Int16](repeating: 0, count: 48_137)
+            for index in 0..<100 { pcm[index] = 1_000 }
+            let file = try await TelegramRecordedVoiceIO.prepare(samples: pcm)
             defer { try? TelegramUploadFileIO.discard(file) }
             bytes = try Data(contentsOf: file.url)
             let preparationID = UUID(), item = TelegramUploadBatchItem(id: file.id, file: file)
@@ -84,6 +87,7 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
                 target: target, captionInput: input, originalDraft: nil)
             let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
             XCTAssertEqual(first.schemaVersion, 11); XCTAssertEqual(first.items[0].metadata?.voice?.sampleCount, 48_137)
+            XCTAssertEqual(first.items[0].metadata?.voice?.waveform, expectedWaveform)
             try await store.prepare(preparationID: preparationID, items: [item], isGrouped: false, presentation: .file,
                 target: target, captionInput: input, originalDraft: nil)
             let retry = try await store.load(chatID: 42); XCTAssertEqual(retry?.items, first.items)
@@ -123,7 +127,7 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
             let native = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
             XCTAssertEqual(message?.text, ""); XCTAssertNil(message?.groupingKey)
             XCTAssertEqual(native.mimeType, "audio/ogg"); XCTAssertNil(native.size)
-            XCTAssertEqual(native.attributes, [.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: nil)])
+            XCTAssertEqual(native.attributes, [.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: expectedWaveform)])
             XCTAssertTrue(native.previewRepresentations.isEmpty); XCTAssertTrue(native.videoThumbnails.isEmpty)
             XCTAssertNil(native.videoCover); XCTAssertNil(native.immediateThumbnailData)
             let cacheDone = expectation(description: "Voice exact native bytes"); var cache: MediaResourceData?

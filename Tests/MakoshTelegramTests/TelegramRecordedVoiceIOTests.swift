@@ -13,7 +13,8 @@ import CryptoKit
         let bytes = try Data(contentsOf: file.url)
         XCTAssertEqual(file.size, Int64(bytes.count)); XCTAssertTrue(bytes.starts(with: Data("OggS".utf8)))
         XCTAssertEqual(file.metadata, try recordedVoiceDescriptor(sampleCount: 48_137,
-            hash: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()))
+            hash: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(),
+            waveform: Data(repeating: 0, count: 63)))
         var info = stat(); XCTAssertEqual(lstat(file.directory.path, &info), 0); XCTAssertEqual(info.st_mode & 0o777, 0o700)
         XCTAssertEqual(lstat(file.url.path, &info), 0); XCTAssertEqual(info.st_mode & 0o777, 0o600)
         try await TelegramUploadFileIO.verifyMetadata(file)
@@ -48,5 +49,32 @@ import CryptoKit
         let picked = try await TelegramUploadFileIO.stage(recording.url, mode: .file)
         defer { try? TelegramUploadFileIO.discard(picked) }
         XCTAssertNil(picked.metadata)
+    }
+
+    // Lossy decoding must not replace the original PCM waveform during validation/restoration.
+    func testOriginalPCMWaveformSurvivesLossyEncodedByteProbe() async throws {
+        var pcm = [Int16](repeating: 0, count: 48_137)
+        for index in 0..<100 { pcm[index] = 1_000 }
+        var expected = Data(repeating: 0, count: 63); expected[0] = 0x0c
+        let file = try await TelegramRecordedVoiceIO.prepare(samples: pcm)
+        defer { try? TelegramUploadFileIO.discard(file) }
+        let decoded = try await TelegramRecordedVoiceCodec.decodeRecording(Data(contentsOf: file.url))
+        XCTAssertNotEqual(try TelegramVoiceWaveform.make(samples: decoded), expected, "The fixture must expose lossy waveform changes")
+        try await TelegramUploadFileIO.verifyMetadata(file)
+        let restored = try await TelegramUploadFileIO.restoredStage(id: file.id, name: file.name, size: file.size,
+            mode: .file, url: file.url, directory: file.directory, metadata: file.metadata)
+        XCTAssertEqual(restored.metadata?.voice?.waveform, expected)
+    }
+
+    // Earlier schema11 pointers had explicit null waveform; restoration must retain it.
+    func testLegacyNullWaveformIsPreservedDuringRestoration() async throws {
+        let file = try await TelegramRecordedVoiceIO.prepare(samples: [Int16](repeating: 1_000, count: 48_000))
+        defer { try? TelegramUploadFileIO.discard(file) }
+        let metadata = try XCTUnwrap(file.metadata?.voice)
+        let legacy = TelegramUploadMetadata.voice(.init(sampleCount: metadata.sampleCount, plaintextSHA256: metadata.plaintextSHA256))
+        let restored = try await TelegramUploadFileIO.restoredStage(id: file.id, name: file.name, size: file.size,
+            mode: .file, url: file.url, directory: file.directory, metadata: legacy)
+        XCTAssertNotNil(restored.metadata?.voice); XCTAssertNil(restored.metadata?.voice?.waveform)
+        XCTAssertEqual(restored.metadata, legacy)
     }
 }

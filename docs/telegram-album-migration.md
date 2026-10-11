@@ -165,7 +165,7 @@ preparation can also have `inCollage=true`, independently of actual send groupin
 | GIF | Media: H.264 MP4, Video wire duration0/flags[], Animated only when not inCollage. File: original GIF. | Bounded frame/timing decode, independent conversion, separately retained raw and transformed digests; actual MP4 duration separate from wire duration. |
 | WebP | Original bytes, ImageSize/FileName/Sticker even in File; grouping disabled. | Verified bounded decoder and explicit first-frame dimension policy; no JPEG replacement or inferred animated sticker. |
 | Ordinary audio | Original bytes, Audio(isVoice:false) with integral duration/title/performer even in File. | Validated AVFoundation duration and bounded tags, retained through native enqueue and restart; OGG/Opus filenames never imply voice. |
-| Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed codec, strict schema11 and authenticated local/S3 native recovery implemented; waveform and separate recorder workflow remain open. |
+| Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed codec, strict schema11, original-PCM waveform and authenticated local/S3 native recovery implemented; separate recorder workflow remains open. |
 
 Ordinary music now has a verified owned pipeline for synthetic WAV, tagged M4A
 and ID3 MP3. Schema9 carries exact duration/title/performer through File/Media
@@ -199,8 +199,9 @@ and representation flags. No new S3 copy is permitted while the chat flag is off
 including outgoing preparation; local pairs are never promoted on re-enable.
 Recorded voice now has an explicit typed PCM entry, strict schema11 digest/count
 binding and native Voice mapping. Both storage modes and encrypted Postbox reopen
-are covered without a microphone. Nullable waveform is currently null; recording
-interaction and its waveform proof remain open. The prepared engine
+are covered without a microphone. New recordings freeze the reference's100-value
+5-bit waveform from original PCM through native enqueue; old nullable schema11
+waveforms remain readable. Recorder interaction remains open. The prepared engine
 a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
 currently expose GIF conversion or Opus products. Its WebP helper is not adopted;
 Makosh uses the independently verified Apple decoder. UIKit wrappers
@@ -241,8 +242,8 @@ Continue in this dependency order:
    original bytes; WebP's separate optional first-frame320px JPEG transport preview
    is now regenerated from authenticated bytes in MediaBox only. GIF now retains
    both original and validated MP4 with a separate optional raw-frame JPEG. Explicit voice
-   now has a reviewed offline Opus/Ogg codec and durable native path; waveform
-   and recorder interaction remain open. Bound frames, dimensions,
+   now has a reviewed offline Opus/Ogg codec, original-PCM waveform and durable
+   native path; recorder interaction remains open. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every
    typed resource. Off remains encrypted local-only; mode edits never recapture.

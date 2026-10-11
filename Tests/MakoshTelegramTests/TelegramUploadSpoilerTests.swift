@@ -86,6 +86,45 @@ final class TelegramUploadSpoilerTests: XCTestCase {
         for _ in 0..<100 { await Task.yield() }
         return (controller, provider)
     }
+    func testOneShotSpoilerFreezesRichCaptionAndPlacementWithoutChangingPreviewChoice() async throws {
+        let (controller, provider) = await ready()
+        let input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "😀", entities: [.init(offset: 0, length: 2, kind: .bold)]), selection: .init(location: 2, length: 0))
+        XCTAssertTrue(controller.updateCaptionInput(input, contextID: controller.captionContextID))
+        XCTAssertTrue(controller.updateCaptionPlacement(true, contextID: controller.captionContextID, revision: controller.captionRevision))
+        let id = try XCTUnwrap(controller.preparationContextID)
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision)
+        XCTAssertEqual(provider.submitted.count, 1)
+        XCTAssertEqual(provider.submitted.first?.0, input.formattedText)
+        XCTAssertEqual(provider.submitted.first?.1, true); XCTAssertEqual(provider.submitted.first?.2, true)
+        XCTAssertFalse(controller.mediaSpoiler, "The reference overrides this send without toggling the preview")
+        XCTAssertEqual(controller.captionInput, input)
+        provider.callback?(.committing); provider.callback?(.uncertain)
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision)
+        XCTAssertEqual(provider.submitted.count, 1)
+        controller.clear(); XCTAssertFalse(controller.mediaSpoiler)
+    }
+    func testOneShotSpoilerRefusesStaleRevisionContextFileAndInvalidCaption() async throws {
+        let (controller, provider) = await ready()
+        let id = try XCTUnwrap(controller.preparationContextID), revision = controller.captionRevision
+        controller.caption = "new caption"
+        controller.sendAsSpoiler(contextID: id, revision: revision)
+        controller.sendAsSpoiler(contextID: UUID(), revision: controller.captionRevision)
+        controller.caption = String(repeating: "x", count: 1025)
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision)
+        XCTAssertTrue(provider.submitted.isEmpty); XCTAssertFalse(controller.mediaSpoiler)
+        XCTAssertEqual(controller.phase, .ready)
+        controller.clear()
+        controller.prepare(source: URL(fileURLWithPath: "/unused"), mode: .photo,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), caption: "")
+        for _ in 0..<100 { await Task.yield() }
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision)
+        XCTAssertTrue(provider.submitted.isEmpty)
+        controller.sendAsSpoiler(contextID: try XCTUnwrap(controller.preparationContextID), revision: controller.captionRevision)
+        XCTAssertEqual(provider.submitted.count, 1); XCTAssertEqual(provider.submitted.first?.2, true)
+        let (file, fileProvider) = await ready(.file)
+        file.sendAsSpoiler(contextID: try XCTUnwrap(file.preparationContextID), revision: file.captionRevision)
+        XCTAssertTrue(fileProvider.submitted.isEmpty); XCTAssertFalse(file.mediaSpoiler)
+    }
     func testSpoilerSurvivesInputAndPlacementButFrozenSubmissionRejectsStaleMenus() async throws {
         let (controller, provider) = await ready()
         let context = controller.captionContextID, initial = controller.captionRevision

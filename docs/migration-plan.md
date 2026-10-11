@@ -265,7 +265,14 @@ storage-only retries работают против исходного store. Epo
 загрузку по явному повтору. Реальные Postbox/PG/S3
 регрессии, native synthetic QA и фактические gates — в development-status.
 
-Дальше по Telegram остаются подготовка видео/альбомов, one-shot Send as Spoiler,
+Разовая Send as Spoiler для ordinary photo теперь перенесена: native
+secondary/held send menu передаёт frozen true без изменения preview toggle,
+а primary click сохраняет обычную отправку. Preparation/revision, marker и
+acceptance retry используют прежние guards и не допускают повторной отправки
+при неопределённом результате. Фактические623 XCTest,30 Python, сборка,
+read-only review и native cancel/restart/common-window QA — в development-status.
+
+Дальше по Telegram остаются подготовка видео/альбомов,
 прочие media options, animated dust parity, autoload/specialized renderers,
 оставшиеся клиентские workflows и отдельная live-account проверка. Затем
 MMail/Aether → WhatsApp → Teams → Telemost → backup/distribution. Этот участок

@@ -213,7 +213,7 @@ SwiftUI-подготовка повторяет toggle через меню де�
 шапки: «Скрыть под спойлером» / «Отключить спойлер». Он независим от подписи и её
 положения; для файла пункт отсутствует. Preview использует blur/material cover,
 AX скрывает image. Анимация MediaDustView пока не перенесена; полная pixel parity
-и one-shot Send as Spoiler остаются открытыми.
+остаётся открытой. One-shot Send as Spoiler описан ниже.
 
 Native QA подтверждает enable/disable, оба меню, masked preview, изменение текста
 и placement без сброса spoiler, перезапуск с восстановлением всех трёх значений,
@@ -226,3 +226,20 @@ latest tuple в исходном store; epoch, захваченный до load,
 Storage-only retry проверен controller regression;
 нативная инъекция ошибки этой записи не выполнялась. Видео/альбомы, остальные
 media options и реальная отправка Telegram остаются открытыми.
+
+## Подготовка фото: разовая отправка под спойлером
+
+PreviewSenderController.swift:1212–1244,1316–1324,1378–1380,1787,1893–1897
+подтверждает RightDown/LongMouseDown на send button, команду
+send(false, asSpoiler: true) и override asSpoiler ?? state.isSpoiler без изменения
+preview toggle. Собственный SwiftUI Menu(primaryAction:) и contextMenu дают
+обычный click для отправки и secondary/held menu «Отправить под спойлером».
+Для обычного файла пункта нет; captured preparation/revision отвергает старое
+меню. Подпись и placement замораживаются вместе с одноразовым true.
+
+Native QA подтверждает правый и800ms held click, выбор команды и ordinary
+primary click через synthetic queue; Escape оставляет подготовку, отмена
+сохраняет ordinary draft, Mail→Telegram и restart его восстанавливают без
+отменённого фото. Реальная сеть Telegram не использовалась. Остальные пункты
+reference send menu (silent/schedule/online/effects), видео/альбомы и визуальная
+parity остаются открытыми. GPLv2 UI/ассеты не копировались.

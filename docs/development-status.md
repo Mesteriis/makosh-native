@@ -1,6 +1,50 @@
 # Development status — 2026-10-11
 
-## Current stage: outgoing photo media spoilers
+## Current stage: one-shot photo Send as Spoiler
+
+Telegram remains inside the common service-sidebar/dialog/conversation window.
+The photo send control now offers Send as Spoiler on secondary/held click;
+ordinary primary click still sends with the preview's current choice. The
+one-shot command follows PreviewSenderController's `asSpoiler ?? state.isSpoiler`
+behavior: it freezes true for that submission without changing the preview
+toggle. Captured preparation/revision, readiness and caption validation reject
+stale menus, ordinary files and started/uncertain submissions.
+
+The existing submission marker, provider and acceptance storage-only retry carry
+the same frozen rich input, placement and true spoiler flag. An unconfirmed
+marker never dispatches or automatically retries the send. Pending schema3,
+PostgreSQL/S3 formats, engine pins/recipe8 and archive retention are unchanged.
+
+Missing-API compilation is recorded separately from runtime red: four tests,
+22 failed assertions before implementation. Focused green:21 tests. Final
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**623 XCTest (560 Telegram +63 core), zero failures;30 Python regressions**.
+Logs retain134 upstream t19 teardown diagnostics without a test failure/trap.
+Read-only source review covers4 changed and8 supporting files; all12 SHA256/bytes
+match before/after and root verification, with no source findings. Worker
+runtime gates are SKIP; observed provider/model/usage remain unknown.
+
+Owned native QA confirms right-click and800ms held-click menus, one-shot local
+synthetic queue acknowledgement, ordinary primary-click submission, Escape
+without submission, file exclusion, photo/file cancellation, Mail→Telegram and
+restart preserving the ordinary draft without resurrecting the cancelled photo.
+Strict deep built/QA signatures and unsigned executable payload match pass.
+QA uses only owned encrypted synthetic Postbox and isolated PostgreSQL/S3;
+personal accounts, Keychain and Telegram network/server actions are excluded.
+Native fault injection and live Telegram acceptance remain unverified.
+
+Prior f511626 hosted PR38109541663 and push38109539048 are terminal success.
+Final XERJ refresh exits0 (305 files,275/275 code, zero junk); project/reference/
+engine freshness checks and scoped queries pass with source-confirmed hits.
+Publication audit checks310 publishable files and the PR body against5 credential
+fields with zero matches. Publication/new-head CI outcomes are recorded separately
+in the root report. Next Telegram work includes video/album preparation and the
+remaining reference send/media options; animated dust, autoload, specialized
+renderers, other workflows, live-account acceptance, then MMail/Aether,
+WhatsApp, Teams, Telemost, backups and standalone packaging remain open.
+The full sequential migration goal stays active.
+
+## Historical outgoing photo media spoilers
 
 Telegram remains in the common Makosh service-sidebar/dialog/conversation window.
 Photo preparation now offers Hide with Spoiler / Disable Spoiler through native
@@ -58,7 +102,7 @@ Hosted CI for prior72af053 is now terminal success for both PR38107976142 and
 push38107973476. The first project XERJ refresh refused to record freshness because a test changed
 during indexing (exit1); final refresh/check/query, source review and new-head
 publication/CI are recorded separately in the root report. Remaining Telegram preparation work
-includes albums/video, one-shot Send as Spoiler and other reference options;
+included albums/video, one-shot Send as Spoiler and other reference options;
 animated dust parity, autoload, specialized renderers, live-account acceptance,
 subsequent MMail/Aether, WhatsApp, Teams, Telemost, backups and standalone packaging
 remain open. The full sequential migration goal stays active.

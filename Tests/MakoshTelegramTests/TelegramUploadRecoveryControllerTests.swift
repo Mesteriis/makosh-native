@@ -30,6 +30,7 @@ import ImageIO
         var holdCancel = false
         var holdPrepare = false, holdSubmission = false, failPrepare = false, failAccepted = false
         var failPrepared = false
+        var failSubmission = false
         var prepares = 0
         var preparedIDs: [UUID] = []
         var savedIDs: [UUID] = []
@@ -56,6 +57,7 @@ import ImageIO
                 try await withCheckedThrowingContinuation { cancelGate = $0 }
             }
             if case .accepted = disposition, failAccepted { throw Failure.synthetic }
+            if case .submissionStarted = disposition, failSubmission { throw Failure.synthetic }
             if case .submissionStarted = disposition, holdSubmission {
                 try await withCheckedThrowingContinuation { saveGate = $0 }
             }
@@ -71,6 +73,46 @@ import ImageIO
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
         controller.prepare(source: URL(fileURLWithPath: "/synthetic/source"), mode: mode, target: target, caption: "original")
         return (controller, provider)
+    }
+    func testOneShotSpoilerPersistsFrozenMarkerAndAcceptanceRetryWithoutTogglingPreview() async throws {
+        let store = Store(); store.holdPrepare = true; store.holdSubmission = true
+        let (controller, provider) = setup(store: store, mode: .photo)
+        await drain()
+        let id = try XCTUnwrap(controller.preparationContextID)
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision)
+        XCTAssertTrue(store.saves.isEmpty); XCTAssertEqual(provider.calls, 0)
+        store.prepareGate?.resume(); store.prepareGate = nil; await drain()
+        let input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "😀", entities: [.init(offset: 0, length: 2, kind: .italic)]))
+        XCTAssertTrue(controller.updateCaptionInput(input, contextID: controller.captionContextID))
+        XCTAssertTrue(controller.updateCaptionPlacement(true, contextID: controller.captionContextID, revision: controller.captionRevision))
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision)
+        await drain()
+        XCTAssertNotNil(store.saveGate); XCTAssertEqual(store.saves.last?.1, .submissionStarted)
+        XCTAssertEqual(store.saves.last?.0, input); XCTAssertEqual(store.spoilers.last, true)
+        XCTAssertEqual(store.placements.last, true); XCTAssertFalse(controller.mediaSpoiler)
+        XCTAssertEqual(provider.calls, 0)
+        controller.caption = "newer input after frozen send"
+        store.saveGate?.resume(); store.saveGate = nil; await drain()
+        XCTAssertEqual(provider.spoilers, [true]); XCTAssertEqual(provider.placements, [true])
+        XCTAssertEqual(provider.submissions.first?.1, input.formattedText)
+        store.failAccepted = true
+        provider.callback?(.committing); provider.callback?(.accepted("receipt")); await drain()
+        XCTAssertEqual(controller.phase, .uncertain); XCTAssertEqual(store.spoilers.last, true)
+        store.failAccepted = false; controller.retryRecovery(); await drain()
+        XCTAssertEqual(provider.calls, 1); XCTAssertEqual(store.saves.last?.1, .accepted(localMessageID: "receipt"))
+        XCTAssertEqual(store.saves.last?.0, input); XCTAssertEqual(store.spoilers.last, true)
+        XCTAssertFalse(controller.mediaSpoiler)
+    }
+    func testOneShotSpoilerUnconfirmedMarkerNeverSubmitsOrRetriesSend() async throws {
+        let store = Store(); store.failSubmission = true
+        let (controller, provider) = setup(store: store, mode: .photo)
+        await drain()
+        let id = try XCTUnwrap(controller.preparationContextID)
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision); await drain()
+        XCTAssertEqual(controller.phase, .uncertain); XCTAssertEqual(provider.calls, 0)
+        XCTAssertEqual(store.saves.last?.1, .submissionStarted); XCTAssertEqual(store.spoilers.last, true)
+        controller.sendAsSpoiler(contextID: id, revision: controller.captionRevision); controller.retryRecovery(); await drain()
+        XCTAssertEqual(provider.calls, 0); XCTAssertFalse(controller.canRetryRecovery)
     }
     func testRebindDuringInitialWritePreservesLatestRichCaptionAndBothPhotoOptionsInOriginalStore() async throws {
         let store = Store(); store.holdPrepare = true

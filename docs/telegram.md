@@ -1348,6 +1348,29 @@ SyncCore_MediaSpoilerMessageAttribute.swift, EnqueueMessage.swift:249,286 and
 PendingMessageUploadedContent.swift:646–658 confirm the native boundary. No outer
 GPLv2 UI code/assets or embedded credentials were copied; recipe8 is unchanged.
 Current preparation supports ordinary photos, not secret/paid/video/albums.
-Animated dust effects, one-shot Send as Spoiler and full media-option parity
+Animated dust effects and full media-option parity
 remain open. Real Postbox/PG/S3 regressions and owned synthetic native QA establish
 local behavior; live Telegram server acceptance is not established.
+
+## One-shot photo Send as Spoiler
+
+Photo preparation exposes Send as Spoiler from the send control's context/held
+menu. A regular primary click uses the current preview choice. The explicit
+command overrides only this submission to true, leaving the preview toggle,
+rich input/selection and placement unchanged. It captures preparation ID and
+caption revision and requires a ready ordinary photo and valid caption; stale
+menus, ordinary files and busy/uncertain states cannot dispatch.
+
+The existing durable submission marker, native provider/receipt and acceptance
+storage-only retry receive the same frozen rich input, placement and true flag.
+An unconfirmed marker cannot enqueue or retry the send. No pending schema,
+PostgreSQL/S3 format or engine recipe changes are needed.
+
+Verified reference: PreviewSenderController.swift:1212–1244,1316–1324,1378–1380,
+1787,1893–1897; send(false, asSpoiler: true) and asSpoiler ?? state.isSpoiler are
+independent from the preview toggle. Own SwiftUI Menu(primaryAction:) plus
+contextMenu preserves primary/secondary/held gestures, verified in the owned
+native synthetic app. Tests exercise stale identities/revisions, invalid input,
+file exclusion, frozen rich content/options, held/failed markers and acceptance
+retry without resend. The complete reference send menu, video/album preparation
+and live Telegram acceptance remain open.

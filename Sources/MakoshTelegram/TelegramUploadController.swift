@@ -131,6 +131,11 @@ enum TelegramUploadEvent {
         send()
     }
 
+    public func sendAsSpoiler(contextID: UUID, revision: UUID) {
+        guard preparationID == contextID, captionRevision == revision, file?.mode == .photo, canSend else { return }
+        send(spoilerOverride: true)
+    }
+
     public func dismissPreparation(contextID: UUID) {
         guard preparationID == contextID else { return }
         if canCancel { cancelPreparation(); clear() }
@@ -199,12 +204,14 @@ enum TelegramUploadEvent {
         }
     }
 
-    public func send() {
+    public func send() { send(spoilerOverride: nil) }
+
+    private func send(spoilerOverride: Bool?) {
         guard telegramFormattedCaptionCanSend(captionInput.formattedText) else {
             error = "Подпись или её форматирование не поддерживаются. Максимум — 1024 знака UTF16."; return
         }
         guard canSend, let provider, let file, let target else { return }
-        let frozen = captionInput, frozenAbove = captionAboveMedia, frozenSpoiler = mediaSpoiler
+        let frozen = captionInput, frozenAbove = captionAboveMedia, frozenSpoiler = spoilerOverride ?? mediaSpoiler
         if let store = recoveryStore, let id = preparationID {
             let bound = bindingID
             isRecoveryBusy = true; recoveryRetry = nil

@@ -78,9 +78,21 @@ struct TelegramUploadPreviewView: View {
                     Button("Закрыть наблюдение") { upload.dismissPreparation(contextID: contextID) }
                         .accessibilityIdentifier("telegram.upload.clear")
                 } else {
-                    Button(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить", action: send)
+                    if upload.file?.mode == .photo {
+                        Menu {
+                            sendAsSpoilerButton(revision: captionRevision)
+                        } label: {
+                            Text(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить")
+                        } primaryAction: { send() }
+                        .menuIndicator(.hidden)
                         .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
                         .accessibilityIdentifier("telegram.upload.send")
+                        .contextMenu { sendAsSpoilerButton(revision: captionRevision) }
+                    } else {
+                        Button(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить", action: send)
+                        .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
+                        .accessibilityIdentifier("telegram.upload.send")
+                    }
                 }
             }
         }
@@ -105,6 +117,14 @@ struct TelegramUploadPreviewView: View {
     private func send() {
         guard upload.canSend, captionError == nil else { return }
         upload.send(contextID: contextID)
+    }
+    private func sendAsSpoilerButton(revision: UUID) -> some View {
+        Button("Отправить под спойлером") {
+            guard captionError == nil else { return }
+            upload.sendAsSpoiler(contextID: contextID, revision: revision)
+        }
+        .disabled(!upload.canSend || captionError != nil || upload.preparationContextID != contextID)
+        .accessibilityIdentifier("telegram.upload.sendAsSpoiler")
     }
 }
 

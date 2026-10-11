@@ -114,9 +114,10 @@ nonisolated func telegramSelectedCopyItems(postbox: Postbox, accountID: Int64,
 #if DEBUG
 @MainActor final class TelegramSyntheticSelectedMessagesCopyProvider: TelegramSelectedMessagesCopyProvider {
     let accountID: Int64 = -1
+    private let pages: TelegramSyntheticPages
+    init(pages: TelegramSyntheticPages = .init()) { self.pages = pages }
     func resolve(request: TelegramSelectedMessagesCopyRequest, completion: @escaping @MainActor (String?) -> Void) -> Disposable {
         guard request.accountID == accountID, !request.sources.isEmpty, request.sources.count <= 100 else { completion(nil); return EmptyDisposable }
-        let pages = TelegramSyntheticPages()
         var anchor: MessageIndex?, cached: [TelegramMessage] = []
         repeat { let page = pages.messages(chatID: request.chatID, anchor: anchor); cached += page.items; anchor = page.previous } while anchor != nil
         var seen = Set<TelegramMessageSelectionID>(), items: [TelegramSelectedCopyItem] = []

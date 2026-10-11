@@ -7,6 +7,7 @@ import Postbox
 struct TelegramSyntheticPages {
     private let size = 50
     var presenceObservedAt: Date? = nil
+    var albums = false
 
     func chats(folder: TelegramChatFolder, anchor: ChatListIndex?) ->
         (items: [TelegramChat], previous: ChatListIndex?, next: ChatListIndex?) {
@@ -83,7 +84,7 @@ struct TelegramSyntheticPages {
                 canForward: id != 120, canDeleteLocally: true, canDeleteForEveryone: message.isOutgoing,
                 allowsEmptyEdit: caption && !unsupported, editLimit: caption ? 1024 : 4096,
                 formattedText: try? TelegramFormattedText(text: message.text, entities: entities), canCopy: id != 120)
-            return message
+            return albums ? telegramSyntheticAlbumMessage(message) : message
         }
         return (items, start > 0 ? messageIndex(chatID: chatID, id: start) : nil,
             end < total ? messageIndex(chatID: chatID, id: min(total, end + size)) : nil)

@@ -944,8 +944,8 @@ Reference evidence: ChatMessageMenuItems.swift:1005-1011; ChatPresentationInterf
 MessageActionsPanelView.swift:61-118; SenderController.swift:492-523;
 ChatController.swift:6531-6577; ChatPresentationInterfaceState.swift:1684-1738.
 No GPLv2 UI source was copied. Scheduled/topic/migrated-peer range parity,
-album individual/group selection and the remaining Saved Messages picker/accessory
-parity described below remain open. Cross-native-peer numeric ranges are
+album individual/group selection and Saved Messages behavior are described
+below; remaining option/special-case parity stays open. Cross-native-peer numeric ranges are
 refused instead of mixing unrelated message IDs.
 
 ### Selected-message copy and delete
@@ -1028,7 +1028,7 @@ Reference evidence: `ShareModalController.swift:1232–1234` explicitly limits t
 forward object to one recipient; `1296–1314` directly forwards to
 the own peer and clears selection; `1315–1335` stages an ordinary recipient. Its
 delayed success animation does not establish server delivery. No outer GPLv2 UI
-source or assets were copied. Remaining parity includes album selection,
+source or assets were copied. Album selection is described below. Remaining parity includes
 special/topic/secret/paid behavior and
 live-account acceptance. The whole Telegram/sequential migration remains open.
 
@@ -1068,8 +1068,8 @@ removes forward IDs while retaining input/reply. Native synthetic AX/screenshots
 verify cancellation, full-row Saved forwarding, ordinary re-targeting, unknown
 outcome locks, Mail → Telegram state and accepted-receipt restart. Encrypted
 Postbox regressions establish queue/receipt/origin atomicity and genuine reopen;
-DEBUG UI simulation is not live Telegram server acceptance. Album selection,
-normal option and special/topic/secret/paid behavior, remaining Telegram parity and all
+DEBUG UI simulation is not live Telegram server acceptance. Album selection
+is described below; normal option and special/topic/secret/paid behavior, remaining Telegram parity and all
 later channels remain open.
 
 Accepted Saved recovery also reconciles the matching cached origin before the
@@ -1089,3 +1089,53 @@ is false (`ShareModalController.swift:1232–1234`), passed into presentation at
 container at `239–244`. The forward comment is entered in the chosen recipient's
 composer. Earlier documents listed picker comments as missing forward parity;
 this source check corrects that interpretation rather than adding a new picker UI.
+
+## Album history and selection
+
+Telegram stays in the shared WorkspaceView with the service sidebar, chat list
+and conversation/dossier. Native `Message.groupInfo.stableId` supplies the UI
+album identity; `groupingKey` is retained separately and does not substitute for
+it. Projection scopes account/chat/native peer/namespace/thread, retains input
+member order and places the grouped row at its last member. Ordinary intervening
+rows do not flush the group; a different eligible UI group does. Unsupported,
+secret and single-member rows keep the ordinary path. Only the loaded history
+window participates: no hidden album-member fetch or backend expansion occurs.
+
+Visual groups use an independently implemented SwiftUI mosaic with a four-point
+gutter, bounded dimensions and explicit image/video loading. Common two-, three-
+and four-member layouts and longer malformed inputs have geometry regressions;
+exhaustive pixel parity is not claimed. Files retain per-member attachment cards
+and captions. Visual albums show the first nonempty caption, matching the
+reference; all original member text, metadata and IDs remain in the model.
+Thumbnail decoding borrows the downloaded file lease, checks current context/
+resource state and limits its output to 512 px under the existing image caps.
+A ready photo exposes an explicit accessible Button. Media-spoiler attributes
+survive native mapping; visual tiles require a separate Reveal before preview
+or playback. Context/descriptor changes hide them again. Ordinary media rows
+and the complete upstream media renderer remain separate parity work.
+
+Tile click/context actions use exactly that member. In selection mode the
+outer whitespace, author and caption toggle the visible group; metadata also
+starts group selection. A partially selected group adds missing valid members;
+a full group removes exactly its members. Existing frozen entries, sticky
+permission/version invalidation and the 100 limit survive. Partial fill at the
+cap and removal at the cap are supported. Shift uses the first newly added
+member in input order as a deterministic endpoint, adapting the reference's
+unordered Set.first. Group actions require the exact captured session/revision,
+account context, current window and reprojected membership; stale callbacks
+cannot select a different group. Forward/copy/delete consume only selected IDs.
+
+Reference evidence: ChatHistoryEntry.swift:1184–1212,1294–1307;
+GroupedLayout.swift:52–59; ChatGroupedItem.swift:43–52,625–652,753–783,901–916;
+ChatSelectText.swift:349–370;
+ChatRowView.swift:371–381; CoreExtension.swift:565–571;
+ChatInteractiveContentView.swift:481–486,853–863. No outer GPLv2 source/assets
+were copied. Pins, engine recipe 8, PostgreSQL schema and S3 format are unchanged.
+
+`--telegram-albums-qa` is an explicit DEBUG addition to the owned synthetic
+Postbox workflow, leaving the default fixture unchanged. Its forward/Saved,
+copy/range/reply resolvers now receive the same page configuration as history.
+Regressions reproduce the initial mismatched fixture versions before fixing
+those bindings. The native DEBUG queue remains a simulation; it does not prove
+live Telegram Account/server acceptance. Actual root checks and remaining
+limitations are recorded in development-status.

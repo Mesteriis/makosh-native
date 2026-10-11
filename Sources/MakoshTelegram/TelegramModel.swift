@@ -28,6 +28,9 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public let delivery: TelegramMessageDelivery
     public var attachments: [TelegramAttachment] = []
     public var actionMetadata: TelegramMessageActionMetadata? = nil
+    public var albumGroupID: UInt32? = nil
+    public var nativeGroupingKey: Int64? = nil
+    public var canGroupMedia = true
     public var formattedTextForDisplay: TelegramFormattedText? {
         guard let metadata = actionMetadata else { return try? TelegramFormattedText(text: text) }
         guard let value = metadata.formattedText, value.text.utf8.elementsEqual(text.utf8) else { return nil }
@@ -114,6 +117,10 @@ public final class TelegramModel: ObservableObject {
     @Published public var error: String?
     @Published public private(set) var chats: [TelegramChat] = []
     @Published public private(set) var messages: [TelegramMessage] = []
+    public var historyItems: [TelegramHistoryItem] {
+        guard let accountID = draftAccountID, let chatID = selectedChatID else { return [] }
+        return TelegramHistoryItem.project(messages, accountID: accountID, chatID: chatID)
+    }
     @Published public private(set) var chatPage: TelegramPageNavigation = .idle
     @Published public private(set) var historyPage: TelegramPageNavigation = .idle
     @Published public var chatFolder: TelegramChatFolder = .inbox {
@@ -659,6 +666,29 @@ public final class TelegramModel: ObservableObject {
         !isRestoringComposerDraft && composerDraftRecoveryError == nil && !isForwardComposerLocked &&
         !isRestoringPendingUpload && pendingUploadRecoveryError == nil && upload.phase == .idle &&
         !messageActions.isBusy && messageActions.phase != .uncertain && !selectedMessagesDeletionBlocksActions
+    }
+
+    @discardableResult
+    public func toggleMessageGroupSelection(group: TelegramHistoryItem, sessionID: UUID?, expectedRevision: UUID?,
+                                           contextID: UUID, windowID: UUID, extendingRange: Bool = false) -> Bool {
+        guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
+              group.isAlbum, let current = historyItems.first(where: { $0.id == group.id }), current == group,
+              zip(current.messages, group.messages).allSatisfy({ fresh, frozen in
+                  fresh.text.utf8.elementsEqual(frozen.text.utf8) &&
+                  fresh.actionMetadata?.fingerprint.utf8.elementsEqual(frozen.actionMetadata?.fingerprint.utf8 ?? "".utf8) == true
+              }) else { return false }
+        let sources = current.messages.compactMap { actionSource(for: $0) }
+        guard sources.count == current.messages.count else { return false }
+        if let sessionID, let expectedRevision {
+            guard messageSelection.session?.id == sessionID, messageSelection.session?.revision == expectedRevision else { return false }
+            cancelMessageSelectionRange(); selectedMessagesCopy.cancel()
+            let changed = messageSelection.toggleGroup(sources: sources, sessionID: sessionID, contextID: contextID,
+                expectedRevision: expectedRevision, extendingRange: extendingRange)
+            if changed { resolveMessageSelectionRange(windowID: windowID) }
+            return changed
+        }
+        guard sessionID == nil, expectedRevision == nil, messageSelection.session == nil else { return false }
+        return messageSelection.beginGroup(sources: sources, contextID: contextID, extendingRange: extendingRange)
     }
 
     @discardableResult
@@ -1677,19 +1707,20 @@ public final class TelegramModel: ObservableObject {
 
     #if DEBUG
     /// Explicit, in-memory UI fixture. Does not open accounts, files or Keychain.
-    public static func syntheticPreview() -> TelegramModel {
+    public static func syntheticPreview(albums: Bool = false) -> TelegramModel {
         let model = TelegramModel()
-        model.preview = TelegramSyntheticPages()
+        let pages = TelegramSyntheticPages(albums: albums)
+        model.preview = pages
         model.search.useSyntheticPreview()
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
-        model.selectedMessagesCopy.bind(provider: TelegramSyntheticSelectedMessagesCopyProvider())
+        model.selectedMessagesCopy.bind(provider: TelegramSyntheticSelectedMessagesCopyProvider(pages: pages))
         model.selectedMessagesDelete.bind(provider: TelegramSyntheticSelectedMessagesDeleteProvider())
-        model.savedMessagesForward.bind(TelegramSyntheticSavedMessagesForwardProvider())
-        model.composerReply.bind(TelegramSyntheticComposerReplyProvider())
-        model.composerForward.bind(TelegramSyntheticForwardProvider())
-        model.bindMessageSelectionRangeProvider(TelegramSyntheticSelectionRangeProvider())
+        model.savedMessagesForward.bind(TelegramSyntheticSavedMessagesForwardProvider(pages: pages))
+        model.composerReply.bind(TelegramSyntheticComposerReplyProvider(pages: pages))
+        model.composerForward.bind(TelegramSyntheticForwardProvider(pages: pages))
+        model.bindMessageSelectionRangeProvider(TelegramSyntheticSelectionRangeProvider(pages: pages))
         model.bindSyntheticHistoryRead()
         model.isSyntheticPreview = true
         model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)

@@ -1,6 +1,77 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram accessory Saved forwarding and reconnect recovery
+## Current stage: Telegram album history and selection
+
+Telegram remains inside the shared Makosh service sidebar, dialog list and
+conversation/dossier. The loaded history now projects native UI album identities
+into scoped rows, independently of the native forwarding grouping key. Visual
+groups use a bounded SwiftUI mosaic; files retain per-member cards. Visual albums
+show the first nonempty caption while preserving every original message and ID.
+Explicit image/video loading uses the existing leased media flow; thumbnails
+decode to at most 512 px. Native media-spoiler flags require a separate Reveal
+before opening a visual tile, and a changed context/descriptor hides it again.
+
+Selection can target one tile or the visible group. Partial groups add missing
+members; full groups remove their members. Shift ranges, the 100-member limit,
+frozen versions, independent sticky permissions and session/window/revision
+guards remain enforced. Copy/forward/delete receive exactly the selected IDs;
+neither projection nor backend actions expand hidden album members. Group Shift
+uses a deterministic first new member rather than the reference's unordered set
+endpoint. No outer GPLv2 UI/assets were copied; pins, recipe 8, PostgreSQL schema
+and S3 format are unchanged.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh` and `scripts/build-app.sh` exit 0:
+**570 XCTest (507 Telegram + 63 core), zero failures; 30 Python regressions**.
+Logs retain 124 upstream t19 teardown diagnostics without failure/trap. Focused
+runtime reds cover group selection, version/permission guards, thumbnail bounds,
+spoiler reveal and synthetic workflow version consistency. One initial fixture
+binding compile failure was corrected before the final passing run; failed raw
+logs remain private and are not reported as passes.
+
+Actual native AX/screenshots verify two-wide, three-portrait and four-square
+layouts, explicit photo preview/video playback, protected-file forwarding
+refusal, partial selection and ordinary recipient staging. The first physical
+tile-center click exposed a hit-area defect; a full rectangular Button label
+fixes it. On the final binary, physical center click selects one tile, Shift
+expands from three to five selected IDs, ordinary click removes only one, and
+outer whitespace fills/removes the group once. Cancel restores the ordinary
+draft without revealing the spoiler. Mail → Telegram retains selection, and
+restart restores a prepared partial forward with enabled simulated Send. An
+explicit accessible photo Button opens its preview; physical keyboard activation
+was not established and is not claimed.
+
+The explicit DEBUG album fixture uses the same page configuration for history
+and forward/Saved/copy/range/reply resolution. Default fixtures are unchanged.
+QA uses only the owned encrypted synthetic Postbox and isolated PostgreSQL/S3;
+queue simulation is not live Telegram Account/server acceptance. No personal
+account, Keychain or Telegram network was used. Same-model read-only review
+found no further source defect on the final 27-file snapshot. Its source hashes
+match before/after; runtime gates were run by root, not the reviewer. Observed
+model/provider/usage remain unknown and no quorum is claimed. An earlier review
+after-hash failure is retained: the root was then changing only the UI hit area;
+the subsequent frozen snapshot passes.
+
+For the prior published head 755b3ad, hosted PR CI passed but push CI failed in
+an upstream SqliteValueBox WAL assertion. Inspection found an asynchronous test
+StorageBox-open/fixture-removal lifecycle gap. The fixture now waits for both
+storage boxes before teardown; final local gates pass. This repairs a verified
+race opportunity, without establishing the historical trap's exact cause or
+weakening the engine assertion. New-head hosted CI is tracked separately.
+
+Exhaustive mosaic pixel parity, ordinary singleton spoiler rendering, remaining
+media/options/special/topic/secret/paid behavior and live-account acceptance stay
+open. Later channels, backups and standalone packaging remain open; the full
+sequential migration goal stays active. Final XERJ refresh exits 0: 296 files,
+266/266 classified code. Project/reference/engine fingerprints pass; active
+group-selection, reveal/fixture and spoiler searches were confirmed against
+current source. A final documentation check corrected a group-toggle reference
+from ChatPresentationInterfaceState to ChatGroupedItem:753–783, followed by a
+fresh index. Strict deep signatures and unsigned built/QA payload comparison
+pass. Publication audit checks 301 publishable files and the PR body against
+five selected credential fields, with zero matches. Machine configuration,
+runtime data, indexes and raw QA artifacts remain ignored.
+
+## Historical Telegram accessory Saved forwarding and reconnect recovery
 
 Telegram remains in the shared service-selector/list/conversation window.
 **Другой получатель…** now pins **Избранное** first and accepts a full-row click

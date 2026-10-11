@@ -53,11 +53,12 @@ func telegramSelectionRange(postbox: Postbox, accountID: Int64,
 #if DEBUG
 @MainActor final class TelegramSyntheticSelectionRangeProvider: TelegramMessageSelectionRangeProvider {
     let accountID: Int64 = -1
+    private let pages: TelegramSyntheticPages
+    init(pages: TelegramSyntheticPages = .init()) { self.pages = pages }
     func resolve(request: TelegramMessageSelectionRangeRequest,
                  completion: @escaping @MainActor ([TelegramMessageActionSource]) -> Void) -> Disposable {
         guard request.accountID == accountID, request.anchorID.peerID == request.endpointID.peerID,
               request.anchorID.peerID == request.chatID else { completion([]); return EmptyDisposable }
-        let pages = TelegramSyntheticPages()
         var anchor: MessageIndex?, sources: [TelegramMessageActionSource] = []
         repeat {
             let page = pages.messages(chatID: request.chatID, anchor: anchor)

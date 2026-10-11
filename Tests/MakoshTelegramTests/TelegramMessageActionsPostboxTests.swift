@@ -69,6 +69,10 @@ private func actionDeleteAndJournal(_ box: Postbox, id: MessageId) -> Signal<Res
         defer { opening.dispose() }
         await fulfillment(of: [opened],timeout: 20)
         let postbox = try XCTUnwrap(box)
+        // MediaBox opens these databases on a separate shared queue. Postbox
+        // transactions alone do not finish their initialization before teardown.
+        _ = try await value(postbox.mediaBox.storageBox.all())
+        _ = try await value(postbox.mediaBox.cacheStorageBox.all())
         let peer = PeerId(namespace: Namespaces.Peer.CloudUser,id: ._internalFromInt64Value(77))
         _ = try await value(actionFixture(postbox,peer: peer,text: "original"))
         let firstResult = try await value(actionCommittedMessage(postbox,peer: peer))

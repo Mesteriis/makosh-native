@@ -4,15 +4,16 @@ import TelegramCore
 @testable import MakoshTelegram
 
 final class TelegramAttachmentsTests: XCTestCase {
-    private func message(_ media: [Media], id: Int32 = 1, peer: Int64 = 100) -> Message {
+    private func message(_ media: [Media], id: Int32 = 1, peer: Int64 = 100,
+                         groupInfo: MessageGroupInfo? = nil, groupingKey: Int64? = nil, attributes: [MessageAttribute] = []) -> Message {
         let peerID = PeerId(namespace: Namespaces.Peer.CloudGroup, id: ._internalFromInt64Value(peer))
         let group = TelegramGroup(id: peerID, title: "Synthetic group", photo: [], participantCount: 2,
             role: .member, membership: .Member, flags: [], defaultBannedRights: nil,
             migrationReference: nil, creationDate: 0, version: 0)
         return Message(stableId: 1, stableVersion: 0, id: MessageId(peerId: peerID, namespace: Namespaces.Message.Cloud, id: id),
-            globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: 1,
+            globallyUniqueId: nil, groupingKey: groupingKey, groupInfo: groupInfo, threadId: nil, timestamp: 1,
             flags: [], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil,
-            author: nil, text: "", attributes: [], media: media, peers: SimpleDictionary([peerID: group as Peer]),
+            author: nil, text: "", attributes: attributes, media: media, peers: SimpleDictionary([peerID: group as Peer]),
             associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:],
             associatedThreadInfo: nil, associatedStories: [:])
     }
@@ -35,6 +36,34 @@ final class TelegramAttachmentsTests: XCTestCase {
             resource: resource, previewRepresentations: previews, videoThumbnails: [],
             immediateThumbnailData: nil, mimeType: mimeType, size: size,
             attributes: [.FileName(fileName: name)] + attributes, alternativeRepresentations: [])
+    }
+
+    func testPresentationDoesNotLoseNativeAlbumBoundaries() {
+        let media = photo([representation(1, side: 40)])
+        let first = message([media], groupInfo: .init(stableId: 10), groupingKey: 100)
+        let differentUIGroup = message([media], groupInfo: .init(stableId: 11), groupingKey: 100)
+        let differentNativeGroup = message([media], groupInfo: .init(stableId: 10), groupingKey: 101)
+        XCTAssertNotEqual(TelegramMessage(first), TelegramMessage(differentUIGroup))
+        XCTAssertNotEqual(TelegramMessage(first), TelegramMessage(differentNativeGroup))
+    }
+
+    func testPhotoGeometryChangeSurvivesProjectionWithTheSameResource() {
+        let resource = LocalFileMediaResource(fileId: 90, size: 500)
+        func mapped(_ width: Int32, _ height: Int32) -> TelegramAttachment {
+            let representation = TelegramMediaImageRepresentation(dimensions: .init(width: width, height: height),
+                resource: resource, progressiveSizes: [], immediateThumbnailData: nil)
+            return telegramAttachments(message([photo([representation])]))[0].attachment
+        }
+        XCTAssertNotEqual(mapped(100, 50), mapped(50, 100), "Mosaic geometry must not disappear at projection")
+    }
+
+    func testNativeMediaSpoilerSurvivesProjectionWithoutChangingResourceIdentity() throws {
+        let media = photo([representation(91, side: 320)])
+        let ordinary = try XCTUnwrap(telegramAttachments(message([media])).first?.attachment)
+        let hidden = try XCTUnwrap(telegramAttachments(message([media], attributes: [MediaSpoilerMessageAttribute()])).first?.attachment)
+        XCTAssertFalse(ordinary.isSpoiler); XCTAssertTrue(hidden.isSpoiler)
+        XCTAssertEqual(ordinary.id, hidden.id)
+        XCTAssertNotEqual(ordinary, hidden, "Visibility changes must invalidate a cached presentation")
     }
 
     func testPhotoSelectsLargestAndSmallestWithoutDependingOnArrayOrder() throws {

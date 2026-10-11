@@ -47,6 +47,15 @@ final class TelegramDownloadedFileIOTests: XCTestCase {
         return Int64(try Data(contentsOf: url).count)
     }
 
+    func testAlbumThumbnailDecodesAtMost512PixelsAndPreservesAspect() async throws {
+        let file = try directory().appendingPathComponent("large-photo")
+        let size = try png(at: file, width: 2048, height: 1024)
+        let preview = try await TelegramDownloadedFileIO.thumbnail(source: file, expectedSize: size)
+        XCTAssertEqual(preview.image.width, 512)
+        XCTAssertEqual(preview.image.height, 256)
+        XCTAssertEqual(try file.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int(size))
+    }
+
     func testAtomicCopyAndOverwritePreserveOriginalAndReplaceDestinationInode() async throws {
         let root = try directory()
         let source = root.appendingPathComponent("source")

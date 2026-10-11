@@ -207,7 +207,13 @@ struct TelegramDetailView: View {
                                 // The engine supplies a bounded 50-message window. Eager
                                 // layout keeps quote heights and AX scrolling consistent.
                                 VStack(alignment: .leading, spacing: 8) {
-                                    ForEach(model.messages) { item in
+                                    ForEach(model.historyItems) { historyItem in
+                                        if historyItem.isAlbum {
+                                            TelegramAlbumHistoryRow(item: historyItem, model: model, selection: messageSelection,
+                                                media: media, actions: attachmentActions, playback: playback) { message in
+                                                messageActionItems(message)
+                                            }
+                                        } else if let item = historyItem.messages.first {
                                         let contextID = model.messageActionContextID
                                         let windowID = model.historyWindowID
                                         let selectionID = messageSelection.session?.id
@@ -249,6 +255,7 @@ struct TelegramDetailView: View {
                                             .contextMenu { messageActionItems(item) }
                                             .background(TelegramHistoryReadRow(id: item.id, context: model.historyReadContext))
                                         }.id(item.id)
+                                        }
                                     }
                                 }.padding(.horizontal, 16).padding(.vertical, 12)
                             }.id(model.historyWindowID).defaultScrollAnchor(model.historyPage.isAtLatest ? .bottom : .top)
@@ -456,7 +463,8 @@ struct TelegramDraftsSyntheticPreviewView: View {
                 guard let index = arguments.firstIndex(of: "--telegram-drafts-synthetic-preview"), arguments.indices.contains(index + 1) else {
                     throw CocoaError(.fileReadUnknown)
                 }
-                model = try await TelegramModel.syntheticDraftPreview(directory: URL(fileURLWithPath: arguments[index + 1]))
+                model = try await TelegramModel.syntheticDraftPreview(directory: URL(fileURLWithPath: arguments[index + 1]),
+                    albums: arguments.contains("--telegram-albums-qa"))
             } catch { failure = "Не удалось открыть отдельное синтетическое хранилище черновиков." }
         }
     }

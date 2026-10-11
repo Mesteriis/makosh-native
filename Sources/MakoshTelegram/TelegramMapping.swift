@@ -21,6 +21,9 @@ extension TelegramMessage {
             delivery: telegramMessageDelivery(message, isRead: isRead, accountID: accountID))
         attachments = telegramAttachments(message).map(\.attachment)
         actionMetadata = telegramMessageActionMetadata(message)
+        albumGroupID = message.groupInfo?.stableId
+        nativeGroupingKey = message.groupingKey
+        canGroupMedia = !message.containsSecretMedia && !attachments.contains { $0.kind == .unsupported }
     }
 }
 

@@ -28,6 +28,10 @@ public struct TelegramImagePreview: @unchecked Sendable {
 }
 
 public enum TelegramDownloadedFileIO {
+    public static func thumbnail(source: URL, expectedSize: Int64) async throws -> TelegramImagePreview {
+        try await image(source: source, expectedSize: expectedSize, maximumBytes: 20 * 1_024 * 1_024,
+            maximumDimension: 8_192, maximumPixels: 40_000_000, thumbnailPixelSize: 512)
+    }
     public static func copy(source: URL, expectedSize: Int64, destination: URL, expectedSHA256: String? = nil) async throws {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {

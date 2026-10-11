@@ -94,7 +94,8 @@ final class WorkspaceModel: ObservableObject {
             let directory = URL(fileURLWithPath: args[draftsIndex + 1], isDirectory: true)
             try telegram.configurePendingUploadRecoveryQA(connectionString: configuration.connectionString,
                 schema: configuration.schema, configurationFile: URL(fileURLWithPath: args[storageIndex + 1]),
-                spoolDirectory: directory.appendingPathComponent("PendingUploadArchiveQueue", isDirectory: true))
+                spoolDirectory: directory.appendingPathComponent("PendingUploadArchiveQueue", isDirectory: true),
+                albums: args.contains("--telegram-albums-qa"))
             pendingUploadQAConfigured = true
         } catch { self.error = "Не удалось подготовить отдельное хранилище восстановления синтетических вложений." }
     }

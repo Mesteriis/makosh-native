@@ -11,6 +11,16 @@ public enum TelegramPlaybackKind: Sendable, Equatable {
     case voice, audio, video, roundVideo
 }
 
+public struct TelegramMediaDimensions: Sendable, Equatable {
+    public let width: Int32
+    public let height: Int32
+    public init?(width: Int32, height: Int32) {
+        guard width > 0, height > 0 else { return nil }
+        self.width = width; self.height = height
+    }
+    public var aspectRatio: Double { Double(width) / Double(height) }
+}
+
 public struct TelegramAttachment: Identifiable, Sendable, Equatable {
     public let id: String
     public let kind: TelegramAttachmentKind
@@ -20,10 +30,12 @@ public struct TelegramAttachment: Identifiable, Sendable, Equatable {
     public let hasPreview: Bool
     public let canDownload: Bool
     public let playback: TelegramPlaybackKind?
+    public let dimensions: TelegramMediaDimensions?
+    public let isSpoiler: Bool
 
     public init(id: String, kind: TelegramAttachmentKind, name: String, byteCount: Int64?,
                 mimeType: String?, hasPreview: Bool, canDownload: Bool,
-                playback: TelegramPlaybackKind? = nil) {
+                playback: TelegramPlaybackKind? = nil, dimensions: TelegramMediaDimensions? = nil, isSpoiler: Bool = false) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -32,6 +44,8 @@ public struct TelegramAttachment: Identifiable, Sendable, Equatable {
         self.hasPreview = hasPreview
         self.canDownload = canDownload
         self.playback = playback
+        self.dimensions = dimensions
+        self.isSpoiler = isSpoiler
     }
 }
 
@@ -93,6 +107,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         let fullResource: MediaResource?
         let previewResource: MediaResource?
         let contentType: MediaResourceUserContentType
+        let dimensions: TelegramMediaDimensions?
         if let image = media as? TelegramMediaImage {
             kind = .photo
             playback = nil
@@ -102,6 +117,9 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
             size = fullResource?.size
             mimeType = nil
             contentType = .image
+            dimensions = largestImageRepresentation(image.representations).flatMap {
+                TelegramMediaDimensions(width: $0.dimensions.width, height: $0.dimensions.height)
+            }
         } else if let file = media as? TelegramMediaFile {
             kind = .file
             playback = telegramPlaybackKind(file.attributes)
@@ -111,6 +129,13 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
             size = file.size
             mimeType = file.mimeType
             contentType = MediaResourceUserContentType(file: file)
+            dimensions = file.attributes.compactMap { attribute -> TelegramMediaDimensions? in
+                switch attribute {
+                case let .Video(_, size, _, _, _, _), let .ImageSize(size):
+                    return TelegramMediaDimensions(width: size.width, height: size.height)
+                default: return nil
+                }
+            }.first
         } else {
             // Paid/locked and unknown media are intentionally not recursively expanded.
             kind = .unsupported
@@ -121,6 +146,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
             size = nil
             mimeType = nil
             contentType = .other
+            dimensions = nil
         }
         func usable(_ resource: MediaResource?) -> MediaResourceReference? {
             guard let resource, !(resource is EmptyMediaResource) else { return nil }
@@ -137,7 +163,8 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         let id = "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id):\(ordinal):\(mediaKey):\(digest)"
         let attachment = TelegramAttachment(id: id, kind: kind, name: name,
             byteCount: size.flatMap { $0 >= 0 ? $0 : nil }, mimeType: mimeType,
-            hasPreview: preview != nil, canDownload: full != nil, playback: playback)
+            hasPreview: preview != nil, canDownload: full != nil, playback: playback, dimensions: dimensions,
+            isSpoiler: message.attributes.contains { $0 is MediaSpoilerMessageAttribute })
         return TelegramAttachmentSource(attachment: attachment, messageID: message.id, full: full, preview: preview,
             location: .peer(message.id.peerId), contentType: contentType)
     }

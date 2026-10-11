@@ -10,8 +10,10 @@ import SwiftSignalKit
     private let postbox: Postbox?
     private let loseAcknowledgement: Bool
     private var memoryRecord: TelegramSavedMessagesForwardRecord?
-    init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false) {
+    private let pages: TelegramSyntheticPages
+    init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false, pages: TelegramSyntheticPages = .init()) {
         self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement
+        self.pages = pages
     }
     func recover(completion: @escaping @MainActor (Result<TelegramSavedMessagesForwardRecord?, TelegramComposerDraftPersistenceError>) -> Void) -> any TelegramComposerForwardLease {
         let lease = SavedForwardLease()
@@ -23,7 +25,7 @@ import SwiftSignalKit
     func submit(request: TelegramSavedMessagesForwardRequest,
                 receive: @escaping @MainActor (TelegramMessageActionEvent) -> Void) -> any TelegramComposerForwardLease {
         let lease = SavedForwardLease()
-        guard request.accountID == accountID, request.isValid, let previews = syntheticForwardPreviews(request.draft) else {
+        guard request.accountID == accountID, request.isValid, let previews = syntheticForwardPreviews(request.draft, pages: pages) else {
             receive(.rejected); return lease
         }
         guard let postbox else {

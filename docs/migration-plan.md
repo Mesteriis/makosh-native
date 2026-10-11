@@ -154,7 +154,7 @@ ordinary Saved input/reply/forward и текущий чат. Accessory «Дру�
 live-account acceptance остаются впереди.
 Окончание этого участка не завершает Telegram или общий последовательный перенос.
 
-## Текущий участок: выбор нескольких сообщений
+## Перенесённый участок: выбор нескольких сообщений
 
 Меню «Выбрать» включает typed selection до 100 сообщений. Панель count/cancel/forward
 временно заменяет composer без изменения ordinary/reply/edit; выбор переживает
@@ -170,8 +170,8 @@ Recipe 7 использует ограниченный native ID index без п
 или сетевой загрузки. Поздний ответ требует прежние session/revision/account/
 window; смена страницы отменяет только pending range, сохраняя уже выбранное.
 Forward блокируется до завершения; изменённая off-page версия инвалидирует frozen
-source. Scheduled/topic/migrated-peer ranges и album individual/group selection
-остаются открыты.
+source. Scheduled/topic/migrated-peer ranges остаются открыты; album individual/group
+selection описан ниже.
 Copy/delete выбранных сообщений добавлены в общий shell: ⌘C с masked safe text,
 wholebatch revalidation, explicit scope и atomic native delete admission (recipe 8).
 Сохранённые версии и S3 остаются. Gate/native acceptance записываются в
@@ -182,3 +182,21 @@ wholebatch revalidation, explicit scope и atomic native delete admission (recip
 скрывает comment input; комментарий вводится в recipient composer, поэтому ранее
 записанный picker-comment gap снят после source-проверки видимости.
 Общий порядок переноса сохранён.
+
+## Текущий участок: альбомы Telegram
+
+Native UI groupInfo проецируется в видимые history rows без расширения серверной
+группы или загрузки соседней страницы. Фото/видео используют собственную мозаику;
+файлы сохраняют отдельные карточки и captions. Tile/context action выбирает ровно
+одно сообщение; outer whitespace, author, first caption и metadata переключают
+весь видимый альбом. Partial/full и лимит100 следуют подтверждённому референсу;
+Shift использует deterministic first new member вместо Set.first.
+
+Полученные сообщения, версии, PostgreSQL и S3 остаются независимыми от группировки
+UI. Native media spoiler проецируется и требует явного раскрытия visual album;
+thumb512 декодируется с живым file lease. DEBUG album QA включается отдельно и
+использует тот же набор версий в forward/Saved/copy/range/reply источниках.
+Фактические regression/build/native результаты — в development-status.
+Далее остаются exhaustive mosaic parity, одиночные media-spoiler строки, normal
+forward options и прочие Telegram workflows/живой аккаунт; затем выбранные каналы
+в исходном порядке. Текущая проверка не завершает общую цель переноса.

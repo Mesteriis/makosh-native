@@ -11,15 +11,18 @@ import SwiftSignalKit
     private let postbox: Postbox?
     private let simulateReceiptRefusal: Bool
     private let loseAcknowledgement: Bool
-    init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false, simulateReceiptRefusal: Bool = false) {
+    private let pages: TelegramSyntheticPages
+    init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false, simulateReceiptRefusal: Bool = false,
+         pages: TelegramSyntheticPages = .init()) {
         self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement; self.simulateReceiptRefusal = simulateReceiptRefusal
+        self.pages = pages
     }
     func resolve(draft: TelegramComposerDraft, completion: @escaping @MainActor ([TelegramComposerForwardPreview]?) -> Void) -> any TelegramComposerForwardLease {
-        completion(syntheticForwardPreviews(draft)); return SyntheticForwardLease()
+        completion(syntheticForwardPreviews(draft, pages: pages)); return SyntheticForwardLease()
     }
     func submit(draft: TelegramComposerDraft, receive: @escaping @MainActor (TelegramComposerForwardEvent) -> Void) -> any TelegramComposerForwardLease {
         let lease = SyntheticForwardLease()
-        guard let previews = syntheticForwardPreviews(draft), draft.forwardDisposition == .prepared else {
+        guard let previews = syntheticForwardPreviews(draft, pages: pages), draft.forwardDisposition == .prepared else {
             receive(.rejected(draft)); return lease
         }
         guard let postbox else {
@@ -66,12 +69,12 @@ import SwiftSignalKit
     }
 }
 
-nonisolated func syntheticForwardPreviews(_ draft: TelegramComposerDraft) -> [TelegramComposerForwardPreview]? {
+nonisolated func syntheticForwardPreviews(_ draft: TelegramComposerDraft, pages: TelegramSyntheticPages = .init()) -> [TelegramComposerForwardPreview]? {
     guard draft.accountID == -1, draft.isValid, let intent = draft.forwardIntent else { return nil }
     var result: [TelegramComposerForwardPreview] = []
     for frozen in intent.sources {
         let anchor = MessageIndex(id: MessageId(peerId: PeerId(frozen.peerID), namespace: frozen.namespace, id: frozen.messageID), timestamp: 0)
-        guard let item = TelegramSyntheticPages().messages(chatID: frozen.chatID, anchor: anchor).items.first(where: { $0.actionMetadata?.messageID == frozen.messageID }),
+        guard let item = pages.messages(chatID: frozen.chatID, anchor: anchor).items.first(where: { $0.actionMetadata?.messageID == frozen.messageID }),
               let metadata = item.actionMetadata else { return nil }
         let source = TelegramMessageActionSource(metadata: metadata, accountID: -1, chatID: frozen.chatID)
         guard source.canForward, TelegramComposerForwardSource(source: source) == frozen else { return nil }

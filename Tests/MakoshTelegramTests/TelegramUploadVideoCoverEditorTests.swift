@@ -93,6 +93,36 @@ import ImageIO
             in: CGSize(width: 552, height: 300)), CGSize(width: 499, height: 300))
     }
 
+    // Initial square/aspect correction uses fitted points, including the
+    // orthogonal ceil. Using source pixels leaves this selection0.579421pt narrow.
+    func testInitialSelectionUsesFittedCanvasBeforePresetAspect() throws {
+        var crop = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 1001, height: 601),
+            videoSize: CGSize(width: 16, height: 9))
+        crop.fitInitialSelection(canvasSize: CGSize(width: 552, height: 332))
+        XCTAssertEqual(crop.rect.minX, 110.0 / 552, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.minY, 72.625 / 332, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.width, 332.0 / 552, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.height, 186.75 / 332, accuracy: 0.000001)
+    }
+
+    // The reference floors the initial square side and Original follows the
+    // fitted canvas aspect. Invalid geometry must not reset an existing crop.
+    func testInitialOriginalSelectionFloorsSquareAndRejectsInvalidCanvas() throws {
+        var crop = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 1001, height: 601),
+            videoSize: CGSize(width: 2, height: 1))
+        crop.fitInitialSelection(canvasSize: CGSize(width: 552, height: 331.5))
+        XCTAssertEqual(crop.rect.width, 331.0 / 552, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.height, 331.0 / 552, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.minX, 221.0 / 1104, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.minY, 221.0 / 1104, accuracy: 0.000001)
+        crop.move(by: CGSize(width: 0.1, height: -0.1))
+        let existing = crop
+        for canvas in [CGSize.zero, CGSize(width: CGFloat.nan, height: 1), CGSize(width: 1, height: 0.5)] {
+            crop.fitInitialSelection(canvasSize: canvas)
+            XCTAssertEqual(crop, existing)
+        }
+    }
+
     // Round the two pointer positions separately: ceil(100.9)-ceil(100.2)
     // is zero, while rounding their difference would move the selection.
     func testPointerMoveRoundsPositionsBeforeComputingTranslation() throws {

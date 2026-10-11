@@ -1632,6 +1632,24 @@ Makosh intentionally maintains bounded anchored aspect geometry. Reference
 conditional feedback can differ after its intermediate40×40 minimum or while
 a corner remains active. Reference runtime callback timing is unverified.
 Initial fitted-point precision and independently rounded source-pixel crop
-coordinates remain open, as do inserted-image overlays. The final704-test suite
+coordinates are implemented in the following slice; inserted-image overlays
+remain open. The704-test crop-gesture suite
 passes; prepared/accepted S3 readbacks preserve cover pixels/caption, original
 video and retained receipt. No storage/credential schema changes occur here.
+
+### Initial fitted selection and source-pixel rounding
+
+The first valid crop-canvas appearance initializes the floored fitted square
+and retained preset/Original aspect once. Later geometry edits and drawing-sheet
+return preserve that selection. Independent rounded source-pixel origin/extent
+replaces floor-origin/ceil-edge expansion. The renderer intersects right/bottom
+with the source image and rejects rounded zero-pixel axes before allocating.
+It keeps the same original-space paint CTM and bounded320px output.
+
+Regressions verify initial fitted-point literals, fractional crop dimensions
+and first-pixel colors across eight orientations, zero-axis rejection/source
+retention and CoreGraphics half-pixel edge intersection. Focused30 tests and
+the709-test full suite pass. Native move/drawing-cancel/save/restart and prepared/
+accepted S3 checks verify320×192 quadrant cover, exact caption, retained receipt
+and unchanged video. Reference conditional feedback differences and inserted
+image overlays remain documented; complete Telegram/network parity is open.

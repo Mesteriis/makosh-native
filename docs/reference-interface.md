@@ -419,8 +419,25 @@ Opposite corner сохраняется; изображение ограничи�
 детерминированно центрирует maximum. В reference applyRect сначала применяет
 minimum40×40, а correction ratio зависит от active corner/force; возможны
 промежуточные выходы за bounds и иная anchor-позиция. Upstream callback timing
-не запускался. Initial normalized crop вычисляется по исходному размеру, поэтому
-ceil fitted canvas может давать субпиксельное отличие:1001×601→552×332,
-16:9 initial width331.420579pt против332pt в reference. Независимое округление
-source x/y/width/height при Apply ещё не сведено. Это прогресс переноса,
-не заявление полной parity. Outer GPLv2 code/assets по-прежнему не копируются.
+не запускался. Следующий этап ниже исправляет initial fitted-point precision и
+округление source x/y/width/height. Это прогресс переноса, не заявление полной
+parity. Outer GPLv2 code/assets по-прежнему не копируются.
+
+## Начальная рамка и пиксельная обрезка
+
+EditImageModalController.swift:861–877 и Extensions.swift:1226–1228 задают
+начальный квадрат floor(min(fittedCanvas)), затем aspect correction. Макош
+применяет это один раз при первом появлении crop canvas.1001×601→552×332,
+16:9 теперь даёт332×186.75pt вместо прежних331.420579×186.75pt. Original
+следует fitted aspect; возврат из рисования не сбрасывает изменённую рамку.
+
+Modal selectedRect:495–499, NSRect.apply:1860–1861 независимо округляют
+source-pixel x/y/width/height. EditImageControls.swift:145–156 передаёт этот rect
+в CGImage.cropping(to:). Собственный bounded renderer теперь использует эти
+округлённые компоненты и пересечение с правой/нижней границей. Положительная
+normalized область с нулевой округлённой осью отклоняется. Тесты проверяют
+реальный staged JPEG, первый цветной пиксель во всех восьми ориентациях и
+CoreGraphics intersection на half-pixel boundary. Native/S3 проверка1001×601
+даёт320×192 cover с четырьмя ожидаемыми цветами и неизменным исходным видео.
+Paint использует прежний CTM и bounded output; схема архива не меняется.
+Inserted-image overlays и остальные Telegram flows ещё открыты.

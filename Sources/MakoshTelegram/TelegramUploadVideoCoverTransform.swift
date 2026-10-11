@@ -28,11 +28,11 @@ public struct TelegramUploadVideoCoverTransform: Equatable, Sendable {
     func render(_ image: CGImage, crop: CGRect, painting: TelegramUploadVideoCoverPainting = .init()) throws -> CGImage {
         let original = CGSize(width: image.width, height: image.height)
         let transformed = imageSize(original)
-        let x = floor(crop.minX * transformed.width), y = floor(crop.minY * transformed.height)
-        let right = min(transformed.width, ceil(crop.maxX * transformed.width))
-        let bottom = min(transformed.height, ceil(crop.maxY * transformed.height))
-        let width = right - x, height = bottom - y
+        let x = (crop.minX * transformed.width).rounded(), y = (crop.minY * transformed.height).rounded()
+        let width = min(transformed.width - x, (crop.width * transformed.width).rounded())
+        let height = min(transformed.height - y, (crop.height * transformed.height).rounded())
         guard width > 0, height > 0 else { throw TelegramUploadFileError.invalidImage }
+        let bottom = y + height
         let scale = min(1, 320 / max(width, height))
         let targetWidth = max(1, Int((width * scale).rounded()))
         let targetHeight = max(1, Int((height * scale).rounded()))

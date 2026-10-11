@@ -92,6 +92,67 @@ import CryptoKit
         XCTAssertLessThanOrEqual(crop.rect.maxX, 1); XCTAssertLessThanOrEqual(crop.rect.maxY, 1)
     }
 
+    // Source-pixel x/y/width/height are independently rounded. Expanding with
+    // floor(origin)/ceil(max) includes pixels outside the selected quadrant.
+    func testFractionalCropRoundsOriginAndSizeIndependentlyAcrossOrientations() async throws {
+        let source = try imageSource(width: 80, height: 40, quadrants: true)
+        let original = try Data(contentsOf: source)
+        let selection = try await TelegramUploadVideoCoverIO.openSelection(source)
+        defer { try? TelegramUploadVideoCoverIO.discardSelection(selection) }
+        let expected = [["yellow", "blue"], ["blue", "red"], ["red", "green"], ["green", "yellow"]]
+        var transform = TelegramUploadVideoCoverTransform()
+        for turn in 0..<4 {
+            for mirror in 0..<2 {
+                var state = transform
+                if mirror == 1 { state.flipHorizontally() }
+                // 80x40 -> (40,20,10,5); 40x80 -> (20,40,5,10).
+                let cover = try await TelegramUploadVideoCoverIO.stage(selection,
+                    crop: CGRect(x: 0.496, y: 0.496, width: 0.128, height: 0.128), transform: state)
+                defer { try? TelegramUploadVideoCoverIO.discardCover(cover) }
+                XCTAssertEqual(cover.width, turn % 2 == 0 ? 10 : 5)
+                XCTAssertEqual(cover.height, turn % 2 == 0 ? 5 : 10)
+                let preview = try await TelegramUploadVideoCoverIO.preview(cover)
+                let first = try XCTUnwrap(preview.image.cropping(to: CGRect(x: 0, y: 0, width: 1, height: 1)))
+                XCTAssertEqual(try quadrants(first), Array(repeating: expected[turn][mirror], count: 4))
+            }
+            transform.rotate()
+        }
+        XCTAssertEqual(try Data(contentsOf: source), original)
+    }
+
+    // A positive normalized rectangle can round to an empty source-pixel axis;
+    // it must fail rather than silently expanding to a different one-pixel crop.
+    func testCropRoundingToZeroPixelAxisFailsAndPreservesSource() async throws {
+        let source = try imageSource(width: 80, height: 40)
+        let original = try Data(contentsOf: source)
+        for size in [CGSize(width: 0.004, height: 0.2), CGSize(width: 0.2, height: 0.004)] {
+            do {
+                let cover = try await TelegramUploadVideoCoverIO.stage(source,
+                    crop: CGRect(origin: CGPoint(x: 0.1, y: 0.1), size: size))
+                defer { try? TelegramUploadVideoCoverIO.discardCover(cover) }
+                XCTFail("Empty rounded pixel axis was expanded")
+            } catch let error as TelegramUploadFileError { XCTAssertEqual(error, .invalidImage) }
+        }
+        XCTAssertEqual(try Data(contentsOf: source), original)
+    }
+
+    // Independent half-pixel rounding can put the right/bottom edge one pixel
+    // beyond the image. CoreGraphics crops to the intersection, without a
+    // transparent extra edge in the exported JPEG.
+    func testRoundedEdgeCropUsesSourceImageIntersection() async throws {
+        let source = try imageSource(width: 82, height: 42)
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(source as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(imageSource, 0, nil))
+        let reference = try XCTUnwrap(image.cropping(to: CGRect(x: 21, y: 11, width: 62, height: 32)))
+        XCTAssertEqual(reference.width, 61); XCTAssertEqual(reference.height, 31)
+        let cover = try await TelegramUploadVideoCoverIO.stage(source,
+            crop: CGRect(x: 0.25, y: 0.25, width: 0.75, height: 0.75))
+        defer { try? TelegramUploadVideoCoverIO.discardCover(cover) }
+        XCTAssertEqual(cover.width, 61); XCTAssertEqual(cover.height, 31)
+        let preview = try await TelegramUploadVideoCoverIO.preview(cover)
+        XCTAssertEqual(try quadrants(preview.image), ["red", "red", "red", "red"])
+    }
+
     private func imageSource(width: Int, height: Int, orientation: Int = 1, quadrants: Bool = false) throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)

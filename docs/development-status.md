@@ -1,6 +1,43 @@
 # Development status — 2026-10-11
 
-## Current stage: video-cover crop fitting and pointer gestures
+## Current stage: fitted initial crop and source-pixel precision
+
+The editor now initializes its selection once from the actual fitted canvas:
+floor(min(width,height)) square, then retained preset/Original aspect correction
+and centering. This closes the documented1001×601→552×332 initial-width gap.
+Returning from the drawing sheet preserves a moved selection, verified natively.
+Export independently rounds transformed source-pixel x/y/width/height, clips
+right/bottom to source bounds like CoreGraphics cropping, and rejects an axis
+rounded to zero. It no longer expands fractional selections with floor/ceil.
+Rendering still draws directly into the bounded320px cover, including paint;
+original image/video and stored prior versions remain unchanged.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**709 XCTest (646 Telegram +63 core), zero failures;32 Python regressions**.
+Focused30 crop/transform/painting/brush tests pass. Pixel behavior red7tests/
+28failures covers eight orientations, wrong boundary color, zero pixel axes
+and half-pixel edge intersection. Initial-selection behavior red13/6 precedes
+implementation; missing-API compile red is separate. Full logs retain160
+upstream t19 teardown diagnostics without test failure.
+
+Owned native QA uses a1001×601 synthetic quadrant image, moves its initial
+selection, opens/cancels drawing, restores its position and saves. Restart
+restores the cover and exact caption. Prepared and accepted Postbox/S3 readbacks
+both exit0:320×192 JPEG, four known colors, unchanged original video, retained
+cover digest and matching receipt. Strict signatures/unsigned payload match pass.
+The same isolated synthetic Postbox/PostgreSQL/S3 is used; personal accounts,
+Keychain and Telegram network are excluded. No schema/credential format changes.
+
+The reference still has conditional aspect/minimum feedback and callback timing
+differences described in reference-interface.md; its native runtime was not
+executed. Initial fitting and source-pixel rounding are now implemented.
+Inserted-image overlays, complete Telegram/album/menu parity, live Account/
+network delivery, MMail/Aether, WhatsApp, Teams, Telemost, backups and standalone
+packaging remain open. The full sequential goal stays active. Parent6bd97b6
+PR38121793369 and push38121790902 CI are terminal success for that exact SHA.
+Current-source index/review/publication evidence is retained privately.
+
+## Historical video-cover crop fitting and pointer gestures (6bd97b6)
 
 Telegram remains in Makosh's common service sidebar/dialog/conversation/dossier
 window. Crop and drawing now share the reference's shrink-only two-pass fitting:

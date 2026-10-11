@@ -60,6 +60,15 @@ public struct TelegramUploadVideoCoverCrop: Equatable, Sendable {
         }
         return fitted
     }
+    public mutating func fitInitialSelection(canvasSize: CGSize) {
+        guard canvasSize.width.isFinite, canvasSize.height.isFinite,
+              canvasSize.width >= 1, canvasSize.height >= 1 else { return }
+        let ratio = presetAspect.map { 1 / $0 } ?? canvasSize.height / canvasSize.width
+        let height = min(canvasSize.height, floor(min(canvasSize.width, canvasSize.height)) * ratio)
+        let width = height / ratio
+        rect = CGRect(x: (1 - width / canvasSize.width) / 2, y: (1 - height / canvasSize.height) / 2,
+            width: width / canvasSize.width, height: height / canvasSize.height)
+    }
     public mutating func selectMaximumBounds(canvasSize: CGSize? = nil) {
         let canvas = canvasSize ?? imageSize
         guard canvas.width.isFinite, canvas.height.isFinite, canvas.width > 0, canvas.height > 0 else { return }

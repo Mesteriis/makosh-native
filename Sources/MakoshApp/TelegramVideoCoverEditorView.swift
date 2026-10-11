@@ -110,6 +110,7 @@ private struct TelegramVideoCoverCropCanvas: View {
     let painting: TelegramUploadVideoCoverPainting
     @Binding var crop: TelegramUploadVideoCoverCrop
     @State private var gestureStart: TelegramUploadVideoCoverCrop?
+    @State private var initializedSelection = false
     @FocusState private var focused: Bool
     private let corners: [TelegramUploadVideoCoverCrop.Corner] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
     var body: some View {
@@ -192,6 +193,11 @@ private struct TelegramVideoCoverCropCanvas: View {
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
                 .coordinateSpace(name: "telegram.videoCover.cropCanvas")
+                .onAppear {
+                    guard !initializedSelection, fitted.width >= 1, fitted.height >= 1 else { return }
+                    crop.fitInitialSelection(canvasSize: fitted.size)
+                    initializedSelection = true
+                }
                 .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named("telegram.videoCover.cropCanvas")).onEnded { value in
                     guard selection.contains(value.location) else { return }
                     gestureStart = nil; crop.selectMaximumBounds(canvasSize: fitted.size)

@@ -563,6 +563,15 @@ Schema8 хранит media/file choice всего набора. Сверены
 File rows используют исходные имена/размеры; mixed list начинает с File,
 переключение в Media снимает недопустимую группировку. Caption placement,
 spoiler и cover сохраняются; File принудительно отправляет подпись снизу.
+
+Static photo admission теперь использует размер исходного `NSImage` в points,
+как `ThumbUtils.swift:227–236`, отдельно от безопасных pixel/byte/frame limits.
+Нативная проверка в общей форме: PNG64×64@144DPI остаётся файлом354bytes;
+PNG32×32@36DPI получает JPEG795bytes и сохраняет исходный PNG267bytes. File/Media
+и подпись переживают удаление выбранного файла и restart при выключенном S3.
+Новые GIF/WebP/music/voice mappings ещё не реализованы. Полный source contract,
+включая order-dependent WebP options и отдельные native kinds, записан в
+`telegram-album-migration.md`; это не заявление о полном совпадении с референсом.
 Mode write меняет только Postbox metadata, сохраняет исходные local/S3 IDs и блокирует
 Send до подтверждения. Native PNG regression проверяет настоящий FileName,
 точные исходные байты MediaBox и complete receipt после восстановления.

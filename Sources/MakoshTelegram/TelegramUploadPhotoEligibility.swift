@@ -3,9 +3,10 @@ import Darwin
 import ImageIO
 import CoreGraphics
 import UniformTypeIdentifiers
+import AppKit
 
 enum TelegramUploadPhotoEligibility {
-    /// Static-photo admission uses owned bytes and pixels. Whole-list media options are separate.
+    /// Source logical size follows reference options; pixel/byte bounds protect decoding separately.
     static func canPrepare(_ raw: TelegramUploadFile) async throws -> Bool {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) { try inspect(raw) }
@@ -64,8 +65,13 @@ enum TelegramUploadPhotoEligibility {
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int64Value,
               let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int64Value,
-              width >= 40, height >= 40, width <= 8192, height <= 8192,
-              width * height <= 40_000_000, max(width, height) <= 10 * min(width, height) else { return false }
+              width > 0, height > 0, width <= 8192, height <= 8192,
+              width * height <= 40_000_000,
+              let sourceImage = NSImage(data: data) else { return false }
+        let logical = sourceImage.size
+        guard logical.width.isFinite, logical.height.isFinite,
+              logical.width >= 40, logical.height >= 40,
+              logical.width / 10 <= logical.height, logical.height / 10 <= logical.width else { return false }
         let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 256,
             kCGImageSourceShouldCacheImmediately: true]

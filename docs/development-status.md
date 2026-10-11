@@ -1,6 +1,54 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram Media/File mode and local-only recovery verified
+## Current stage: source logical-size photo eligibility verified
+
+Photo admission now follows the selected TelegramSwift source's `NSImage.size`
+in points before JPEG generation. Pixel/byte/frame limits still bound decoding.
+64×64@144DPI remains its original File;32×32@36DPI can prepare a32px JPEG while
+retaining the raw PNG. Different DPI per axis follows logical aspect/40-point
+limits. No new schema, dependency, engine recipe or license change is introduced.
+
+Actual TDD RED: eligibility10 tests/six failures; controller one test/ten failures
+against the former helper. GREEN:21 focused tests/zero failures.
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**830 XCTest (754 Telegram +76 core), zero failures;32 Python regressions**.
+The incremental final gate has no compile warnings; earlier focused compilation
+retains three existing warnings.248 upstream t19 teardown diagnostics remain
+without test failures. Temporary private native readback tests were removed.
+
+Owned native QA stays in the common service/sidebar/chat window. S3-off chat
+prepares high-DPI PNG as354-byte File, then low-DPI PNG as795-byte JPEG with
+267-byte original. File/Media switching retains a9-UTF16 caption. After the two
+selected synthetic sources are hash-verified and removed, SIGTERM/relaunch
+restores File, caption and both representations. Actual native queue accepts
+one ID; another restart leaves no preparation. Mail→Telegram retains the chat
+and off choice. Actual screenshots were inspected; strict signatures and built–QA
+unsigned payload equality pass. No personal account or Telegram network was used.
+
+Real owned Postbox/PostgreSQL/S3 readbacks before/after acceptance each pass one
+test: same preparation/two canonical records, encrypted local state, exact267-byte
+original/hash,32px JPEG/64-point source, retained mode/caption, empty archive-file
+metadata and absent S3 objects under local and conventional keys. These prove the
+new eligibility path respects the prohibition on every new S3 copy.
+
+Frozen independent source review finds no new concrete defect in the three-file
+delta; root verifies their hashes. Worker runtime is SKIP, observed provider/model
+and usage unknown. Two separate read-only research contracts establish the full
+remaining GIF/WebP/music/voice and whole-list dependency order in
+`telegram-album-migration.md`. Their expected concurrent PhotoEligibility drift
+is superseded by this frozen review; raw failed source-path lookup is retained
+separately, not promoted to PASS. Research is not type-support or delivery proof.
+Final project XERJ refresh/check/query and reference freshness check exit0:
+361 indexed files,330/330 code; current helper/tests are source-confirmed.
+
+Next: strict typed source/payload metadata and native GIF/WebP/music/voice pipeline,
+then frozen ordered options/state, Archive and caption normalization. The existing
+S3 prohibition, immutable archive and raw-original recovery remain intact. Remaining
+Telegram action/search/profile/settings/live validation and the later MMail/Aether,
+WhatsApp, Teams, Telemost, dossiers, backup/restore and packaging follow the existing
+sequence. The full migration goal remains active.
+
+## Historical Telegram Media/File mode (00d68dd)
 
 The existing Telegram preparation menu switches the complete ordered set between
 Media and File. Schema8 retains canonical resources; File selects a photo's raw

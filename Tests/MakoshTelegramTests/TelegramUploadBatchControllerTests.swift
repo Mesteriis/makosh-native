@@ -57,6 +57,42 @@ import ImageIO
         XCTAssertEqual(try Data(contentsOf: item.file.url), bytes)
     }
 
+    // Catches classifying the normalized JPEG instead of the selected source's logical size.
+    func testPhotoPickerUsesSourceLogicalSizeAndRetainsTheCorrectPayloads() async throws {
+        let root = try makeSources()[0].deletingLastPathComponent()
+        let cases: [(Int, Int, TelegramUploadPresentation, TelegramUploadMode)] = [
+            (64, 144, .file, .file), (32, 36, .media, .photo)
+        ]
+        for (pixels, dpi, presentation, mode) in cases {
+            let source = root.appendingPathComponent("dpi-\(dpi).png")
+            let context = try XCTUnwrap(CGContext(data: nil, width: pixels, height: pixels,
+                bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+            let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.png" as CFString, 1, nil))
+            CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()),
+                [kCGImagePropertyDPIWidth: dpi, kCGImagePropertyDPIHeight: dpi] as CFDictionary)
+            XCTAssertTrue(CGImageDestinationFinalize(destination))
+            let bytes = try Data(contentsOf: source), controller = TelegramUploadController()
+            controller.bind(provider: BatchStagingProvider())
+            controller.prepare(sources: [.init(source: source, mode: .photo)], isGrouped: false,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+            for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(controller.phase, .ready)
+            let item = try XCTUnwrap(controller.items.first)
+            defer { controller.clear() }
+            try FileManager.default.removeItem(at: source)
+            XCTAssertEqual(controller.presentation, presentation)
+            XCTAssertEqual(item.file.mode, mode)
+            XCTAssertEqual(controller.canSwitchPresentation, mode == .photo)
+            let raw = try XCTUnwrap(mode == .photo ? item.originalFile : item.file)
+            XCTAssertEqual(raw.name, "dpi-\(dpi).png")
+            XCTAssertEqual(try Data(contentsOf: raw.url), bytes, "Raw bytes survive source removal in either presentation")
+            if mode == .photo {
+                XCTAssertEqual(item.file.pixelWidth, 32); XCTAssertEqual(item.file.pixelHeight, 32)
+                XCTAssertEqual(item.file.name, "dpi-36.jpg")
+            } else { XCTAssertNil(item.originalFile) }
+        }
+    }
+
     func testMixedMediaAndDocumentSelectionPublishesTheWholeListAsFiles() async throws {
         let photos = try makeSources(photos: true), documents = try makeSources(), controller = TelegramUploadController()
         controller.bind(provider: BatchStagingProvider())

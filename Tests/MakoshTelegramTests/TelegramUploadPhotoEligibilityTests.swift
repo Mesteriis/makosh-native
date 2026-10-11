@@ -3,6 +3,7 @@ import Foundation
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import AppKit
 @testable import MakoshTelegram
 
 final class TelegramUploadPhotoEligibilityTests: XCTestCase {
@@ -14,7 +15,7 @@ final class TelegramUploadPhotoEligibilityTests: XCTestCase {
     }
 
     private func image(width: Int, height: Int, type: String = UTType.png.identifier,
-                       frames: Int = 1, dpi: Int? = nil) throws -> Data {
+                       frames: Int = 1, dpi: Int? = nil, verticalDPI: Int? = nil) throws -> Data {
         let space = CGColorSpaceCreateDeviceRGB()
         let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height,
             bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
@@ -27,7 +28,7 @@ final class TelegramUploadPhotoEligibilityTests: XCTestCase {
         var properties: [CFString: Any] = [:]
         if let dpi {
             properties[kCGImagePropertyDPIWidth] = dpi
-            properties[kCGImagePropertyDPIHeight] = dpi
+            properties[kCGImagePropertyDPIHeight] = verticalDPI ?? dpi
         }
         for _ in 0..<frames { CGImageDestinationAddImage(destination, pixels, properties as CFDictionary) }
         XCTAssertTrue(CGImageDestinationFinalize(destination))
@@ -53,8 +54,8 @@ final class TelegramUploadPhotoEligibilityTests: XCTestCase {
         XCTAssertTrue(jpegEligible)
     }
 
-    // Catches a changed inclusive 40px/10:1 boundary, including the reciprocal aspect.
-    func testMinimumAndAspectBoundariesUseInclusivePixelDimensions() async throws {
+    // Catches a changed inclusive 40-point/10:1 boundary for an unscaled source, including reciprocal aspect.
+    func testMinimumAndAspectBoundariesForUnscaledSource() async throws {
         let cases: [(Int, Int, Bool)] = [
             (40, 40, true), (39, 40, false), (40, 39, false),
             (400, 40, true), (401, 40, false), (40, 400, true), (40, 401, false)
@@ -66,11 +67,41 @@ final class TelegramUploadPhotoEligibilityTests: XCTestCase {
         }
     }
 
-    // Deliberate boundary: normalized photo admission uses pixels, unlike upstream NSImage.size.
-    func testDPIHasNoEffectOnPixelEligibility() async throws {
-        let file = try await stage(image(width: 80, height: 40, dpi: 144))
+    // Catches ignoring the source's logical size: reference options use NSImage.size, before JPEG normalization.
+    func testHighDPISmallLogicalImageRemainsAnOriginalFile() async throws {
+        let data = try image(width: 64, height: 64, dpi: 144)
+        let logical = try XCTUnwrap(NSImage(data: data)).size
+        XCTAssertEqual(logical.width, 32, accuracy: 0.01)
+        XCTAssertEqual(logical.height, 32, accuracy: 0.01)
+        let file = try await stage(data)
+        let actual = try await TelegramUploadPhotoEligibility.canPrepare(file)
+        XCTAssertFalse(actual)
+    }
+
+    // Catches applying the 40-point option threshold to pixels instead of the frozen source.
+    func testLowDPISourceWithFewerPixelsCanStillBePrepared() async throws {
+        let data = try image(width: 32, height: 32, dpi: 36)
+        let logical = try XCTUnwrap(NSImage(data: data)).size
+        XCTAssertEqual(logical.width, 64, accuracy: 0.01)
+        XCTAssertEqual(logical.height, 64, accuracy: 0.01)
+        let file = try await stage(data)
         let actual = try await TelegramUploadPhotoEligibility.canPrepare(file)
         XCTAssertTrue(actual)
+    }
+
+    // Catches treating non-square DPI as a pixel aspect ratio and silently changing available modes.
+    func testSourceLogicalAspectControlsPhotoEligibility() async throws {
+        let cases: [(Int, Int, Int, Int, Bool)] = [
+            (400, 40, 72, 144, false), // 400×20 points: too short and too wide.
+            (40, 400, 144, 72, false), // 20×400 points: reciprocal rejection.
+            (800, 40, 144, 72, true),  // 400×40 points: inclusive 10:1 boundary.
+            (40, 800, 72, 144, true)   // 40×400 points: reciprocal boundary.
+        ]
+        for (width, height, dpi, verticalDPI, expected) in cases {
+            let file = try await stage(image(width: width, height: height, dpi: dpi, verticalDPI: verticalDPI))
+            let actual = try await TelegramUploadPhotoEligibility.canPrepare(file)
+            XCTAssertEqual(actual, expected, "\(width)×\(height) @ \(dpi)/\(verticalDPI)")
+        }
     }
 
     // Catches flattening GIF/WebP or a multi-frame image into the static-photo path.

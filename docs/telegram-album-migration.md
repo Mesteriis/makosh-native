@@ -144,3 +144,83 @@ rollback, preserving pointers, local encrypted spool, S3 objects and archive key
 Mode switches are metadata-only and cannot recapture or promote local resources,
 even after the S3 choice is enabled later. Local collection/portable backup remain
 unfinished. Current gates and actual native UI evidence are in development-status.md.
+
+## Verified classification contract and next implementation
+
+Source research at TelegramSwift579cebbf0c01fd41b712eff3647fa7f69db9665d
+confirms that option eligibility, grouping, generated payload kind and File/Media
+presentation are separate decisions. `ThumbUtils.swift:222–260` scans current
+original URLs in order; images failing NSImage logical-size/decode checks contribute
+no option, and exact WebP removes already accumulated Media. File always appears
+in the menu; initial Media additionally requires `asMedia` and exactly `[Media]`.
+`CoreExtension.swift:2953–3015` probes attributes with `inCollage=true`. Ordinary
+audio is music; GIF/silent MP4 do not get Animated in that probe. Singleton
+preparation can also have `inCollage=true`, independently of actual send grouping.
+
+| Original input | Reference native behavior | Required owned pipeline |
+| --- | --- | --- |
+| GIF | Media: H.264 MP4, Video wire duration0/flags[], Animated only when not inCollage. File: original GIF. | Bounded frame/timing decode, independent conversion, separately retained raw and transformed digests; actual MP4 duration separate from wire duration. |
+| WebP | Original bytes, ImageSize/FileName/Sticker even in File; grouping disabled. | Verified bounded decoder and explicit first-frame dimension policy; no JPEG replacement or inferred animated sticker. |
+| Ordinary audio | Original bytes, Audio(isVoice:false) with integral duration/title/performer even in File. | Validated AVFoundation duration and bounded tags, retained through native enqueue and restart; OGG/Opus filenames never imply voice. |
+| Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed offline codec build and deterministic PCM encode/decode first; then a separate recorder workflow. |
+
+These are source contracts, not implemented type support. The prepared engine
+a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
+currently expose GIF conversion, WebP binding or Opus products. UIKit wrappers
+and the outer GPLv2-only UI remain reference material. New codec source/build
+recipes and their licenses must be reviewed and pinned independently; generated
+engine files and `.references/` cannot become build dependencies. Apple decoder
+availability must be proved with real fixtures before selecting it as a substitute.
+Music tag helper source returns both strings even when empty; its apparent
+nil-based filename fallback is not evidence of effective empty-tag behavior.
+
+Literal whole-list cases to retain in regression coverage:
+
+| Input in order | Source options | Initial asMedia mode / grouping |
+| --- | --- | --- |
+| Valid PNG, valid decoded WebP | File (WebP removes Media) | File / off |
+| Valid decoded WebP, valid PNG | Media (PNG re-adds it) | Media / off |
+| Undersized PNG, valid PNG | Media (first image contributes nothing) | Media / on |
+| GIF, valid PNG | Media | Media / on; preparation suppresses Animated |
+| Ordinary MP3, ordinary OGG | File | File / on; both music |
+| Music, document | File | File / off |
+| AVI/MKV alone | File | File / eligible |
+| Valid PNG, AVI/MKV | Media then File | File / eligible; explicit Media generates video too |
+
+The existing static-image step now uses source logical size and retains its
+no-follow/byte/pixel/frame safety bounds. It does not implement this whole-list
+table. Existing strict schema8 normalization after removing the last visual is
+retained; upstream may leave unavailable Media/stale grouping after removal or
+reorder. Do not serialize invalid Makosh state to reproduce that upstream quirk.
+
+Continue in this dependency order:
+
+1. Add strict typed metadata/schema9 while preserving schema1–8 meanings.
+   Separate source facts, canonical payload and raw projection; reject unknown,
+   missing or cross-kind metadata. Never reinterpret legacy generic files from
+   suffixes. Bind source facts to stable item ID, owned raw size/digest and resource
+   role, including logical image eligibility independent of JPEG pixels.
+2. Implement owned byte probes and typed transformations. Music and WebP retain
+   original bytes; GIF retains both original and validated MP4. Explicit voice
+   needs offline Opus/Ogg codec and waveform proof. Bound frames, dimensions,
+   duration, tags, output, cancellation and source mutation before publication.
+3. Extend existing policy-aware capture and all-or-cleanup restoration for every
+   typed resource. Off remains encrypted local-only; mode edits never recapture.
+   Re-probe restored bytes against frozen metadata and retain exact hashes/order.
+4. Map exact native attributes/resources in both presentations. Extend complete
+   FIFO MediaBox readback, admission equality and transaction-bound receipts.
+   Test mixed/chunked sets, raw/converted bytes, missing/extra attributes, partial
+   failures and no-resend state using actual native enqueue/reopen.
+5. Reduce ordered frozen source descriptors into options/default/group controls.
+   Preserve previous/new ordered IDs, mode/group CAS and original-store detached
+   retries across rebind, lost acknowledgement, cancellation and newer pointers.
+6. Implement real Archive mode using original dependencies, explicit basename
+   collision/failure/lifetime rules and restart recovery. Inspect remaining
+   archive/caption helpers, then implement unformatted-only trimming, caption
+   capability, slow-mode archive forcing and relevant peer control gates.
+
+Completion needs the full native picker/preview/durability/enqueue/receipt/restart
+flow for each supported type, full gates and actual owned UI. Reference source
+research, offline codecs and synthetic local acceptance do not prove Account
+network transformation, server acceptance or delivery. Remaining Telegram and
+other services still follow the sequential product migration.

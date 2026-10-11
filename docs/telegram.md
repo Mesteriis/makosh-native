@@ -1839,12 +1839,16 @@ the verified reference state/send boundary. Returning to media restores the
 retained placement and cover. Native original-file enqueue verifies the selected
 record's plaintext SHA256 before and after copying to MediaBox.
 
-Static-photo admission inspects an owned no-follow byte snapshot: at least40
-pixels each side, aspect at most10:1, existing8192/40M-pixel and20MiB limits,
-one decoded frame. Smaller/extreme/unsupported images remain original files;
-GIF/WebP/multiframe inputs are never flattened into photos. This uses pixels,
-while upstream `ThumbUtils` uses `NSImage.size`, and GIF/WebP media conversion/
-option ordering are not yet migrated. This is not full reference parity.
+Static-photo admission inspects an owned no-follow byte snapshot. The source's
+finite `NSImage.size` must be at least40 points on each side and at most10:1,
+matching `ThumbUtils` before JPEG generation. Pixel dimensions separately remain
+positive, at most8192 per axis and40M pixels, with the20MiB/one-frame bounds.
+For example64×64 pixels at144DPI remain an original file (32×32 points), while
+32×32 pixels at36DPI can become a photo (64×64 points). Both paths retain exact
+raw bytes after source removal; normalized JPEG pixels do not reclassify the source.
+GIF/WebP/multiframe inputs are never flattened into static photos. Their native
+media conversion, ordered whole-list options and music/voice attributes remain
+open; the verified dependency order is in `telegram-album-migration.md`.
 
 Media option eligibility is separate from all-visual grouping/layout: a mixed
 photo/document set in Media retains caption placement, spoiler and one-shot

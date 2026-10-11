@@ -355,8 +355,8 @@ EditImageModalController.swift:1068–1113/Extensions.swift:1882–1926. Это 
 восемь handles относятся к inserted image overlays.200×200.aspectFitted(canvas)
 увеличивает квадрат до floor(min(canvas.width,canvas.height)), а не ограничивает
 его200pt. Текущая нормализованная начальная геометрия уже совпадает с основной
-формулой референса. Открыты fitted-point rounding,40pt resize constraint,
-double-click full bounds и inserted images. Draw/eraser/undo перенесены ниже.
+формулой референса. Последующие изменения fitted geometry, resize и double-click
+описаны ниже. Inserted images остаются открыты; Draw/eraser/undo перенесены ниже.
 Outer GPLv2 UI/asset не копируется; общий sidebar и подготовка сохраняют прежнее
 окно. Account/network/server delivery остаётся непроверенным.
 
@@ -393,5 +393,34 @@ Native CUA подтвердила инструменты и отмену/при�
 из encrypted S3 проверил320×160 JPEG с четырьмя цветными и двумя чёрными samples,
 точную подпись, исходное видео и receipt после restart/local synthetic acceptance.
 Это не runtime-проверка upstream UI или Telegram Account/network delivery.
-Открыты fitted-point rounding/40pt resize, double-click full bounds, inserted
-images, album/multiple selection и остальные Telegram flows.
+Оставшиеся fitted/source-pixel различия описаны ниже; inserted images,
+album/multiple selection и остальные Telegram flows остаются открыты.
+
+## Геометрия и жесты обрезки обложки
+
+SelectionRectView.swift:247–278,282–294,360–384 подтверждает отдельное ceil
+позиций при перемещении, absolute ceil/clamp указателя для угла, resize по ширине
+и double-click внутри selectedRect. EditImageModalController.swift:516–519,
+1197–1204 сохраняет preset в данных и возвращает его через условный feedback.
+Макош использует те же pointer правила и четыре собственных20pt L-захвата.
+Двойной щелчок и доступное действие выбирают максимальную центрированную область
+с сохранённым aspect. Parent SpatialTapGesture охватывает угловые hit targets.
+Corner drag начинается после1pt движения: нативная проверка показала, что
+minimumDistance0 менял рамку уже при обычном щелчке и ломал portrait double-click.
+После исправления проверены оба угла, неподвижные щелчки и реальный drag.
+
+Extensions.swift:1172–1185 задаёт shrink-only fitting: сначала width с ceil
+height, затем height с ceil width. В crop и draw применяется общий helper и8pt
+padding из modal.40×80 source не увеличивается;1001×601 в552×352 даёт552×332.
+Минимальная ширина crop40pt относится к fitted canvas, не к исходным пикселям.
+Opposite corner сохраняется; изображение ограничивает максимальную область.
+
+Отличия остаются явными. Макош сохраняет bounded anchored aspect geometry и
+детерминированно центрирует maximum. В reference applyRect сначала применяет
+minimum40×40, а correction ratio зависит от active corner/force; возможны
+промежуточные выходы за bounds и иная anchor-позиция. Upstream callback timing
+не запускался. Initial normalized crop вычисляется по исходному размеру, поэтому
+ceil fitted canvas может давать субпиксельное отличие:1001×601→552×332,
+16:9 initial width331.420579pt против332pt в reference. Независимое округление
+source x/y/width/height при Apply ещё не сведено. Это прогресс переноса,
+не заявление полной parity. Outer GPLv2 code/assets по-прежнему не копируются.

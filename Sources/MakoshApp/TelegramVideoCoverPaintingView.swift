@@ -109,11 +109,12 @@ private struct TelegramVideoCoverDrawingCanvas: View {
         GeometryReader { geometry in
             let original = CGSize(width: preview.image.width, height: preview.image.height)
             let size = transform.imageSize(original)
-            let scale = min(1, (geometry.size.width - 8) / size.width, (geometry.size.height - 8) / size.height)
-            let fitted = CGSize(width: size.width * scale, height: size.height * scale)
+            let fitted = TelegramUploadVideoCoverCrop.fittedImageSize(size,
+                in: CGSize(width: geometry.size.width - 8, height: geometry.size.height - 8))
+            let originalFitted = transform.imageSize(fitted)
             ZStack {
                 TelegramVideoCoverPaintedImage(preview: preview, painting: visiblePainting)
-                    .frame(width: original.width * scale, height: original.height * scale)
+                    .frame(width: originalFitted.width, height: originalFitted.height)
                     .rotationEffect(.degrees(-90 * Double(transform.quarterTurns)))
                     .scaleEffect(x: transform.isHorizontallyFlipped ? -1 : 1, y: 1)
                 Rectangle().fill(.clear).frame(width: fitted.width, height: fitted.height).contentShape(Rectangle())

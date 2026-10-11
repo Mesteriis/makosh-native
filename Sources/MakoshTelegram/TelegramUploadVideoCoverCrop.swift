@@ -6,8 +6,6 @@ public struct TelegramUploadVideoCoverCrop: Equatable, Sendable {
     public private(set) var transform = TelegramUploadVideoCoverTransform()
     private var imageSize: CGSize
     private let presetAspect: CGFloat?
-    private var aspect: CGFloat { presetAspect ?? imageSize.width / imageSize.height }
-    private var heightPerWidth: CGFloat { imageSize.width / imageSize.height / aspect }
 
     public init(imageSize: CGSize, videoSize: CGSize) throws {
         guard [imageSize.width, imageSize.height, videoSize.width, videoSize.height].allSatisfy({ $0.isFinite && $0 >= 1 }),
@@ -28,6 +26,19 @@ public struct TelegramUploadVideoCoverCrop: Equatable, Sendable {
         rect.origin.x = min(max(0, rect.minX + translation.width), 1 - rect.width)
         rect.origin.y = min(max(0, rect.minY + translation.height), 1 - rect.height)
     }
+    public mutating func move(from start: CGPoint, to point: CGPoint, canvasSize: CGSize) {
+        guard [start.x, start.y, point.x, point.y, canvasSize.width, canvasSize.height].allSatisfy(\.isFinite),
+              canvasSize.width > 0, canvasSize.height > 0 else { return }
+        move(by: CGSize(width: (ceil(point.x) - ceil(start.x)) / canvasSize.width,
+            height: (ceil(point.y) - ceil(start.y)) / canvasSize.height))
+    }
+    public mutating func resize(to point: CGPoint, corner: Corner, canvasSize: CGSize) {
+        guard [point.x, point.y, canvasSize.width, canvasSize.height].allSatisfy(\.isFinite),
+              canvasSize.width > 0, canvasSize.height > 0 else { return }
+        let x = min(canvasSize.width, max(0, ceil(point.x))) / canvasSize.width
+        let edge = corner == .topLeft || corner == .bottomLeft ? rect.minX : rect.maxX
+        resize(by: CGSize(width: x - edge, height: 0), corner: corner, canvasSize: canvasSize)
+    }
     public mutating func rotate() {
         // Reference crop transport is CCW even while its output mirror is set.
         rect = CGRect(x: rect.minY, y: max(0, 1 - rect.maxX), width: rect.height, height: rect.width)
@@ -38,16 +49,37 @@ public struct TelegramUploadVideoCoverCrop: Equatable, Sendable {
         rect.origin.x = max(0, 1 - rect.maxX)
         transform.flipHorizontally()
     }
-    public mutating func resize(by translation: CGSize, corner: Corner) {
+    public static func fittedImageSize(_ imageSize: CGSize, in bounds: CGSize) -> CGSize {
+        guard [imageSize.width, imageSize.height, bounds.width, bounds.height].allSatisfy({ $0.isFinite && $0 > 0 }) else { return .zero }
+        var fitted = imageSize
+        if fitted.width > bounds.width {
+            fitted = CGSize(width: bounds.width, height: ceil(fitted.height * bounds.width / fitted.width))
+        }
+        if fitted.height > bounds.height {
+            fitted = CGSize(width: ceil(fitted.width * bounds.height / fitted.height), height: bounds.height)
+        }
+        return fitted
+    }
+    public mutating func selectMaximumBounds(canvasSize: CGSize? = nil) {
+        let canvas = canvasSize ?? imageSize
+        guard canvas.width.isFinite, canvas.height.isFinite, canvas.width > 0, canvas.height > 0 else { return }
+        let ratio = presetAspect.map { canvas.width / canvas.height / $0 } ?? 1
+        guard ratio.isFinite, ratio > 0 else { return }
+        let width = min(1, 1 / ratio), height = width * ratio
+        rect = CGRect(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
+    }
+    public mutating func resize(by translation: CGSize, corner: Corner, canvasSize: CGSize? = nil) {
         guard translation.width.isFinite, translation.height.isFinite else { return }
+        let canvas = canvasSize ?? imageSize
+        guard canvas.width.isFinite, canvas.height.isFinite, canvas.width > 0, canvas.height > 0 else { return }
+        let heightPerWidth = presetAspect.map { canvas.width / canvas.height / $0 } ?? 1
+        guard heightPerWidth.isFinite, heightPerWidth > 0 else { return }
         let left = corner == .topLeft || corner == .bottomLeft
         let top = corner == .topLeft || corner == .topRight
         let anchor = CGPoint(x: left ? rect.maxX : rect.minX, y: top ? rect.maxY : rect.minY)
-        let horizontal = (left ? -1.0 : 1.0) * translation.width
-        let vertical = (top ? -1.0 : 1.0) * translation.height / heightPerWidth
-        let delta = abs(horizontal) >= abs(vertical) ? horizontal : vertical
+        let delta = (left ? -1.0 : 1.0) * translation.width
         let maximum = min(left ? anchor.x : 1 - anchor.x, (top ? anchor.y : 1 - anchor.y) / heightPerWidth)
-        let minimum = min(maximum, max(1, aspect) / imageSize.width)
+        let minimum = min(maximum, 40 / canvas.width)
         let width = min(maximum, max(minimum, rect.width + delta))
         let height = width * heightPerWidth
         rect = CGRect(x: left ? anchor.x - width : anchor.x, y: top ? anchor.y - height : anchor.y,

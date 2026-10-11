@@ -117,14 +117,16 @@ private struct TelegramVideoCoverCropCanvas: View {
             let original = CGSize(width: preview.image.width, height: preview.image.height)
             let transformed = crop.transform.imageSize(original)
             let width = transformed.width, height = transformed.height
-            let scale = min(geometry.size.width / width, geometry.size.height / height)
-            let fitted = CGRect(x: (geometry.size.width - width * scale) / 2, y: (geometry.size.height - height * scale) / 2,
-                width: width * scale, height: height * scale)
+            let size = TelegramUploadVideoCoverCrop.fittedImageSize(transformed,
+                in: CGSize(width: geometry.size.width - 8, height: geometry.size.height - 8))
+            let originalFitted = crop.transform.imageSize(size)
+            let fitted = CGRect(x: (geometry.size.width - size.width) / 2, y: (geometry.size.height - size.height) / 2,
+                width: size.width, height: size.height)
             let selection = CGRect(x: fitted.minX + crop.rect.minX * fitted.width, y: fitted.minY + crop.rect.minY * fitted.height,
                 width: crop.rect.width * fitted.width, height: crop.rect.height * fitted.height)
             ZStack(alignment: .topLeading) {
                 TelegramVideoCoverPaintedImage(preview: preview, painting: painting)
-                    .frame(width: original.width * scale, height: original.height * scale)
+                    .frame(width: originalFitted.width, height: originalFitted.height)
                     .rotationEffect(.degrees(-90 * Double(crop.transform.quarterTurns)))
                     .scaleEffect(x: crop.transform.isHorizontallyFlipped ? -1 : 1, y: 1)
                     .position(x: fitted.midX, y: fitted.midY)
@@ -134,14 +136,15 @@ private struct TelegramVideoCoverCropCanvas: View {
                 Rectangle().fill(.clear).overlay(Rectangle().stroke(.white, lineWidth: 1))
                     .frame(width: selection.width, height: selection.height)
                     .contentShape(Rectangle()).position(x: selection.midX, y: selection.midY)
-                    .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("telegram.videoCover.cropCanvas")).onChanged { value in
                         focused = true
                         if gestureStart == nil { gestureStart = crop }
                         guard var start = gestureStart, fitted.width > 0, fitted.height > 0 else { return }
-                        start.move(by: CGSize(width: value.translation.width / fitted.width, height: value.translation.height / fitted.height))
+                        start.move(from: CGPoint(x: value.startLocation.x - fitted.minX, y: value.startLocation.y - fitted.minY),
+                            to: CGPoint(x: value.location.x - fitted.minX, y: value.location.y - fitted.minY), canvasSize: fitted.size)
                         crop = start
                     }.onEnded { _ in gestureStart = nil })
-                    .focusable().focused($focused)
+                    .focusable().focusEffectDisabled().focused($focused)
                     .onMoveCommand { direction in
                         switch direction {
                         case .left: crop.move(by: CGSize(width: -1 / width, height: 0))
@@ -153,12 +156,15 @@ private struct TelegramVideoCoverCropCanvas: View {
                     }
                     .accessibilityLabel("Область обрезки обложки")
                     .accessibilityValue("\(Int(crop.rect.width * 100))% ширины, \(Int(crop.rect.height * 100))% высоты")
-                    .accessibilityHint("Перетащите рамку или её углы. Стрелки перемещают рамку; изменение значения меняет размер.")
+                    .accessibilityHint("Перетащите рамку или её углы. Двойной щелчок выбирает максимальную область. Стрелки перемещают рамку; изменение значения меняет размер.")
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.crop")
+                    .accessibilityAction(named: Text("Выбрать максимальную область")) {
+                        crop.selectMaximumBounds(canvasSize: fitted.size)
+                    }
                     .accessibilityAdjustableAction { direction in
                         switch direction {
-                        case .increment: crop.resize(by: CGSize(width: 0.02, height: 0), corner: .bottomRight)
-                        case .decrement: crop.resize(by: CGSize(width: -0.02, height: 0), corner: .bottomRight)
+                        case .increment: crop.resize(by: CGSize(width: 0.02, height: 0), corner: .bottomRight, canvasSize: fitted.size)
+                        case .decrement: crop.resize(by: CGSize(width: -0.02, height: 0), corner: .bottomRight, canvasSize: fitted.size)
                         @unknown default: break
                         }
                     }
@@ -166,18 +172,30 @@ private struct TelegramVideoCoverCropCanvas: View {
                     let corner = entry.element
                     let left = corner == .topLeft || corner == .bottomLeft
                     let top = corner == .topLeft || corner == .topRight
-                    RoundedRectangle(cornerRadius: 1).fill(.white).frame(width: 10, height: 10)
-                        .contentShape(Rectangle().size(width: 18, height: 18))
-                        .position(x: left ? selection.minX : selection.maxX, y: top ? selection.minY : selection.maxY)
-                        .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                    Path { path in
+                        let x: CGFloat = left ? 1 : 19, y: CGFloat = top ? 1 : 19
+                        path.move(to: CGPoint(x: x, y: top ? 19 : 1))
+                        path.addLine(to: CGPoint(x: x, y: y))
+                        path.addLine(to: CGPoint(x: left ? 19 : 1, y: y))
+                    }.stroke(.white, lineWidth: 2).frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                        .position(x: left ? selection.minX + 8 : selection.maxX - 8,
+                            y: top ? selection.minY + 8 : selection.maxY - 8)
+                        .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("telegram.videoCover.cropCanvas")).onChanged { value in
                             if gestureStart == nil { gestureStart = crop }
                             guard var start = gestureStart, fitted.width > 0, fitted.height > 0 else { return }
-                            start.resize(by: CGSize(width: value.translation.width / fitted.width, height: value.translation.height / fitted.height), corner: corner)
+                            start.resize(to: CGPoint(x: value.location.x - fitted.minX, y: value.location.y - fitted.minY),
+                                corner: corner, canvasSize: fitted.size)
                             crop = start
                         }.onEnded { _ in gestureStart = nil })
                         .accessibilityHidden(true)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+                .coordinateSpace(name: "telegram.videoCover.cropCanvas")
+                .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named("telegram.videoCover.cropCanvas")).onEnded { value in
+                    guard selection.contains(value.location) else { return }
+                    gestureStart = nil; crop.selectMaximumBounds(canvasSize: fitted.size)
+                })
                 .onChange(of: crop.transform) { gestureStart = nil }
         }
     }

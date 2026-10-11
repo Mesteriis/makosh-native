@@ -40,6 +40,83 @@ import ImageIO
         XCTAssertLessThanOrEqual(crop.rect.maxX, 1); XCTAssertLessThanOrEqual(crop.rect.maxY, 1)
     }
 
+    // Reference resizing derives height from the dragged width. A vertical
+    // motion alone must not enlarge the crop or move its opposite corner.
+    func testVerticalCornerMotionKeepsWidthAndAspectSelectionUnchanged() throws {
+        for corner in [TelegramUploadVideoCoverCrop.Corner.topLeft, .topRight, .bottomLeft, .bottomRight] {
+            var crop = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 800, height: 400),
+                videoSize: CGSize(width: 16, height: 9))
+            let before = crop.rect
+            crop.resize(by: CGSize(width: 0, height: 0.1), corner: corner)
+            XCTAssertEqual(crop.rect, before)
+        }
+    }
+
+    // A 40pt width on a 400pt fitted view is 10% regardless of source pixels.
+    // Portrait height is derived from aspect; horizontal crop height may be
+    // below 40pt. The opposite corner remains fixed at the minimum.
+    func testCornerResizeUsesFittedPointMinimumAndOppositeAnchor() throws {
+        var crop = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 800, height: 400),
+            videoSize: CGSize(width: 16, height: 9))
+        crop.resize(by: CGSize(width: -10, height: -10), corner: .bottomRight,
+            canvasSize: CGSize(width: 400, height: 200))
+        XCTAssertEqual(crop.rect.minX, 0.25, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.minY, 0.21875, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.width, 0.1, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.height, 0.1125, accuracy: 0.000001)
+    }
+
+    // Double click returns to the largest centered crop of the selected ratio,
+    // rather than the initial centered square-derived region or a free aspect.
+    func testSelectingMaximumBoundsKeepsPresetAndOriginalAspect() throws {
+        var standard = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 800, height: 400),
+            videoSize: CGSize(width: 16, height: 9))
+        standard.selectMaximumBounds()
+        XCTAssertEqual(standard.rect.minX, 1.0 / 18, accuracy: 0.000001)
+        XCTAssertEqual(standard.rect.minY, 0, accuracy: 0.000001)
+        XCTAssertEqual(standard.rect.width, 8.0 / 9, accuracy: 0.000001)
+        XCTAssertEqual(standard.rect.height, 1, accuracy: 0.000001)
+        var original = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 800, height: 400),
+            videoSize: CGSize(width: 2, height: 1))
+        original.selectMaximumBounds()
+        XCTAssertEqual(original.rect, CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
+    // Two-pass point fitting must neither enlarge a small source nor drop the
+    // ceil-rounded orthogonal point when the opposite axis becomes limiting.
+    func testFittedImageGeometryKeepsSmallSourcesAndRoundsReducedExtent() {
+        XCTAssertEqual(TelegramUploadVideoCoverCrop.fittedImageSize(CGSize(width: 40, height: 80),
+            in: CGSize(width: 552, height: 352)), CGSize(width: 40, height: 80))
+        XCTAssertEqual(TelegramUploadVideoCoverCrop.fittedImageSize(CGSize(width: 1001, height: 601),
+            in: CGSize(width: 552, height: 352)), CGSize(width: 552, height: 332))
+        XCTAssertEqual(TelegramUploadVideoCoverCrop.fittedImageSize(CGSize(width: 1001, height: 601),
+            in: CGSize(width: 552, height: 300)), CGSize(width: 499, height: 300))
+    }
+
+    // Round the two pointer positions separately: ceil(100.9)-ceil(100.2)
+    // is zero, while rounding their difference would move the selection.
+    func testPointerMoveRoundsPositionsBeforeComputingTranslation() throws {
+        var crop = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 800, height: 400),
+            videoSize: CGSize(width: 16, height: 9))
+        crop.move(from: CGPoint(x: 100.2, y: 43.8), to: CGPoint(x: 100.9, y: 44.2),
+            canvasSize: CGSize(width: 400, height: 200))
+        XCTAssertEqual(crop.rect.minX, 0.25, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.minY, 0.22375, accuracy: 0.000001)
+    }
+
+    // Corner movement uses the actual canvas pointer, including its initial
+    // grab offset, rather than translating the old corner by a drag delta.
+    func testCornerPointerIsCeiledAndClampedInCanvasCoordinates() throws {
+        var crop = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: 800, height: 400),
+            videoSize: CGSize(width: 16, height: 9))
+        crop.resize(to: CGPoint(x: 350.2, y: 150), corner: .bottomRight,
+            canvasSize: CGSize(width: 400, height: 200))
+        XCTAssertEqual(crop.rect.minX, 0.25, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.minY, 0.21875, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.width, 0.6275, accuracy: 0.000001)
+        XCTAssertEqual(crop.rect.height, 0.7059375, accuracy: 0.000001)
+    }
+
     func testInvalidImageOrVideoSizeCannotEnterEditor() {
         for invalid in [CGSize.zero, CGSize(width: -1, height: 1), CGSize(width: CGFloat.nan, height: 1),
                         CGSize(width: 1, height: CGFloat.infinity)] {

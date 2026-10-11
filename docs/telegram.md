@@ -1570,8 +1570,9 @@ Research corrected two earlier frontier claims. Crop has four corner controls,
 not eight; eight controls belong to inserted image overlays. The reference's
 200-square aspectFitted call may upscale to the smaller fitted canvas dimension;
 it is not a literal200pt initial crop. Makosh already matches its main normalized
-initial geometry. Reference point rounding,40pt resize constraints, double-click
-full bounds and inserted-image editing remain open. Drawing/eraser/undo are
+initial geometry. The later fitted geometry/resize/double-click slice and its
+remaining precision differences are recorded below. Inserted-image editing
+remains open. Drawing/eraser/undo are
 implemented below. This is
 progress toward complete reference editor/Telegram parity, not its completion.
 
@@ -1608,3 +1609,29 @@ Postbox/S3 readbacks verify final320×160 pixels, caption, original video and
 receipt; restart restores the cover and does not reopen an accepted preparation.
 Account/network/server delivery and complete reference-editor parity remain
 unverified/open as recorded in development status.
+
+### Fitted crop geometry and pointer gestures
+
+Crop and drawing share shrink-only width-first/height-second fitting with ceil
+of each reduced orthogonal extent and8pt available-space padding. Small sources
+keep their dimensions. Movement subtracts separately ceiled canvas-local pointer
+positions. Corner resizing uses absolute ceiled/clamped X and derives height
+from width and the retained preset (or transformed Original aspect). Four own
+20pt L-shaped controls match the reference interaction surface. The fitted-view
+minimum is40pt wide, limited by bounded opposite-anchor geometry.
+
+A simultaneous parent double-click gesture covers corner hit targets and
+selects the largest centered aspect region only inside the current selection;
+an accessible action exposes the same operation. Native portrait QA reproduced
+stationary corner mouse-down resizing and failed double-click with zero-distance
+drag. A1pt movement threshold prevents resize until actual movement. Rebuilt
+native top/bottom single and double clicks, minimum drag and Cancel pass.
+Geometry regressions use independent literal fitting/minimum/pointer cases.
+
+Makosh intentionally maintains bounded anchored aspect geometry. Reference
+conditional feedback can differ after its intermediate40×40 minimum or while
+a corner remains active. Reference runtime callback timing is unverified.
+Initial fitted-point precision and independently rounded source-pixel crop
+coordinates remain open, as do inserted-image overlays. The final704-test suite
+passes; prepared/accepted S3 readbacks preserve cover pixels/caption, original
+video and retained receipt. No storage/credential schema changes occur here.

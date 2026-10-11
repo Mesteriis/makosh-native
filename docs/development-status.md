@@ -1,6 +1,52 @@
 # Development status — 2026-10-11
 
-## Current stage: video-cover drawing, arrows, eraser and stroke history
+## Current stage: video-cover crop fitting and pointer gestures
+
+Telegram remains in Makosh's common service sidebar/dialog/conversation/dossier
+window. Crop and drawing now share the reference's shrink-only two-pass fitting:
+reduce width then height, ceil the orthogonal extent, and reserve8pt padding.
+Body movement ceils each pointer position before subtraction. Four20pt L-shaped
+corner handles use the absolute ceiled canvas pointer and width-driven aspect
+resize. The fitted-view minimum is40pt wide, constrained by image bounds and
+the opposite anchor. Double-click inside the selection, including its corners,
+and the accessible action select the largest centered preset/original region.
+Native portrait QA exposed zero-distance corner drag resizing on mouse-down
+(50%→45%) and swallowing double-click (40% instead of100%). A1pt movement
+threshold fixes both; top/bottom stationary clicks, double-click and actual
+minimum-size dragging pass in the rebuilt native app.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0 after the
+gesture fix: **704 XCTest (641 Telegram +63 core), zero failures;32 Python
+regressions**. Focused25 crop/transform/painting/brush tests passed before that
+UI-only fix and are included in the final full suite. Meaningful geometry reds
+(9 tests/13 failures) and pointer reds (11/3) preceded implementation; missing-API
+compile failures are separate. Logs retain160 upstream t19 teardown diagnostics.
+
+Owned native QA verifies landscape minimum/movement/outside-double-click,
+corner maximum, portrait top/bottom clicks and Cancel. Prepared and accepted
+Postbox/S3 readbacks exit0:320×160 JPEG, four known quadrant colors, exact caption,
+unchanged original video, retained cover and matching receipt. Restart restores
+the prepared cover and does not reopen accepted preparation. These readbacks
+preceded the corner movement-threshold fix; renderer/storage were unchanged.
+Strict built/QA signatures and unsigned executable equality pass. QA uses only
+isolated synthetic Postbox/PostgreSQL/S3; live Account/network delivery is open.
+
+Frozen source research/review confirmed the reference pin and file hashes;
+root reproduced and corrected the portrait runtime frontier. Provider/model/
+usage metadata remains unknown. Makosh deliberately keeps bounded anchored
+aspect geometry; upstream's conditional feedback and40×40 intermediate minimum
+can produce different transient bounds. Initial fitted-point precision and final
+source-pixel rounding remain explicit gaps, along with inserted-image editing.
+See reference-interface.md and telegram.md. Parent6ccd673 PR38120760210 and
+push38120757388 CI are terminal success for that exact SHA. Final current-source
+XERJ refresh and publication evidence are retained privately.
+
+Complete Telegram parity, albums, MMail/Aether, WhatsApp, Teams, Telemost,
+backups and standalone packaging remain open. The full sequential migration
+goal stays active; the next editor work is inserted-image overlays and the
+remaining fitted/source-pixel precision differences.
+
+## Historical video-cover drawing, arrows, eraser and stroke history (6ccd673)
 
 Telegram stays inside the common Makosh service sidebar/dialog/conversation/
 dossier window. The cover editor now opens a separate drawing sheet over the

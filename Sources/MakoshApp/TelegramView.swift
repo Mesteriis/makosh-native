@@ -11,6 +11,7 @@ struct TelegramDetailView: View {
     @ObservedObject private var messageActions: TelegramMessageActionsController
     @ObservedObject private var peerStatus: TelegramPeerStatusController
     @ObservedObject private var messageSelection: TelegramMessageSelectionController
+    @ObservedObject private var selectedDelete: TelegramSelectedMessagesDeleteController
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
@@ -23,6 +24,7 @@ struct TelegramDetailView: View {
         self.playback = model.playback; self.messageActions = model.messageActions
         self.peerStatus = model.peerStatus
         self.messageSelection = model.messageSelection
+        self.selectedDelete = model.selectedMessagesDelete
         self.dossier = dossier; self.openDossier = openDossier
     }
     @State private var apiID = ""
@@ -262,17 +264,22 @@ struct TelegramDetailView: View {
                 }
                 Divider()
                 if messageSelection.session != nil {
-                    TelegramMessageSelectionPanel(model: model) { session in
+                    TelegramMessageSelectionPanel(model: model, copyCommand: selectedCopyCommand, forward: { session in
                         guard let source = session.sources.first else { return }
                         messageActionRequest = TelegramMessageActionRequest(source: source, author: "", contextID: session.contextID,
                             mode: .forward, selection: session)
-                    }
+                    }, delete: { session in
+                        guard let source = session.sources.first else { return }
+                        messageActionRequest = TelegramMessageActionRequest(source: source, author: "", contextID: session.contextID,
+                            mode: .delete, selection: session)
+                    })
                 } else if let session = model.messageEditSession {
                     TelegramInlineEditView(model: model, session: session)
                         .id(session.id)
                 } else {
                     TelegramComposerView(model: model)
                 }
+                TelegramSelectedMessagesDeleteStatus(controller: selectedDelete, synthetic: model.isSyntheticPreview)
                 if model.isSyntheticPreview {
                     Text("Синтетическая проверка: действия имитируются, отправки в Telegram нет.")
                         .font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
@@ -285,6 +292,27 @@ struct TelegramDetailView: View {
             }.focusedSceneValue(\.findTelegramMessage, openMessageSearch)
         } else {
             ContentUnavailableView("Выберите диалог", systemImage: "bubble.left.and.bubble.right", description: Text("Здесь будет история выбранного диалога Telegram.")).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var selectedCopyCommand: (() -> Void)? {
+        guard messageActionRequest == nil, !profilePresented, attachmentActions.preview == nil,
+              let session = messageSelection.session else { return nil }
+        return {
+            // A native text selection or attached sheet keeps standard Copy behavior.
+            if NSApp.keyWindow?.attachedSheet != nil {
+                NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+                return
+            }
+            if let text = NSApp.keyWindow?.firstResponder as? NSTextView,
+               text.isEditable || text.selectedRange().length > 0 {
+                text.copy(nil)
+                return
+            }
+            _ = model.copySelectedMessages(sessionID: session.id, contextID: session.contextID, expectedRevision: session.revision) { text in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
         }
     }
 

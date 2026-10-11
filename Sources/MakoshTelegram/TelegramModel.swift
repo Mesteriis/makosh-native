@@ -80,6 +80,10 @@ public final class TelegramModel: ObservableObject {
     public let composerReply = TelegramComposerReplyController()
     public let composerForward = TelegramComposerForwardController()
     public let messageSelection = TelegramMessageSelectionController()
+    public let selectedMessagesCopy = TelegramSelectedMessagesCopyController()
+    public let selectedMessagesDelete = TelegramSelectedMessagesDeleteController()
+    public var selectedMessagesDeletionBlocksActions: Bool { selectedMessagesDelete.isBusy || selectedMessagesDelete.phase == .uncertain }
+    private var selectedDeleteEditSession: TelegramMessageEditSession?
     private var selectionRangeProvider: (any TelegramMessageSelectionRangeProvider)?
     private let selectionRangeDisposable = MetaDisposable()
     private var selectionRangeDeadline: Task<Void, Never>?
@@ -110,7 +114,7 @@ public final class TelegramModel: ObservableObject {
     }
     public var selectedChat: TelegramChat? { selectedChatID.flatMap { knownChats[$0] } }
     public var uploadTarget: TelegramUploadTarget? {
-        guard phase == .ready, !isBusy, composerDraftRecoveryError == nil,
+        guard phase == .ready, !isBusy, !selectedMessagesDeletionBlocksActions, composerDraftRecoveryError == nil,
               composerForwardIntent == nil, let chat = selectedChat, let accountID = draftAccountID else { return nil }
         if !isSyntheticPreview {
             guard [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel]
@@ -144,6 +148,7 @@ public final class TelegramModel: ObservableObject {
         didSet {
             guard oldValue != selectedChatID else { return }
             cancelMessageSelectionRange()
+            selectedMessagesCopy.cancel()
             messageSelection.cancel()
             cancelContactProfile()
             playback.stop()
@@ -298,6 +303,23 @@ public final class TelegramModel: ObservableObject {
                   let submitted = self.replyComposerSubmission, submitted.source == source else { return }
             self.replyComposerSubmission = nil
             self.acknowledgeComposerDraft(formatted: formatted, submitted: submitted.draft)
+        }
+        selectedMessagesDelete.didQueue = { [weak self] request in
+            guard let self, self.accountGeneration == request.contextID, self.draftAccountID == request.accountID else { return }
+            if let captured = self.selectedDeleteEditSession,
+               self.messageEditSessions[request.chatID] == captured,
+               request.sources.contains(where: { $0 == captured.source }) {
+                self.messageEditSessions[request.chatID] = nil
+                self.editDrafts[EditDraftKey(captured.source)] = nil
+                self.projectMessageEditSession()
+            }
+            self.selectedDeleteEditSession = nil
+            if let current = self.messageSelection.session, current.id == request.sessionID,
+               current.revision == request.revision, current.contextID == request.contextID,
+               current.accountID == request.accountID, current.chatID == request.chatID {
+                self.cancelMessageSelectionRange()
+                self.messageSelection.cancel()
+            }
         }
         messageActions.didApply = { [weak self] action, source in
             guard let self, source.accountID == self.draftAccountID else { return }
@@ -572,7 +594,7 @@ public final class TelegramModel: ObservableObject {
         guard contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
               !isRestoringComposerDraft, composerDraftRecoveryError == nil,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
-              !messageActions.isBusy, messageActions.phase != .uncertain,
+              !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               !sources.isEmpty, sources.allSatisfy({ $0.accountID == draftAccountID && $0.chatID == selectedChatID && $0.canForward }),
               let chatID = selectedChatID, knownChats[chatID] != nil,
               let destination = forwardDestinations.first(where: { $0.id == destinationChatID }) else { return false }
@@ -590,7 +612,7 @@ public final class TelegramModel: ObservableObject {
         phase == .ready && !isBusy && !historyPage.isLoading && !historyPage.timedOut && !search.hasMessageQuery &&
         !isRestoringComposerDraft && composerDraftRecoveryError == nil && !isForwardComposerLocked &&
         !isRestoringPendingUpload && pendingUploadRecoveryError == nil && upload.phase == .idle &&
-        !messageActions.isBusy && messageActions.phase != .uncertain
+        !messageActions.isBusy && messageActions.phase != .uncertain && !selectedMessagesDeletionBlocksActions
     }
 
     @discardableResult
@@ -607,6 +629,7 @@ public final class TelegramModel: ObservableObject {
               messageSelection.session?.id == sessionID,
               let message = messages.first(where: { $0.id == messageID }), let source = actionSource(for: message) else { return false }
         cancelMessageSelectionRange()
+        selectedMessagesCopy.cancel()
         let changed = messageSelection.toggle(source: source, sessionID: sessionID, contextID: contextID, extendingRange: extendingRange)
         if changed { resolveMessageSelectionRange(windowID: windowID) }
         return changed
@@ -651,8 +674,38 @@ public final class TelegramModel: ObservableObject {
 
     public func cancelMessageSelection(sessionID: UUID, contextID: UUID) {
         guard contextID == accountGeneration, messageSelection.session?.id == sessionID else { return }
+        guard !selectedMessagesDeletionBlocksActions else { return }
         cancelMessageSelectionRange()
+        selectedMessagesCopy.cancel()
         messageSelection.cancel()
+    }
+
+    private func currentMessageSelection(sessionID: UUID, contextID: UUID, revision: UUID) -> TelegramMessageSelectionSession? {
+        guard phase == .ready, contextID == accountGeneration, let session = messageSelection.session,
+              session.id == sessionID, session.revision == revision, session.contextID == contextID,
+              session.accountID == draftAccountID, session.chatID == selectedChatID else { return nil }
+        return session
+    }
+
+    @discardableResult
+    public func copySelectedMessages(sessionID: UUID, contextID: UUID, expectedRevision: UUID,
+                                     receive: @escaping @MainActor (String) -> Void) -> Bool {
+        guard canChangeMessageSelection, !messageSelection.isResolvingRange,
+              let session = currentMessageSelection(sessionID: sessionID, contextID: contextID, revision: expectedRevision),
+              session.canCopy else { return false }
+        return selectedMessagesCopy.start(request: .init(session: session), isCurrent: { [weak self] in
+            guard let self, !self.selectedMessagesDeletionBlocksActions else { return false }
+            return self.currentMessageSelection(sessionID: sessionID, contextID: contextID, revision: expectedRevision)?.canCopy == true
+        }, receive: receive)
+    }
+
+    @discardableResult
+    public func deleteSelectedMessages(forEveryone: Bool, sessionID: UUID, contextID: UUID, expectedRevision: UUID) -> Bool {
+        guard canChangeMessageSelection, !selectedMessagesCopy.isBusy, !messageSelection.isResolvingRange,
+              let session = currentMessageSelection(sessionID: sessionID, contextID: contextID, revision: expectedRevision),
+              forEveryone ? session.canDeleteForEveryone : session.canDeleteLocally else { return false }
+        selectedDeleteEditSession = messageEditSessions[session.chatID]
+        return selectedMessagesDelete.perform(request: .init(session: session, forEveryone: forEveryone))
     }
 
     @discardableResult
@@ -718,7 +771,7 @@ public final class TelegramModel: ObservableObject {
     @discardableResult
     public func sendComposerForward() -> Bool {
         guard composerCanSend, composerForwardIntent != nil, phase == .ready,
-              !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, upload.phase == .idle,
+              !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions, upload.phase == .idle,
               let accountID = draftAccountID, let chatID = selectedChatID,
               let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID) else { return false }
         return composerForward.submit(snapshot)
@@ -835,7 +888,7 @@ public final class TelegramModel: ObservableObject {
         guard messageSelection.session == nil, contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
               composerDraftRecoveryError == nil,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
-              !messageActions.isBusy, messageActions.phase != .uncertain,
+              !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
               knownChats[source.chatID] != nil, source.canEdit, !source.fingerprint.isEmpty,
               source.peerID == source.chatID || source.metadata.migrationChatID == source.chatID,
@@ -907,7 +960,7 @@ public final class TelegramModel: ObservableObject {
         guard messageSelection.session == nil, !isRestoringPendingUpload, composerDraftRecoveryError == nil,
               !isForwardComposerLocked, pendingUploadRecoveryError == nil,
               contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
-              !messageActions.isBusy, messageActions.phase != .uncertain,
+              !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
               knownChats[source.chatID] != nil else { return false }
         if case let .forward(destination) = action {
@@ -947,7 +1000,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID) {
-        guard messageSelection.session == nil, !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain,
+        guard messageSelection.session == nil, !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.forwardIntent == nil,
               selectedChatID != target.chatID || composerDraftRecoveryError == nil,
               target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
@@ -1191,7 +1244,7 @@ public final class TelegramModel: ObservableObject {
               let draftAccountID, let chatID = selectedChatID,
               drafts.snapshot(accountID: draftAccountID, chatID: chatID)?.replyTarget == nil else { return false }
         guard !isSyntheticPreview else { error = "Синтетическая проверка: отправка отключена."; return false }
-        guard !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, upload.phase == .idle,
+        guard !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions, upload.phase == .idle,
               phase == .ready, let account, let selectedChatID,
               knownChats[selectedChatID] != nil else { return false }
         guard telegramFormattedTextCanSend(formatted) else {
@@ -1271,6 +1324,8 @@ public final class TelegramModel: ObservableObject {
         upload.bind(provider: TelegramEngineUploadProvider(account: account), recoveryStore: recovery, requiresRecovery: true)
         restorePendingUpload()
         messageActions.bind(provider: TelegramEngineMessageActionsProvider(account: account))
+        selectedMessagesCopy.bind(provider: TelegramPostboxSelectedMessagesCopyProvider(postbox: account.postbox, accountID: account.peerId.toInt64()))
+        selectedMessagesDelete.bind(provider: TelegramEngineSelectedMessagesDeleteProvider(account: account))
         historyRead.bind(TelegramEngineHistoryReadProvider(account: account))
         search.bind(account: account)
         search.setFolder(chatFolder)
@@ -1305,6 +1360,9 @@ public final class TelegramModel: ObservableObject {
         upload.bind(provider: nil)
         uploadComposerPreparationID = nil; uploadComposerTransfer = nil; uploadComposerSubmission = nil
         messageActions.bind(provider: nil)
+        selectedMessagesCopy.bind(provider: nil)
+        selectedMessagesDelete.bind(provider: nil)
+        selectedDeleteEditSession = nil
         composerReply.bind(nil)
         composerForward.bind(nil)
         messageSelection.cancel()
@@ -1541,6 +1599,8 @@ public final class TelegramModel: ObservableObject {
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
+        model.selectedMessagesCopy.bind(provider: TelegramSyntheticSelectedMessagesCopyProvider())
+        model.selectedMessagesDelete.bind(provider: TelegramSyntheticSelectedMessagesDeleteProvider())
         model.composerReply.bind(TelegramSyntheticComposerReplyProvider())
         model.composerForward.bind(TelegramSyntheticForwardProvider())
         model.bindMessageSelectionRangeProvider(TelegramSyntheticSelectionRangeProvider())

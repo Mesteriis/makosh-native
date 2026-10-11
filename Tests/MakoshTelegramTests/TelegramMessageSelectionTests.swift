@@ -163,4 +163,40 @@ import Postbox
         XCTAssertFalse(try XCTUnwrap(c.session).canForward)
     }
 
+    func testIndependentActionPermissionsAndStickyChanges() throws {
+        func item(copy: Bool = true, forward: Bool = true, local: Bool = true, everyone: Bool = true, fingerprint: String = "same") -> TelegramMessageActionSource {
+            .init(accountID: 1, chatID: 7, peerID: 7, namespace: 0, messageID: 1,
+                  fingerprint: fingerprint, text: "text", canReply: true, canEdit: false,
+                  canForward: forward, canDeleteLocally: local, canDeleteForEveryone: everyone, canCopy: copy)
+        }
+        let c = TelegramMessageSelectionController(), context = UUID()
+        XCTAssertTrue(c.begin(source: item(), contextID: context))
+        c.observe(sources: [item(copy: false)], contextID: context, chatID: 7)
+        let noCopy = try XCTUnwrap(c.session)
+        XCTAssertFalse(noCopy.canCopy); XCTAssertTrue(noCopy.canForward)
+        XCTAssertTrue(noCopy.canDeleteLocally); XCTAssertTrue(noCopy.canDeleteForEveryone)
+        c.observe(sources: [item()], contextID: context, chatID: 7)
+        XCTAssertFalse(try XCTUnwrap(c.session).canCopy)
+        c.observe(sources: [item(local: false)], contextID: context, chatID: 7)
+        XCTAssertFalse(try XCTUnwrap(c.session).canDeleteLocally)
+        XCTAssertTrue(try XCTUnwrap(c.session).canDeleteForEveryone)
+        c.observe(sources: [item(fingerprint: "changed")], contextID: context, chatID: 7)
+        let changed = try XCTUnwrap(c.session)
+        XCTAssertFalse(changed.canCopy); XCTAssertFalse(changed.canForward)
+        XCTAssertFalse(changed.canDeleteLocally); XCTAssertFalse(changed.canDeleteForEveryone)
+    }
+
+    func testUnchangedProtectedSourceStillAllowsDeletionAfterObservation() throws {
+        let c = TelegramMessageSelectionController(), context = UUID(), protected = source(1, allowed: false)
+        XCTAssertTrue(c.begin(source: protected, contextID: context))
+        let revision = c.session?.revision
+        c.observe(sources: [protected], contextID: context, chatID: 7)
+        let session = try XCTUnwrap(c.session)
+        XCTAssertFalse(session.canCopy); XCTAssertFalse(session.canForward)
+        XCTAssertTrue(session.canDeleteLocally); XCTAssertEqual(session.revision, revision)
+        c.cancel()
+        XCTAssertTrue(c.begin(source: source(1, peer: 1, chat: 1), contextID: context))
+        XCTAssertFalse(try XCTUnwrap(c.session).canDeleteForEveryone)
+    }
+
 }

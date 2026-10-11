@@ -165,6 +165,10 @@ Recipe 7 использует ограниченный native ID index без п
 или сетевой загрузки. Поздний ответ требует прежние session/revision/account/
 window; смена страницы отменяет только pending range, сохраняя уже выбранное.
 Forward блокируется до завершения; изменённая off-page версия инвалидирует frozen
-source. Scheduled/topic/migrated-peer ranges, album individual/group selection,
-copy/delete выбранных сообщений и Saved Messages immediate exception ещё впереди.
+source. Scheduled/topic/migrated-peer ranges и album individual/group selection
+остаются открыты.
+Copy/delete выбранных сообщений добавлены в общий shell: ⌘C с masked safe text,
+wholebatch revalidation, explicit scope и atomic native delete admission (recipe 8).
+Сохранённые версии и S3 остаются. Gate/native acceptance записываются в
+`development-status.md`; Saved Messages immediate-forward exception ещё впереди.
 Общий порядок переноса сохранён.

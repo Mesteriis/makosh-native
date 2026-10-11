@@ -18,6 +18,7 @@ from telegram_retention_adaptation import POSTBOX, HISTORY, adapt_retention_sour
 from telegram_read_adaptation import READ_SYNC, adapt_read_source
 from telegram_enqueue_adaptation import ENQUEUE, adapt_enqueue_source
 from telegram_selection_adaptation import adapt_selection_source
+from telegram_delete_adaptation import DELETE, adapt_delete_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -30,7 +31,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 7
+RECIPE = 8
 
 
 def run(*args):
@@ -160,6 +161,8 @@ def main():
     read_sync.write_text(adapt_read_source(read_sync.read_text()))
     enqueue = DEST / ENQUEUE
     enqueue.write_text(adapt_enqueue_source(enqueue.read_text()))
+    delete = DEST / DELETE
+    delete.write_text(adapt_delete_source(delete.read_text()))
     replace_exact(DEST / "submodules/ManagedFile/Package.swift",
                   '../../submodules/telegram-ios/submodules/SSignalKit', '../SSignalKit')
     replace_exact(DEST / "submodules/TelegramCore/Sources/Account/Account.swift",
@@ -222,6 +225,7 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
                         "Postbox restores all pending read synchronization operations using an integer-key table scan",
                         "Outgoing queue admission and owned pending-upload receipt share one Postbox transaction",
                         "Postbox exposes a bounded cached native-ID range lookup without history fetches",
+                        "Selected-message fresh admission and exact-ID deletion share one Postbox transaction",
                         "FlatSerialization generated with pinned official flatc 24.12.23"]}, indent=2) + "\n")
     print(f"Telegram engine: prepared {len(packages)} pinned packages in ignored local storage")
 

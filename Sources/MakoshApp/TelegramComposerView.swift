@@ -6,11 +6,13 @@ struct TelegramComposerView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var reply: TelegramComposerReplyController
     @ObservedObject private var actions: TelegramMessageActionsController
+    @ObservedObject private var selectedDelete: TelegramSelectedMessagesDeleteController
     @ObservedObject private var upload: TelegramUploadController
     @ObservedObject private var forward: TelegramComposerForwardController
     @State private var editorError: String?
     init(model: TelegramModel) {
         self.model = model; reply = model.composerReply; actions = model.messageActions; upload = model.upload; forward = model.composerForward
+        selectedDelete = model.selectedMessagesDelete
     }
     var body: some View {
         replyAccessory
@@ -18,7 +20,7 @@ struct TelegramComposerView: View {
         HStack(alignment: .bottom, spacing: 12) {
             TelegramAttachButtons(model: model, replySource: reply.resolved?.source,
                 replyContextID: model.messageActionContextID)
-                .disabled(reply.preventsSend || !model.composerSupportsAttachments || actions.isBusy || actions.phase == .uncertain)
+                .disabled(reply.preventsSend || !model.composerSupportsAttachments || actions.isBusy || actions.phase == .uncertain || model.selectedMessagesDeletionBlocksActions)
                 .help(model.composerForwardIntent != nil ? "Сначала отправьте или отмените пересылку." : model.composerSupportsAttachments ? "Прикрепить фото или файл" : "Форматирование этого черновика пока не поддерживается для вложений.")
             if let chatID = model.selectedChatID {
                 let contextID = model.messageActionContextID
@@ -49,7 +51,7 @@ struct TelegramComposerView: View {
     private var canSend: Bool {
         editorError == nil && (!reply.preventsSend || model.composerForwardIntent != nil && model.composerInput.formattedText.text.isEmpty) &&
         (!model.isSyntheticPreview || reply.resolved != nil || model.composerForwardIntent != nil) &&
-        !model.isBusy && !actions.isBusy && actions.phase != .uncertain && upload.phase == .idle && model.composerCanSend
+        !model.isBusy && !actions.isBusy && actions.phase != .uncertain && !model.selectedMessagesDeletionBlocksActions && upload.phase == .idle && model.composerCanSend
     }
     private func send() {
         guard canSend else { return }

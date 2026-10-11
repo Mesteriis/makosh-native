@@ -58,6 +58,7 @@ struct TelegramMessageActionSheet: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var controller: TelegramMessageActionsController
     @ObservedObject private var selection: TelegramMessageSelectionController
+    @ObservedObject private var selectedDelete: TelegramSelectedMessagesDeleteController
     let request: TelegramMessageActionRequest
     @Environment(\.dismiss) private var dismiss
     @State private var destination: Int64?
@@ -68,6 +69,7 @@ struct TelegramMessageActionSheet: View {
     init(model: TelegramModel, request: TelegramMessageActionRequest) {
         self.model = model; self.controller = model.messageActions; self.request = request
         self.selection = model.messageSelection
+        self.selectedDelete = model.selectedMessagesDelete
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -96,11 +98,11 @@ struct TelegramMessageActionSheet: View {
                     Text("Получатель: \(selected.title)").font(.callout.weight(.semibold))
                 } else { Text("Выберите получателя. Здесь доступны уже загруженные диалоги текущего аккаунта.").font(.caption).foregroundStyle(.secondary) }
             case .delete:
-                if request.source.canDeleteLocally {
+                if request.selection?.canDeleteLocally ?? request.source.canDeleteLocally {
                     Button { deleteForEveryone = false } label: { Label("Удалить только у меня", systemImage: deleteForEveryone == false ? "largecircle.fill.circle" : "circle") }
                         .accessibilityIdentifier("telegram.actions.deleteLocal")
                 }
-                if request.source.canDeleteForEveryone {
+                if request.selection?.canDeleteForEveryone ?? (request.source.chatID != request.source.accountID && request.source.canDeleteForEveryone) {
                     Button { deleteForEveryone = true } label: { Label("Удалить для всех в Telegram", systemImage: deleteForEveryone == true ? "largecircle.fill.circle" : "circle") }
                         .accessibilityIdentifier("telegram.actions.deleteEveryone")
                 }
@@ -113,9 +115,19 @@ struct TelegramMessageActionSheet: View {
             case .reply: EmptyView()
             }
             if validationFailed { Text("Не удалось начать действие. Проверьте выбранный диалог и подключение.").foregroundStyle(.red).font(.caption) }
-            if submitted { TelegramMessageActionsStatus(controller: controller, synthetic: model.isSyntheticPreview) }
+            if submitted {
+                if request.mode == .delete && request.selection != nil {
+                    TelegramSelectedMessagesDeleteStatus(controller: selectedDelete, synthetic: model.isSyntheticPreview)
+                } else { TelegramMessageActionsStatus(controller: controller, synthetic: model.isSyntheticPreview) }
+            }
             HStack {
-                Button("Отмена") { if submitted { controller.cancel() }; dismiss() }
+                Button("Отмена") {
+                    if submitted {
+                        if request.mode == .delete && request.selection != nil { selectedDelete.cancel() }
+                        else { controller.cancel() }
+                    }
+                    dismiss()
+                }
                     .keyboardShortcut(.cancelAction).accessibilityIdentifier("telegram.actions.cancel")
                 Spacer()
                 Button(confirmTitle, role: request.mode == .delete ? .destructive : nil, action: submit)
@@ -123,11 +135,16 @@ struct TelegramMessageActionSheet: View {
                     .accessibilityIdentifier("telegram.actions.confirm")
             }
         }.padding(24).frame(width: 520)
-            .interactiveDismissDisabled(controller.isBusy)
+            .interactiveDismissDisabled(controller.isBusy || selectedDelete.isBusy)
             .onChange(of: controller.phase) { _, phase in
                 if submitted, controller.source == request.source, phase == .queued || phase == .applied { dismiss() }
             }
             .onChange(of: model.messageActionContextID) { _, _ in dismiss() }
+            .onChange(of: selectedDelete.phase) { _, phase in
+                if submitted, phase == .queued, let selected = request.selection,
+                   selectedDelete.request?.sessionID == selected.id, selectedDelete.request?.revision == selected.revision,
+                   selectedDelete.request?.contextID == request.contextID { dismiss() }
+            }
     }
     private var title: String {
         switch request.mode {
@@ -146,7 +163,7 @@ struct TelegramMessageActionSheet: View {
         }
     }
     private var canSubmit: Bool {
-        guard !controller.isBusy, controller.phase != .uncertain,
+        guard !controller.isBusy, controller.phase != .uncertain, !model.selectedMessagesDeletionBlocksActions,
               model.messageActionContextID == request.contextID else { return false }
         switch request.mode {
         case .edit: return false
@@ -157,7 +174,14 @@ struct TelegramMessageActionSheet: View {
                       self.selection.session?.canForward == true else { return false }
             }
             return destination != nil
-        case .delete: return deleteForEveryone != nil
+        case .delete:
+            guard let deleteForEveryone else { return false }
+            if let selected = request.selection {
+                guard !selection.isResolvingRange, let current = selection.session,
+                      current.id == selected.id, current.revision == selected.revision else { return false }
+                return deleteForEveryone ? current.canDeleteForEveryone : current.canDeleteLocally
+            }
+            return deleteForEveryone ? request.source.canDeleteForEveryone : request.source.canDeleteLocally
         case .reply: return false
         }
     }
@@ -177,7 +201,17 @@ struct TelegramMessageActionSheet: View {
             validationFailed = !staged
             if staged { dismiss() }
             return
-        case .delete: guard let deleteForEveryone else { return }; action = .delete(forEveryone: deleteForEveryone)
+        case .delete:
+            guard let deleteForEveryone else { return }
+            if let selected = request.selection {
+                submitted = model.deleteSelectedMessages(forEveryone: deleteForEveryone, sessionID: selected.id,
+                    contextID: request.contextID, expectedRevision: selected.revision)
+                validationFailed = !submitted
+                // Preview providers can finish before onChange sees submitted=true.
+                if submitted, selectedDelete.phase == .queued { dismiss() }
+                return
+            }
+            action = .delete(forEveryone: deleteForEveryone)
         case .reply: return
         }
         submitted = model.performMessageAction(action, source: request.source, contextID: request.contextID)

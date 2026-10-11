@@ -1,6 +1,73 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram cached Shift-range selection
+## Current stage: Telegram selected-message copy and delete
+
+Telegram remains inside the shared service-selector/list/conversation window.
+The reference panel now exposes Delete/count/Forward, with Cancel/Escape beside
+the count. Command-C copies the full eligible selection through a scene-scoped
+SwiftUI command. A single cached Postbox read rechecks every frozen source's
+account/chat/migration/thread/fingerprint and copy permission before returning
+masked author/text/media projections. Missing or changed records refuse the
+whole copy. Clipboard writes require the original session/revision/context.
+Protection and other action permissions invalidate independently and remain
+sticky until reselection; permitted deletion survives copy/forward protection.
+
+Delete requires explicit whole-selection local/everyone confirmation. Saved
+Messages suppresses everyone deletion. Recipe 8 adds exact-hash-checked native
+admission and exact-ID removal in one Postbox transaction, without expanding
+unselected album members. No dependency pin or schema changes are introduced.
+The prior snapshot and removal marker remain in the existing retention journal;
+the new operation never deletes PostgreSQL archive records or S3 objects. Local
+queue acceptance clears only its captured selection/edit revision and preserves
+ordinary input/reply. Cancellation or timeout after dispatch remains uncertain
+and blocks resubmission until explicit reconnection; it never retries itself.
+
+`scripts/dev-db.sh up`, focused/full `scripts/test.sh`, `scripts/build-app.sh`
+and strict deep signature/payload verification exit 0: **510 XCTest (447 Telegram
++ 63 core), zero failures; 30 Python regressions**. The focused run passes 33
+cases. New encrypted Postbox regressions prove exact selected album IDs,
+retained snapshots/removal markers across genuine reopen, whole-batch rejection
+and fresh permission loss. Controller/model regressions cover synchronous and
+late callbacks, stale revisions, deadlines, masked text/protected batches and
+independent ordinary/reply/edit state. The full run prints 98 upstream t19
+teardown diagnostics without failure/trap.
+
+Actual native AX/screenshots verified physical Command-C for 130+121, author/ID
+order, photo caption and masked spoiler, including after Mail → Telegram.
+Protected120 blocks Copy/Forward while Delete remains available. Cancel retains
+the selection; confirmation requires an explicit scope and uses the permission
+intersection. Simulated local acceptance restores ordinary input/reply130 and
+shows local-queue/retention status. Standard editor Command-C still works after
+leaving selection. The initial `onCommand` implementation left native Copy
+disabled; focus-gated menu attempts also failed. The final scene command remains
+available throughout an eligible panel's lifetime and passes the native flow.
+QA uses the same owned encrypted synthetic Postbox and isolated PostgreSQL/S3,
+matching unsigned executable payload and strict signatures. The DEBUG delete
+provider is explicitly simulated and does not mutate Postbox; actual native
+deletion/journal behavior is established by the encrypted regressions. No
+personal account, Keychain, Telegram network or server send was used.
+
+Scoped worker source review reported no confirmed actionable defect, with
+runtime gates skipped. Root amended the copy deadline's token guard and command
+routing/enablement, reviewed current source, and ran final gates/native QA.
+Worker model/provider/usage remain unknown; this is not a quorum review.
+Specialized moderation/scheduled/topics/secret/paid actions, exhaustive media
+localization/music metadata, album selection, Saved Messages immediate forward
+and live-account acceptance remain open. Later channels, backups and standalone
+packaging remain open; the full sequential migration goal is active. Prior head
+`612c26a` passed both hosted PR/push CI; current-head hosted CI is separate.
+
+Final XERJ project refresh exits 0: 279 files, 249/249 classified code. Project,
+engine and TelegramSwift fingerprint checks pass; selected-copy command and
+native admission queries were confirmed against source. An earlier project
+refresh exited 1 after source changed during indexing; it was closed before
+the final refresh. One reference query used the wrong prefix and found no
+dataset; the corrected locked prefix returned the expected copy implementation.
+Publication audit checks 284 publishable files and the PR body against five
+selected credential fields, with zero matches. Machine configuration, runtime
+data, QA artifacts and indexes remain ignored.
+
+## Historical Telegram cached Shift-range selection
 
 Telegram remains inside the shared service-selector/list/conversation window.
 Shift-click toggles the endpoint first, then adds cached numeric IDs between it

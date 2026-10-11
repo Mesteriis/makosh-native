@@ -9,6 +9,7 @@ python3 scripts/test-telegram-retention-adaptation.py
 python3 scripts/test-telegram-read-adaptation.py
 python3 scripts/test-telegram-enqueue-adaptation.py
 python3 scripts/test-telegram-selection-adaptation.py
+python3 scripts/test-telegram-delete-adaptation.py
 python3 - "$@" <<'PYTHON'
 import json
 import os

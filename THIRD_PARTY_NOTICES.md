@@ -67,6 +67,12 @@ Build adaptations in the generated copy:
   Shift selection uses two bounded Cloud/Local reads (at most 200 each), without
   scanning missing integers, allocating all cached history or fetching network
   history. No schema or dependency pin changes are introduced.
+- Add selected-message admission beside the native delete implementation.
+  Recipe 8 retains the native operation log and removal paths, validating the
+  complete frozen batch inside the same Postbox transaction before mutation.
+  Only exact selected IDs are passed, without expanding albums. The own
+  GPL-3.0-or-later addition in `scripts/telegram_delete_adaptation.py` is bound
+  to exact input/output SHA256 and retains all previous adaptations.
 - Link OpenSSLEncryptionProvider explicitly to Homebrew OpenSSL 3, using its
   Apache-2.0 implementation rather than the upstream Bazel BoringSSL target.
 - Generate FlatSerialization using official `flatc 24.12.23`; source archive

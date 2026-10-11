@@ -288,10 +288,11 @@ made by an older recipe. Preserve `.local/telegram-engine` under an unused backu
 directory name, then rerun `scripts/build-app.sh` or `scripts/test.sh`; the locked
 source/compiler caches can be reused. Do not edit the generated engine or remove
 the application-support session directory, PostgreSQL volume or Keychain items.
-Fresh checkouts prepare recipe 7 directly, retaining the recipe-4 journal,
+Fresh checkouts prepare recipe 8 directly, retaining the recipe-4 journal,
 recipe-5 read scan and recipe-6 enqueue hooks. Recipe 7 adds the hash-checked
 cached ID index lookup used by Shift selection. Preserve older prepared source
-under an unused ignored backup name before preparing recipe 7.
+under an unused ignored backup name before preparing recipe 8. Recipe 8 adds
+exact-hash-checked selected-message admission inside native delete's transaction.
 
 Archive tables share the configured PostgreSQL service/schema, without changing
 the contact aggregate. AES-GCM encrypts text and metadata with separate HKDF
@@ -900,7 +901,7 @@ combined with a staged forward yet; its attach button is disabled explicitly.
 ## History message selection
 
 The history context menu's **Выбрать** enters an in-process selection mode. A
-compact count/cancel/forward panel replaces the composer without modifying its
+compact delete/count/forward panel with Cancel/Escape replaces the composer without modifying its
 ordinary input/reply or active edit. Row clicks toggle typed native identities;
 up to 100 frozen sources are ordered by native MessageId, matching the reference's
 sorted-then-reversed enqueue order. Protected messages can be selected, but any
@@ -941,6 +942,45 @@ Reference evidence: ChatMessageMenuItems.swift:1005-1011; ChatPresentationInterf
 MessageActionsPanelView.swift:61-118; SenderController.swift:492-523;
 ChatController.swift:6531-6577; ChatPresentationInterfaceState.swift:1684-1738.
 No GPLv2 UI source was copied. Scheduled/topic/migrated-peer range parity,
-album individual/group selection, selected copy/delete and Saved Messages'
+album individual/group selection and Saved Messages'
 immediate-forward exception remain open. Cross-native-peer numeric ranges are
 refused instead of mixing unrelated message IDs.
+
+### Selected-message copy and delete
+
+Command-C follows the reference copy workflow through a SwiftUI scene command;
+the panel has no new Copy button. The command exists only for an eligible
+selection in the visible Telegram conversation. Native text responders retain
+their standard Copy behavior; confirmation/profile/preview sheets suppress the
+selection command. One cached Postbox transaction loads the entire set in native
+MessageId order, rechecking account/chat, migrated-peer relationship, exact UTF8
+fingerprints, thread and current copy protection. Missing or changed items refuse
+the complete copy. Plain text includes the effective/forward author, double-newline
+separators, spoiler and incoming service-code masks, and typed media summaries.
+Malformed formatting has a safe unavailable label. No clipboard write occurs
+until the original selection/session/revision/context is still current. There
+is a 30-second deadline; cancellation or late callbacks preserve the clipboard.
+
+The delete panel opens explicit local/everyone confirmation for the whole
+selection. Each action has an independent sticky permission invalidation;
+copy/forward protection does not prohibit an otherwise permitted delete.
+Saved Messages never offers everyone deletion. The bound account revalidates
+all sources and fresh limits/peer permissions inside the same native Postbox
+transaction that queues and removes the exact selected Cloud IDs. Unselected
+album members remain intact. The existing retention journal captures the prior
+snapshot; this operation never deletes PostgreSQL archive records or S3 objects.
+
+Queue acceptance clears only the captured selection revision and any exact
+captured edit of its deleted source; ordinary drafts/replies and newer selections
+survive. Cancellation/timeout after dispatch is uncertain and blocks further
+submissions until an explicit account reconnection; no automatic retry occurs.
+True means local queue completion, not server deletion, fsync or power-loss proof.
+The DEBUG preview labels its operation as simulation and does not mutate a live
+Account. Native cache/journal behavior is tested separately with encrypted Postbox.
+
+Reference evidence: MessageActionsPanelView.swift:60-64,112-118,140-145;
+ChatSelectText.swift:110-140; TextUtils.swift:27-180;
+ChatController.swift:4411-4490,9753-9776. Own SwiftUI/AppKit code is used;
+the outer GPLv2 UI/serializer is not copied. Specialized admin moderation,
+scheduled/topics/secret/paid actions, exhaustive media localization/music metadata
+and live-account acceptance remain open.

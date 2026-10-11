@@ -177,6 +177,73 @@ import SwiftSignalKit
         }
     }
 
+    /// Reorder/remove only the originals already admitted by this preparation.
+    /// The old order guards stale actions; an exact new order permits lost-ACK retry.
+    func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],
+                     isGrouped: Bool, target: TelegramUploadTarget) async throws {
+        guard target.accountID == accountID, target.hasValidReplySource, !orderedIDs.isEmpty,
+              Set(previousIDs).count == previousIDs.count, Set(orderedIDs).count == orderedIDs.count,
+              Set(orderedIDs).isSubset(of: Set(previousIDs)) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        try await serial { [self] in
+            guard let current = try await read(chatID: target.chatID), current.id == preparationID,
+                  current.schemaVersion == 6, current.disposition == .prepared,
+                  current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            let currentIDs = current.items.map(\.id)
+            if currentIDs == orderedIDs, current.isGrouped == isGrouped { return }
+            guard currentIDs == previousIDs, current.isGrouped == previousGrouping else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            let lookup = Dictionary(uniqueKeysWithValues: current.items.map { ($0.id, $0) })
+            let ordered = orderedIDs.compactMap { lookup[$0] }
+            guard ordered.count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.conflict }
+            let updated = try TelegramPendingUploadDraft(id: current.id, accountID: current.accountID, chatID: current.chatID,
+                title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
+                mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
+                items: ordered, isGrouped: isGrouped)
+            try await write(updated, expectedRevision: current.revision)
+        }
+    }
+
+    func replaceVideoCover(preparationID: UUID, itemID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                           cover: TelegramUploadVideoCover?) async throws {
+        guard target.accountID == accountID, target.hasValidReplySource, file.mode == .video,
+              file.video?.isValid(name: file.name, size: file.size) == true else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
+        try await serial { [self] in
+            guard let current = try await read(chatID: target.chatID), current.id == preparationID,
+                  current.schemaVersion == 6, current.disposition == .prepared,
+                  current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
+                  let index = current.items.firstIndex(where: { $0.id == itemID }) else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            let item = current.items[index]
+            guard item.file.attachment.kind == "video", item.file.attachment.name.utf8.elementsEqual(file.name.utf8),
+                  item.file.plaintextByteCount == file.size, item.video == file.video else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            if telegramPendingUploadCoverMatches(item.videoCover, cover) { return }
+            guard telegramPendingUploadCoverMatches(item.videoCover, file.videoCover) else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            let saved: TelegramPendingUploadVideoCover?
+            if let cover, let capture {
+                saved = try await files().saveCover(cover, accountID: accountID, chatID: target.chatID,
+                    preparationID: preparationID, itemID: itemID, capture: capture)
+            } else { saved = nil }
+            var items = current.items
+            items[index] = .init(id: item.id, file: item.file, video: item.video, videoCover: saved)
+            let updated = try TelegramPendingUploadDraft(id: current.id, accountID: current.accountID, chatID: current.chatID,
+                title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
+                mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
+                items: items, isGrouped: current.isGrouped)
+            try await write(updated, expectedRevision: current.revision)
+        }
+    }
+
     func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile {
         guard draft.isValid, draft.schemaVersion < 6, draft.accountID == accountID else {
             throw TelegramPendingUploadPersistenceError.incompatibleData

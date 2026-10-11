@@ -33,7 +33,14 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
     }
 }
 
-internal struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
-    let id: UUID
-    let file: TelegramUploadFile
+public struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
+    public let id: UUID
+    public let file: TelegramUploadFile
+    public init(id: UUID, file: TelegramUploadFile) { self.id = id; self.file = file }
+}
+
+public struct TelegramUploadSelection: Equatable, Sendable {
+    public let source: URL
+    public let mode: TelegramUploadMode
+    public init(source: URL, mode: TelegramUploadMode) { self.source = source; self.mode = mode }
 }

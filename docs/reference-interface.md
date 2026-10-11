@@ -518,5 +518,20 @@ S3-оригиналами/обложками на каждый ID. Pointer пу�
 читаются, поздний сбой не заменяет прежнюю подготовку. Реальные Postbox/PG/S3
 tests принимают порядок/байты/cover после restart и cleanup при ошибке третьего
 объекта. Batch provider теперь поддерживает все native сообщения и полный
-receipt; одиночные UI consumers пока отклоняют schema6. Multiple picker,
-preview/reorder/remove и визуальная проверка альбомов ещё не перенесены. Telegram остаётся в общем WorkspaceView.
+receipt. Существующий picker теперь принимает несколько файлов; controller и
+recovery protocol сохраняют весь ordered schema6 набор. Preview показывает
+visual chunks до10 элементов либо отдельные file rows. Перестановка, удаление,
+выбор и восстановленная обложка привязаны к item UUID; устаревшие drag/context
+actions отклоняются. Native QA подтверждает выбор трёх документов, перестановку,
+удаление одного, separate grouping и точное восстановление двух IDs/подписи после
+restart. Проверка очереди выявила DEBUG account sentinel `-1`, ошибочно переданный
+в native PeerId; отдельный реальный Postbox regression воспроизвёл assertion и
+проходит после отделения synthetic native author от archive account identity.
+Native QA теперь проверяет visual10+1, перенос11-го ID в первую группу,
+восстановление всех11 IDs/порядка/подписи после restart и принятие локальной
+очередью. В отдельном наборе удаляется именно11-й ID; оставшиеся10 тоже приняты.
+После restart принятые подготовки не воскресают, а прежний crashed submission
+восстанавливается uncertain без повторной отправки. Context-menu действия
+проверены мышью; сам drag/drop жест пока не проверен. Whole-list
+классификация, переключение исходных media/file и archive остаются открытыми.
+Telegram остаётся в общем WorkspaceView; live Telegram sending не проверялся.

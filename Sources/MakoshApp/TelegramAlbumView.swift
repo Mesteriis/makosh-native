@@ -142,7 +142,7 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
     }
 }
 
-private struct TelegramAlbumMosaicLayout: Layout {
+struct TelegramAlbumMosaicLayout: Layout {
     let aspects: [Double]
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = min(420, max(16, proposal.width ?? 360))

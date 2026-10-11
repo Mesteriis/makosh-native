@@ -20,6 +20,13 @@ private func batchNativeSeed(_ box: Postbox, draft: TelegramPendingUploadDraft) 
         return false
     }
 }
+private func batchNativeSeedPointerOnly(_ box: Postbox, draft: TelegramPendingUploadDraft) -> Signal<Bool, NoError> {
+    box.transaction { transaction in
+        if case .success = telegramPendingUploadWrite(transaction: transaction, accountID: draft.accountID,
+            draft: draft, expectedRevision: nil) { return true }
+        return false
+    }
+}
 private func batchNativeEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnqueueReceipt, messages: [EnqueueMessage],
                                dropLastACK: Bool = false, rewriteReplyThread: Bool = false) -> Signal<([MessageId?], Bool), NoError> {
     let accepted = Atomic<Bool>(value: false)
@@ -91,6 +98,27 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
 }
 
 @MainActor final class TelegramNativeBatchEnqueueTests: XCTestCase {
+    func testSyntheticAccountSentinelIsNotConvertedToNativePeerID() async throws {
+        let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
+        let (draft, items) = try await fixture(root, modes: [.file, .file], grouped: true, accountID: -1)
+        defer { items.forEach { try? TelegramUploadFileIO.discard($0.file) } }
+        let seeded = try await value(batchNativeSeedPointerOnly(box, draft: draft)); XCTAssertTrue(seeded)
+        let accepted = expectation(description: "Synthetic native queue accepted whole set")
+        var ids: [TelegramUploadQueueID] = []
+        let provider = TelegramSyntheticUploadProvider(postbox: box)
+        let lease = provider.submit(items: items, draft: draft,
+            target: .init(accountID: -1, chatID: 42, title: "Synthetic")) { event in
+                if case let .accepted(values) = event { ids = values; accepted.fulfill() }
+            }
+        defer { lease.stop() }
+        await fulfillment(of: [accepted], timeout: 20)
+        XCTAssertEqual(ids.count, 2)
+        let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: -1),
+            files: { throw TelegramUploadFileError.unavailable })
+        let saved = try await store.load(chatID: 42)
+        XCTAssertEqual(saved?.accountID, -1, "The native author fixture must not change Makosh's scoped account identity")
+        XCTAssertEqual(saved?.disposition, .acceptedBatch(messageIDs: ids))
+    }
     private weak var previousBox: Postbox?
 
     func testTwentyOneDocumentsEnterNativeCoreWithThreeGroupsAndOneAtomicCompleteReceiptAfterReopen() async throws {
@@ -473,7 +501,7 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
         }
     }
 
-    private func fixture(_ root: URL, modes: [TelegramUploadMode], grouped: Bool, chatID: Int64 = 42) async throws -> (TelegramPendingUploadDraft, [TelegramUploadBatchItem]) {
+    private func fixture(_ root: URL, modes: [TelegramUploadMode], grouped: Bool, chatID: Int64 = 42, accountID: Int64 = 1) async throws -> (TelegramPendingUploadDraft, [TelegramUploadBatchItem]) {
         let preparationID = UUID()
         var items: [TelegramUploadBatchItem] = [], stored: [TelegramPendingUploadItem] = []
         for (index, mode) in modes.enumerated() {
@@ -490,7 +518,7 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
                 file = .init(id: file.id, name: file.name, size: file.size, mode: file.mode, pixelWidth: file.pixelWidth,
                     pixelHeight: file.pixelHeight, url: file.url, directory: file.directory, video: file.video, videoCover: cover)
             }
-            let itemID = UUID(), identity = TelegramPendingUploadDraft.archiveIdentity(accountID: 1, chatID: chatID, preparationID: preparationID)
+            let itemID = UUID(), identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
             func record(_ url: URL, name: String, size: Int64, kind: String, attachmentID: String) throws -> ArchiveFileRecord {
                 let id = UUID(), sealed = root.appendingPathComponent(id.uuidString)
                 let envelope = try ArchiveFileCapture(file: url, byteCount: size).seal(to: sealed, key: Data(repeating: 7, count: 32), objectID: id)
@@ -506,7 +534,7 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
             items.append(.init(id: itemID, file: file)); stored.append(.init(id: itemID, file: archived, video: file.video, videoCover: cover))
         }
         let input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Batch 😀", entities: [.init(offset: 0, length: 5, kind: .bold)]))
-        return (try TelegramPendingUploadDraft(id: preparationID, accountID: 1, chatID: chatID, title: "Synthetic", captionInput: input,
+        return (try TelegramPendingUploadDraft(id: preparationID, accountID: accountID, chatID: chatID, title: "Synthetic", captionInput: input,
             originalDraft: nil, replyTarget: nil, items: stored, isGrouped: grouped, disposition: .submissionStarted), items)
     }
 

@@ -1712,10 +1712,12 @@ The existing512KiB encrypted preference payload limit remains unchanged.
 
 The batch provider now has a reference-derived ordered send plan, all-message
 transactional admission/receipts and observation of every queued ID. The picker,
-controller and recovery protocol still use their single-file entry points and
-reject schema6. A one-ID acceptance remains invalid for schema6. Multi-picker,
-reorder/delete UI, mode switches and the reference preparation screen remain
-required steps in [telegram-album-migration.md](telegram-album-migration.md).
+controller and recovery protocol now carry the whole ordered set. Native preview
+uses groups of at most10 visual items or individual document rows. Reorder,
+remove, selection, recovery and covers use stable item IDs. Full receipt matching
+never substitutes the first queued ID for the complete result. Whole-list mode
+and group eligibility, raw-original switching, archive preparation and caption
+normalization remain required steps in [telegram-album-migration.md](telegram-album-migration.md).
 No first-item fallback or automatic resend is available.
 
 Real Postbox/PostgreSQL/S3 regressions verify three ordered files including a
@@ -1730,6 +1732,16 @@ reuse the existing S3 record. The independent review identified this pre-existin
 gap, and a real Postbox/PostgreSQL/S3 regression reproduced it before the fix.
 
 The broader sequential Telegram/product goal remains open.
+
+Real controller/Postbox/PostgreSQL/S3 regressions cover edited order/removal,
+restoration, a later video's cover following its ID, later-stage failure cleanup,
+cancellation and detached initial-write lifetime. Lost acknowledgement preserves
+the native complete receipt and cannot resubmit. The DEBUG synthetic adapter
+uses a valid isolated native author separately from account sentinel -1; its
+regression reproduced and fixed the native PeerId assertion. Owned native QA
+verifies11 visual items, cross-group menu actions, exact restart recovery, local
+queue acceptance and no resurrection; native drag/drop and live delivery remain
+unverified. Prepared photo bytes are normalized JPEG, not a raw-original mode.
 
 ## Native batch provider: album migration step2
 

@@ -1,6 +1,49 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram native batch provider
+## Current stage: Telegram ordered controller and preparation UI
+
+The existing common Telegram pane now accepts multiple selected files and owns
+one ordered upload state machine. Stable item IDs bind reorder/remove/selection,
+per-item covers, persistence, restart and the complete native queue receipt.
+Schema6 recovery restores the whole preparation; unknown enqueue outcomes remain
+non-resendable. Native synthetic QA verified three document selections, reorder,
+removal, separate grouping and restart with both remaining IDs and the exact
+caption. The actual picker order was preserved; click order is not claimed.
+
+Native synthetic queue QA exposed an account sentinel (-1) converted into a
+native PeerId assertion. A real Postbox regression reproduced that crash; the
+fix supplies a separate synthetic native author and seeds only the isolated DEBUG
+Postbox, preserving the scoped archive account identity. The regression now
+passes (1 test, zero failures, exit0). A multi-file header AX label was corrected.
+Final scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**760 XCTest (695 Telegram +65 core), zero failures;32 Python regressions**.
+Full logs retain224 upstream t19 teardown diagnostics without test failure.
+Compile/setup reds and the reproduced native assertion are retained separately.
+Independent frozen controller and crash/AX delta source reviews found no new
+concrete defects; root revalidated the reviewed source hashes. Workers did not
+execute tests/build/UI; observed route/model/usage remains unknown.
+
+Owned native QA now verifies the visual10+1 boundary, context-menu movement of
+the11th stable item into the first group, exact11 IDs/order and23-UTF16 caption
+restoration, and local native queue acceptance. A second11-image preparation
+removed exactly the second-group item, then queued the remaining10. Accepted
+preparations stayed closed after restart. The prior crashed preparation restores
+uncertain with its two IDs/caption and no send action. Mail/Telegram switching
+preserves the selected dialog in the common shell. Strict built/QA signatures and
+raw unsigned executable equality pass. No personal account/network was used;
+local acceptance does not establish server delivery. Publication is recorded
+separately from these gates.
+
+Remaining Telegram work still spans six broad areas: album preparation/send
+fidelity; other message/media/special-chat actions; full search filters/navigation;
+profiles and chat administration/gallery; settings/sessions and remaining reference
+screens; real-account delivery/sync/reconnection acceptance. Current album gaps
+include whole-list mode/group eligibility, raw-original mode switching, archive
+preparation, caption normalization and native drag/drop gesture acceptance. These
+areas are not a task count, percentage or time estimate. The sequential goal stays
+active, with the other communication channels following Telegram.
+
+## Historical Telegram native batch provider (b9c6c3d)
 
 Telegram remains in the common Makosh service sidebar/dialog/conversation/dossier
 window. Album migration steps1/2 provide ordered schema6 Postbox/S3 preparation

@@ -14,9 +14,10 @@ struct TelegramUploadPreviewView: View {
         self.model = model; upload = model.upload; self.contextID = contextID
     }
     private var canDismiss: Bool { upload.canCancel || upload.phase == .uncertain }
-    private var isVisualMedia: Bool { upload.file?.mode == .photo || upload.file?.mode == .video }
+    private var isVisualMedia: Bool { upload.isVisualMedia }
     private var title: String {
-        switch upload.file?.mode {
+        if upload.items.count > 1 { return "Отправить вложения (\(upload.items.count))" }
+        return switch upload.file?.mode {
         case .photo: "Отправить фото"
         case .video: "Отправить видео"
         default: "Отправить вложение"
@@ -31,14 +32,17 @@ struct TelegramUploadPreviewView: View {
             HStack {
                 Text(title).font(.headline)
                 Spacer()
-                if isVisualMedia {
+                if isVisualMedia || upload.items.count > 1 {
                     Menu {
+                        groupingButton(revision: upload.itemsRevision)
                         videoCoverButtons(revision: upload.videoCoverRevision)
-                        spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
-                        placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
+                        if isVisualMedia {
+                            spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
+                            placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
+                        }
                     } label: { Image(systemName: "ellipsis.circle") }
                         .menuStyle(.borderlessButton).fixedSize()
-                        .accessibilityLabel(upload.file?.mode == .video ? "Действия с видео" : "Действия с фото").accessibilityIdentifier("telegram.upload.actions")
+                        .accessibilityLabel(upload.items.count > 1 ? "Действия с вложениями" : upload.file?.mode == .video ? "Действия с видео" : "Действия с фото").accessibilityIdentifier("telegram.upload.actions")
                 }
                 Button { upload.dismissPreparation(contextID: contextID) } label: { Image(systemName: "xmark") }
                     .buttonStyle(.plain).disabled(!canDismiss).keyboardShortcut(.cancelAction)
@@ -47,6 +51,7 @@ struct TelegramUploadPreviewView: View {
             .contentShape(Rectangle())
             .accessibilityElement(children: .contain).accessibilityIdentifier("telegram.upload.header")
             .contextMenu {
+                groupingButton(revision: upload.itemsRevision)
                 if isVisualMedia {
                     videoCoverButtons(revision: upload.videoCoverRevision)
                     spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
@@ -60,7 +65,9 @@ struct TelegramUploadPreviewView: View {
                         .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
                 }
             }
-            if let file = upload.file {
+            if upload.items.count > 1 {
+                TelegramUploadBatchPreview(upload: upload, contextID: contextID)
+            } else if let file = upload.file {
                 TelegramUploadFilePreview(file: file, mediaSpoiler: mediaSpoiler, upload: upload, contextID: contextID).id(file.id)
             }
             else { ProgressView("Подготовка вложения…").frame(maxWidth: .infinity, minHeight: 140) }
@@ -132,7 +139,7 @@ struct TelegramUploadPreviewView: View {
         }
     }
     @ViewBuilder private func videoCoverButtons(revision: UUID) -> some View {
-        if upload.file?.mode == .video {
+        if upload.items.count == 1, upload.file?.mode == .video {
             Button(upload.file?.videoCover == nil ? "Добавить обложку" : "Изменить обложку") { chooseVideoCover(revision: revision) }
                 .disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.choose")
             if upload.file?.videoCover != nil {
@@ -141,6 +148,14 @@ struct TelegramUploadPreviewView: View {
                     if !upload.commitVideoCover(nil, editID: edit) { upload.cancelVideoCoverEdit(edit) }
                 }.disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.remove")
             }
+            Divider()
+        }
+    }
+    @ViewBuilder private func groupingButton(revision: UUID) -> some View {
+        if upload.items.count > 1 {
+            Button(upload.isGrouped ? "Отправить отдельно" : "Сгруппировать") {
+                upload.updateGrouping(!upload.isGrouped, contextID: contextID, revision: revision)
+            }.disabled(!upload.canEditItems).accessibilityIdentifier("telegram.upload.grouping")
             Divider()
         }
     }

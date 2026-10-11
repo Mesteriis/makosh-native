@@ -6,22 +6,23 @@ import MakoshTelegram
 @MainActor
 private enum TelegramUploadPanel {
     enum Choice { case media, file }
-    static func choose(_ choice: Choice) async -> (source: URL, mode: TelegramUploadMode)? {
+    static func choose(_ choice: Choice) async -> [TelegramUploadSelection]? {
         let panel = NSOpenPanel()
         panel.title = choice == .media ? "Выберите фото или видео" : "Выберите файл"
         panel.allowedContentTypes = choice == .media ? [.image, .movie, .video] : [.item]
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.resolvesAliases = false
-        let source: URL? = await withCheckedContinuation { continuation in
-            panel.begin { response in continuation.resume(returning: response == .OK ? panel.url : nil) }
+        let sources: [URL]? = await withCheckedContinuation { continuation in
+            panel.begin { response in continuation.resume(returning: response == .OK ? panel.urls : nil) }
         }
-        guard let source else { return nil }
-        if choice == .file { return (source, .file) }
-        let type = UTType(filenameExtension: source.pathExtension)
-        let mode: TelegramUploadMode = type?.conforms(to: .image) == true ? .photo : .video
-        return (source, mode)
+        guard let sources, !sources.isEmpty else { return nil }
+        return sources.map { source in
+            let type = UTType(filenameExtension: source.pathExtension)
+            let mode: TelegramUploadMode = choice == .file ? .file : type?.conforms(to: .image) == true ? .photo : .video
+            return .init(source: source, mode: mode)
+        }
     }
 }
 
@@ -57,7 +58,11 @@ struct TelegramAttachButtons: View {
         Task { @MainActor in
             defer { choosing = false }
             guard let selected = await TelegramUploadPanel.choose(choice) else { return }
-            model.prepareUpload(source: selected.source, mode: selected.mode, target: target, captionInput: captionInput, contextID: contextID)
+            if selected.count == 1, let first = selected.first {
+                model.prepareUpload(source: first.source, mode: first.mode, target: target, captionInput: captionInput, contextID: contextID)
+            } else {
+                model.prepareUpload(sources: selected, isGrouped: true, target: target, captionInput: captionInput, contextID: contextID)
+            }
         }
     }
 }

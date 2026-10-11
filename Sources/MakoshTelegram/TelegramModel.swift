@@ -581,11 +581,11 @@ public final class TelegramModel: ObservableObject {
                     guard current() else { return }
                     if source == nil, draft.disposition == .prepared { throw TelegramUploadFileError.unavailable }
                 }
-                let file = try await store.restoreFile(draft: draft)
-                guard current() else { try TelegramUploadFileIO.discard(file); return }
+                let items = try await store.restoreItems(draft: draft)
+                guard current() else { for item in items { try? TelegramUploadFileIO.discard(item.file) }; return }
                 let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: draft.title, replySource: source)
-                guard self.upload.restore(draft: draft, file: file, target: target, restorationEpoch: restorationEpoch) else {
-                    try TelegramUploadFileIO.discard(file); throw TelegramUploadFileError.unavailable
+                guard self.upload.restore(draft: draft, items: items, target: target, restorationEpoch: restorationEpoch) else {
+                    for item in items { try? TelegramUploadFileIO.discard(item.file) }; throw TelegramUploadFileError.unavailable
                 }
             } catch {
                 if current() { self.pendingUploadRecoveryError = "Не удалось восстановить подготовленное вложение. Черновик сохранён. Повторите восстановление." }
@@ -1152,11 +1152,22 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID) {
+        guard canPrepareUpload(target: target, contextID: contextID) else { return }
+        upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput)
+    }
+
+    public func prepareUpload(sources: [TelegramUploadSelection], isGrouped: Bool, target: TelegramUploadTarget,
+                              captionInput: TelegramComposerInput, contextID: UUID) {
+        guard canPrepareUpload(target: target, contextID: contextID) else { return }
+        upload.prepare(sources: sources, isGrouped: isGrouped, target: target, captionInput: captionInput)
+    }
+
+    private func canPrepareUpload(target: TelegramUploadTarget, contextID: UUID) -> Bool {
         guard messageSelection.session == nil, !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.forwardIntent == nil,
               selectedChatID != target.chatID || composerDraftRecoveryError == nil,
-              target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return }
-        upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput)
+              target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return false }
+        return true
     }
 
     public func uploadTarget(replyTo source: TelegramMessageActionSource?, contextID: UUID) -> TelegramUploadTarget? {

@@ -15,7 +15,183 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         return transaction.getPreferencesEntry(key: key)?.data
     }
 }
+private func pendingControllerPeers(_ box: Postbox) -> Signal<Void, NoError> {
+    box.transaction { transaction in
+        let peers = [Int64(1), 42].map { value in
+            TelegramUser(id: PeerId(value), accessHash: nil, firstName: "Synthetic", lastName: nil, username: nil, phone: nil,
+                photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil,
+                nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
+                subscriberCount: nil, verificationIconFileId: nil)
+        }
+        transaction.updatePeersInternal(peers, update: { _, new in new })
+    }
+}
+@MainActor private final class PendingControllerBatchProvider: TelegramUploadBatchProvider {
+    let accountID: Int64 = 1
+    private let box: Postbox
+    private let loseAcknowledgement: Bool
+    init(_ box: Postbox, loseAcknowledgement: Bool = false) { self.box = box; self.loseAcknowledgement = loseAcknowledgement }
+    func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
+                receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
+        let box = self.box, loseAcknowledgement = self.loseAcknowledgement
+        return TelegramUploadBatchSubmission(postbox: box, accountID: accountID, items: items, draft: draft, target: target,
+            enqueue: { receipt, messages in telegramUploadBatchEnqueueLocally(postbox: box, receipt: receipt, messages: messages, loseAcknowledgement: loseAcknowledgement) }, receive: receive)
+    }
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText,
+                captionAboveMedia: Bool, mediaSpoiler: Bool, receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
+        XCTFail("A batch must never fall back to the single-file provider")
+        receive(.rejected); return PendingControllerEmptyLease()
+    }
+}
+@MainActor private final class PendingControllerEmptyLease: TelegramUploadLease { func stop() {} }
 @MainActor final class TelegramPendingUploadPostboxTests: XCTestCase {
+    func testBatchControllerRestoresEditedOrderAndAcknowledgesEveryNativeQueueID() async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), box = try await open(root())
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x61, count: 32) })
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let store = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: archive) })
+        let provider = PendingControllerBatchProvider(box)
+        let seeded = expectation(description: "Synthetic peers")
+        let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+        defer { seed.dispose() }
+        await fulfillment(of: [seeded], timeout: 20)
+        var sources: [URL] = []
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            let url = archiveRoot.appendingPathComponent(name)
+            try Data(("Bytes for " + name).utf8).write(to: url); sources.append(url)
+        }
+        let controller = TelegramUploadController()
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic batch")
+        let input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Shared caption"))
+        controller.prepare(sources: (sources + [sources[0]]).map { .init(source: $0, mode: .file) },
+            isGrouped: true, target: target, captionInput: input)
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.canSend, "The full archived set must become sendable")
+        XCTAssertEqual(controller.items.map { $0.file.name }, ["a.txt", "b.txt", "c.txt"], "Deduplicate by first URL occurrence")
+        guard controller.items.count == 3 else { return }
+        let initial = controller.items, context = try XCTUnwrap(controller.preparationContextID)
+        let firstLoad = try await store.load(chatID: 42), before = try XCTUnwrap(firstLoad)
+        XCTAssertEqual(before.items.map(\.id), initial.map(\.id))
+        XCTAssertTrue(controller.moveItem(id: initial[2].id, to: 0, contextID: context, revision: controller.itemsRevision))
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.removeItem(id: initial[1].id, contextID: context, revision: controller.itemsRevision))
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.updateGrouping(false, contextID: context, revision: controller.itemsRevision))
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(controller.moveItem(id: initial[0].id, to: 0, contextID: context, revision: UUID()), "A stale menu cannot reorder a new revision")
+        controller.bind(provider: nil)
+        let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
+        XCTAssertEqual(draft.items.map(\.id), [initial[2].id, initial[0].id]); XCTAssertFalse(draft.isGrouped)
+        XCTAssertEqual(draft.captionInput, input); XCTAssertEqual(draft.schemaVersion, 6)
+        let retained = try await archive.files(identity: before.items[1].file.identity, attachmentID: before.items[1].file.attachment.id)
+        XCTAssertEqual(retained, [before.items[1].file], "Removing a preparation item preserves its archived original")
+        let restored = try await store.restoreItems(draft: draft)
+        defer { for item in restored { try? TelegramUploadFileIO.discard(item.file) } }
+        let resumed = TelegramUploadController()
+        resumed.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        XCTAssertTrue(resumed.restore(draft: draft, items: restored, target: target, restorationEpoch: resumed.recoveryRestoreEpoch))
+        XCTAssertEqual(resumed.items.map { $0.file.name }, ["c.txt", "a.txt"])
+        XCTAssertTrue(resumed.selectItem(id: initial[0].id, contextID: context))
+        XCTAssertEqual(resumed.file?.name, "a.txt")
+        let queued = expectation(description: "Complete native batch acknowledged")
+        resumed.didQueue = { _, _ in queued.fulfill() }
+        resumed.send(contextID: context)
+        await fulfillment(of: [queued], timeout: 20)
+        let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
+        guard case let .acceptedBatch(ids) = accepted.disposition else { return XCTFail("A full typed receipt must be durable before releasing the composer") }
+        XCTAssertEqual(ids.count, 3, "Separate files use one shared leading caption and two media messages")
+        XCTAssertEqual(Set(ids).count, 3); XCTAssertEqual(resumed.messageIDs, ids.map(\.description))
+        XCTAssertEqual(resumed.phase, .queued(nil)); XCTAssertNil(resumed.preparationContextID)
+        for item in initial + restored { XCTAssertFalse(FileManager.default.fileExists(atPath: item.file.directory.path)) }
+    }
+
+    func testBatchVideoCoverRemainsBoundToSelectedItemAcrossReorderAndRestore() async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), box = try await open(root())
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x62, count: 32) })
+        let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+            files: { TelegramPendingUploadFiles(repository: archive) })
+        let source = archiveRoot.appendingPathComponent("first.mov"), second = archiveRoot.appendingPathComponent("second.mov")
+        try await writeUploadVideoFixture(source); try FileManager.default.copyItem(at: source, to: second)
+        let image = archiveRoot.appendingPathComponent("cover.jpg"); try writeUploadVideoCoverFixture(image)
+        let controller = TelegramUploadController()
+        controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+        controller.prepare(sources: [source, second].map { .init(source: $0, mode: .video) }, isGrouped: true,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic videos"), captionInput: .empty)
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.canSend)
+        guard controller.items.count == 2 else { return XCTFail("Both videos must be prepared") }
+        let ids = controller.items.map(\.id), context = try XCTUnwrap(controller.preparationContextID)
+        XCTAssertTrue(controller.selectItem(id: ids[1], contextID: context))
+        let edit = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
+        XCTAssertFalse(controller.selectItem(id: ids[0], contextID: context))
+        XCTAssertFalse(controller.moveItem(id: ids[1], to: 0, contextID: context, revision: controller.itemsRevision))
+        let cover = try await TelegramUploadVideoCoverIO.stage(image, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
+        defer { try? TelegramUploadFileIO.discard(cover.imageFile) }
+        XCTAssertTrue(controller.commitVideoCover(cover, editID: edit))
+        for _ in 0..<1000 where controller.isRecoveryBusy { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.canSend, "Cover persistence must operate on the selected batch ID")
+        let loaded = try await store.load(chatID: 42), saved = try XCTUnwrap(loaded)
+        XCTAssertNil(saved.items[0].videoCover); XCTAssertNotNil(saved.items[1].videoCover)
+        guard controller.canSend else { controller.clear(); return }
+        XCTAssertTrue(controller.moveItem(id: ids[1], to: 0, contextID: context, revision: controller.itemsRevision))
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        let movedLoad = try await store.load(chatID: 42), moved = try XCTUnwrap(movedLoad)
+        XCTAssertEqual(moved.items.map(\.id), [ids[1], ids[0]])
+        XCTAssertEqual(moved.items[0].videoCover, saved.items[1].videoCover); XCTAssertNil(moved.items[1].videoCover)
+        controller.bind(provider: nil)
+        let restored = try await store.restoreItems(draft: moved)
+        defer { for item in restored { try? TelegramUploadFileIO.discard(item.file) } }
+        XCTAssertEqual(restored.map(\.id), [ids[1], ids[0]])
+        XCTAssertEqual(restored[0].file.videoCover?.sha256, cover.sha256); XCTAssertNil(restored[1].file.videoCover)
+    }
+
+    func testBatchControllerLostQueueAcknowledgementNeverResubmitsOrClearsArchiveReceipt() async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), box = try await open(root())
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x63, count: 32) })
+        let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+            files: { TelegramPendingUploadFiles(repository: archive) })
+        let seeded = expectation(description: "Synthetic peers")
+        let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+        defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
+        let sources = try ["first.txt", "second.txt"].map { name in
+            let url = archiveRoot.appendingPathComponent(name); try Data(name.utf8).write(to: url); return url
+        }
+        let controller = TelegramUploadController()
+        controller.bind(provider: PendingControllerBatchProvider(box, loseAcknowledgement: true), recoveryStore: store, requiresRecovery: true)
+        controller.prepare(sources: sources.map { .init(source: $0, mode: .file) }, isGrouped: true,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic unknown queue"), captionInput: .empty)
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.canSend)
+        let context = try XCTUnwrap(controller.preparationContextID), files = controller.items
+        controller.didQueue = { _, _ in XCTFail("Lost queue ACK cannot release the composer as accepted") }
+        controller.send(contextID: context)
+        for _ in 0..<1000 where controller.phase != .uncertain { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(controller.phase, .uncertain); XCTAssertFalse(controller.canSend); XCTAssertTrue(controller.messageIDs.isEmpty)
+        let loaded = try await store.load(chatID: 42), accepted = try XCTUnwrap(loaded)
+        guard case let .acceptedBatch(ids) = accepted.disposition else { return XCTFail("The native transaction must retain its full receipt after a lost ACK") }
+        XCTAssertEqual(ids.count, 2)
+        controller.send(contextID: context); controller.clear()
+        let after = try await store.load(chatID: 42)
+        XCTAssertEqual(after, accepted, "Closing unknown observation must not cancel or duplicate a committed batch")
+        for file in files { XCTAssertFalse(FileManager.default.fileExists(atPath: file.file.directory.path)) }
+    }
+
     func testBatchCaptionSubmissionAndCancellationPreserveWholeOrderedPointer() async throws {
         let box = try await open(root()), repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
         let first = try pendingUploadBatchFixture()

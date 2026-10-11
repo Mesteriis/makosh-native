@@ -12,4 +12,31 @@ import Foundation
     func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile
     func replaceVideoCover(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                            cover: TelegramUploadVideoCover?) async throws
+    func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, target: TelegramUploadTarget,
+                 captionInput: TelegramComposerInput, captionAboveMedia: Bool, mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws
+    func restoreItems(draft: TelegramPendingUploadDraft) async throws -> [TelegramUploadBatchItem]
+    func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],
+                     isGrouped: Bool, target: TelegramUploadTarget) async throws
+    func replaceVideoCover(preparationID: UUID, itemID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                           cover: TelegramUploadVideoCover?) async throws
+}
+
+extension TelegramUploadRecoveryStore {
+    // Legacy adapters fail closed until they explicitly implement whole-set writes.
+    func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, target: TelegramUploadTarget,
+                 captionInput: TelegramComposerInput, captionAboveMedia: Bool, mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
+    func restoreItems(draft: TelegramPendingUploadDraft) async throws -> [TelegramUploadBatchItem] {
+        guard draft.schemaVersion < 6 else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        return [.init(id: draft.items[0].id, file: try await restoreFile(draft: draft))]
+    }
+    func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],
+                     isGrouped: Bool, target: TelegramUploadTarget) async throws {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
+    func replaceVideoCover(preparationID: UUID, itemID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                           cover: TelegramUploadVideoCover?) async throws {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
 }

@@ -20,7 +20,7 @@ final class TelegramSyntheticUploadProvider: TelegramUploadBatchProvider {
         let loseAcknowledgement = self.loseAcknowledgement
         return TelegramUploadBatchSubmission(postbox: postbox, accountID: accountID, items: items, draft: draft,
             target: target, enqueue: { receipt, messages in
-                telegramUploadBatchEnqueueLocally(postbox: postbox, receipt: receipt, messages: messages,
+                syntheticUploadBatchCommit(postbox: postbox, receipt: receipt, messages: messages,
                     loseAcknowledgement: loseAcknowledgement)
             }, receive: receive)
     }
@@ -72,14 +72,36 @@ final class TelegramSyntheticUploadProvider: TelegramUploadBatchProvider {
 }
 
 nonisolated func telegramUploadBatchEnqueueLocally(postbox: Postbox, receipt: TelegramUploadBatchEnqueueReceipt,
-                                                 messages: [EnqueueMessage], loseAcknowledgement: Bool = false) -> Signal<TelegramUploadBatchAdmission, NoError> {
+                                                 messages: [EnqueueMessage], accountPeerID: PeerId = PeerId(1),
+                                                 loseAcknowledgement: Bool = false) -> Signal<TelegramUploadBatchAdmission, NoError> {
     telegramUploadBatchEnqueue(receipt: receipt, messages: messages) { messages, admission, commit in
-        enqueueMessagesLocally(postbox: postbox, accountPeerId: PeerId(receipt.target.accountID), isSupportUser: false,
+        enqueueMessagesLocally(postbox: postbox, accountPeerId: accountPeerID, isSupportUser: false,
             timestamp: 100, peerId: PeerId(receipt.target.chatID), messages: messages,
             transactionAdmission: admission, transactionCommit: commit)
     } |> map { admission in
         if case .accepted = admission, loseAcknowledgement { return .uncertain }
         return admission
+    }
+}
+
+private nonisolated func syntheticUploadBatchCommit(postbox: Postbox, receipt: TelegramUploadBatchEnqueueReceipt,
+                                                   messages: [EnqueueMessage], loseAcknowledgement: Bool) -> Signal<TelegramUploadBatchAdmission, NoError> {
+    // The scoped Makosh account sentinel (-1) is not a serialized native PeerId.
+    // Both peers belong exclusively to this isolated DEBUG Postbox fixture.
+    let author = PeerId(1), peer = PeerId(receipt.target.chatID)
+    guard peer.namespace == Namespaces.Peer.CloudUser else { return .single(.rejected) }
+    func user(_ id: PeerId) -> TelegramUser {
+        TelegramUser(id: id, accessHash: nil, firstName: "Synthetic", lastName: nil, username: nil, phone: nil,
+            photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil,
+            nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
+            subscriberCount: nil, verificationIconFileId: nil)
+    }
+    return postbox.transaction { transaction in
+        transaction.updatePeersInternal([user(author), user(peer)], update: { current, new in current ?? new })
+        return true
+    } |> mapToSignal { _ in
+        telegramUploadBatchEnqueueLocally(postbox: postbox, receipt: receipt, messages: messages,
+            accountPeerID: author, loseAcknowledgement: loseAcknowledgement)
     }
 }
 

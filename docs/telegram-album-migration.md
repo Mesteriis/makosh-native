@@ -16,10 +16,16 @@ Unsupported peer namespaces fail before resource preparation. Fresh reply
 metadata and every queued reply attribute bind the complete batch to its source
 thread, canonical quote and absence of a todo item.
 
-The picker, upload controller, recovery protocol and preparation UI still carry
-one file and reject schema6. They do not create or submit albums yet. Existing
-schema1–5 preparations remain supported. Real Account/network delivery has not
-been exercised; native queue tests use synthetic peers and encrypted Postbox.
+The picker, upload controller, recovery protocol and preparation UI now carry
+ordered schema6 items. Multi-selection, stable-ID reorder/remove, grouping,
+later-item covers and whole-set restart use the existing upload state machine.
+Grouped visual previews split at10; documents remain individual preview rows.
+Existing schema1–5 preparations remain supported. Whole-list presentation and
+group eligibility, original-file mode switching and archive preparation remain
+open. Prepared photos currently retain normalized JPEG; original-file mode needs
+a separately retained raw source, never renamed normalized bytes. Real
+Account/network delivery has not been exercised; native queue tests
+use synthetic peers and encrypted Postbox.
 
 ## Target
 
@@ -95,7 +101,10 @@ it does not roll back or justify resending. A durable complete receipt survives
 lost callbacks and rejects stale resubmission.
 
 Whole-list presentation/grouping eligibility, reference trimming of unformatted
-input, later-group per-item actions and UI normalization remain for steps3/4.
+input and mode/archive normalization remain for step4. Per-item actions are now
+bound to stable IDs; native context-menu reorder/remove across the10/11 boundary,
+whole-set restart and local queue acceptance are verified. The drag/drop gesture
+and reference runtime remain unexecuted.
 A whitespace-only leading text is currently rejected by text admission rather
 than silently dropped. Later-group actions must use stable item IDs, never the
 reference's local-chunk index against the global URL list. Reference runtime and

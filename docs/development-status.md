@@ -1,6 +1,70 @@
 # Development status — 2026-10-11
 
-## Current stage: typed ordinary audio verified through restart and native queue
+## Current stage: typed original WebP verified through restart and native queue
+
+WebP now retains original bytes and strict width/height metadata in schema9.
+Content inspection runs before photo/suffix classification, including misleading
+.jpg/.wav/.bin and an explicit photo choice. Native mapping has exact
+ImageSize/FileName/Sticker order and canonical image/webp MIME in both projections;
+animated input does not infer Animated/Video. Any typed WebP forbids grouping.
+Legacy generic files remain untyped. Audio schema9 compatibility is retained.
+No engine recipe, dependency or license change was introduced.
+
+Apple ImageIO checks a held owned no-follow snapshot:12-byte sniff, exact RIFF
+length,20MiB encoded,8192 per axis/40M pixels,1…256 frames, safe canvas/frame0
+and a bounded256px thumbnail decode. Synthetic lossless/lossy, animated and
+partial-frame inputs keep exact original bytes; partial first20×10 at(100,60)
+uses full320×160 canvas. Native prototype and product tests ran on macOS27.0.1,
+not the minimum26 runtime. Whole-stream/all-frame integrity is not claimed.
+Own limits and refusal instead of upstream512×512 fallback are explicit differences.
+Recognizable unsafe new input stays unchanged generic File; typed restore must
+re-probe exactly. Optional320px JPEG transport preview remains open.
+
+Actual RED: six initial pipeline tests fail with six unsupported-kind failures.
+Combined IO/pipeline stubs fail19 tests/33 failures(5 unexpected); separate
+controller/reopen RED4/40(0 unexpected) proves missing classification/grouping.
+First focused implementation run fails25/3: the root test mutated an intermediate
+reference which the resource deliberately recomputes. Corrected coverage mutates
+the real native queue media instead. A subsequent helper argument-order compile
+failure is setup FAIL, not behavior evidence. Final focused GREEN26/0 exit0.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**877 XCTest (801 Telegram +76 core), zero failures;32 Python regressions**.
+Final incremental logs have no compile warnings;262 upstream t19 teardown
+diagnostics remain without test failures. Temporary native readback tests were
+removed;12 frozen source/test hashes retain the independently reviewed scope.
+
+Actual owned common sidebar UI picks the synthetic196-byte partial-canvas WebP
+under an opaque .bin name in S3-off chat7. The10-UTF16 caption and File preparation
+survive hash-verified source removal, SIGTERM and relaunch. The native queue
+accepts one ID; another restart shows no preparation resurrection. Mail→Telegram
+retains chat7/off. Screenshots were inspected; strict signatures and raw unsigned
+built–QA equality pass. One keyboard typing attempt inserted only spaces; native
+paste corrected it and the exact caption was verified before acceptance.
+No personal account, microphone or Telegram network was used.
+
+Both private real Postbox/PostgreSQL/S3 readbacks pass one test each: same local
+record/preparation, original bytes/hash, typed dimensions/caption, empty archive-
+file metadata and absent objects under local and conventional S3 keys. Accepted
+native MIME/attributes match exactly. Real integration also covers S3-enabled
+recovery, changed dimensions despite a valid digest, immutable acceptance after
+restart and no promotion after policy re-enable.
+
+Independent frozen WebP review reports no concrete defect; root verifies12 patch
+hashes and11 supporting sources plus3 research reports. Root gates/UI are actual;
+worker runtime is SKIP, observed provider/model/usage unknown, no quorum.
+Final XERJ refresh/check/query and reference/engine freshness checks exit0:
+371 indexed files,340/340 classified code. New inspectOwned passage is confirmed
+against current source. Hosted CI for c0e9789 and9e42da7 reports success; current
+WebP patch awaits its own hosted CI runs.
+
+Next: WebP transport preview, GIF typed conversion and explicit voice/codec work,
+then the frozen ordered source-option fold, Archive and caption normalization.
+Full Telegram parity and Account/server delivery remain open. Other services,
+dossiers, backup/restore and packaging remain in sequence; the migration goal
+stays active.
+
+## Historical typed ordinary audio (9e42da7)
 
 Ordinary music now retains original bytes and exact integral duration/title/
 performer in strict schema9. File/Media projection, metadata-only edits,

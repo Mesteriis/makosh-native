@@ -1847,9 +1847,9 @@ positive, at most8192 per axis and40M pixels, with the20MiB/one-frame bounds.
 For example64×64 pixels at144DPI remain an original file (32×32 points), while
 32×32 pixels at36DPI can become a photo (64×64 points). Both paths retain exact
 raw bytes after source removal; normalized JPEG pixels do not reclassify the source.
-GIF/WebP/multiframe inputs are never flattened into static photos. Their native
-media conversion, ordered whole-list options and recorded-voice attributes remain
-open; the verified dependency order is in `telegram-album-migration.md`.
+GIF/WebP/multiframe inputs are never flattened into static photos. WebP typed
+originals are supported below; GIF conversion, ordered whole-list options and
+recorded-voice attributes remain open; the verified dependency order is in `telegram-album-migration.md`.
 
 Media option eligibility is separate from all-visual grouping/layout: a mixed
 photo/document set in Media retains caption placement, spoiler and one-shot
@@ -1899,3 +1899,40 @@ Local-only and S3 preparations share the same strict pointer and byte checks.
 The S3-off policy still prohibits all new remote copies, including preparation;
 later re-enable does not promote local resources. Actual owned M4A UI and private
 Postbox/PostgreSQL/S3 evidence are recorded in development-status.md.
+
+
+### Typed original WebP preparation
+
+Schema9 also carries `{kind:"webp",payload:{width,height}}`. Exact required Int32
+fields, positive dimensions up to8192 per axis and40M pixels are enforced;
+unknown/missing/null/cross-kind or conflicting resource fields fail closed.
+File/Media projections retain the typed original; native mapping uses canonical
+`image/webp` MIME and exact `ImageSize`, `FileName`, `Sticker("",nil,nil)` order.
+Animated input does not infer Animated/Video or cloud sticker provenance.
+Any typed WebP forbids grouping even with a misleading audio/document suffix.
+Legacy generic files keep their original attributes and are never upgraded on restore.
+
+Preparation probes content before suffix/photo classification. The owned no-follow
+file is checked for uid/0600/size, cancellation and inode/time snapshots. A held
+12-byte sniff returns nil for ordinary non-WebP without reading the entire file.
+Recognizable WebP requires exact RIFF total length and at most20MiB before native
+ImageIO. Native frame count1…256, safe positive canvas/frame0 dimensions and a
+bounded256px thumbnail decode are required. Animated partial first-frame sources
+use full canvas dimensions; raw bytes are never flattened or rewritten. Refused
+recognizable input remains an unchanged generic File during new preparation;
+a frozen typed descriptor must instead match an independent re-probe during
+capture, restore and MediaBox copy. No fallback512×512 descriptor is invented.
+
+Synthetic lossless/lossy static, animated, partial-frame and small WebP are
+covered, together with truncation/trailing bytes, oversized axis/byte/frame count,
+symlink/stale-size ownership and cancellation. Full malformed-corpus coverage and
+exhaustive frame/stream integrity are not claimed. Actual encrypted local and S3
+restart paths retain exact bytes/descriptor/caption through native enqueue;
+changed dimensions fail even with a valid plaintext digest. S3-off still prohibits
+every new object and later re-enable cannot promote local preparations.
+
+The reference's optional320px JPEG transport preview/quality0.7 remains a separate
+open derivative; current file previews are empty. Full ordered source options
+(including40-point/aspect rules), GIF conversion and explicit voice remain open.
+Apple ImageIO and owned synthetic fixtures add no codec dependency or copied GPL UI.
+Actual owned UI/host and full gate results are recorded in development-status.md.

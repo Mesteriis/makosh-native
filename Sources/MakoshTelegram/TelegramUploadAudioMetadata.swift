@@ -47,9 +47,13 @@ public struct TelegramUploadAudioMetadata: Codable, Equatable, Sendable {
 
 public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
     case audio(TelegramUploadAudioMetadata)
+    case webP(TelegramUploadWebPMetadata)
 
     public var isValid: Bool {
-        switch self { case let .audio(value): value.isValid }
+        switch self {
+        case let .audio(value): value.isValid
+        case let .webP(value): value.isValid
+        }
     }
 
     private enum CodingKeys: String, CodingKey { case kind, payload }
@@ -57,11 +61,13 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         try requireAudioMetadataKeys(decoder, expected: ["kind", "payload"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        guard try values.decode(String.self, forKey: .kind) == "audio" else {
+        switch try values.decode(String.self, forKey: .kind) {
+        case "audio": self = .audio(try values.decode(TelegramUploadAudioMetadata.self, forKey: .payload))
+        case "webp": self = .webP(try values.decode(TelegramUploadWebPMetadata.self, forKey: .payload))
+        default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: values,
                 debugDescription: "Unknown upload metadata kind")
         }
-        self = .audio(try values.decode(TelegramUploadAudioMetadata.self, forKey: .payload))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -69,6 +75,9 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
         switch self {
         case let .audio(value):
             try values.encode("audio", forKey: .kind)
+            try values.encode(value, forKey: .payload)
+        case let .webP(value):
+            try values.encode("webp", forKey: .kind)
             try values.encode(value, forKey: .payload)
         }
     }

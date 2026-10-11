@@ -53,21 +53,31 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
 }
 @MainActor final class TelegramPendingUploadPostboxTests: XCTestCase {
     func testTypedAudioRestoresAndEnqueuesFromEncryptedLocalPreparationWithoutS3() async throws {
-        try await typedAudioReopenAndEnqueue(enabled: false)
+        try await typedReopenAndEnqueue(enabled: false, webP: false)
     }
 
     func testTypedAudioRestoresAndEnqueuesFromEncryptedS3Preparation() async throws {
-        try await typedAudioReopenAndEnqueue(enabled: true)
+        try await typedReopenAndEnqueue(enabled: true, webP: false)
     }
 
-    private func typedAudioReopenAndEnqueue(enabled: Bool) async throws {
+    func testTypedWebPRestoresAndEnqueuesFromEncryptedLocalPreparationWithoutS3() async throws {
+        try await typedReopenAndEnqueue(enabled: false, webP: true)
+    }
+
+    func testTypedWebPRestoresAndEnqueuesFromEncryptedS3Preparation() async throws {
+        try await typedReopenAndEnqueue(enabled: true, webP: true)
+    }
+
+    private func typedReopenAndEnqueue(enabled: Bool, webP: Bool) async throws {
         let database = try PendingFilesTestDatabase()
         addTeardownBlock { try database.cleanup() }
         let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
-        let archiveRoot = try root(), path = try root(), source = archiveRoot.appendingPathComponent("Synthetic.m4a")
-        try await writeUploadTaggedAudioFixture(source, title: "Synthetic 😀", performer: "Artist")
+        let archiveRoot = try root(), path = try root(), source = archiveRoot.appendingPathComponent(webP ? "Synthetic.bin" : "Synthetic.m4a")
+        if webP { try writeUploadWebPFixture(source, fixture: .partialCanvas) }
+        else { try await writeUploadTaggedAudioFixture(source, title: "Synthetic 😀", performer: "Artist") }
         let bytes = try Data(contentsOf: source)
-        let expected = TelegramUploadMetadata.audio(.init(duration: 1, title: "Synthetic 😀", performer: "Artist"))
+        let expected: TelegramUploadMetadata = webP ? .webP(.init(width: 320, height: 160))
+            : .audio(.init(duration: 1, title: "Synthetic 😀", performer: "Artist"))
         let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic audio")
         let caption = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Music 😀"))
         let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
@@ -114,13 +124,16 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             let raw = restored[0].file
             let altered = TelegramUploadFile(id: raw.id, name: raw.name, size: raw.size, mode: .file,
                 pixelWidth: nil, pixelHeight: nil, url: raw.url, directory: raw.directory,
-                metadata: .audio(.init(duration: 1, title: "Changed after capture", performer: "Artist")))
+                metadata: webP ? .webP(.init(width: 321, height: 160))
+                    : .audio(.init(duration: 1, title: "Changed after capture", performer: "Artist")))
             let denied = expectation(description: "Native copy re-probes frozen audio")
             var deniedResult: Result<TelegramPreparedUploadMedia, TelegramUploadFileError>?
             let deniedCopy = TelegramUploadMediaBoxPreparation(mediaBox: box.mediaBox, file: altered,
                 expectedPlaintextSHA256: record.plaintextSHA256) { deniedResult = $0; denied.fulfill() }
             defer { deniedCopy.stop() }; await fulfillment(of: [denied], timeout: 20)
-            if case .failure(.invalidAudio) = deniedResult {} else { XCTFail("A legitimate byte digest cannot authenticate replaced audio tags") }
+            let invalid: TelegramUploadFileError = webP ? .invalidWebP : .invalidAudio
+            if case let .failure(error) = deniedResult { XCTAssertEqual(error, invalid) }
+            else { XCTFail("A legitimate byte digest cannot authenticate replaced typed metadata") }
             let controller = TelegramUploadController()
             controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
             defer { controller.clear() }
@@ -141,7 +154,13 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             let read = (pendingControllerMessage(box, id: ids[0].nativeID) |> deliverOnMainQueue).start(next: { message = $0; readDone.fulfill() })
             defer { read.dispose() }; await fulfillment(of: [readDone], timeout: 20)
             let native = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
-            XCTAssertEqual(native.attributes, [.Audio(isVoice: false, duration: 1, title: "Synthetic 😀", performer: "Artist", waveform: nil), .FileName(fileName: "Synthetic.m4a")])
+            if webP {
+                XCTAssertEqual(native.mimeType, "image/webp")
+                XCTAssertEqual(native.attributes, [.ImageSize(size: PixelDimensions(width: 320, height: 160)),
+                    .FileName(fileName: "Synthetic.bin"), .Sticker(displayText: "", packReference: nil, maskData: nil)])
+            } else {
+                XCTAssertEqual(native.attributes, [.Audio(isVoice: false, duration: 1, title: "Synthetic 😀", performer: "Artist", waveform: nil), .FileName(fileName: "Synthetic.m4a")])
+            }
             XCTAssertEqual(message?.text, "Music 😀")
             let data = (box.mediaBox.resourceData(native.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
                 |> take(1) |> deliverOnMainQueue).start(next: { cache = $0; cacheDone.fulfill() })

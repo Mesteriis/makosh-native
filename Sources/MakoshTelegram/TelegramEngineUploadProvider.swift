@@ -33,12 +33,19 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             immediateThumbnailData: nil, mimeType: "video/mp4", size: file.size,
             attributes: attributes, alternativeRepresentations: [])
     case .file:
-        let mime = UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        var mime = UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         var attributes: [TelegramMediaFileAttribute] = []
         if case let .audio(audio) = file.metadata {
             attributes.append(.Audio(isVoice: false, duration: Int(audio.duration), title: audio.title, performer: audio.performer, waveform: nil))
         }
+        if case let .webP(webP) = file.metadata {
+            mime = "image/webp"
+            attributes.append(.ImageSize(size: PixelDimensions(width: webP.width, height: webP.height)))
+        }
         attributes.append(.FileName(fileName: telegramAttachmentName(file.name)))
+        if case .webP = file.metadata {
+            attributes.append(.Sticker(displayText: "", packReference: nil, maskData: nil))
+        }
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
             partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [],
             immediateThumbnailData: nil, mimeType: mime, size: file.size,

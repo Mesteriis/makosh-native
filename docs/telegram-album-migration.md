@@ -173,9 +173,20 @@ When any item is typed music, File grouping requires every item to be typed musi
 a generic `.wav` cannot join it by name. The full ordered classifier above remains
 open, including ordinary OGG/Opus and explicit voice provenance.
 
-The remaining rows are source contracts, not implemented type support. The prepared engine
+WebP now has a strict schema9 owned original pipeline too. Content-derived
+ImageIO inspection proves bounded frame0/canvas dimensions for static and animated
+inputs, including a partial first frame. Native ImageSize/FileName/Sticker order,
+canonical MIME, forbidden grouping, independent restore re-probe and original
+local/S3 bytes are covered through native queue receipts. Exact RIFF length,
+20MiB/8192-axis/40M-pixel/256-frame limits deliberately refuse unsafe input instead
+of inventing upstream512×512 fallback dimensions. The optional320px JPEG transport
+preview and the whole-list option fold remain open. The local native proof is on
+host27; minimum26 runtime is separate evidence.
+
+GIF and recorded-voice rows remain source contracts, not implemented type support. The prepared engine
 a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
-currently expose GIF conversion, WebP binding or Opus products. UIKit wrappers
+currently expose GIF conversion or Opus products. Its WebP helper is not adopted;
+Makosh uses the independently verified Apple decoder. UIKit wrappers
 and the outer GPLv2-only UI remain reference material. New codec source/build
 recipes and their licenses must be reviewed and pinned independently; generated
 engine files and `.references/` cannot become build dependencies. Apple decoder

@@ -30,7 +30,7 @@ public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
 }
 
 public enum TelegramUploadFileError: LocalizedError, Equatable {
-    case unavailable, tooLarge, invalidImage, invalidVideo, invalidAudio, stagingFailed
+    case unavailable, tooLarge, invalidImage, invalidVideo, invalidAudio, invalidWebP, stagingFailed
     public var errorDescription: String? {
         switch self {
         case .unavailable: "Выбранный файл недоступен или изменён. Выберите его снова."
@@ -38,6 +38,7 @@ public enum TelegramUploadFileError: LocalizedError, Equatable {
         case .invalidImage: "Не удалось подготовить фотографию. Можно отправить оригинал как файл."
         case .invalidVideo: "Не удалось подготовить видео. Можно отправить оригинал как файл."
         case .invalidAudio: "Не удалось проверить аудиофайл. Можно отправить оригинал как файл."
+        case .invalidWebP: "Не удалось проверить WebP. Можно отправить оригинал как файл."
         case .stagingFailed: "Не удалось подготовить временную копию вложения. Проверьте свободное место и доступ."
         }
     }
@@ -153,8 +154,13 @@ public enum TelegramUploadFileIO {
 
     static func validateMetadata(_ file: TelegramUploadFile) throws {
         guard let metadata = file.metadata else { return }
+        let invalid: TelegramUploadFileError
+        switch metadata {
+        case .audio: invalid = .invalidAudio
+        case .webP: invalid = .invalidWebP
+        }
         guard file.mode == .file, file.video == nil, file.videoCover == nil,
-              file.pixelWidth == nil, file.pixelHeight == nil, metadata.isValid else { throw TelegramUploadFileError.invalidAudio }
+              file.pixelWidth == nil, file.pixelHeight == nil, metadata.isValid else { throw invalid }
     }
 
     static func verifyMetadata(_ file: TelegramUploadFile) async throws {
@@ -164,6 +170,8 @@ public enum TelegramUploadFileIO {
         switch metadata {
         case let .audio(frozen):
             guard try await TelegramUploadAudioIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidAudio }
+        case let .webP(frozen):
+            guard try await TelegramUploadWebPIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidWebP }
         }
         try Task.checkCancellation()
     }

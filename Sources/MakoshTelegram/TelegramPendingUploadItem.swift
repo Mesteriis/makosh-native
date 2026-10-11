@@ -16,7 +16,8 @@ public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
     func allowsGrouping(_ files: [(name: String, isVisual: Bool, metadata: TelegramUploadMetadata?)]) -> Bool {
         if files.contains(where: { $0.metadata != nil }) {
             return self == .file && files.allSatisfy {
-                !$0.isVisual && $0.metadata?.isValid == true && ($0.name as NSString).pathExtension.lowercased() != "webp"
+                guard case let .audio(audio) = $0.metadata else { return false }
+                return !$0.isVisual && audio.isValid && ($0.name as NSString).pathExtension.lowercased() != "webp"
             }
         }
         return allowsGrouping(files.map { (name: $0.name, isVisual: $0.isVisual) })

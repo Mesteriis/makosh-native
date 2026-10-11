@@ -569,15 +569,15 @@ Static photo admission теперь использует размер исход
 Нативная проверка в общей форме: PNG64×64@144DPI остаётся файлом354bytes;
 PNG32×32@36DPI получает JPEG795bytes и сохраняет исходный PNG267bytes. File/Media
 и подпись переживают удаление выбранного файла и restart при выключенном S3.
-GIF/WebP/voice mappings ещё не реализованы; ordinary music описано ниже. Полный source contract,
+GIF/voice mappings ещё не реализованы; ordinary music и WebP описаны ниже. Полный source contract,
 включая order-dependent WebP options и отдельные native kinds, записан в
 `telegram-album-migration.md`; это не заявление о полном совпадении с референсом.
 Mode write меняет только Postbox metadata, сохраняет исходные local/S3 IDs и блокирует
 Send до подтверждения. Native PNG regression проверяет настоящий FileName,
 точные исходные байты MediaBox и complete receipt после восстановления.
 
-Оставшиеся различия классификации явные: GIF/WebP/multiframe media conversion
-не перенесена и исходники остаются файлами. Static-photo admission уже использует
+Оставшиеся различия классификации явные: GIF/multiframe media conversion
+не перенесена; WebP сохраняет исходные байты с native sticker attributes. Static-photo admission уже использует
 NSImage logical size. Полный ordered classifier, OGG/Opus и recorded voice ещё
 открыты, как Archive и image edits.
 
@@ -612,3 +612,29 @@ CoreAudio определяет container MIME по owned bytes; AVFoundation п�
 iTunes/QuickTime Identifier сравниваются с Key constants; их runtime equality
 не доказана. Макош использует native Identifier и проверенные теги M4A, поэтому
 буквальное runtime совпадение с этой особенностью upstream не заявлено.
+
+
+WebP сверено с `SenderController.swift:288–292,327–330,390–391,466–474`,
+`CoreExtension.swift:2987–2988` и pinned `submodules/libwebp` helper. В обоих
+режимах исходные байты получают `ImageSize`, `FileName`, `Sticker("",nil,nil)`
+в этом порядке, MIME `image/webp`; Animated/Video не выводятся из анимации.
+Собственный Apple ImageIO probe работает по содержимому owned payload, включая
+обманчивые `.jpg`, `.wav`, `.bin`. Schema9 строго хранит только width/height.
+Подготовка остаётся в имеющемся экране File общего service/sidebar окна;
+группировка запрещена по frozen kind независимо от имени. Legacy generic WebP
+не становится sticker при восстановлении только из расширения.
+
+Нативные синтетические static lossless/lossy, animated и partial first-frame
+fixtures подтверждают canvas dimensions320×160 и неизменность исходных байтов.
+20-point WebP остаётся допустимым для typed probe: upstream40-point/aspect option
+rules относятся к ещё открытому ordered classifier. Exact RIFF length,
+20MiB/8192-axis/40M-pixel/256-frame limits и отказ вместо upstream512×512 fallback
+— явные safety differences. Проба проверяет размеры frame0 и bounded thumbnail
+256px; exhaustive frame/stream integrity не заявлена. Проверки текущего host27
+не подменяют runtime macOS26.
+
+`SenderController.swift:131–157` также включает WebP в optional JPEG transport
+preview320px/quality0.7. Этот отдельный derivative ещё не перенесён; текущий
+WebP file имеет пустые previewRepresentations. Полный ordered option fold,
+Archive и image edits остаются открыты. GPLv2 UI/helper/ассеты не копировались,
+новая codec dependency не добавлялась.

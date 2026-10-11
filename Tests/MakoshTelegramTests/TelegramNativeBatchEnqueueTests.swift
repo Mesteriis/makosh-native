@@ -98,6 +98,32 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
 }
 
 @MainActor final class TelegramNativeBatchEnqueueTests: XCTestCase {
+    // Catches acknowledging a real queued WebP whose sticker attributes differ from the frozen resource.
+    func testMissingExtraOrReorderedWebPAttributesCannotAcknowledgeNativeQueue() async throws {
+        let mutations: [([TelegramMediaFileAttribute]) -> [TelegramMediaFileAttribute]] = [
+            { Array($0.reversed()) }, { Array($0.dropLast()) }, { $0 + [.Animated] }
+        ]
+        for mutate in mutations {
+            let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
+            let (draft, items) = try await fixture(root, modes: [.file], grouped: false, webP: true)
+            defer { items.forEach { try? TelegramUploadFileIO.discard($0.file) } }
+            let seeded = try await value(batchNativeSeed(box, draft: draft)); XCTAssertTrue(seeded)
+            let (resources, preparations) = try await prepare(box, draft: draft, items: items)
+            defer { preparations.forEach { $0.stop() } }
+            let receipt = try TelegramUploadBatchEnqueueReceipt(draft: draft,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic"), resources: resources, groupKeys: [])
+            var messages = try XCTUnwrap(receipt.messages(replySource: nil))
+            let file = try XCTUnwrap(resources[0].reference?.media as? TelegramMediaFile)
+            XCTAssertEqual(file.attributes, [.ImageSize(size: PixelDimensions(width: 320, height: 160)),
+                .FileName(fileName: "item-0.txt"), .Sticker(displayText: "", packReference: nil, maskData: nil)])
+            messages[0] = batchNativeReplacingMedia(messages[0], file.withUpdatedAttributes(mutate(file.attributes)))
+            let result = try await value(batchNativeEnqueue(box, receipt: receipt, messages: messages))
+            XCTAssertFalse(result.1)
+            let saved = try await value(batchNativeRead(box, ids: result.0.compactMap { $0 }))
+            XCTAssertEqual(saved.0, draft)
+        }
+    }
+
     func testSyntheticAccountSentinelIsNotConvertedToNativePeerID() async throws {
         let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
         let (draft, items) = try await fixture(root, modes: [.file, .file], grouped: true, accountID: -1)
@@ -501,17 +527,23 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
         }
     }
 
-    private func fixture(_ root: URL, modes: [TelegramUploadMode], grouped: Bool, chatID: Int64 = 42, accountID: Int64 = 1) async throws -> (TelegramPendingUploadDraft, [TelegramUploadBatchItem]) {
+    private func fixture(_ root: URL, modes: [TelegramUploadMode], grouped: Bool, chatID: Int64 = 42, accountID: Int64 = 1, webP: Bool = false) async throws -> (TelegramPendingUploadDraft, [TelegramUploadBatchItem]) {
         let preparationID = UUID()
         var items: [TelegramUploadBatchItem] = [], stored: [TelegramPendingUploadItem] = []
         for (index, mode) in modes.enumerated() {
             let source = root.appendingPathComponent("item-\(index)." + (mode == .file ? "txt" : mode == .photo ? "jpg" : "mov"))
             switch mode {
-            case .file: try Data("Payload \(index)".utf8).write(to: source)
+            case .file:
+                if webP { try writeUploadWebPFixture(source) }
+                else { try Data("Payload \(index)".utf8).write(to: source) }
             case .photo: try writeUploadVideoCoverFixture(source)
             case .video: try await writeUploadVideoFixture(source)
             }
             var file = try await TelegramUploadFileIO.stage(source, mode: mode)
+            if webP {
+                file = .init(id: file.id, name: file.name, size: file.size, mode: .file, pixelWidth: nil,
+                    pixelHeight: nil, url: file.url, directory: file.directory, metadata: .webP(.init(width: 320, height: 160)))
+            }
             if mode == .video {
                 let coverURL = root.appendingPathComponent("cover-\(index).jpg"); try writeUploadVideoCoverFixture(coverURL)
                 let cover = try await TelegramUploadVideoCoverIO.stage(coverURL, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
@@ -531,11 +563,12 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
             let cover = try file.videoCover.map { cover in TelegramPendingUploadVideoCover(file:
                 try record(cover.url, name: cover.name, size: cover.size, kind: "photo", attachmentID: TelegramPendingUploadItem.coverAttachmentID(itemID)),
                 width: cover.width, height: cover.height) }
-            items.append(.init(id: itemID, file: file)); stored.append(.init(id: itemID, file: archived, video: file.video, videoCover: cover))
+            items.append(.init(id: itemID, file: file)); stored.append(.init(id: itemID, file: archived, video: file.video, videoCover: cover, metadata: file.metadata))
         }
         let input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Batch 😀", entities: [.init(offset: 0, length: 5, kind: .bold)]))
         return (try TelegramPendingUploadDraft(id: preparationID, accountID: accountID, chatID: chatID, title: "Synthetic", captionInput: input,
-            originalDraft: nil, replyTarget: nil, items: stored, isGrouped: grouped, disposition: .submissionStarted), items)
+            originalDraft: nil, replyTarget: nil, items: stored, isGrouped: grouped,
+            presentation: webP ? .file : nil, disposition: .submissionStarted), items)
     }
 
     private func prepare(_ box: Postbox, draft: TelegramPendingUploadDraft, items: [TelegramUploadBatchItem]) async throws -> ([TelegramUploadBatchResource], [TelegramUploadMediaBoxPreparation]) {

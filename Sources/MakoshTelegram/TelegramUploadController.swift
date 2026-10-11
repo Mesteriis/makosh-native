@@ -186,35 +186,44 @@ enum TelegramUploadEvent {
                         staged.append(.init(id: original.id, file: original))
                         let type = UTType(filenameExtension: (original.name as NSString).pathExtension)
                         let photoCandidate = source.mode == .photo || type?.conforms(to: .image) == true
-                        if photoCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original) {
-                            let jpeg = try await stage(original.url, .photo)
-                            let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
-                            let file = TelegramUploadFile(id: jpeg.id, name: name, size: jpeg.size, mode: jpeg.mode,
-                                pixelWidth: jpeg.pixelWidth, pixelHeight: jpeg.pixelHeight, url: jpeg.url,
-                                directory: jpeg.directory, video: jpeg.video, videoCover: jpeg.videoCover)
-                            staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
-                        } else if type?.preferredMIMEType?.hasPrefix("video/") == true {
-                            do {
-                                let info = try await TelegramUploadVideoIO.inspect(original)
-                                let metadata = TelegramUploadVideoMetadata(width: info.width, height: info.height,
-                                    duration: info.duration, hasAudio: info.hasAudio, inCollage: true)
-                                let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
-                                    mode: .video, pixelWidth: info.width, pixelHeight: info.height,
-                                    url: original.url, directory: original.directory, video: metadata)
-                                staged[staged.count - 1] = .init(id: original.id, file: file)
-                            } catch TelegramUploadFileError.invalidVideo {
-                                // An ordinary file choice remains usable when its video suffix is misleading.
-                            }
-                        } else if type?.conforms(to: .audio) == true || type?.preferredMIMEType?.hasPrefix("audio/") == true {
-                            do {
-                                let audio = try await TelegramUploadAudioIO.inspect(original)
+                        do {
+                            if let webP = try await TelegramUploadWebPIO.inspect(original) {
                                 let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
                                     mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
-                                    directory: original.directory, metadata: .audio(audio))
+                                    directory: original.directory, metadata: .webP(webP))
                                 staged[staged.count - 1] = .init(id: original.id, file: file)
-                            } catch TelegramUploadFileError.invalidAudio {
-                                // Unsupported or misleading containers retain their unchanged generic file.
+                            } else if photoCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original) {
+                                let jpeg = try await stage(original.url, .photo)
+                                let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
+                                let file = TelegramUploadFile(id: jpeg.id, name: name, size: jpeg.size, mode: jpeg.mode,
+                                    pixelWidth: jpeg.pixelWidth, pixelHeight: jpeg.pixelHeight, url: jpeg.url,
+                                    directory: jpeg.directory, video: jpeg.video, videoCover: jpeg.videoCover)
+                                staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
+                            } else if type?.preferredMIMEType?.hasPrefix("video/") == true {
+                                do {
+                                    let info = try await TelegramUploadVideoIO.inspect(original)
+                                    let metadata = TelegramUploadVideoMetadata(width: info.width, height: info.height,
+                                        duration: info.duration, hasAudio: info.hasAudio, inCollage: true)
+                                    let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
+                                        mode: .video, pixelWidth: info.width, pixelHeight: info.height,
+                                        url: original.url, directory: original.directory, video: metadata)
+                                    staged[staged.count - 1] = .init(id: original.id, file: file)
+                                } catch TelegramUploadFileError.invalidVideo {
+                                    // An ordinary file choice remains usable when its video suffix is misleading.
+                                }
+                            } else if type?.conforms(to: .audio) == true || type?.preferredMIMEType?.hasPrefix("audio/") == true {
+                                do {
+                                    let audio = try await TelegramUploadAudioIO.inspect(original)
+                                    let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
+                                        mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
+                                        directory: original.directory, metadata: .audio(audio))
+                                    staged[staged.count - 1] = .init(id: original.id, file: file)
+                                } catch TelegramUploadFileError.invalidAudio {
+                                    // Unsupported or misleading containers retain their unchanged generic file.
+                                }
                             }
+                        } catch TelegramUploadFileError.invalidWebP {
+                            // Recognizable unsafe WebP remains an unchanged generic file, without suffix reinterpretation.
                         }
                     }
                     try Task.checkCancellation()

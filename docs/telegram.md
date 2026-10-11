@@ -2332,9 +2332,9 @@ DEBUG synthetic QA generates its own pixels/PCM through the same writer without
 constructing capture inputs or requesting permission. Its preview is explicitly
 labelled synthetic. Native encoding and isolated durable-queue tests do not prove
 camera hardware, physical orientation/routes, device throughput, system prompts,
-personal Account/server/recipient behavior or minimum26 runtime. The reference's
-end-file player, placeholder/shadow assets, exact modal/gesture parity and cap-time
-automatic send remain differences; Makosh cap-time preparation requires Send.
+personal Account/server/recipient behavior or minimum26 runtime. Placeholder/shadow
+assets, exact modal/gesture parity and cap-time automatic send remain differences; Makosh cap-time preparation requires Send. Finished-file
+preview is described below.
 
 For isolated DEBUG screen QA, `--telegram-round-video-qa` can accompany
 `--telegram-drafts-synthetic-preview <owned-test-Postbox>` to start with round
@@ -2342,3 +2342,36 @@ selected. It changes only this synthetic fixture's initial kind, never starts a
 recording, and does not replace gesture testing. Pending recovery additionally
 requires `--telegram-pending-upload-qa`, an isolated `qa_telegram_dossier_` schema
 through `--database-config` and explicit `--storage-config`, as before.
+
+### Finished round-video preparation preview
+
+The explicit `openRoundVideoPreview(contextID:)` entry uses the existing native
+preparation player. It requires a current ready single-item round preparation;
+generic video preview continues to reject typed round metadata. Before attaching
+a player, the round path repeats the full schema13 profile, decoded facts and
+digest check, then uses fixed video/mp4 MIME and native round-video kind. It
+borrows the immutable owned stage, without a new archive capture or S3 copy.
+
+The common Telegram window keeps the264pt circular aspect-fill surface inside its
+300pt overlay after recording finishes or prepared recovery succeeds. The capture
+progress ring disappears. The player loops silently only in a visible key window,
+with external playback disabled. Finished bytes already contain the writer's
+mirror; playback does not mirror them again. The frozen once mode remains visible
+beside explicit Send/Cancel and is not consumed or changed by local preview.
+
+Cancellation, replacement and stale native views cannot publish or control a
+later player. An already-cancelled load cannot detach a current preview. Send,
+cancel, rebind and stage release detach the decoder first. Navigation dismisses
+the surface; returning can load the retained prepared record again. Preview does
+not bypass missing durable recovery, native admission or fresh Send rights.
+
+Normal capture completion drains an already-entered asynchronous source append
+before finishing the native writer. Cancelling that append would propagate to the
+writer and destroy valid output. The generated QA source stops cooperatively and
+waits for its bounded current append/sleep; explicit cancellation still cancels
+the writer and rejects late publication. Manual and watchdog regressions hold an
+actual native-writer append and require admissible retained bytes after stop.
+
+S3 OFF continues to forbid every new copy; encrypted local recovery never promotes
+after enable. This preview introduces no dependency, schema, engine recipe,
+third-party source/assets, account access or recording permission change.

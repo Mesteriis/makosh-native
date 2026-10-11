@@ -82,9 +82,40 @@ import AVFoundation
         do {
             try await capture.start()
             for _ in 0..<100 where capture.isRecording { try await Task.sleep(for: .milliseconds(10)) }
-            XCTAssertFalse(capture.isRecording); XCTAssertTrue(source.stopped)
+            XCTAssertFalse(capture.isRecording)
             let bytes = try await capture.stop(); XCTAssertFalse(bytes.isEmpty)
+            XCTAssertTrue(source.stopped)
         } catch { XCTFail("Audio stall lost valid recording: \(error)") }
+    }
+    // Cancelling a source's in-flight async append cancels the real native writer.
+    // Normal stop must drain that append and retain an admissible recording.
+    func testStopDrainsInFlightSampleBeforeFinishingRecording() async throws {
+        try await drainsInFlightSample(automatic: false)
+    }
+    func testWatchdogDrainsInFlightSampleBeforeRetainingRecording() async throws {
+        try await drainsInFlightSample(automatic: true)
+    }
+    private func drainsInFlightSample(automatic: Bool) async throws {
+        let source = InFlightRoundSource()
+        let capture = TelegramCameraRoundVideoCapture(authorization: { (.authorized,.authorized) },
+            makeSource: { source }, captureTimeout: automatic ? 0.1 : 60)
+        defer { capture.cancel(); source.cancel() }
+        try await capture.start()
+        source.holdNextAppend()
+        for _ in 0..<200 where !source.entered { try await Task.sleep(for: .milliseconds(5)) }
+        guard source.entered else { return XCTFail("Actual writer append was not entered") }
+        if automatic {
+            for _ in 0..<200 where capture.isRecording { try await Task.sleep(for: .milliseconds(5)) }
+            XCTAssertFalse(capture.isRecording)
+        }
+        do {
+            let bytes = try await capture.stop()
+            let file = try await TelegramRecordedRoundVideoIO.prepare(bytes: bytes)
+            defer { try? TelegramUploadFileIO.discard(file) }
+            XCTAssertEqual(file.video?.width, 300)
+            XCTAssertEqual(try XCTUnwrap(file.video).duration, 2, accuracy: 0.001)
+            let retained = try await capture.stop(); XCTAssertEqual(retained, bytes)
+        } catch { XCTFail("Graceful stop cancelled valid in-flight recording: \(error)") }
     }
     // Catches reusing a cancelled one-shot capture, or public construction touching a device.
     func testPublicConstructionIsInertAndCancelCannotBeReused() async throws {
@@ -93,6 +124,29 @@ import AVFoundation
         capture.cancel()
         do { try await capture.start(); XCTFail("Cancelled capture restarted") } catch { XCTAssertTrue(error is CancellationError) }
     }
+}
+
+@MainActor private final class InFlightRoundSource: TelegramRoundVideoCaptureSource {
+    var previewSession: AVCaptureSession? { nil }
+    private var writer: TelegramRoundVideoCaptureWriter?
+    private var operation: Task<Void, any Error>?
+    private let gate = DispatchSemaphore(value: 0)
+    private(set) var entered = false
+    func start(writer: TelegramRoundVideoCaptureWriter) async throws {
+        self.writer = writer; try await roundCaptureFeed(writer)
+    }
+    func holdNextAppend() {
+        guard let writer else { return }
+        let gate = gate
+        writer.sampleQueue.async { _ = gate.wait(timeout: .now() + 5) }
+        operation = Task {
+            entered = true
+            try await writer.appendVideo(roundCapturePixels(), at: CMTime(value: 1, timescale: 1))
+            try await writer.appendAudio(roundCaptureAudio(offset: 44_100, count: 44_100))
+        }
+    }
+    func stop() async { gate.signal(); _ = try? await operation?.value; operation = nil }
+    func cancel() { operation?.cancel(); gate.signal(); operation = nil }
 }
 
 @MainActor private final class SyntheticRoundSource: TelegramRoundVideoCaptureSource {

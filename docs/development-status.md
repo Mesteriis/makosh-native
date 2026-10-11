@@ -1,6 +1,85 @@
 # Development status — 2026-10-11
 
-## Current stage: asynchronous round capture in the common Telegram window
+## Current stage: finished round preview in the common Telegram window
+
+Ready and restored round preparations now keep the264pt circular aspect-fill
+player inside the300pt common-window overlay. The capture ring disappears. A
+separate explicit controller entry repeats strict schema13 profile/decoded facts/
+digest validation before attaching the existing native player, using fixed MP4
+MIME and round kind. Generic video entry refuses typed round recordings.
+
+The player borrows the same immutable stage, loops muted only while visible in a
+key window and disables external playback. Local preview preserves ordinary/once
+intent, durable recovery and explicit Send/Cancel. Send, cancellation, rebinding
+and release detach the decoder before submission/unlink. Generation and player
+identity protect replacement; an already-cancelled entry cannot detach a newer
+preview. Navigation dismisses the player and returning reloads the retained record.
+
+Actual fresh cap-time QA exposed source cancellation reaching an in-flight async
+writer append. Normal completion now drains the entered append before finishing
+the real MP4; explicit cancellation still cancels writer/finish and rejects late
+bytes. Compiled manual/watchdog RED2/2 becomes focused GREEN57/0. A subsequent
+full run caught testAudioStallWatchdogFinalizesLastValidSamples asserting source
+closure before awaiting stop completion (1 failure). Moving that assertion to the
+completion boundary passes capture9/0 and the final full suite; production is
+unchanged by that test correction. Original failed gates remain distinct.
+
+Compiled behavioral root RED26/7(0 unexpected) becomes focused GREEN37/0,
+including real PostgreSQL/S3/encrypted Postbox restored ordinary/once ON/OFF and
+Send detachment. Leaf RED10/14 and cancelled-entry RED1/3 precede focused GREEN11/0.
+Source-inspection path failures and a reviewer local-capture gap remain recorded
+privately, not reconstructed as passing.
+
+`scripts/dev-db.sh up`, final `scripts/test.sh` and `scripts/build-app.sh` exit0:
+**1,141 XCTest cases (1,065 Telegram +76 core),1 skipped,0 failures;38 Python
+regressions**. All11 changed source/test hashes stay frozen through the final full
+suite and build. No compile warnings;390 existing upstream t19 teardown diagnostics
+remain without failures. The host-permission skip is separate from deterministic checks.
+Strict built/owned-QA signatures, raw unsigned payload equality and camera/
+microphone purpose-key equality pass.
+
+Actual owned synthetic AX/screenshots reproduce the missing finished-file preview
+on the previous payload. The first preview payload restores that same local once
+preparation in chat7 S3 OFF, showing changing encoded frames in the circle without
+the capture ring, frozen once and explicit Send/Cancel. Mail→Telegram removes/
+reloads the player and preserves chat/OFF. Cancel removes the preparation and
+permits a new synthetic recording. The subsequent fresh ordinary cap-time failure
+above remains separate from the corrected final-payload replay: a new ordinary
+recording reaches the60s cap and retains its ready circle/explicit controls without
+sending. Mail→Telegram removes/reloads that player and preserves chat7/OFF.
+After owned-process restart, the same ordinary preparation and player restore
+with explicit Send/Cancel. Explicit Send detaches the player and reaches only the
+synthetic local queue. Closing observation preserves conservative uncertainty/no
+automatic resend. No hardware input, permission grant, personal Account or Telegram
+network used.
+
+Root verifies139 leaf,114 integration-review and45 stop/drain-review artifact
+hashes. Bounded reviews find no additional actionable issue. The final root-only
+test delta moves the source-closure assertion after awaited stop. Initial
+transferred snapshot and observed route/model/usage remain unknown; no quorum.
+Final active XERJ queries are source-confirmed; project refresh/check exit0,
+435 files,401/401 classified code, with fresh pinned reference/engine checks.
+No dependency/schema/license/engine recipe change or third-party source/assets
+copied.
+
+S3 OFF forbids every new copy, including preparation and preview. Encrypted local
+records never promote after enable; PostgreSQL stores metadata, not payload bytes.
+Cancellation/acceptance/recipient expiration never purge immutable archived files.
+
+Remaining: reference modal/placeholder/shadow/fade and full visual/gesture parity,
+physical camera/audio routes/orientation/throughput, OS-blocked native latency,
+system prompts, Account/server/recipient and minimum26 runtime proof. Physical
+short-click/hold/drag and custom-action invocation remain unproved by CUA. A
+held cancel-during-drain case and hardware stop latency are not executed. Next:
+ordered classification, Archive/caption normalization and subsequent services.
+Full Telegram migration and the overall goal remain open. Hosted CI is separate:
+on preceding head504a3d5 one run passed and one failed in
+TelegramSyntheticRoundVideoCaptureTests with CancellationError, consistent with
+the reproduced cancellation boundary. That historical failure is not a pass;
+Hosted checks for this slice are tracked separately; no current-head hosted
+success is claimed.
+
+## Historical asynchronous round capture in the common Telegram window (504a3d5)
 
 The shared Voice/round recorder now owns asynchronous camera startup, readiness,
 context cancellation, kind-specific rights and durable model handoff. Camera then

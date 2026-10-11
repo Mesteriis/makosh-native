@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import MakoshTelegram
 
 @MainActor final class TelegramRecordedRoundVideoControllerTests: XCTestCase {
@@ -49,6 +50,82 @@ import XCTest
         XCTAssertEqual(prepared, [id]); XCTAssertFalse(controller.canSend)
         controller.send(contextID: id)
         XCTAssertEqual(controller.phase, .ready); XCTAssertNotNil(controller.recoveryStatus)
+    }
+
+    // Catches generic-preview bypass, stage consumption, mode changes and stale UI ownership.
+    func testPreparedOrdinaryAndOnceRoundPreviewBorrowsExactStage() async throws {
+        let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
+        for once in [false, true] {
+            let controller = TelegramUploadController(), provider = RoundControllerProvider()
+            controller.bind(provider: provider); defer { controller.clear() }
+            XCTAssertTrue(controller.prepareRecordedRoundVideo(bytes: bytes, target: target, isOneTime: once))
+            try await settled(controller)
+            let file = try XCTUnwrap(controller.file), id = try XCTUnwrap(controller.preparationContextID)
+            let items = controller.items
+            await controller.openRoundVideoPreview(contextID: UUID())
+            XCTAssertNil(controller.videoPlayback.player)
+            await controller.openVideoPreview(contextID: id)
+            XCTAssertNil(controller.videoPlayback.player)
+            await controller.openRoundVideoPreview(contextID: id)
+            guard let player = controller.videoPlayback.player else { return XCTFail("Explicit round preview is not connected") }
+            XCTAssertEqual((player.currentItem?.asset as? AVURLAsset)?.url, file.url)
+            XCTAssertTrue(player.isMuted); XCTAssertEqual(player.volume, 0); XCTAssertEqual(player.rate, 0)
+            controller.stopVideoPreview(contextID: UUID())
+            XCTAssertTrue(controller.videoPlayback.player === player)
+            await controller.openRoundVideoPreview(contextID: UUID())
+            XCTAssertTrue(controller.videoPlayback.player === player)
+            XCTAssertEqual(controller.items, items); XCTAssertEqual(controller.isOneTimeRoundVideo, once)
+            XCTAssertFalse(controller.canSend, "Preview must not bypass missing durable recovery")
+            controller.stopVideoPreview(contextID: id)
+            XCTAssertNil(player.currentItem); XCTAssertNil(controller.videoPlayback.player)
+            XCTAssertEqual(try Data(contentsOf: file.url), bytes)
+        }
+    }
+
+    // Catches unlinking a borrowed round stage while AVFoundation is still attached.
+    func testRoundPreviewDismissRebindAndClearDetachBeforeUnlink() async throws {
+        let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
+        for boundary in 0..<3 {
+            let controller = TelegramUploadController(), provider = RoundControllerProvider()
+            controller.bind(provider: provider); defer { controller.clear() }
+            XCTAssertTrue(controller.prepareRecordedRoundVideo(bytes: bytes, target: target, isOneTime: true))
+            try await settled(controller)
+            let file = try XCTUnwrap(controller.file), id = try XCTUnwrap(controller.preparationContextID)
+            await controller.openRoundVideoPreview(contextID: id)
+            guard let player = controller.videoPlayback.player else { return XCTFail("Round decoder was never attached") }
+            var released = 0
+            controller.discard = { file in
+                XCTAssertNil(player.currentItem, "Detach round decoder before unlink")
+                released += 1; try TelegramUploadFileIO.discard(file)
+            }
+            switch boundary {
+            case 0: controller.dismissPreparation(contextID: id)
+            case 1: controller.bind(provider: nil)
+            default: controller.clear()
+            }
+            XCTAssertNil(controller.videoPlayback.player); XCTAssertNil(player.currentItem)
+            XCTAssertEqual(released, 1); XCTAssertFalse(FileManager.default.fileExists(atPath: file.url.path))
+        }
+    }
+
+    // Catches an old view stopping/reopening the decoder of a later preparation.
+    func testOldRoundContextCannotStopOrReplaceNewPreview() async throws {
+        let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
+        let controller = TelegramUploadController(), provider = RoundControllerProvider()
+        controller.bind(provider: provider); defer { controller.clear() }
+        XCTAssertTrue(controller.prepareRecordedRoundVideo(bytes: bytes, target: target))
+        try await settled(controller)
+        let old = try XCTUnwrap(controller.preparationContextID)
+        controller.cancelPreparation()
+        XCTAssertTrue(controller.prepareRecordedRoundVideo(bytes: bytes, target: target, isOneTime: true))
+        try await settled(controller)
+        let current = try XCTUnwrap(controller.preparationContextID)
+        await controller.openRoundVideoPreview(contextID: current)
+        guard let player = controller.videoPlayback.player else { return XCTFail("Replacement round preview is not connected") }
+        controller.stopVideoPreview(contextID: old)
+        await controller.openRoundVideoPreview(contextID: old)
+        XCTAssertTrue(controller.videoPlayback.player === player); XCTAssertNotNil(player.currentItem)
+        XCTAssertEqual(controller.preparationContextID, current); XCTAssertTrue(controller.isOneTimeRoundVideo)
     }
 
     // Catches publishing a caption while metadata is still being encoded/probed.

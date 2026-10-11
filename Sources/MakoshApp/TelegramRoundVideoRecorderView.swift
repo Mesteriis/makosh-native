@@ -6,6 +6,8 @@ import MakoshTelegram
 /// The reference's300pt overlay and264pt circle leave the shared composer in control.
 struct TelegramRoundVideoRecorderView: View {
     @ObservedObject var recording: TelegramVoiceRecordingController
+    @ObservedObject var upload: TelegramUploadController
+    let selectedChatID: Int64?
     let synthetic: Bool
     var body: some View {
         if recording.isActive, recording.selectedKind == .roundVideo {
@@ -32,6 +34,13 @@ struct TelegramRoundVideoRecorderView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(synthetic ? "Синтетический предпросмотр круглого видео" : "Предпросмотр круглого видео")
             .accessibilityIdentifier("telegram.roundVideo.preview")
+        } else if upload.target?.chatID == selectedChatID, upload.phase == .ready,
+                  upload.isRecordedRoundVideo, let contextID = upload.preparationContextID {
+            TelegramRoundVideoPlayerView(playback: upload.videoPlayback)
+                .frame(width: 300, height: 300)
+                .task(id: contextID) { await upload.openRoundVideoPreview(contextID: contextID) }
+                .onDisappear { upload.stopVideoPreview(contextID: contextID) }
+                .id(contextID)
         }
     }
 }

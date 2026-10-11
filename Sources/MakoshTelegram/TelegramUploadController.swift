@@ -406,6 +406,14 @@ enum TelegramUploadEvent {
               let file, file.mode == .video, file.metadata?.roundVideo == nil, file.videoCover == nil else { return }
         await videoPlayback.load(file)
     }
+    /// Explicit round preparation keeps the ordinary-video preview boundary closed.
+    public func openRoundVideoPreview(contextID: UUID) async {
+        guard preparationID == contextID, phase == .ready, containsRecordedRoundVideo,
+              items.count == 1, presentation == .media, !mediaSpoiler,
+              videoCoverEditingID == nil, !isVideoCoverSaving,
+              let file, file.metadata?.roundVideo != nil, file.videoCover == nil else { return }
+        await videoPlayback.loadRoundVideo(file)
+    }
     public func stopVideoPreview(contextID: UUID) {
         guard preparationID == contextID else { return }
         videoPlayback.stop()

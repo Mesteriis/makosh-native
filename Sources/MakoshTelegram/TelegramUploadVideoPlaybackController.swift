@@ -16,6 +16,16 @@ public final class TelegramUploadVideoPlaybackController: ObservableObject {
     /// Borrows the immutable owned stage. The upload owner stops this decoder
     /// before submitting or releasing it; this controller never discards bytes.
     func load(_ file: TelegramUploadFile) async {
+        await load(file, kind: .video)
+    }
+
+    /// Explicit recorded-round preview revalidates the frozen intent and actual bytes.
+    func loadRoundVideo(_ file: TelegramUploadFile) async {
+        await load(file, kind: .roundVideo)
+    }
+
+    private func load(_ file: TelegramUploadFile, kind: TelegramPlaybackKind) async {
+        guard !Task.isCancelled else { return }
         stop()
         let id = UUID(); generation = id
         deadline = Task { [weak self] in
@@ -26,7 +36,9 @@ public final class TelegramUploadVideoPlaybackController: ObservableObject {
         do {
             try Task.checkCancellation()
             try TelegramUploadFileIO.validateOwnedStage(file)
-            guard file.mode == .video, let video = file.video,
+            guard kind == .video || kind == .roundVideo,
+                  kind == .roundVideo || file.metadata?.roundVideo == nil,
+                  file.mode == .video, let video = file.video,
                   video.isValid(name: file.name, size: file.size),
                   file.pixelWidth == video.width, file.pixelHeight == video.height else { throw TelegramUploadFileError.invalidVideo }
             let fd = Darwin.open(file.url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
@@ -35,14 +47,20 @@ public final class TelegramUploadVideoPlaybackController: ObservableObject {
             var original = stat()
             guard fstat(fd, &original) == 0, original.st_mode & S_IFMT == S_IFREG,
                   original.st_size == file.size else { throw TelegramUploadFileError.unavailable }
-            let info = try await TelegramUploadVideoIO.inspect(file)
-            guard info.width == video.width, info.height == video.height,
-                  info.duration == video.duration, info.hasAudio == video.hasAudio,
-                  generation == id else { throw TelegramUploadFileError.invalidVideo }
-            let mime = UTType(filenameExtension: (file.name as NSString).pathExtension)?.preferredMIMEType
+            if kind == .roundVideo {
+                _ = try await TelegramRecordedRoundVideoIO.inspect(file)
+            } else {
+                let info = try await TelegramUploadVideoIO.inspect(file)
+                guard info.width == video.width, info.height == video.height,
+                      info.duration == video.duration, info.hasAudio == video.hasAudio else { throw TelegramUploadFileError.invalidVideo }
+            }
+            try Task.checkCancellation()
+            guard generation == id else { throw CancellationError() }
+            let mime = kind == .roundVideo ? "video/mp4"
+                : UTType(filenameExtension: (file.name as NSString).pathExtension)?.preferredMIMEType
             let engine = TelegramNativePlaybackEngine(mimeType: mime, keepsItemAtEnd: true)
             self.engine = engine
-            _ = try await engine.load(file: file.url, kind: .video) { [weak self] event in
+            _ = try await engine.load(file: file.url, kind: kind) { [weak self] event in
                 self?.receive(event, id: id)
             }
             try Task.checkCancellation()

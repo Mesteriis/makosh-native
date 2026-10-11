@@ -133,8 +133,16 @@ enum TelegramRoundVideoCaptureError: Error, Equatable, Sendable {
         if let failure { throw failure }
         guard used, !starting, let writer else { throw TelegramRoundVideoCaptureError.invalidState }
         active = false; watchdogTask?.cancel(); watchdogTask = nil
-        source?.cancel(); source = nil
-        if finishTask == nil { finishTask = Task { try await writer.finish() } }
+        if finishTask == nil {
+            let source = self.source; self.source = nil
+            finishTask = Task {
+                // Normal completion drains an entered append; cancellation would
+                // propagate through the async writer and destroy valid output.
+                await source?.stop()
+                try Task.checkCancellation()
+                return try await writer.finish()
+            }
+        }
         do {
             let bytes = try await finishTask!.value
             if cancelled { throw CancellationError() }

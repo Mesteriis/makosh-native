@@ -74,7 +74,8 @@ struct TelegramDetailView: View {
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
             .overlay {
-                TelegramRoundVideoRecorderView(recording: model.voiceRecording, synthetic: model.isSyntheticPreview)
+                TelegramRoundVideoRecorderView(recording: model.voiceRecording, upload: upload,
+                    selectedChatID: model.selectedChatID, synthetic: model.isSyntheticPreview)
                     .allowsHitTesting(false)
             }
             .onChange(of: model.selectedChatID) { _, _ in

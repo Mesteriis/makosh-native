@@ -874,9 +874,29 @@ round ACL перед Send и оставляет подготовку при от
 любые новые S3 копии, local record после включения не повышается в S3.
 
 Оставшиеся отличия: overlay вместо reference modal, системные символы вместо
-GPLv2-only placeholder/shadow/assets, отсутствие end-file player и полного
+GPLv2-only placeholder/shadow/assets и отсутствие полного
 визуального/gesture совпадения. На60s Макош готовит запись и ждёт Send; reference
 runTimer вызывает отправку. Синтетическая камера явно обозначена и не открывает
 устройства. Текущие actual UI результаты записаны в development-status.md;
 кодирование/очередь/синтетический экран не доказывают server acceptance, recipient
 playback, реальную камеру, route/orientation/throughput или minimum26 runtime.
+
+### Предпросмотр готового круглого видео
+
+На том же desktop pin `VideoRecorderModalView.swift:65–89` передаёт готовый путь
+в GIFPlayerView, убирает capture layer и progress ring. Проверенный
+`packages/TelegramMedia/Sources/GIFPlayerView.swift:193–310` читает только video
+sample buffers и повторяет готовый файл; audio output отсутствует. Это источник
+поведения и геометрии, а не скопированный GPLv2-only код.
+
+В общей панели Макош готовая/восстановленная запись теперь использует тот же
+центральный300pt overlay с264pt кругом, aspect-fill и без ring. Собственный
+AVPlayer проигрывает проверенный owned stage без звука, повторяет его только в
+видимом key window и отключает external playback. Второе отражение не применяется:
+оно уже записано в байтах. Локальный просмотр не меняет frozen once, Send/Cancel
+или S3 policy и не создаёт копий. Generic video entry остаётся закрытым для round.
+
+Modal, placeholder/shadow assets, переходы/fade и полная visual/gesture parity
+остаются открыты. Cap60s по-прежнему готовит запись с явным Send. Actual UI
+результаты и ограничения записаны в development-status.md; это не доказательство
+реальной камеры, Account/server/recipient или minimum26 runtime.

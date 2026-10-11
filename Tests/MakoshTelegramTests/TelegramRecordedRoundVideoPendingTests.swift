@@ -363,7 +363,14 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             }
             #endif
             if !modelDriven {
+            await controller.openRoundVideoPreview(contextID: prepared.id)
+            guard let originalPlayer = controller.videoPlayback.player else {
+                return XCTFail("Prepared round preview is not attached before recovery")
+            }
+            XCTAssertEqual((originalPlayer.currentItem?.asset as? AVURLAsset)?.url, stage.url)
+            XCTAssertTrue(originalPlayer.isMuted); XCTAssertEqual(originalPlayer.volume, 0)
             controller.bind(provider: nil)
+            XCTAssertNil(originalPlayer.currentItem)
             let recovered = try await store.restoreItems(draft: prepared)
             controller = TelegramUploadController()
             controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
@@ -376,8 +383,18 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             XCTAssertEqual(controller.isOneTimeRoundVideo, once); XCTAssertFalse(controller.canEditVideoCover)
             XCTAssertFalse(controller.canUseMediaOptions); XCTAssertFalse(controller.showsPreparationPreview)
             XCTAssertEqual(provider.submissions, 0); XCTAssertTrue(controller.canSend)
+            await controller.openRoundVideoPreview(contextID: prepared.id)
+            guard let restoredPlayer = controller.videoPlayback.player else {
+                return XCTFail("Restored round preview is not attached before explicit Send")
+            }
+            XCTAssertEqual((restoredPlayer.currentItem?.asset as? AVURLAsset)?.url, controller.file?.url)
+            XCTAssertTrue(restoredPlayer.isMuted); XCTAssertEqual(restoredPlayer.volume, 0)
+            XCTAssertEqual(controller.isOneTimeRoundVideo, once)
             controller.send(contextID: UUID()); XCTAssertEqual(provider.submissions, 0)
+            XCTAssertTrue(controller.videoPlayback.player === restoredPlayer)
             controller.send(contextID: prepared.id)
+            XCTAssertNil(restoredPlayer.currentItem, "Detach before durable submission or native queue insertion")
+            XCTAssertNil(controller.videoPlayback.player)
             }
             for _ in 0..<1_000 where controller.phase == .ready || controller.phase == .storing || controller.phase == .enqueuing {
                 try await Task.sleep(for: .milliseconds(10))

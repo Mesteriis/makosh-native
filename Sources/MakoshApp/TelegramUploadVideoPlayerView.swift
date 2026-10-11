@@ -22,18 +22,45 @@ struct TelegramUploadVideoPlayerView: View {
     }
 }
 
+/// Finished round recordings keep the capture circle and omit its progress ring.
+struct TelegramRoundVideoPlayerView: View {
+    @ObservedObject var playback: TelegramUploadVideoPlaybackController
+    var body: some View {
+        ZStack {
+            Circle().fill(.black)
+            if let player = playback.player {
+                NativeVideoSurface(player: player, roundVideo: true) { visible in
+                    playback.setVisible(visible, player: player)
+                }
+            } else if let error = playback.error {
+                Label(error, systemImage: "video.slash").font(.caption)
+                    .foregroundStyle(.white).multilineTextAlignment(.center).padding(24)
+                    .accessibilityIdentifier("telegram.roundVideo.videoPlaybackError")
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .frame(width: 264, height: 264).clipShape(Circle())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Предпросмотр подготовленного круглого видео")
+        .accessibilityIdentifier("telegram.roundVideo.preparedPreview")
+    }
+}
+
 private struct NativeVideoSurface: NSViewRepresentable {
     let player: AVPlayer
+    var roundVideo = false
     let visibilityChanged: @MainActor (Bool) -> Void
     func makeNSView(context: Context) -> UploadVideoSurface {
         let view = UploadVideoSurface()
         view.controlsStyle = .none
         view.showsFullScreenToggleButton = false
-        view.videoGravity = .resizeAspect
+        view.roundVideo = roundVideo
+        view.videoGravity = roundVideo ? .resizeAspectFill : .resizeAspect
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.image)
         view.setAccessibilityLabel("Видеопредпросмотр без звука")
-        view.setAccessibilityIdentifier("telegram.upload.videoPlayback")
+        view.setAccessibilityIdentifier(roundVideo ? "telegram.roundVideo.videoPlayback" : "telegram.upload.videoPlayback")
         view.player = player; view.visibilityChanged = visibilityChanged
         return view
     }
@@ -46,8 +73,18 @@ private struct NativeVideoSurface: NSViewRepresentable {
 }
 
 private final class UploadVideoSurface: AVPlayerView {
+    var roundVideo = false {
+        didSet { if roundVideo { wantsLayer = true }; needsLayout = true }
+    }
     var visibilityChanged: (@MainActor (Bool) -> Void)?
     private var observers: [NSObjectProtocol] = []
+    override func layout() {
+        super.layout()
+        if roundVideo {
+            layer?.masksToBounds = true
+            layer?.cornerRadius = min(bounds.width, bounds.height) / 2
+        }
+    }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeObservers()

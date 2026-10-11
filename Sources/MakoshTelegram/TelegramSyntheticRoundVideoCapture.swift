@@ -25,6 +25,7 @@ import AudioToolbox
     var previewSession: AVCaptureSession? { nil }
     private var operation: Task<Void, Never>?
     private var used = false
+    private var stopping = false
     isolated deinit { operation?.cancel() }
     func start(writer: TelegramRoundVideoCaptureWriter) async throws {
         guard !used else { throw TelegramRoundVideoCaptureError.invalidState }
@@ -35,8 +36,9 @@ import AudioToolbox
         operation = Task {
             do {
                 for frame in 1..<300 {
+                    guard !stopping else { return }
                     try await Task.sleep(for: .milliseconds(200))
-                    guard writer.snapshot.isRecording else { return }
+                    guard !stopping, writer.snapshot.isRecording else { return }
                     try await append(frame: frame, to: writer)
                 }
             } catch {
@@ -45,9 +47,10 @@ import AudioToolbox
         }
     }
     func stop() async {
-        let old = operation; operation = nil; old?.cancel(); await old?.value
+        stopping = true
+        let old = operation; operation = nil; await old?.value
     }
-    func cancel() { operation?.cancel(); operation = nil }
+    func cancel() { stopping = true; operation?.cancel(); operation = nil }
     private func append(frame: Int, to writer: TelegramRoundVideoCaptureWriter) async throws {
         try Task.checkCancellation()
         var pixels: CVPixelBuffer?

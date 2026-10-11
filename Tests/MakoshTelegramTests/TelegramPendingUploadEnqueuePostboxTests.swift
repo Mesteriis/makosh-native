@@ -22,14 +22,14 @@ private func receiptRaw(_ box: Postbox, account: Int64, chat: Int64, bytes: Data
     }
 }
 private func receiptEnqueue(_ box: Postbox, receipt: TelegramPendingUploadEnqueueReceipt, id: MessageId, returnedIDs: [MessageId?]? = nil,
-                            placementCount: Int = 0, spoilerCount: Int = 0) -> Signal<Bool, NoError> {
+                            placementCount: Int = 0, spoilerCount: Int = 0, media: [Media] = []) -> Signal<Bool, NoError> {
     box.transaction { transaction in
         guard receipt.validate(transaction: transaction) else { return false }
         let message = StoreMessage(id: id, globallyUniqueId: nil, groupingKey: nil, threadId: nil,
             timestamp: 100, flags: [.Unsent], tags: [], globalTags: [], localTags: [], forwardInfo: nil,
             authorId: nil, text: receipt.caption.text,
             attributes: telegramOutgoingTextAttributes(receipt.caption) + (0..<placementCount).map { _ in InvertMediaMessageAttribute() }
-                + (0..<spoilerCount).map { _ in MediaSpoilerMessageAttribute() }, media: [])
+                + (0..<spoilerCount).map { _ in MediaSpoilerMessageAttribute() }, media: media)
         _ = transaction.addMessages([message], location: .Random)
         return receipt.acknowledge(transaction: transaction, messageIDs: returnedIDs ?? [id])
     }
@@ -54,6 +54,50 @@ private func receiptMismatchedMessage(_ box: Postbox, receipt: TelegramPendingUp
     }
 }
 @MainActor final class TelegramPendingUploadEnqueuePostboxTests: XCTestCase {
+    func testVideoReceiptRejectsMissingWrongOrDuplicateNativeMediaAndRetainsExactDescriptorAfterReopen() async throws {
+        let path = try root()
+        let draft = try pendingUploadVideoFixture(disposition: .submissionStarted)
+        let id = MessageId(peerId: PeerId(draft.chatID), namespace: Namespaces.Message.Local, id: 34)
+        do {
+            let box = try await open(path); previousBox = box
+            let seeded = try await value(receiptSeed(box, draft: draft)); XCTAssertTrue(seeded)
+            let file = uploadVideoMappingFixture(name: draft.file.attachment.name, size: draft.file.plaintextByteCount)
+            let (resource, reference) = try XCTUnwrap(telegramUploadMedia(file))
+            let native = try XCTUnwrap(reference.media as? TelegramMediaFile)
+            let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: draft.id,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic"), file: file,
+                caption: draft.captionInput.formattedText, localResourceID: resource.fileId)
+            let valid = try await value(receiptValidate(box, receipt: receipt)); XCTAssertTrue(valid)
+            // Every rejected ACK leaves the marker started, so no storage retry can resend.
+            let wrongDuration = native.withUpdatedAttributes([
+                .Video(duration: 1, size: PixelDimensions(width: 16, height: 32), flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil),
+                .FileName(fileName: "portrait.mp4")])
+            let wrongDimensions = native.withUpdatedAttributes([
+                .Video(duration: 0.3333333432674408, size: PixelDimensions(width: 32, height: 16), flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil),
+                .FileName(fileName: "portrait.mp4")])
+            let wrongFlags = native.withUpdatedAttributes([
+                .Video(duration: 0.3333333432674408, size: PixelDimensions(width: 16, height: 32), flags: [], preloadSize: nil, coverTime: nil, videoCodec: nil),
+                .FileName(fileName: "portrait.mp4")])
+            let wrongAnimation = native.withUpdatedAttributes(native.attributes + [.Animated])
+            let anotherResource = try XCTUnwrap(telegramUploadMedia(file)?.1.media)
+            for media in [[], [wrongDuration], [wrongDimensions], [wrongFlags], [wrongAnimation],
+                          [native.withUpdatedSize(file.size + 1)], [anotherResource], [native, native]] as [[Media]] {
+                let accepted = try await value(receiptEnqueue(box, receipt: receipt, id: id, media: media))
+                XCTAssertFalse(accepted)
+                let retained = try await value(receiptRead(box, account: 1, chat: 42, id: id))
+                XCTAssertEqual(retained.0?.disposition, .submissionStarted)
+            }
+            let accepted = try await value(receiptEnqueue(box, receipt: receipt, id: id, media: [native]))
+            XCTAssertTrue(accepted)
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let reopened = try await open(path)
+        let stored = try await value(receiptRead(reopened, account: 1, chat: 42, id: id))
+        XCTAssertTrue(stored.1)
+        XCTAssertEqual(stored.0?.video, draft.video)
+        XCTAssertEqual(stored.0?.disposition, .accepted(localMessageID: "42:\(Namespaces.Message.Local):34"))
+    }
     func testNativeSpoilerMustMatchAdmissionAndReceiptSurvivesReopen() async throws {
         for spoiler in [false, true] {
             let path = try root()

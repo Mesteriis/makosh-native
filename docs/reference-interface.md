@@ -243,3 +243,19 @@ primary click через synthetic queue; Escape оставляет подгот
 отменённого фото. Реальная сеть Telegram не использовалась. Остальные пункты
 reference send menu (silent/schedule/online/effects), видео/альбомы и визуальная
 parity остаются открытыми. GPLv2 UI/ассеты не копировались.
+
+## Видео: подготовка данных до переноса экрана
+
+Общая боковая панель сервисов сохраняется. Выбор «Фото или видео», preview,
+poster/playback и cover ещё предстоит перенести; текущий picker видео не предлагает.
+Подготовлены собственные staging, schema4 и восстановление из S3 с повторной
+проверкой параметров, а также отображение в native media/проверка local receipt.
+Эта работа не доказывает визуальное соответствие или реальную отправку видео.
+
+SenderController.swift:426–442,378–382 задаёт Video/supportsStreaming,
+stem.mp4, video/mp4 и условный Animated. CoreExtension.swift:2953–3015 и
+PreviewSenderController.swift:1743–1754 подтверждают inCollage=true даже для
+свежего одиночного видео; финальный nil groupingKey не меняет этот выбор.
+FetchVideoMediaResource.swift:50–72 сохраняет исходные байты; активной
+перекодировки нет. Эти условия зафиксированы в metadata и тестах; полный
+combined-picker/preview flow и его native QA остаются открытыми.

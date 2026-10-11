@@ -3,7 +3,7 @@ import Darwin
 import ImageIO
 import CoreGraphics
 
-public enum TelegramUploadMode: Equatable, Sendable { case file, photo }
+public enum TelegramUploadMode: String, Equatable, Sendable { case file, photo, video }
 
 public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
     public let id: UUID
@@ -12,17 +12,25 @@ public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
     public let mode: TelegramUploadMode
     public let pixelWidth: Int32?
     public let pixelHeight: Int32?
+    public let video: TelegramUploadVideoMetadata?
     let url: URL
     let directory: URL
+    init(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, pixelWidth: Int32?, pixelHeight: Int32?,
+         url: URL, directory: URL, video: TelegramUploadVideoMetadata? = nil) {
+        self.id = id; self.name = name; self.size = size; self.mode = mode
+        self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight
+        self.url = url; self.directory = directory; self.video = video
+    }
 }
 
 public enum TelegramUploadFileError: LocalizedError, Equatable {
-    case unavailable, tooLarge, invalidImage, stagingFailed
+    case unavailable, tooLarge, invalidImage, invalidVideo, stagingFailed
     public var errorDescription: String? {
         switch self {
         case .unavailable: "Выбранный файл недоступен или изменён. Выберите его снова."
         case .tooLarge: "Файл превышает ограничения подготовки вложения."
         case .invalidImage: "Не удалось подготовить фотографию. Можно отправить оригинал как файл."
+        case .invalidVideo: "Не удалось подготовить видео. Можно отправить оригинал как файл."
         case .stagingFailed: "Не удалось подготовить временную копию вложения. Проверьте свободное место и доступ."
         }
     }
@@ -31,7 +39,21 @@ public enum TelegramUploadFileError: LocalizedError, Equatable {
 public enum TelegramUploadFileIO {
     public static func stage(_ source: URL, mode: TelegramUploadMode) async throws -> TelegramUploadFile {
         try Task.checkCancellation()
-        let worker = Task.detached(priority: .utility) { try prepare(source, mode: mode) }
+        let worker = Task.detached(priority: .utility) {
+            let file = try prepare(source, mode: mode)
+            guard mode == .video else { return file }
+            do {
+                let info = try await TelegramUploadVideoIO.inspect(file)
+                try Task.checkCancellation()
+                let video = TelegramUploadVideoMetadata(width: info.width, height: info.height,
+                    duration: info.duration, hasAudio: info.hasAudio, inCollage: true)
+                return TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .video,
+                    pixelWidth: info.width, pixelHeight: info.height, url: file.url, directory: file.directory, video: video)
+            } catch {
+                try? discard(file)
+                throw error
+            }
+        }
         return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
 
@@ -66,10 +88,20 @@ public enum TelegramUploadFileIO {
               file.size <= (file.mode == .photo ? 20 * 1024 * 1024 : 4 * 1024 * 1024 * 1024) else { throw TelegramUploadFileError.unavailable }
     }
 
-    static func restoredStage(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, url: URL, directory: URL) async throws -> TelegramUploadFile {
+    static func restoredStage(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, url: URL, directory: URL, video: TelegramUploadVideoMetadata? = nil) async throws -> TelegramUploadFile {
+        guard mode == .video || video == nil else { throw TelegramUploadFileError.unavailable }
         let provisional = TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: nil, pixelHeight: nil, url: url, directory: directory)
         try validateOwnedStage(provisional)
         if mode == .file { return provisional }
+        if mode == .video {
+            guard let video, video.isValid(name: name, size: size) else { throw TelegramUploadFileError.invalidVideo }
+            let info = try await TelegramUploadVideoIO.inspect(provisional)
+            guard info.width == video.width, info.height == video.height,
+                  info.duration == video.duration, info.hasAudio == video.hasAudio else { throw TelegramUploadFileError.invalidVideo }
+            try Task.checkCancellation()
+            return TelegramUploadFile(id: id, name: name, size: size, mode: mode,
+                pixelWidth: video.width, pixelHeight: video.height, url: url, directory: directory, video: video)
+        }
         _ = try await TelegramDownloadedFileIO.image(source: url, expectedSize: size)
         try Task.checkCancellation()
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -109,7 +141,7 @@ public enum TelegramUploadFileIO {
         guard fstat(input, &original) == 0, original.st_mode & S_IFMT == S_IFREG, original.st_size >= 0 else {
             throw TelegramUploadFileError.unavailable
         }
-        let cap: Int64 = mode == .file ? 4 * 1024 * 1024 * 1024 : 20 * 1024 * 1024
+        let cap: Int64 = mode == .photo ? 20 * 1024 * 1024 : 4 * 1024 * 1024 * 1024
         guard original.st_size <= cap else { throw TelegramUploadFileError.tooLarge }
         let id = UUID()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + id.uuidString, isDirectory: true)
@@ -126,7 +158,7 @@ public enum TelegramUploadFileIO {
         var width: Int32?
         var height: Int32?
         let size: Int64
-        if mode == .file {
+        if mode != .photo {
             let buffer = UnsafeMutableRawPointer.allocate(byteCount: 1024 * 1024, alignment: 16)
             defer { buffer.deallocate() }
             var copied: Int64 = 0

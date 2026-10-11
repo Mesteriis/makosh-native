@@ -7,9 +7,16 @@ import SwiftSignalKit
 
 /// New local media has no remote message provenance or invented cloud credentials.
 func telegramUploadMedia(_ file: TelegramUploadFile) -> (LocalFileMediaResource, AnyMediaReference)? {
+    guard file.mode == .video || file.video == nil else { return nil }
     let resource = LocalFileMediaResource(fileId: Int64.random(in: Int64.min...Int64.max), size: file.size)
     let media: Media
     switch file.mode {
+    case .video:
+        guard let attributes = telegramUploadVideoAttributes(file) else { return nil }
+        media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
+            partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [],
+            immediateThumbnailData: nil, mimeType: "video/mp4", size: file.size,
+            attributes: attributes, alternativeRepresentations: [])
     case .file:
         let mime = UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
@@ -26,6 +33,21 @@ func telegramUploadMedia(_ file: TelegramUploadFile) -> (LocalFileMediaResource,
     return (resource, .standalone(media: media))
 }
 
+func telegramUploadVideoAttributes(_ file: TelegramUploadFile) -> [TelegramMediaFileAttribute]? {
+    guard file.mode == .video, let video = file.video,
+          video.isValid(name: file.name, size: file.size), file.pixelWidth == video.width,
+          file.pixelHeight == video.height else { return nil }
+    var attributes: [TelegramMediaFileAttribute] = [
+        .Video(duration: video.duration, size: PixelDimensions(width: video.width, height: video.height),
+            flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil),
+        .FileName(fileName: telegramAttachmentName((file.name as NSString).deletingPathExtension + ".mp4"))
+    ]
+    let mp4 = (file.name as NSString).pathExtension.lowercased() == "mp4"
+    if !video.inCollage && !video.hasAudio && file.size < 10 * 1024 * 1024 && mp4 { attributes.append(.Animated) }
+    if !mp4 { attributes.append(.hintFileIsLarge) }
+    return attributes
+}
+
 @MainActor
 final class TelegramEngineUploadProvider: TelegramUploadProvider {
     private let account: Account
@@ -38,7 +60,7 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
         let peerID = PeerId(target.chatID)
         guard target.accountID == accountID, target.hasValidReplySource,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(peerID.namespace),
-              telegramFormattedCaptionCanSend(caption), (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo,
+              telegramFormattedCaptionCanSend(caption), (!captionAboveMedia && !mediaSpoiler) || file.mode != .file,
               let (resource, reference) = telegramUploadMedia(file) else {
             receive(.rejected); return lease
         }
@@ -65,7 +87,8 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
                     lease.receive(.committing)
                     guard !lease.stopped else { return }
                     let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
-                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler)
+                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
+                        localResourceID: resource.fileId)
                     lease.enqueue.set((enqueueUploadWithReceipt(account: account, peerID: peerID,
                         message: message, receipt: receipt)
                     |> deliverOnMainQueue).start(next: { [weak lease, account] admission in
@@ -133,7 +156,8 @@ func telegramUploadMessage(caption: String, reference: AnyMediaReference, target
 func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference, target: TelegramUploadTarget,
                            replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false) -> EnqueueMessage? {
     guard telegramFormattedCaptionCanSend(caption), target.hasValidReplySource,
-          (!captionAboveMedia && !mediaSpoiler) || reference.media is TelegramMediaImage else { return nil }
+          (!captionAboveMedia && !mediaSpoiler) || reference.media is TelegramMediaImage ||
+              (reference.media as? TelegramMediaFile)?.isVideo == true else { return nil }
     if let captured = target.replySource {
         guard let replySource, replySource.accountID == captured.accountID,
               replySource.chatID == captured.chatID, replySource.peerID == captured.peerID,

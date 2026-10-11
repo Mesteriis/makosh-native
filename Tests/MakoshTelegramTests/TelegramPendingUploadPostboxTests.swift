@@ -16,6 +16,64 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
     }
 }
 @MainActor final class TelegramPendingUploadPostboxTests: XCTestCase {
+    func testVideoSessionReopensWithExactS3BytesAndDoesNotChangePreparationOnRetry() async throws {
+        let configPath = try XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: configPath))
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let path = try root(), archiveRoot = try root()
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x57, count: 32) })
+        let source = archiveRoot.appendingPathComponent("portrait.mp4")
+        try await writeUploadVideoFixture(source, rotated: true, timescale: 30)
+        let file = try await TelegramUploadFileIO.stage(source, mode: .video)
+        addTeardownBlock { try TelegramUploadFileIO.discard(file) }
+        let bytes = try Data(contentsOf: file.url), preparationID = UUID()
+        let input = try pendingUploadFixture().captionInput
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic video")
+        do {
+            let box = try await open(path); previousBox = box
+            let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            let session = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: archive) })
+            try await session.prepare(preparationID: preparationID, file: file, target: target,
+                captionInput: input, captionAboveMedia: true, mediaSpoiler: true, originalDraft: nil)
+            let prepared = try await session.load(chatID: 42)
+            XCTAssertEqual(prepared?.video, file.video)
+            let video = try XCTUnwrap(file.video)
+            let changed = TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .video,
+                pixelWidth: file.pixelWidth, pixelHeight: file.pixelHeight, url: file.url, directory: file.directory,
+                video: .init(width: video.width, height: video.height, duration: video.duration, hasAudio: video.hasAudio, inCollage: false))
+            do {
+                try await session.prepare(preparationID: preparationID, file: changed, target: target,
+                    captionInput: input, captionAboveMedia: true, mediaSpoiler: true, originalDraft: nil)
+                XCTFail("An unconfirmed pointer retry cannot replace frozen video preparation")
+            } catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .conflict) }
+            try await session.save(preparationID: preparationID, chatID: 42, captionInput: input,
+                captionAboveMedia: true, mediaSpoiler: true, disposition: .submissionStarted)
+        }
+        try TelegramUploadFileIO.discard(file)
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let box = try await open(path)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let session = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: archive) })
+        let loaded = try await session.load(chatID: 42)
+        let draft = try XCTUnwrap(loaded)
+        XCTAssertEqual(draft.video, file.video)
+        XCTAssertEqual(draft.captionInput, input)
+        XCTAssertEqual(draft.disposition, .submissionStarted)
+        let restored = try await session.restoreFile(draft: draft)
+        addTeardownBlock { try TelegramUploadFileIO.discard(restored) }
+        XCTAssertEqual(restored.video, file.video)
+        XCTAssertEqual(try Data(contentsOf: restored.url), bytes)
+        try await session.save(preparationID: preparationID, chatID: 42, captionInput: input,
+            captionAboveMedia: true, mediaSpoiler: true, disposition: .cancelled)
+        let retained = try await archive.files(identity: draft.file.identity, attachmentID: "prepared")
+        XCTAssertEqual(retained, [draft.file])
+        let tombstone = try await session.load(chatID: 42)
+        XCTAssertEqual(tombstone?.disposition, .cancelled); XCTAssertEqual(tombstone?.video, file.video)
+    }
     private weak var previousBox: Postbox?
     private func open(_ root: URL) async throws -> Postbox {
         initializeAccountManagement()

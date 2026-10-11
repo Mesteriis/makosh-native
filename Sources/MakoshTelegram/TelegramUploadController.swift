@@ -38,7 +38,8 @@ enum TelegramUploadEvent {
     @Published public private(set) var mediaSpoiler = false
     @discardableResult
     public func updateMediaSpoiler(_ spoiler: Bool, contextID: UUID, revision: UUID) -> Bool {
-        guard token == contextID, captionRevision == revision, phase == .ready, file?.mode == .photo else { return false }
+        guard token == contextID, captionRevision == revision, phase == .ready,
+              file?.mode == .photo || file?.mode == .video else { return false }
         if mediaSpoiler != spoiler {
             mediaSpoiler = spoiler; captionRevision = UUID(); persistCaption()
         }
@@ -48,7 +49,8 @@ enum TelegramUploadEvent {
     @Published public private(set) var captionRevision = UUID()
     @discardableResult
     public func updateCaptionPlacement(_ above: Bool, contextID: UUID, revision: UUID) -> Bool {
-        guard token == contextID, captionRevision == revision, phase == .ready, file?.mode == .photo else { return false }
+        guard token == contextID, captionRevision == revision, phase == .ready,
+              file?.mode == .photo || file?.mode == .video else { return false }
         if captionAboveMedia != above {
             captionAboveMedia = above; captionRevision = UUID(); persistCaption()
         }
@@ -132,7 +134,8 @@ enum TelegramUploadEvent {
     }
 
     public func sendAsSpoiler(contextID: UUID, revision: UUID) {
-        guard preparationID == contextID, captionRevision == revision, file?.mode == .photo, canSend else { return }
+        guard preparationID == contextID, captionRevision == revision,
+              file?.mode == .photo || file?.mode == .video, canSend else { return }
         send(spoilerOverride: true)
     }
 
@@ -487,7 +490,7 @@ enum TelegramUploadEvent {
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID,
               target.chatID == draft.chatID, target.hasValidReplySource,
               file.name == draft.file.attachment.name, file.size == draft.file.plaintextByteCount,
-              (file.mode == .photo ? "photo" : "file") == draft.file.attachment.kind else { return false }
+              file.mode.rawValue == draft.file.attachment.kind, file.video == draft.video else { return false }
         guard (try? TelegramUploadFileIO.validateOwnedStage(file)) != nil else { return false }
         switch draft.disposition {
         case .prepared:

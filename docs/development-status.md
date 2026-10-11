@@ -1,6 +1,52 @@
 # Development status — 2026-10-11
 
-## Current stage: one-shot photo Send as Spoiler
+## Current stage: ordinary video data path verified; UI preparation pending
+
+Published one-shot photo work is c9ed40c on PR1. Hosted PR38110295928 and
+push38110293029 are both terminal success for that exact SHA, verified by direct
+readback. This slice adds verified video groundwork, still unexposed in the picker.
+Publication/new-head hosted CI outcomes are recorded in the private root report.
+
+Owned video staging preserves original MP4/MOV bytes and original name. A
+restricted AVFoundation probe records transformed dimensions, audio presence
+and canonical Float32-round-tripped duration; extensionless private stages use
+an explicit MIME hint. Cancellation and inode/stat checks reject missing or
+changed copies. Schema4 freezes typed video metadata and inCollage separately
+from final message grouping. File/photo writes remain schema3; legacy1–3 files
+named.mp4 stay ordinary files. Malformed/cross-kind metadata fails closed.
+
+Encrypted Postbox preserves video metadata through edits, submission and
+terminal markers. Real PostgreSQL/S3 restore authenticates original bytes and
+re-probes dimensions/duration/audio against the frozen descriptor; inCollage is
+preserved. Same-preparation retries cannot change it, and cancellation retains
+archived bytes. Native media mapping matches the reference's Video flags,
+filename/MIME, non-MP4 hint and conditional Animated choice. A same-transaction
+receipt requires one exact queued video/resource before accepting its marker.
+Controller restore now admits matching owned videos, retains rich input/options,
+and refuses metadata substitution or resend of unknown submissions; internal
+placement/spoiler/one-shot support is covered without exposing video controls.
+
+Runtime regressions were observed before fixes: schema3tests/4failures,
+stage8/2, S3restore1/10, mapping4/3, Postboxsession1/1, receipt1/10 and
+controller1/17. Missing-API, actor-isolation and fixture/registration errors are
+recorded separately. Final focused53 tests pass. scripts/dev-db.sh up,
+scripts/test.sh and scripts/build-app.sh exit0: **643 XCTest (580 Telegram +63
+core), zero failures;30 Python regressions**. Logs retain138 upstream t19
+teardown diagnostics without test failure/trap. Final XERJ refresh/check exit0:
+312files,282/282 code; scoped queries were confirmed against source. Final
+read-only review found no confirmed actionable issue across32 frozen files;
+root rechecked all SHA256/bytes and36 raw check records. The launcher failure
+exit127 and successful Python-selected retry remain separate evidence.
+Root owns runtime gates; worker runtime/build/UI are SKIP.
+
+Video UI and full engine enqueue/server acceptance are not verified by these
+StoreMessage/adapter/controller fixtures. Next transfer the combined photo/video
+picker, poster/playback/cover and preview actions inside the common window;
+then lifecycle/native QA, album preparation and remaining Telegram workflows.
+MMail/Aether, WhatsApp, Teams, Telemost, backups and standalone packaging remain
+open. The full sequential migration goal stays active.
+
+## Historical one-shot photo Send as Spoiler
 
 Telegram remains inside the common service-sidebar/dialog/conversation window.
 The photo send control now offers Send as Spoiler on secondary/held click;

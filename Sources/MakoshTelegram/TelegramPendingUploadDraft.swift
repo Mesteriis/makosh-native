@@ -19,21 +19,22 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
     let originalDraft: TelegramComposerDraft?
     let replyTarget: TelegramComposerReplyTarget?
     let file: ArchiveFileRecord
+    let video: TelegramUploadVideoMetadata?
     let disposition: TelegramPendingUploadDisposition
     init(id: UUID, revision: UUID = UUID(), accountID: Int64, chatID: Int64, title: String,
          captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?,
-         replyTarget: TelegramComposerReplyTarget?, file: ArchiveFileRecord,
+         replyTarget: TelegramComposerReplyTarget?, file: ArchiveFileRecord, video: TelegramUploadVideoMetadata? = nil,
          disposition: TelegramPendingUploadDisposition = .prepared) {
-        schemaVersion = 3; self.id = id; self.revision = revision; self.accountID = accountID
+        schemaVersion = video == nil ? 3 : 4; self.id = id; self.revision = revision; self.accountID = accountID
         self.chatID = chatID; self.title = title; self.captionInput = captionInput
         self.captionAboveMedia = captionAboveMedia
         self.mediaSpoiler = mediaSpoiler
-        self.originalDraft = originalDraft; self.replyTarget = replyTarget; self.file = file
+        self.originalDraft = originalDraft; self.replyTarget = replyTarget; self.file = file; self.video = video
         self.disposition = disposition
     }
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, id, revision, accountID, chatID, title, captionInput, captionAboveMedia, mediaSpoiler
-        case originalDraft, replyTarget, file, disposition
+        case originalDraft, replyTarget, file, video, disposition
     }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -52,6 +53,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         originalDraft = try c.decodeIfPresent(TelegramComposerDraft.self, forKey: .originalDraft)
         replyTarget = try c.decodeIfPresent(TelegramComposerReplyTarget.self, forKey: .replyTarget)
         file = try c.decode(ArchiveFileRecord.self, forKey: .file)
+        video = try c.decodeIfPresent(TelegramUploadVideoMetadata.self, forKey: .video)
         disposition = try c.decode(TelegramPendingUploadDisposition.self, forKey: .disposition)
     }
     static func archiveIdentity(accountID: Int64, chatID: Int64, preparationID: UUID) -> MessageArchiveIdentity {
@@ -59,10 +61,13 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               messageID: "pending-upload:" + preparationID.uuidString.lowercased())
     }
     var isValid: Bool {
-        guard [1, 2, 3].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+        guard [1, 2, 3, 4].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+              (schemaVersion == 4) == (video != nil),
+              (file.attachment.kind == "video") == (video != nil),
+              video?.isValid(name: file.attachment.name, size: file.plaintextByteCount) ?? true,
               !(schemaVersion < 3 && mediaSpoiler),
-              !mediaSpoiler || file.attachment.kind == "photo",
-              !captionAboveMedia || file.attachment.kind == "photo",
+              !mediaSpoiler || ["photo", "video"].contains(file.attachment.kind),
+              !captionAboveMedia || ["photo", "video"].contains(file.attachment.kind),
               id != Self.zeroUUID, revision != Self.zeroUUID,
               title.utf8.count <= 4096, !title.utf8.contains(0),
               captionInput.formattedText.text.utf8.count <= 64 * 1024,
@@ -70,7 +75,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               replyTarget?.isValid ?? true,
               file.state == .stored, file.id != Self.zeroUUID,
               file.identity == Self.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: id),
-              file.attachment.id == "prepared", ["file", "photo"].contains(file.attachment.kind),
+              file.attachment.id == "prepared", ["file", "photo", "video"].contains(file.attachment.kind),
               !file.attachment.name.isEmpty, file.attachment.name.utf8.count <= 1024,
               !file.attachment.name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               !file.attachment.name.contains("/"), !file.attachment.name.contains("\\"),

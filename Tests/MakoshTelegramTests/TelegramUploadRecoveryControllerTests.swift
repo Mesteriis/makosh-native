@@ -12,10 +12,12 @@ import ImageIO
         var submissions: [(UUID, TelegramFormattedText)] = []
         var placements: [Bool] = []
         var spoilers: [Bool] = []
+        var files: [TelegramUploadFile] = []
         var callback: (@MainActor (TelegramUploadEvent) -> Void)?
         func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
                     receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
             submissions.append((preparationID, caption))
+            files.append(file)
             placements.append(captionAboveMedia)
             spoilers.append(mediaSpoiler)
             calls += 1; callback = receive; return Lease()
@@ -73,6 +75,48 @@ import ImageIO
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
         controller.prepare(source: URL(fileURLWithPath: "/synthetic/source"), mode: mode, target: target, caption: "original")
         return (controller, provider)
+    }
+    func testOwnedVideoRecoveryPreservesDescriptorAndOptionsWithoutResendingUnknownSubmission() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("portrait.mp4")
+        try await writeUploadVideoFixture(source, rotated: true, timescale: 30)
+        for unknown in [false, true] {
+            let file = try await TelegramUploadFileIO.stage(source, mode: .video)
+            addTeardownBlock { try TelegramUploadFileIO.discard(file) }
+            let draft = try pendingUploadMutating(pendingUploadVideoFixture(disposition: unknown ? .submissionStarted : .prepared)) {
+                $0["mediaSpoiler"] = true; $0["captionAboveMedia"] = true
+                var record = $0["file"] as! [String: Any], attachment = record["attachment"] as! [String: Any]
+                attachment["name"] = file.name; attachment["size"] = file.size
+                record["attachment"] = attachment; record["plaintextByteCount"] = file.size; $0["file"] = record
+            }
+            let controller = TelegramUploadController(), store = Store(), provider = Provider()
+            controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+            let video = try XCTUnwrap(file.video)
+            let wrong = TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .video,
+                pixelWidth: file.pixelWidth, pixelHeight: file.pixelHeight, url: file.url, directory: file.directory,
+                video: .init(width: video.width, height: video.height, duration: video.duration, hasAudio: video.hasAudio, inCollage: false))
+            XCTAssertFalse(controller.restore(draft: draft, file: wrong, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            XCTAssertTrue(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            XCTAssertEqual(controller.file?.video, file.video)
+            XCTAssertEqual(controller.captionInput, draft.captionInput)
+            XCTAssertTrue(controller.captionAboveMedia); XCTAssertTrue(controller.mediaSpoiler)
+            XCTAssertEqual(controller.canSend, !unknown)
+            if unknown {
+                controller.send(); await drain(); XCTAssertEqual(provider.calls, 0)
+                XCTAssertFalse(controller.updateMediaSpoiler(false, contextID: controller.captionContextID, revision: controller.captionRevision))
+            } else {
+                XCTAssertTrue(controller.updateCaptionPlacement(false, contextID: controller.captionContextID, revision: controller.captionRevision))
+                XCTAssertTrue(controller.updateMediaSpoiler(false, contextID: controller.captionContextID, revision: controller.captionRevision))
+                controller.sendAsSpoiler(contextID: draft.id, revision: controller.captionRevision)
+                await drain()
+                XCTAssertEqual(provider.calls, 1)
+                XCTAssertEqual(provider.files.first?.video, file.video)
+                XCTAssertEqual(provider.placements, [false]); XCTAssertEqual(provider.spoilers, [true])
+                XCTAssertFalse(controller.mediaSpoiler, "One-shot video spoiler cannot mutate preview choice")
+            }
+        }
     }
     func testOneShotSpoilerPersistsFrozenMarkerAndAcceptanceRetryWithoutTogglingPreview() async throws {
         let store = Store(); store.holdPrepare = true; store.holdSubmission = true

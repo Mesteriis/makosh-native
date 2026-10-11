@@ -1374,3 +1374,47 @@ native synthetic app. Tests exercise stale identities/revisions, invalid input,
 file exclusion, frozen rich content/options, held/failed markers and acceptance
 retry without resend. The complete reference send menu, video/album preparation
 and live Telegram acceptance remain open.
+
+## Ordinary video preparation: storage and native mapping groundwork
+
+Video is not exposed by the attachment picker yet. The owned staging path copies
+original bytes without transcoding or metadata stripping, then inspects only that
+copy with AVFoundation. External media references/aliases are forbidden. An
+explicit original-name MIME hint identifies extensionless private stage files;
+cancellation and inode/stat checks reject removed or changed stages. Duration is
+frozen as Double(Float32(seconds)), matching the native Postbox/FlatBuffers
+decoder. Display dimensions include the preferred transform. Bounds are positive
+duration up to seven days, dimensions up to8192 with40M pixels, and4GiB bytes.
+
+Video pending records use schema4 with required typed width/height/duration,
+hasAudio and inCollage. File/photo writes remain schema3; legacy schemas1–3 retain
+their existing meaning, including generic files named.mp4. Metadata on another
+kind, missing fields, noncanonical duration and unsupported schemas fail closed.
+Encrypted Postbox stores this descriptor beside rich input/reply/options and the
+S3 receipt; PostgreSQL stores archive metadata and encrypted S3 stores bytes.
+Restore authenticates exported bytes, re-probes them and compares dimensions,
+duration and audio presence with the frozen descriptor. It preserves inCollage
+rather than deriving it from final single-message grouping. Caption updates,
+submission/acceptance/cancellation markers and same-preparation retries preserve
+the descriptor; a retry cannot replace it. Cancellation retains archived bytes.
+
+The native mapping follows SenderController.swift:426–442,378–382: Video with
+supportsStreaming, nil preload/coverTime/codec, stem.mp4 filename and video/mp4
+MIME; non-MP4 originals also carry hintFileIsLarge. Animated requires a frozen
+non-collage preparation, no audio and an original MP4 smaller than10MiB. A fresh
+singleton defaults to inCollage=true, as confirmed by CoreExtension.swift:2953–3015
+and PreviewSenderController.swift:1743–1754. supportsStreaming is a native flag,
+not evidence that a container was optimized for streaming. The active reference
+FetchVideoMediaResource.swift:50–72 copies bytes; its export/transcode path is
+commented out. No GPLv2 UI/assets or reference credentials were copied.
+
+Admission matches the persisted video descriptor. The same-transaction local
+receipt additionally checks one queued video, exact native attributes, MIME,
+size, local resource identity and singleton grouping before accepting its marker.
+Controller recovery requires the same descriptor, preserves rich input/options,
+and keeps an unknown submission non-resendable. Ready video supports placement,
+spoiler and one-shot override internally; no video controls are exposed yet.
+Tests use real generated MP4/MOV, encrypted Postbox, PostgreSQL and S3; queued
+records are synthetic StoreMessage fixtures, not live-account sends. Combined
+photo/video selection, poster/playback/cover preparation, native UI/lifecycle QA,
+the full engine enqueue path and Telegram server acceptance remain unverified.

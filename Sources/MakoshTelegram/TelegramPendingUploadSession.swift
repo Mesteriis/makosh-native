@@ -21,7 +21,7 @@ import SwiftSignalKit
     func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                  captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?) async throws {
         try await serial { [self] in
-            guard target.accountID == accountID, target.hasValidReplySource, (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo else {
+            guard target.accountID == accountID, target.hasValidReplySource, (!captionAboveMedia && !mediaSpoiler) || file.mode != .file else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             let previous = try await read(chatID: target.chatID)
@@ -30,12 +30,12 @@ import SwiftSignalKit
                 guard previous.disposition == .prepared, previous.originalDraft == originalDraft,
                       previous.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
                       previous.file.attachment.name == file.name, previous.file.plaintextByteCount == file.size,
-                      previous.file.attachment.kind == (file.mode == .photo ? "photo" : "file") else {
+                      previous.file.attachment.kind == file.mode.rawValue, previous.video == file.video else {
                     throw TelegramPendingUploadPersistenceError.conflict
                 }
                 let updated = TelegramPendingUploadDraft(id: preparationID, accountID: accountID, chatID: target.chatID,
                     title: target.title, captionInput: captionInput, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler, originalDraft: originalDraft,
-                    replyTarget: previous.replyTarget, file: previous.file)
+                    replyTarget: previous.replyTarget, file: previous.file, video: previous.video)
                 try await write(updated, expectedRevision: previous.revision)
                 return
             }
@@ -49,7 +49,7 @@ import SwiftSignalKit
                 chatID: target.chatID, preparationID: preparationID)
             let draft = TelegramPendingUploadDraft(id: preparationID, accountID: accountID, chatID: target.chatID,
                 title: target.title, captionInput: captionInput, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler, originalDraft: originalDraft,
-                replyTarget: target.replySource.map(TelegramComposerReplyTarget.init(source:)), file: record)
+                replyTarget: target.replySource.map(TelegramComposerReplyTarget.init(source:)), file: record, video: file.video)
             try await write(draft, expectedRevision: previous?.revision)
         }
     }
@@ -66,7 +66,7 @@ import SwiftSignalKit
             }
             let updated = TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: chatID,
                 title: current.title, captionInput: captionInput, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler, originalDraft: current.originalDraft,
-                replyTarget: current.replyTarget, file: current.file, disposition: disposition)
+                replyTarget: current.replyTarget, file: current.file, video: current.video, disposition: disposition)
             try await write(updated, expectedRevision: current.revision)
         }
     }
@@ -76,7 +76,7 @@ import SwiftSignalKit
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         return try await files().restore(record: draft.file, accountID: accountID,
-            chatID: draft.chatID, preparationID: draft.id)
+            chatID: draft.chatID, preparationID: draft.id, video: draft.video)
     }
 
     private static func permits(from: TelegramPendingUploadDisposition, to: TelegramPendingUploadDisposition) -> Bool {

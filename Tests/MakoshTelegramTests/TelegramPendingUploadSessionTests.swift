@@ -25,6 +25,27 @@ import SwiftSignalKit
 }
 
 @MainActor final class TelegramPendingUploadSessionTests: XCTestCase {
+    func testVideoDescriptorSurvivesCaptionChangesSubmissionAndTerminalMarkers() async throws {
+        for terminal: TelegramPendingUploadDisposition in [.accepted(localMessageID: "receipt"), .cancelled] {
+            let first = try pendingUploadVideoFixture()
+            let repository = PendingSessionRepository(first)
+            let session = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
+            let edited = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Updated video caption 😀"))
+            try await session.save(preparationID: first.id, chatID: first.chatID, captionInput: edited,
+                captionAboveMedia: true, mediaSpoiler: true, disposition: .prepared)
+            try await session.save(preparationID: first.id, chatID: first.chatID, captionInput: edited,
+                captionAboveMedia: true, mediaSpoiler: true, disposition: .submissionStarted)
+            let reopened = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
+            try await reopened.save(preparationID: first.id, chatID: first.chatID, captionInput: edited,
+                captionAboveMedia: true, mediaSpoiler: true, disposition: terminal)
+            let loaded = try await reopened.load(chatID: first.chatID)
+            XCTAssertEqual(loaded?.video, first.video)
+            XCTAssertEqual(loaded?.captionInput, edited)
+            XCTAssertEqual(loaded?.captionAboveMedia, true); XCTAssertEqual(loaded?.mediaSpoiler, true)
+            XCTAssertEqual(loaded?.disposition, terminal)
+            XCTAssertEqual(loaded?.file, first.file)
+        }
+    }
     func testSpoilerAndPlacementWritesSurviveSessionRecreationAndAcceptedMarker() async throws {
         let first = try pendingUploadMutating(pendingUploadFixture()) {
             var file = $0["file"] as! [String: Any], attachment = file["attachment"] as! [String: Any]

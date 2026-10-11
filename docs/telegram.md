@@ -1889,7 +1889,8 @@ for subsecond audio. Cancellation and final inode/time snapshots refuse changed
 resources. The original bytes remain unchanged. Synthetic WAV, tagged AAC/M4A
 and actual ID3 MP3 have regression coverage; whole-stream integrity and exhaustive
 codec support are not claimed. Unsupported inputs remain generic files; names
-never imply recorded voice. No microphone or Opus encoder is enabled.
+never imply recorded voice. No microphone is enabled; the separate internal
+offline Opus codec is described below.
 
 File projection, capture, restart and native submission retain the exact typed
 descriptor. Capture/restore/MediaBox independently re-probe bytes, and complete
@@ -1987,3 +1988,46 @@ and no resend. The existing common-window preparation UI is retained. GIF cover
 editing is disabled because the reference's GIF sender ignores its custom cover;
 reference-interface.md records this difference and the source pin. Recorded
 voice, full ordered source options, Archive and image editing remain open.
+
+
+## Internal offline recorded-voice codec
+
+The internal `TelegramRecordedVoiceCodec` now encodes explicit mono48kHz Int16
+PCM into Ogg/Opus, then independently parses and decodes its own recordings.
+It is not yet connected to microphone capture, picker classification, durable
+preparations, waveform, playback UI or native outgoing voice attributes.
+Existing picked audio remains ordinary music/file; filename/MIME never grants
+recorded provenance. There is no new account, microphone or storage action.
+
+Source-confirmed reference: pinned TelegramSwift's
+`packages/TelegramMedia/Sources/AudioRecorder.swift:285–345`, its pinned iOS
+`submodules/OpusBinding/Sources/opusenc/opusenc.m:115–135,157–174,214–280`, and
+`Telegram-Mac/SenderController.swift:295–312`. Makosh matches the writer's48kHz,
+mono,20ms/960 samples,30×1024bit/s, APPLICATION_AUDIO and16-bit depth. Encoder
+lookahead supplies pre-skip dynamically; zero padding flushes delayed audio and
+EOS trims to the exact input count. One packet per page, the Makosh-only vendor,
+no comment padding and the600s/20MiB limits are independent implementation
+choices. The decoder accepts only this bounded recording format, not arbitrary
+Ogg imports: exact headers, mono/rate/gain/map, lacing, CRC, stream/sequence,
+packet duration, final granule and output count all bind admission. CRC detects
+container damage; it is not authentication. Later durable integration still
+needs the authenticated plaintext digest and explicit recorded provenance.
+
+Framing is independently authored against
+[RFC7845](https://www.rfc-editor.org/rfc/rfc7845.html) and
+[RFC3533](https://www.rfc-editor.org/rfc/rfc3533.html), using the
+[Opus1.5 encoder API](https://opus-codec.org/docs/opus_api-1.5/group__opus__encoder.html).
+The only own C boundary calls the variadic control API through a fixed signature;
+encoder/decoder pointers stay inside one synchronous utility worker with defer
+cleanup and cancellation between frames. No helper/UI code was copied from the
+reference. The exact portable Opus source/license/build review is in
+THIRD_PARTY_NOTICES.md and Dependencies/Opus.lock.json. Build/test scripts prepare
+that hash-verified local SwiftPM package without consulting `.references/`.
+
+Real codec regressions independently inspect every page/CRC and use libopus's
+native decoder to check audio correlation and exact trim. Silence, sub-frame
+lengths, PCM/byte bounds, damaged/truncated/trailing data, rechecksummed header/
+sequence/stream/EOS forgeries, bitrate bounds and pre-cancellation are covered.
+In-flight cancellation and full600-second native playback remain unproved.
+Recorder interaction, waveform, durable ON/OFF recovery, native Voice admission
+and live delivery remain open; an offline codec is not a completed voice flow.

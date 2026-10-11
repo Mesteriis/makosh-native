@@ -85,6 +85,28 @@ Build adaptations in the generated copy:
   as pinned in the upstream `MODULE.bazel`. Generator source is downloaded,
   checksum-verified and built locally; unknown cached binaries are refused.
 
+## Portable Opus provenance
+
+`Dependencies/Opus.lock.json` pins the selected Telegram-iOS revision/tree above
+and its `third-party/opus/opus-1.5.1.tar.gz` blob. The archive SHA256 is
+`b84610959b8d417b611aa12a22565e0a3732097c6389d19098d844543e340f85`,
+also published in the [official libopus 1.5.1 release](https://opus-codec.org/release/stable/2024/03/04/libopus-1_5_1.html).
+The reviewed preparation copies 137 portable C files from the five literal
+Opus/CELT/SILK float source groups, 103 headers, COPYING and three source-list
+manifests. It executes no upstream configure, installer, CMake or Bazel script.
+SwiftPM builds C99 locally; architecture-specific assembler/intrinsics and
+neural-model groups are not compiled. Full source headers remain unchanged.
+
+The lock binds the archive, license, manifests and full prepared file-set hash;
+warm reuse additionally requires the exact preparation recipe and marker. It
+works without the bare source cache or research checkouts. The app bundles the
+unchanged COPYING and 68 deduplicated leading source copyright/license blocks,
+with their selected file paths, in the two Opus notice files below. Selection
+and notice review found BSD-style grants; this is not a vulnerability audit.
+The GPL macOS recorder, OpusBinding writer and bundled libogg helpers are not
+copied or linked. Makosh's fixed-signature C control boundary and bounded Swift
+Ogg framing are independently authored. No prebuilt codec is downloaded.
+
 ## Included license texts and attributions
 
 | Component | License / retained notice |
@@ -97,6 +119,7 @@ Build adaptations in the generated copy:
 | SQLite portions | Public domain; original blessing retained in prepared `sqlite3.c` |
 | Apple Reachability sample portions | [Apple sample-code license](LICENSES/Apple-Reachability-LICENSE.txt); wrapper source retains its upstream notices |
 | Dynamically linked local OpenSSL 3 (verified local version 3.6.4) | [Release license](LICENSES/OpenSSL-3.6.4-LICENSE.txt), Apache 2.0; source: [official release](https://github.com/openssl/openssl/tree/openssl-3.6.4) |
+| libopus 1.5.1 portable C sources, Xiph.Org Foundation and named contributors | BSD-style grants; [unchanged COPYING](LICENSES/Opus-1.5.1-COPYING.txt), [selected source attributions](LICENSES/Opus-1.5.1-source-notices.txt) |
 | Independently authored Makosh code | [MIT](LICENSES/Makosh-MIT.txt) |
 
 Apache 2.0 is compatible with GPL v3 according to the [Apache licensing FAQ](https://www.apache.org/foundation/license-faq.html#GPL).

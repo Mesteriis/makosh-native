@@ -10,6 +10,7 @@ let package = Package(
         .executable(name: "Makosh", targets: ["MakoshApp"])
     ],
     dependencies: [
+        .package(name: "MakoshOpus", path: ".local/voice-codec"),
         .package(name: "TelegramCore", path: ".local/telegram-engine/submodules/TelegramCore"),
         .package(name: "OpenSSLEncryption", path: ".local/telegram-engine/submodules/OpenSSLEncryptionProvider"),
         .package(name: "SSignalKit", path: ".local/telegram-engine/submodules/SSignalKit"),
@@ -20,7 +21,9 @@ let package = Package(
     targets: [
         .systemLibrary(name: "CPostgres", pkgConfig: "libpq", providers: [.brew(["libpq"])]),
         .target(name: "MakoshCore", dependencies: ["CPostgres"]),
+        .target(name: "MakoshOpusControl", dependencies: [.product(name: "COpus", package: "MakoshOpus")]),
         .target(name: "MakoshTelegram", dependencies: ["MakoshCore",
+            "MakoshOpusControl", .product(name: "COpus", package: "MakoshOpus"),
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
             .product(name: "SwiftSignalKit", package: "SSignalKit"),
@@ -29,6 +32,7 @@ let package = Package(
         .executableTarget(name: "MakoshApp", dependencies: ["MakoshCore", "MakoshTelegram"]),
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshTelegram", "MakoshCore", "CPostgres",
+            .product(name: "COpus", package: "MakoshOpus"),
             .product(name: "Postbox", package: "Postbox"),
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "TelegramApi", package: "TelegramApi"),

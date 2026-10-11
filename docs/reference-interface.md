@@ -685,3 +685,17 @@ BGRA/sRGB с явным чёрным фоном, отключённый frame re
 transparency и odd-axis runtime остаются отдельными непроверенными случаями.
 Внешний GPLv2 UI и helper code не копировались; Apple SDK не становится
 зависимостью от `.references/`. Используется существующая форма общей оболочки Макош.
+
+
+### Recorded voice: offline codec boundary
+
+Сверены pinned `AudioRecorder.swift:285–345`, iOS
+`OpusBinding/Sources/opusenc/opusenc.m:115–135,157–174,214–280` и
+`SenderController.swift:295–312`. Внутренний кодек уже кодирует48kHz mono Int16
+в Ogg/Opus:960 samples,30×1024bit/s, APPLICATION_AUDIO,16-bit depth и dynamic
+pre-skip. Независимый decoder/CRC regression подтверждает точный PCM trim.
+Собственные one-packet/page, vendor Makosh, отсутствие comment padding и
+600s/20MiB limits отличаются от writer референса. GPL recorder/OpusBinding/
+libogg code не скопирован. Интерфейс этой частью не менялся: кнопка/состояния
+recording, waveform, долговечная подготовка и native Voice ещё открыты.
+Файлы из picker не переопределяются как voice по имени или MIME.

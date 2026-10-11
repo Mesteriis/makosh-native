@@ -1,6 +1,71 @@
 # Development status — 2026-10-11
 
-## Current stage: durable GIF pair, native File/Media and restart verified
+## Current stage: internal offline voice codec; recorder integration remains open
+
+An independently authored internal codec now encodes explicit48kHz mono Int16
+PCM into Ogg/Opus and decodes its bounded recording format. Reference writer
+settings are20ms/960 samples,30×1024bit/s, APPLICATION_AUDIO and16-bit depth;
+dynamic encoder lookahead and EOS trim preserve exact PCM count, including a
+single sample. Utility workers own/destroy native pointers, check cancellation
+between frames and enforce600s/20MiB bounds. Strict parsing verifies headers,
+mono/rate/gain/map, lacing/CRC, sequence/stream,20ms packet lengths and EOS/count.
+One packet per page, Makosh-only vendor/no comment padding and the bounds are
+independent implementation choices. CRC is not authentication; later durable
+integration must retain plaintext digest and explicit recorded provenance.
+No microphone, picker classification, waveform, storage behavior or native
+Voice outgoing path is enabled by this internal leaf.
+
+Opus1.5.1 is independently pinned to the selected iOS tree/archive, whose SHA256
+matches the official release. The reviewed recipe prepares137 portable C files,
+103 headers and exact notices/manifests without upstream installers or research
+checkouts. The tracked aggregate binds all245 prepared files; warm reuse needs
+neither Git cache nor network and rejects changed/missing/extra/link output.
+Own C control/Ogg code replaces no existing interface and copies no reference
+recorder, OpusBinding or libogg helper. COPYING and68 selected source attribution
+blocks are bundled; THIRD_PARTY_NOTICES.md records scope and license review.
+
+Actual preparation stub RED6 tests/16 failures; GREEN6/0. Codec's first attempt
+fails test compilation for an optional output pointer (not behavioral RED).
+Compiled stub RED7 tests/8 failures(6 unexpected); real implementation GREEN7/0.
+Independent page/CRC reader and native libopus decoder verify format, audio
+correlation, exact trim, partial/silent frames, bitrate bounds, damaged/truncated/
+trailing data, rechecksummed semantic forgeries and pre-cancellation. In-flight
+cancellation, full600-second playback and general Ogg import are not claimed.
+Cold portable C builds report two upstream narrowing warnings and an upstream
+debug-without-optimization warning; an earlier missing-lrint fallback warning
+was resolved in the reviewed recipe, never by editing generated sources.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**947 XCTest (871 Telegram +76 core), zero failures;38 Python regressions**.
+Current incremental full test/build logs have no compile warnings; the cold C
+warnings above and existing upstream t19 teardown diagnostics remain disclosed.
+A separate real PostgreSQL/Postbox/S3 policy recheck passes38/0: OFF prohibits
+all new copies including preparation, default groups/channels stay local,
+restart restores bytes, and enabling later never promotes local preparations.
+
+Owned synthetic bundle update passes strict signatures and raw unsigned built–QA
+payload equality. Actual common-window screenshots/AX were inspected: chat7
+retains S3 OFF, Mail opens its existing disconnected surface, and Telegram
+returns to the same chat/off choice. A click consumed while closing the policy
+menu was corrected and actual Mail selection verified; no product defect was
+inferred. No personal account, Telegram network or microphone was used.
+No recorder UI or complete voice-send/recovery claim is made. Host27.0.1 does
+not prove minimum26 runtime.
+
+Root reviews the focused source/diff, dependency boundary, bounded/native failure
+paths, backwards compatibility, tests and bundled notices; no independent new
+worker review or quorum is claimed. XERJ v4 actually refused new Opus lock fields
+(exit1); the recorded diagnostic requires the new v5 prefix. Frozen refresh/check/
+query and reference/engine freshness checks pass0:393 files,359/359 classified
+code, source-confirmed codec/recorder hits. Both hosted runs for prior919d57f
+succeeded; hosted CI for the next publication is separate.
+
+Next: explicit recorded provenance, authenticated durable ON/OFF preparation and
+native Voice attributes, then waveform and reference recorder interaction.
+Full ordered classifier, Archive/caption normalization, live Account/server
+validation, remaining channels and the sequential migration goal remain open.
+
+## Historical durable GIF pair (919d57f)
 
 GIF classification now binds owned raw bytes to the converted H.264 MP4 using
 strict schema10 source SHA256, canvas and Float delays. The two payloads have

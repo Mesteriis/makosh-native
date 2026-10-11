@@ -1,6 +1,92 @@
 # Development status — 2026-10-12
 
-## Current stage: ordinary Opus music through the existing common-window File flow
+## Current stage: ordered original sources in the existing Telegram preparation
+
+New ordinary picker preparations use strict schema14 source facts, independently
+of canonical payload kind: item UUID, raw role/name/size/SHA256, original-name
+selection MIME, logical image result and grouping result. Schema1–13 retain their
+payload/validation meanings; source facts present in those schemas are refused.
+Explicit Voice/round preparations keep schemas11–13. Older binaries refuse14;
+preserve pointers, encrypted resources, receipts and keys on rollback.
+
+The verified reference fold makes PNG→WebP File; WebP→PNG offers Media. Small or
+rejected images contribute no option. File remains available independently of
+Media, including the visible menu for a single WebP/document. Grouping follows
+ordered source facts and canonical safety checks. Reorder/removal atomically
+clears unavailable Media/grouping and never enables either automatically.
+Native ordinary File images carry source logical ImageSize before FileName with
+checked positive Int32 conversion. Mixed grouped Media captions the first actual
+visual in each ten-item chunk, otherwise the last file.
+
+The owned probe borrows a validated no-follow stage; cancellable held-fd hashing
+and inode snapshots bracket bounded ImageIO/NSImage and independent music probes.
+Limits are20MiB,256frames,8192axes,40M canvas/256M aggregate pixels. Small own MIME
+aliases cover MOV/M4V/MKV/OGG/Opus/MP3/WebP/BIN; UTType is the remaining fallback.
+BIN matches the final pinned application/x-macbinary row. Opus is a separate local
+alias, since the reference table has no opus entry. This is not exhaustive MIME
+or decoder parity. Deterministic in-flight mutation/cancellation,4GiB hashing
+and interrupting an executing native probe remain unproved.
+
+Every source fact is freshly verified before persistence, from authenticated raw
+bytes on recovery and before native resource issuance. All captures and their
+digests are frozen before the first archive save. Facts/resources/order survive
+caption/cover/mode edits without recapture. Retry substitution retains conflict
+semantics. Complete native receipt binds exact facts, attributes and every ID.
+S3 OFF forbids every new copy, including outgoing preparation; local encrypted
+records never promote on enable. PostgreSQL retains metadata, never payload bytes.
+Immutable message versions/files survive remote deletion and preparation cleanup.
+
+Compiled source/controller/schema/native RED gates preceded implementation;
+final focused GREEN78/0 includes actual PostgreSQL/S3/encrypted Postbox/native
+queue. Initial full gate1187/26 exposed old picker schema expectations, tiny
+opaque GIF Media assumptions and retry error compatibility. New picker tests
+now assert14; separate actual reopen/native queue cases retain legacy schema10
+opaque32×16 Media under both storage policies. A structurally consistent forged
+record/fact digest still reaches authenticated recovery refusal and all-stage
+cleanup. Retry RED1/1 precedes its conflict fix. An initial legacy fixture write
+omitted Postbox framing and failed2 cases; corrected repository fixture writes
+pass. Original setup/crash/expectation failures remain separate from valid RED.
+
+`scripts/dev-db.sh up`, final `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,189 XCTest cases (1,113 Telegram +76 core),1 skipped,0 failures;45 Python
+regressions**. All436 source/test/dependency/script/license/reference-lock files
+stay frozen through final gates/UI. Warm full gates emit no compile warnings;
+414 existing upstream t19 teardown diagnostics remain without test failures.
+The microphone-authorization skip is separate. Strict built/owned-QA signatures
+and raw unsigned executable equality pass. Engine/dependency/license pins and
+preparation recipes are unchanged; no outer GPLv2 UI/assets/credentials copied.
+
+Actual isolated common-window AX/screenshots verify single-WebP File menu,
+PNG→WebP File/disabled grouping, reverse reorder exposing Media without enabling
+it, explicit Media and reverse normalization to File. Mixed smallPNG/JPEG/smallPNG
+restores the same three UUIDs/order/Media/grouping/caption after source-folder
+rename and owned restart with S3 OFF. Modal UI Quit left the process running;
+only the verified owned synthetic process received SIGTERM. Restored-sheet
+screenshot capture returned tiny black pixels, so recovery is AX proof, not a
+valid restored screenshot. Explicit Send reaches only the synthetic queue;
+close-observation and Mail→Telegram retain chat10/OFF and conservative uncertainty
+without auto-resend. All seven own fixtures are restored and hash-checked.
+No personal Account, Telegram network, hardware input or OS grant was used.
+
+Root verifies309 leaf artifact hashes,72 original leaf attempts and25 bounded
+integration-review attempts against frozen source copies. One UI menu finding is
+reproduced then fixed; root owns subsequent retry/test/UI deltas and final gates.
+Explicit SKIP/failed inspections remain distinct. Observed provider/model/usage
+and provider-internal transfer are unknown; no quorum.
+
+Final active XERJ own/reference queries are source-confirmed. Project v6 refresh/
+check exits0:451 files,414/414 classified code. Reference579cebbf and the unchanged
+engine a24bbe45 checks pass; current source fingerprints include this slice.
+
+Remaining: exhaustive MIME/Ogg/Vorbis and static payload geometry parity,
+Archive/caption normalization, dedicated music preview, full reference visual/
+gesture parity and subsequent services. Physical routes, system prompts, Account/
+server/recipient and minimum26 runtime proof remain unexecuted. Initial reverse
+picker selection was not separately exercised; reverse row-menu reorder was.
+Full Telegram migration and the overall goal remain open. Both hosted runs for
+preceding head2ada537 succeeded; new-slice hosted checks remain separate.
+
+## Historical ordinary Opus music through the common-window File flow (2ada537)
 
 Ordinary picked Ogg/Opus now derives duration and TITLE/ARTIST from bytes using
 independently pinned official libogg1.3.6/libopusfile0.12 and the existing reviewed

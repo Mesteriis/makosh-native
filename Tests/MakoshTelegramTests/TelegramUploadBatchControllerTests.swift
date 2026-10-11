@@ -5,6 +5,46 @@ import ImageIO
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadBatchControllerTests: XCTestCase {
+    // Catches reducing canonical kinds to a set: WebP removes only Media already seen.
+    func testPickerUsesOrderedWebPSourceOptions() async throws {
+        let root = try makeSources()[0].deletingLastPathComponent()
+        let png = root.appendingPathComponent("source.png"), webp = root.appendingPathComponent("source.webp")
+        try writeUploadVideoCoverFixture(png); try writeUploadWebPFixture(webp)
+        for (sources, expected, canSwitch) in [([png, webp], TelegramUploadPresentation.file, false),
+                                                ([webp, png], .media, true)] {
+            let controller = TelegramUploadController(); controller.bind(provider: BatchStagingProvider())
+            defer { controller.clear() }
+            controller.prepare(sources: sources.map { .init(source: $0, mode: .photo) }, isGrouped: true,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic ordered options"), captionInput: .empty)
+            for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(controller.phase, .ready)
+            XCTAssertEqual(controller.presentation, expected)
+            XCTAssertEqual(controller.canSwitchPresentation, canSwitch)
+            XCTAssertFalse(controller.isGrouped); XCTAssertFalse(controller.canGroupItems)
+            XCTAssertEqual(controller.items.map { $0.originalFile?.name ?? $0.file.name }, sources.map(\.lastPathComponent))
+        }
+    }
+
+    // Catches making an image skipped by source options veto the whole remaining Media choice.
+    func testSkippedSmallImageKeepsLaterMediaAndSourceGrouping() async throws {
+        let root = try makeSources()[0].deletingLastPathComponent()
+        let small = root.appendingPathComponent("small.png"), png = root.appendingPathComponent("large.png")
+        let context = try XCTUnwrap(CGContext(data: nil, width: 39, height: 48, bitsPerComponent: 8,
+            bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(small as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination)); try writeUploadVideoCoverFixture(png)
+        let controller = TelegramUploadController(); controller.bind(provider: BatchStagingProvider())
+        defer { controller.clear() }
+        controller.prepare(sources: [small, png].map { .init(source: $0, mode: .photo) }, isGrouped: true,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic skipped source"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(controller.presentation, .media)
+        XCTAssertTrue(controller.isGrouped); XCTAssertTrue(controller.canGroupItems)
+        XCTAssertEqual(controller.items.map(\.file.mode), [.file, .photo])
+        XCTAssertNil(controller.items.first?.originalFile)
+    }
+
     func testOpusAndMP3AreOrdinaryGroupedMusicEvenWithMisleadingNames() async throws {
         let root = try makeSources()[0].deletingLastPathComponent()
         let opus = root.appendingPathComponent("opaque.bin"), mp3 = root.appendingPathComponent("music.mp3")

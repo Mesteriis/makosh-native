@@ -42,9 +42,7 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
               telegramFormattedCaptionCanSend(caption),
               presentation != nil || items.allSatisfy({ $0.file.mode == .file }) || items.allSatisfy({ $0.file.mode != .file }),
               presentation != nil || (!captionAboveMedia && !mediaSpoiler) || items.allSatisfy({ $0.file.mode != .file }),
-              presentation == nil || !isGrouped || presentation!.allowsGrouping(items.map {
-                  (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata)
-              }) else {
+              presentation == nil || !isGrouped || presentation!.allowsGrouping(items) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         let empty = try TelegramFormattedText(text: "")
@@ -58,7 +56,7 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
         let chunkSize = grouped ? 10 : items.count
         for start in stride(from: 0, to: items.count, by: chunkSize) {
             let end = min(start + chunkSize, items.count)
-            let captionIndex = items[start].file.mode == .file ? end - 1 : start
+            let captionIndex = (start..<end).first { items[$0].file.mode != .file } ?? end - 1
             for index in start..<end {
                 result.append(.init(itemID: items[index].id, caption: !leadingText && index == captionIndex ? caption : empty,
                     groupIndex: grouped ? start / 10 : nil, captionAboveMedia: presentation == .file ? false : captionAboveMedia, mediaSpoiler: mediaSpoiler))

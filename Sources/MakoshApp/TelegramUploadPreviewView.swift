@@ -32,7 +32,7 @@ struct TelegramUploadPreviewView: View {
             HStack {
                 Text(title).font(.headline)
                 Spacer()
-                if upload.canSwitchPresentation || canUseMediaOptions || upload.items.count > 1 {
+                if upload.canUseFilePresentation || upload.canSwitchPresentation || canUseMediaOptions || upload.items.count > 1 {
                     Menu {
                         presentationButtons(revision: upload.itemsRevision)
                         groupingButton(revision: upload.itemsRevision)
@@ -43,7 +43,7 @@ struct TelegramUploadPreviewView: View {
                         }
                     } label: { Image(systemName: "ellipsis.circle") }
                         .menuStyle(.borderlessButton).fixedSize()
-                        .accessibilityLabel(upload.items.count > 1 ? "Действия с вложениями" : upload.file?.mode == .video ? "Действия с видео" : "Действия с фото").accessibilityIdentifier("telegram.upload.actions")
+                        .accessibilityLabel(upload.items.count > 1 ? "Действия с вложениями" : upload.file?.mode == .video ? "Действия с видео" : upload.file?.mode == .photo ? "Действия с фото" : "Действия с вложением").accessibilityIdentifier("telegram.upload.actions")
                         .accessibilityValue(upload.presentation == .file ? "Файлы" : "Медиа")
                 }
                 Button { upload.dismissPreparation(contextID: contextID) } label: { Image(systemName: "xmark") }
@@ -161,14 +161,16 @@ struct TelegramUploadPreviewView: View {
             } label: {
                 Label("Отправить как медиа", systemImage: upload.presentation == .media ? "checkmark" : "photo.on.rectangle")
             }.disabled(!upload.canEditItems).accessibilityIdentifier("telegram.upload.asMedia")
+        }
+        if upload.canUseFilePresentation {
             Button {
                 upload.updatePresentation(.file, contextID: contextID, revision: revision)
             } label: {
                 Label(upload.items.count > 1 ? "Отправить как файлы" : "Отправить как файл",
                       systemImage: upload.presentation == .file ? "checkmark" : "doc")
             }.disabled(!upload.canEditItems).accessibilityIdentifier("telegram.upload.asFile")
-            Divider()
         }
+        if upload.canSwitchPresentation || upload.canUseFilePresentation { Divider() }
     }
     @ViewBuilder private func groupingButton(revision: UUID) -> some View {
         if upload.items.count > 1 {

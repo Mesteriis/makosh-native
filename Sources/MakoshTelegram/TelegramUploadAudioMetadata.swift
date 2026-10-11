@@ -52,6 +52,11 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
     case voice(TelegramUploadVoiceMetadata)
     case roundVideo(TelegramUploadRoundVideoMetadata)
 
+    var audio: TelegramUploadAudioMetadata? {
+        guard case let .audio(value) = self else { return nil }
+        return value
+    }
+
     var roundVideo: TelegramUploadRoundVideoMetadata? {
         guard case let .roundVideo(value) = self else { return nil }
         return value

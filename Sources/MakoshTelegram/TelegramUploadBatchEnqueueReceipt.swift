@@ -18,7 +18,7 @@ struct TelegramUploadBatchResource: Sendable {
     }
     var reference: AnyMediaReference? {
         telegramUploadMedia(item.file, videoThumbnail: videoThumbnail, videoCover: videoCover,
-            webPPreview: webPPreview, gifPreview: gifPreview, resourceID: resourceID)?.1
+            webPPreview: webPPreview, gifPreview: gifPreview, sourceFacts: item.sourceFacts, resourceID: resourceID)?.1
     }
 }
 
@@ -34,7 +34,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
@@ -53,7 +53,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
                   stored.id == resource.item.id, payload.attachment.name.utf8.elementsEqual(file.name.utf8),
                   (filePresentation ? "file" : payload.attachment.kind) == file.mode.rawValue, payload.plaintextByteCount == file.size,
                   payload.plaintextSHA256 == resource.plaintextSHA256, (filePresentation ? nil : stored.video) == file.video,
-                  stored.metadata == file.metadata,
+                  stored.metadata == file.metadata, stored.sourceFacts == resource.item.sourceFacts,
                   telegramPendingUploadCoverMatches(filePresentation ? nil : stored.videoCover, file.videoCover),
                   stored.matchesOriginal(resource.item.originalFile), resource.reference != nil else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData

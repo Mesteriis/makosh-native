@@ -511,7 +511,7 @@ options `[.media]`; обычные документы могут отправл�
 показывает их отдельными строками. Initial grouping берётся из eligibility,
 а не из временного значения FastSettings. Группы ограничены10 элементами.
 Точный классификатор учитывает music/voice/WebP и зависит от native attributes;
-его полная реализация ещё впереди. Обложка выбирается в меню при одном видео,
+новая schema14 реализация описана ниже, exhaustive MIME parity ещё открыта. Обложка выбирается в меню при одном видео,
 но ранее выбранная обложка явно не очищается после добавления других файлов.
 
 Source подтверждает три upstream особенности, которые нельзя скрыть под
@@ -542,8 +542,8 @@ Native QA теперь проверяет visual10+1, перенос11-го ID �
 очередью. В отдельном наборе удаляется именно11-й ID; оставшиеся10 тоже приняты.
 После restart принятые подготовки не воскресают, а прежний crashed submission
 восстанавливается uncertain без повторной отправки. Context-menu действия
-проверены мышью; сам drag/drop жест пока не проверен. Полная whole-list
-классификация и archive остаются открытыми.
+проверены мышью; сам drag/drop жест пока не проверен. Новая whole-list
+классификация описана ниже; archive остаётся открытым.
 Telegram остаётся в общем WorkspaceView; live Telegram sending не проверялся.
 
 Новые photo preparations из picker, включая одиночный выбор, сохраняют исходный файл отдельно от JPEG, как
@@ -577,11 +577,45 @@ Send до подтверждения. Native PNG regression проверяет �
 точные исходные байты MediaBox и complete receipt после восстановления.
 
 Оставшиеся различия классификации явные: WebP сохраняет исходные байты с native sticker attributes. Static-photo admission уже использует
-NSImage logical size. Полный ordered classifier, exhaustive Ogg/Vorbis и полная
-recorder visual/gesture parity ещё открыты, как Archive и image edits.
+NSImage logical size. Ordered classifier теперь использует отдельные schema14
+source facts; exhaustive MIME/Ogg/Vorbis и полная recorder visual/gesture parity
+ещё открыты, как Archive и image edits.
+
+Для новых ordinary picker preparations сверены `ThumbUtils.swift:222–260`,
+`CoreExtension.swift:2953–3015`, `PreviewSenderController.swift:1743–1788` и
+`SenderController.swift:455–460,659–664` на том же reference pin. Ordered fold
+сохраняет порядок вкладов и WebP removal: PNG→WebP даёт File; WebP→PNG возвращает
+Media. Не прошедшее logical image gate изображение не добавляет File и не снимает
+ранее накопленную Media. File пункт меню существует независимо от Media;
+recorded preparations и legacy photo без raw source сохраняют свои ограничения.
+
+Schema14 связывает исходные факты с item UUID, raw role/name/size/SHA256 отдельно
+от canonical payload. Reorder/remove атомарно нормализуют mode/grouping без
+автоматического включения и новых копий. Schema1–13 не получают новых фактов.
+Native File image использует logical ImageSize с безопасным Int32 преобразованием;
+смешанный Media chunk отдаёт caption первому actual visual, иначе последнему file.
+Реальные PG/Postbox/S3 OFF/native queue tests проверяют этот путь и отказ при
+подмене фактов; это не доказательство Account/server delivery.
+
+На финальном payload 2026-10-12 проверены AX и screenshots в общей форме:
+одиночный WebP показывает видимую кнопку меню и только File; PNG→WebP даёт
+File/disabled grouping. Перестановка в WebP→PNG сохраняет File и открывает Media;
+явный Media работает, обратная перестановка возвращает File. Смешанный набор
+small PNG/JPEG/small PNG сохраняет Media/grouping/подпись и те же три UUID после
+restart без исходного пути, при S3 OFF. Recovery подтверждён AX; screenshot
+восстановленной sheet вернул маленькое чёрное изображение и не считается visual
+proof. Явный Send достигает только synthetic queue. Mail→Telegram сохраняет
+чат/OFF и предупреждение о возможной очереди без auto-resend. Physical drag и
+initial reverse-picker sequence отдельно не проверены; проверены row menu actions.
+Исходные synthetic fixtures восстановлены с проверкой всех семи hashes.
+
+Остаются различия: bounded ImageIO admission вместо unbounded reference,
+неполная MIME table (UTType fallback и явный local Opus alias), отдельное правило
+static payload geometry, точная mosaic/gesture геометрия, Archive и caption
+normalization. Полное визуальное совпадение с референсом не заявлено.
 
 Сверены также `PreviewSenderController.swift:1690–1705,388–393`: mixed Media
-допускает spoiler/placement, а grouping требует all-visual eligibility. Макош
+допускает spoiler/placement; legacy schema8 grouping требует all-visual eligibility. Макош
 разделяет эти условия. Regression удерживает actual mode CAS до rebind, затем
 роняет запись до commit и проверяет original-store retry, запрет stale restore,
 cancel/newer-pointer guards. Native UI evidence для текущего payload приведено
@@ -635,7 +669,7 @@ WebP сверено с `SenderController.swift:288–292,327–330,390–391,466
 Нативные синтетические static lossless/lossy, animated и partial first-frame
 fixtures подтверждают canvas dimensions320×160 и неизменность исходных байтов.
 20-point WebP остаётся допустимым для typed probe: upstream40-point/aspect option
-rules относятся к ещё открытому ordered classifier. Exact RIFF length,
+rules теперь относятся к отдельным source facts/schema14 выше. Exact RIFF length,
 20MiB/8192-axis/40M-pixel/256-frame limits и отказ вместо upstream512×512 fallback
 — явные safety differences. Проба проверяет размеры frame0 и bounded thumbnail
 256px; exhaustive frame/stream integrity не заявлена. Проверки текущего host27
@@ -651,7 +685,8 @@ Codec/encode failure допускает отсутствие превью; ош�
 остаются ошибками. Превью пересоздаётся после restart и хранится только в MediaBox,
 без новых S3 objects или PostgreSQL payload bytes. В composer File пока остаётся
 прежняя иконка файла; новый JPEG относится к transport representation.
-Полный ordered option fold, Archive и image edits остаются открыты. GPLv2 UI/helper/ассеты не копировались,
+Ordered option fold реализован для новых schema14 preparations; exhaustive MIME
+parity, Archive и image edits остаются открыты. GPLv2 UI/helper/ассеты не копировались,
 новая codec dependency не добавлялась.
 
 GIF converter сверено с pinned

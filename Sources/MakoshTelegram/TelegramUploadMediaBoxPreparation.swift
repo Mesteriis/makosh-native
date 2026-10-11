@@ -29,6 +29,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
     private let receive: @MainActor (Result<TelegramPreparedUploadMedia, TelegramUploadFileError>) -> Void
 
     init(mediaBox: MediaBox, file: TelegramUploadFile, originalFile: TelegramUploadFile? = nil, expectedPlaintextSHA256: String? = nil,
+         sourceFacts: TelegramUploadSourceFacts? = nil,
          receive: @escaping @MainActor (Result<TelegramPreparedUploadMedia, TelegramUploadFileError>) -> Void) {
         self.receive = receive
         self.expectedPlaintextSHA256 = expectedPlaintextSHA256
@@ -36,6 +37,10 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
             do {
                 try TelegramUploadFileIO.validateOwnedStage(file)
                 try await TelegramUploadFileIO.verifyMetadata(file)
+                if let sourceFacts {
+                    try await TelegramUploadBatchItem(id: sourceFacts.itemID, file: file, originalFile: originalFile,
+                        sourceFacts: sourceFacts).verifySourceFacts()
+                }
                 if let expectedPlaintextSHA256 {
                     guard TelegramPendingUploadDraft.isHash(expectedPlaintextSHA256),
                           try await uploadPlaintextMatches(file.url, size: file.size, expected: expectedPlaintextSHA256) else {
@@ -58,7 +63,8 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
                 let cover = try file.videoCover.map { try TelegramUploadVideoCoverIO.validatedBytes($0) }
                 try Task.checkCancellation()
                 guard let self, !self.stopped else { return }
-                self.store(mediaBox: mediaBox, file: file, videoJPEG: jpeg, webPJPEG: webPJPEG, gifJPEG: gifJPEG, coverBytes: cover)
+                self.store(mediaBox: mediaBox, file: file, videoJPEG: jpeg, webPJPEG: webPJPEG, gifJPEG: gifJPEG,
+                    coverBytes: cover, sourceFacts: sourceFacts)
             } catch {
                 guard let self, !self.stopped, !Task.isCancelled else { return }
                 self.finish(.failure(error as? TelegramUploadFileError ?? .unavailable))
@@ -67,7 +73,8 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
     }
 
     private func store(mediaBox: MediaBox, file: TelegramUploadFile, videoJPEG: TelegramUploadVideoThumbnail?,
-                       webPJPEG: TelegramUploadVideoThumbnail?, gifJPEG: TelegramUploadVideoThumbnail?, coverBytes: Data?) {
+                       webPJPEG: TelegramUploadVideoThumbnail?, gifJPEG: TelegramUploadVideoThumbnail?, coverBytes: Data?,
+                       sourceFacts: TelegramUploadSourceFacts?) {
         // The byte identity is shared; the mutually exclusive media roles stay explicit.
         let jpeg = videoJPEG ?? webPJPEG ?? gifJPEG
         let thumbnail = jpeg.map { TelegramUploadVideoThumbnailResource(id: Int64.random(in: Int64.min...Int64.max),
@@ -81,7 +88,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
             return TelegramUploadVideoThumbnailResource(id: id, width: staged.width, height: staged.height, size: staged.size)
         }
         guard let (resource, reference) = telegramUploadMedia(file, videoThumbnail: videoThumbnail, videoCover: cover,
-            webPPreview: webPPreview, gifPreview: gifPreview) else {
+            webPPreview: webPPreview, gifPreview: gifPreview, sourceFacts: sourceFacts) else {
             finish(.failure(.unavailable)); return
         }
         let prepared = TelegramPreparedUploadMedia(resource: resource, reference: reference, videoThumbnail: videoThumbnail,

@@ -173,12 +173,12 @@ and ID3 MP3, plus byte-probed ordinary Ogg/Opus. Schema9 carries exact duration/
 projection, policy-aware storage, byte re-probe, MediaBox and complete native
 receipts. Generic legacy files never acquire music metadata from their suffix.
 When any item is typed music, File grouping requires every item to be typed music;
-a generic `.wav` cannot join it by name. The full ordered classifier above remains
-open; exhaustive Ogg/Vorbis metadata remains open. Ordinary Opus uses pinned
+a generic `.wav` cannot join it by name. New schema14 preparations now use the
+ordered classifier below; exhaustive Ogg/Vorbis metadata remains open. Ordinary Opus uses pinned
 libogg/libopusfile, initial PCM decode per link and reconciled packet/granule
 duration, preserving original bytes and OFF policy. Explicit recorded provenance
-uses schema11. New ordered source facts require a new schema; schema1–13 must
-retain their existing payload and validation meanings.
+uses schema11. Ordered source facts use schema14; schema1–13 retain their
+existing payload and validation meanings.
 
 WebP now has a strict schema9 owned original pipeline too. Content-derived
 ImageIO inspection proves bounded frame0/canvas dimensions for static and animated
@@ -188,8 +188,8 @@ local/S3 bytes are covered through native queue receipts. Exact RIFF length,
 20MiB/8192-axis/40M-pixel/256-frame limits deliberately refuse unsafe input instead
 of inventing upstream512×512 fallback dimensions. The separate optional320px
 JPEG transport preview is regenerated from authenticated original bytes in
-MediaBox, with complete native receipt checks. The whole-list option fold remains
-open. The local native proof is on
+MediaBox, with complete native receipt checks. The whole-list option fold now
+uses separate source facts in schema14. The local native proof is on
 host27; minimum26 runtime is separate evidence.
 
 GIF now uses an owned ImageIO/AVFoundation codec: bounded source
@@ -231,13 +231,55 @@ Literal whole-list cases to retain in regression coverage:
 | AVI/MKV alone | File | File / eligible |
 | Valid PNG, AVI/MKV | Media then File | File / eligible; explicit Media generates video too |
 
-The existing static-image step now uses source logical size and retains its
-no-follow/byte/pixel/frame safety bounds. It does not implement this whole-list
-table. Existing strict schema8 normalization after removing the last visual is
-retained; upstream may leave unavailable Media/stale grouping after removal or
-reorder. Do not serialize invalid Makosh state to reproduce that upstream quirk.
+The static-image payload step uses source logical size and retains its
+no-follow/byte/pixel/frame safety bounds. New schema14 source facts separately
+implement this ordered table. Schema1–13 keep their previous validation and
+payload meanings. After removal/reorder, Makosh retains the current mode only
+while available and ANDs existing grouping with eligibility; it never enables
+Media/grouping automatically. Upstream can leave stale choices after these edits.
 
-Continue in this dependency order:
+Schema14 requires all eight source-fact fields on every ordinary item: stable
+item UUID, prepared/original role, original name/size/SHA256, selection MIME,
+logical image probe and grouping probe. Photo/GIF facts bind the retained raw
+record; other facts bind the prepared record. Unknown/missing/null fields,
+partial upgrades, cross-item/role/hash bindings and facts in schema1–13 fail
+closed. Explicit voice/round recorder preparations retain schemas11–13.
+
+The owned probe borrows a validated stage without copying it. A held no-follow
+descriptor supplies cancellable chunked SHA256; snapshots bracket native probes.
+ImageIO checks complete frames, bounded canvas and thumbnails before NSImage
+logical size. Limits are20MiB,256frames,8192axes,40M canvas pixels and256M
+aggregate frame pixels; source selection facts do not establish payload eligibility.
+Small independently authored MIME aliases cover MOV/M4V/MKV/OGG/Opus/MP3/WebP/BIN;
+other suffixes use UTType. BIN uses the verified application/x-macbinary mapping.
+Opus-in-Ogg is an explicit local alias; the reference table has no opus entry.
+This is not exhaustive MIME-table or decoder parity. Music facts require a real
+byte probe; canonical typed music is independently re-probed/equality-checked.
+
+Every fact is re-probed before preparation persistence and from authenticated
+raw bytes after recovery and before native resource issuance. All raw captures
+are frozen and compared before the first archive side effect. Mode/order/caption/
+cover edits retain facts and durable IDs without recapture. S3 OFF prohibits all
+new copies; encrypted local preparations never promote on re-enable.
+
+Current picker GIF/File/Media, audio, Opus and WebP recovery tests now expect
+schema14 and preserve the typed payload checks. Separate real Postbox reopen
+cases retain an older schema10 opaque32×16 GIF's Media projection under both
+storage policies. New Media GIF selection instead uses a named40×48 source;
+opaque small GIF remains File. Same-name/count original substitution still
+returns conflict on retry. A structurally consistent forged record/fact digest
+reaches authenticated recovery refusal and releases every earlier stage.
+
+Native File projection of a decoded ordinary image now carries its source
+logical ImageSize before FileName, with positive Int32 bounds checked before
+conversion. Mixed grouped Media captions go to the first actual photo/video in
+each ten-item chunk, otherwise the last file. Exact facts, resources, captions,
+group keys and the complete local-ID receipt remain bound to one admission.
+Deterministic in-flight probe mutation/cancellation races, the separate static
+payload geometry rule, Archive/caption normalization and full visual/gesture
+parity remain open; no Account/server/recipient proof is implied.
+
+Migration order and remaining work:
 
 1. Extend strict typed metadata/schema9–11 while preserving schema1–8 meanings.
    Separate source facts, canonical payload and raw projection; reject unknown,
@@ -251,8 +293,8 @@ Continue in this dependency order:
    now has a reviewed offline Opus/Ogg codec, original-PCM waveform and durable
    native path through the preparation controller, with strict >0.5s new-recording
    admission and durable native enqueue. Native capture, peer/slow-mode gates and
-   common-window hold/lock/cancel now connect it. Full visual/gesture parity,
-   end-file round preview, hardware and server proof remain open. Bound frames, dimensions,
+   common-window hold/lock/cancel now connect it. Finished/restored round playback
+   is connected; full visual/gesture parity, hardware and server proof remain open. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every
    typed resource. Off remains encrypted local-only; mode edits never recapture.
@@ -261,9 +303,10 @@ Continue in this dependency order:
    FIFO MediaBox readback, admission equality and transaction-bound receipts.
    Test mixed/chunked sets, raw/converted bytes, missing/extra attributes, partial
    failures and no-resend state using actual native enqueue/reopen.
-5. Reduce ordered frozen source descriptors into options/default/group controls.
-   Preserve previous/new ordered IDs, mode/group CAS and original-store detached
-   retries across rebind, lost acknowledgement, cancellation and newer pointers.
+5. Schema14 now reduces ordered frozen source descriptors into options/default/
+   grouping controls. Preserve previous/new ordered IDs, mode/group CAS and
+   original-store detached retries; extend remaining MIME/decoder coverage and
+   runtime race/gesture proof without changing schema1–13 meanings.
 6. Implement real Archive mode using original dependencies, explicit basename
    collision/failure/lifetime rules and restart recovery. Inspect remaining
    archive/caption helpers, then implement unformatted-only trimming, caption
@@ -281,7 +324,7 @@ Its frozen true-only metadata binds native media TTL through restoration and the
 complete queue receipt; ordinary chat auto-delete stays separate. OFF forbids all
 new S3 copies. See telegram.md and development-status.md for supported targets,
 compatibility, raw RED/GREEN checks and current UI/server limitations. Full round
-preview parity, remaining classifier order, Archive/caption normalization and sequential migration
+preview parity, exhaustive source-classifier coverage, Archive/caption normalization and sequential migration
 remain open; this is not completion of the full Telegram migration.
 
 Explicit encoded round-video now uses schema13, its own native mapper and durable
@@ -296,6 +339,7 @@ permission/context cancellation, durable handoff and retained explicit Send UI.
 The60s cap prepares without automatic send. OFF/no-promotion and immutable retention
 remain. Actual UI checks and full gates are recorded in development-status.md;
 reference modal/end-file player parity, physical hardware/routes/orientation,
-server/recipient and minimum26 proof remain open. Next complete round preview
-parity, then ordered classification and Archive/caption normalization. See
+server/recipient and minimum26 proof remain open. Ordered classification and the
+finished-file round player are connected; next are remaining preview/classifier
+parity and Archive/caption normalization. See
 telegram.md and reference-interface.md for the strict profile and differences.

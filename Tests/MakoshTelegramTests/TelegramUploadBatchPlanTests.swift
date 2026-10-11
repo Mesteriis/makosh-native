@@ -12,6 +12,24 @@ func batchPlanItems(_ count: Int, mode: TelegramUploadMode = .photo) -> [Telegra
 }
 
 final class TelegramUploadBatchPlanTests: XCTestCase {
+    // A skipped source image remains a file payload ahead of the first visual caption recipient.
+    func testSourceGroupedMixedChunksCaptionFirstVisualOrLastFile() throws {
+        let files = batchPlanItems(21, mode: .file), photos = batchPlanItems(21)
+        let items: [TelegramUploadBatchItem] = (0..<21).map { index in
+            let item = [1, 12].contains(index) ? photos[index] : files[index]
+            let facts = TelegramUploadSourceFacts(itemID: item.id, role: .prepared, name: item.file.name,
+                byteCount: item.file.size, plaintextSHA256: String(repeating: "a", count: 64), selectionMIME: "image/png",
+                image: .decoded(width: [1, 12].contains(index) ? 80 : 39, height: 80), grouping: .ordinary)
+            return .init(id: item.id, file: item.file, sourceFacts: facts)
+        }
+        let caption = try TelegramFormattedText(text: "Mixed 😀", entities: [.init(offset: 0, length: 5, kind: .bold)])
+        let plan = try TelegramUploadBatchPlan(items: items, isGrouped: true, caption: caption, presentation: .media)
+        XCTAssertEqual(plan.groupCount, 3)
+        XCTAssertEqual(plan.messages.enumerated().compactMap { $0.element.caption.text.isEmpty ? nil : $0.offset }, [1, 12, 20])
+        XCTAssertEqual(plan.messages.map(\.itemID), items.map { Optional($0.id) })
+        XCTAssertTrue(plan.messages.filter { !$0.caption.text.isEmpty }.allSatisfy { $0.caption == caption })
+    }
+
     func testGroupedBoundariesPreserveItemOrderAndRepeatCaptionAtReferencePositions() throws {
         let caption = try TelegramFormattedText(text: "Caption 😀", entities: [.init(offset: 0, length: 7, kind: .bold)])
         for (count, groups, photoCaptions, fileCaptions): (Int, [Int?], [Int], [Int]) in [

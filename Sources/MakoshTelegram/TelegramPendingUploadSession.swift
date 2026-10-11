@@ -138,10 +138,11 @@ import SwiftSignalKit
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             if let presentation {
-                guard presentation != .media || items.contains(where: { $0.file.mode != .file }),
-                      !isGrouped || presentation.allowsGrouping(items.map {
-                          (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata)
-                      }) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+                guard presentation != .media || TelegramUploadBatchItem.allowsMedia(items),
+                      !isGrouped || presentation.allowsGrouping(items) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+            }
+            guard !items.contains(where: { $0.sourceFacts != nil }) || (presentation != nil && items.allSatisfy { $0.sourceFacts != nil }) else {
+                throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             if items.contains(where: { $0.file.metadata?.voice != nil || $0.file.metadata?.roundVideo != nil }) {
                 _ = try TelegramUploadBatchPlan(items: items, isGrouped: isGrouped, caption: captionInput.formattedText,
@@ -159,7 +160,7 @@ import SwiftSignalKit
                           stored.id == staged.id && stored.file.attachment.name.utf8.elementsEqual(staged.file.name.utf8) &&
                           stored.file.plaintextByteCount == staged.file.size && stored.file.attachment.kind == staged.file.mode.rawValue &&
                           stored.video == staged.file.video && telegramPendingUploadCoverMatches(stored.videoCover, staged.file.videoCover) &&
-                          stored.metadata == staged.file.metadata &&
+                          stored.metadata == staged.file.metadata && stored.sourceFacts == staged.sourceFacts &&
                           stored.matchesOriginal(staged.originalFile)
                       }) else { throw TelegramPendingUploadPersistenceError.conflict }
                 let storage = try files()
@@ -173,6 +174,7 @@ import SwiftSignalKit
                         }
                     }
                 }
+                for item in items { try await item.verifySourceFacts() }
                 try await write(previous.updating(captionInput: captionInput, captionAboveMedia: captionAboveMedia,
                     mediaSpoiler: mediaSpoiler, disposition: .prepared), expectedRevision: previous.revision)
                 return
@@ -183,10 +185,19 @@ import SwiftSignalKit
                 case .prepared, .submissionStarted: throw TelegramPendingUploadPersistenceError.conflict
                 }
             }
+            for item in items { try await item.verifySourceFacts() }
             let captures = try items.map { try TelegramPendingUploadFiles.captureFile($0.file) }
             let covers = try items.map { try $0.file.videoCover.map(TelegramPendingUploadFiles.captureCover) }
             let originals = try items.map { try $0.originalFile.map(TelegramPendingUploadFiles.captureFile) }
-            for item in items { try await item.verifyGIFPair() }
+            for (index, item) in items.enumerated() {
+                try await item.verifyGIFPair()
+                if let facts = item.sourceFacts {
+                    let capture = facts.role == .original ? originals[index] : captures[index]
+                    guard let capture, try capture.plaintextSHA256() == facts.plaintextSHA256 else {
+                        throw TelegramPendingUploadPersistenceError.incompatibleData
+                    }
+                }
+            }
             let storage = try files()
             var stored: [TelegramPendingUploadItem] = []
             for (index, item) in items.enumerated() {
@@ -202,7 +213,8 @@ import SwiftSignalKit
                     original = try await storage.saveOriginal(staged, accountID: accountID, chatID: target.chatID,
                         preparationID: preparationID, itemID: item.id, capture: capture)
                 } else { original = nil }
-                stored.append(.init(id: item.id, file: record, video: item.file.video, videoCover: cover, originalFile: original, metadata: item.file.metadata))
+                stored.append(.init(id: item.id, file: record, video: item.file.video, videoCover: cover, originalFile: original,
+                    metadata: item.file.metadata, sourceFacts: item.sourceFacts))
             }
             let draft = try TelegramPendingUploadDraft(id: preparationID, accountID: accountID, chatID: target.chatID,
                 title: target.title, captionInput: captionInput, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
@@ -221,7 +233,7 @@ import SwiftSignalKit
               Set(orderedIDs).count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12, 13].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(current.schemaVersion), current.disposition == .prepared,
                   current.items.map(\.id) == orderedIDs,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -230,7 +242,7 @@ import SwiftSignalKit
             guard current.presentation == previousPresentation, current.isGrouped == previousGrouping else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
-            guard presentation != .media || current.items.contains(where: { ["photo", "video"].contains($0.file.attachment.kind) }) else {
+            guard presentation != .media || TelegramPendingUploadItem.allowsMedia(current.items) else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             let updated = try TelegramPendingUploadDraft(id: current.id, accountID: current.accountID, chatID: current.chatID,
@@ -281,7 +293,7 @@ import SwiftSignalKit
               Set(orderedIDs).isSubset(of: Set(previousIDs)) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12, 13].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
@@ -291,7 +303,7 @@ import SwiftSignalKit
             guard ordered.count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.conflict }
             let oldPresentation = previousPresentation ?? current.presentation
             let normalized: TelegramUploadPresentation = oldPresentation == .media &&
-                !ordered.contains(where: { ["photo", "video"].contains($0.file.attachment.kind) }) ? .file : oldPresentation
+                !TelegramPendingUploadItem.allowsMedia(ordered) ? .file : oldPresentation
             guard presentation == nil || presentation == normalized else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
@@ -317,7 +329,7 @@ import SwiftSignalKit
         let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12, 13].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
                   let index = current.items.firstIndex(where: { $0.id == itemID }) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -340,7 +352,8 @@ import SwiftSignalKit
                     preparationID: preparationID, itemID: itemID, capture: capture)
             } else { saved = nil }
             var items = current.items
-            items[index] = .init(id: item.id, file: item.file, video: item.video, videoCover: saved, originalFile: item.originalFile, metadata: item.metadata)
+            items[index] = .init(id: item.id, file: item.file, video: item.video, videoCover: saved, originalFile: item.originalFile,
+                metadata: item.metadata, sourceFacts: item.sourceFacts)
             let updated = try TelegramPendingUploadDraft(id: current.id, accountID: current.accountID, chatID: current.chatID,
                 title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
                 mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
@@ -368,20 +381,21 @@ import SwiftSignalKit
                 let file = try await storage.restore(record: item.file, accountID: accountID,
                     chatID: draft.chatID, preparationID: draft.id, video: item.video, itemID: itemID, metadata: item.metadata)
                 // Register each stage before cover export so every failure cleans it.
-                restored.append(.init(id: item.id, file: file))
+                restored.append(.init(id: item.id, file: file, sourceFacts: item.sourceFacts))
                 if let saved = item.originalFile {
                     let original = try await storage.restoreOriginal(saved, accountID: accountID, chatID: draft.chatID,
                         preparationID: draft.id, itemID: item.id)
-                    restored[restored.count - 1] = .init(id: item.id, file: file, originalFile: original)
+                    restored[restored.count - 1] = .init(id: item.id, file: file, originalFile: original, sourceFacts: item.sourceFacts)
                 }
                 try await restored[restored.count - 1].verifyGIFPair()
+                try await restored[restored.count - 1].verifySourceFacts()
                 if let saved = item.videoCover {
                     let cover = try await storage.restoreCover(saved, accountID: accountID, chatID: draft.chatID,
                         preparationID: draft.id, itemID: itemID)
                     restored[restored.count - 1] = .init(id: item.id, file: TelegramUploadFile(id: file.id, name: file.name,
                         size: file.size, mode: file.mode, pixelWidth: file.pixelWidth, pixelHeight: file.pixelHeight,
                         url: file.url, directory: file.directory, video: file.video, videoCover: cover, metadata: file.metadata),
-                        originalFile: restored[restored.count - 1].originalFile)
+                        originalFile: restored[restored.count - 1].originalFile, sourceFacts: item.sourceFacts)
                 }
             }
             return restored

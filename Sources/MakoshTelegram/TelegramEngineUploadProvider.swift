@@ -10,8 +10,10 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
                          videoCover: TelegramUploadVideoThumbnailResource? = nil,
                          webPPreview: TelegramUploadVideoThumbnailResource? = nil,
                          gifPreview: TelegramUploadVideoThumbnailResource? = nil,
+                         sourceFacts: TelegramUploadSourceFacts? = nil,
                          resourceID requestedResourceID: Int64? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
     guard (try? TelegramUploadFileIO.validateMetadata(file)) != nil else { return nil }
+    guard sourceFacts?.isValid ?? true else { return nil }
     guard file.mode == .video || (file.video == nil && file.videoCover == nil),
           (file.videoCover == nil) == (videoCover == nil) else { return nil }
     if let staged = file.videoCover {
@@ -47,8 +49,15 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             immediateThumbnailData: nil, mimeType: "video/mp4", size: file.metadata?.roundVideo == nil ? file.size : nil,
             attributes: attributes, alternativeRepresentations: [])
     case .file:
-        var mime = UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        if let facts = sourceFacts {
+            guard facts.name.utf8.elementsEqual(file.name.utf8), facts.byteCount == file.size else { return nil }
+        }
+        var mime = sourceFacts?.selectionMIME ?? UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         var attributes: [TelegramMediaFileAttribute] = []
+        if file.metadata == nil, let facts = sourceFacts, case let .decoded(width, height) = facts.image {
+            guard width >= 1, height >= 1, width <= Double(Int32.max), height <= Double(Int32.max) else { return nil }
+            attributes.append(.ImageSize(size: PixelDimensions(width: Int32(width), height: Int32(height))))
+        }
         if let voice = file.metadata?.voice {
             mime = "audio/ogg"
             attributes.append(.Audio(isVoice: true, duration: Int(voice.duration), title: nil, performer: nil, waveform: voice.waveform))

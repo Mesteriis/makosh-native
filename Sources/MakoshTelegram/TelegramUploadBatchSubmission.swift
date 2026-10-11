@@ -42,9 +42,10 @@ enum TelegramUploadBatchAdmission {
         self.enqueue = enqueue; self.observe = observe; self.receive = receive
         guard accountID == target.accountID, draft.accountID == accountID, target.chatID == draft.chatID,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
-              target.hasValidReplySource, draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+              target.hasValidReplySource, draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               items.count == draft.items.count, self.items.count == items.count,
-              zip(items, draft.items).allSatisfy({ $0.id == $1.id && $0.file.metadata == $1.metadata && $1.matchesOriginal($0.originalFile) }),
+              zip(items, draft.items).allSatisfy({ $0.id == $1.id && $0.file.metadata == $1.metadata &&
+                  $0.sourceFacts == $1.sourceFacts && $1.matchesOriginal($0.originalFile) }),
               (try? TelegramUploadBatchPlan(items: self.items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
                 captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
                 presentation: draft.schemaVersion >= 8 ? draft.presentation : nil)) != nil else {
@@ -63,7 +64,7 @@ enum TelegramUploadBatchAdmission {
         }
         let digest = record.plaintextSHA256
         let preparation = TelegramUploadMediaBoxPreparation(mediaBox: postbox.mediaBox, file: item.file, originalFile: item.originalFile,
-            expectedPlaintextSHA256: digest) { [weak self] result in
+            expectedPlaintextSHA256: digest, sourceFacts: item.sourceFacts) { [weak self] result in
                 guard let self, !self.stopped, !self.committing, self.resources.count == index else { return }
                 guard case let .success(prepared) = result else { self.finish(.rejected); return }
                 self.resources.append(.init(item: item, plaintextSHA256: digest, prepared: prepared))

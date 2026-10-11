@@ -1819,8 +1819,9 @@ server delivery and reconnection remain unverified; no personal account is used.
 
 ## Whole-list media/file presentation
 
-Schema8 adds explicit `presentation` without replacing the ordered canonical
-resources. New file-picker images retain raw bytes and the prepared JPEG; videos
+Schema8 introduced explicit `presentation` without replacing the ordered canonical
+resources. The schema8–13 behavior below remains readable; new ordinary picker
+preparations use schema14's separate source facts, described below. Images retain raw bytes and the prepared JPEG; videos
 retain one original payload plus video metadata. Mixed sets stay complete and
 initially select file presentation. Both choices appear in the existing preview
 menu when the retained resources permit switching. File rows use original names,
@@ -1831,10 +1832,10 @@ reply, item order and previous mode/grouping must match a prepared pointer.
 An exact committed retry reuses the current pointer. No S3 recapture occurs.
 Reorder/remove, cover changes, caption writes, cancellation and native complete
 receipts retain the mode. Send stays disabled until mode persistence succeeds.
-Switching to media clears grouping for a mixed media/document set; returning to
+In schema8–13, switching to media clears grouping for a mixed media/document set; returning to
 files retains that cleared choice. File grouping rejects WebP. For legacy generic
 sets its basic filename rule remains; if any item has typed music metadata, every
-item must be typed music. Full ordered music/voice classification remains unfinished.
+item must be typed music. Exhaustive music/codec coverage remains unfinished.
 
 Caption placement/spoiler and video cover remain stored across switches. File
 submission forces caption below while retaining the chosen spoiler, matching
@@ -1851,7 +1852,7 @@ For example64×64 pixels at144DPI remain an original file (32×32 points), while
 raw bytes after source removal; normalized JPEG pixels do not reclassify the source.
 GIF/WebP/multiframe inputs are never flattened into static photos. WebP typed
 originals, GIF conversion and explicit recorded-voice attributes are supported
-below. Ordered whole-list options and recorder interaction remain open; the
+below. Schema14 implements ordered whole-list options; full recorder interaction parity remains open. The
 verified dependency order is in `telegram-album-migration.md`.
 
 Media option eligibility is separate from all-visual grouping/layout: a mixed
@@ -1872,6 +1873,25 @@ preparation cannot be overwritten. Legacy schema6/7 writes remain compatible.
 Local-only preparations retain every authenticated receipt and encrypted envelope
 byte across mode changes, restart and later policy re-enable/resume. These writes
 never create S3 copies; the per-chat prohibition also covers every initial resource.
+
+### Ordered original sources
+
+New ordinary picker preparations use strict schema14, preserving schema1–13
+payload meanings. Every item requires its UUID, raw resource role/name/size/
+SHA256, original-name selection MIME, bounded logical-image result and grouping
+result. Photo/GIF facts bind the retained raw resource. Partial/unknown/null or
+cross-resource facts are refused and independently re-probed before persistence,
+after authenticated recovery and before native resource issuance.
+
+The ordered reference fold makes PNG→WebP File and WebP→PNG Media when chosen
+as media. Rejected small images contribute no option. File remains offered;
+reorder/removal can clear unavailable Media/grouping and never enables them.
+Metadata edits retain durable IDs without new copies, including with S3 OFF.
+Native ordinary File images use logical ImageSize; mixed grouped Media captions
+the first actual visual in each ten-item chunk, otherwise the last file.
+Bounded decoders and incomplete MIME aliases remain explicit compatibility gaps
+in `reference-interface.md` and `telegram-album-migration.md`. Older binaries
+refuse schema14; retain pointers, encrypted resources and keys when rolling back.
 
 ### Typed ordinary music preparation
 

@@ -56,17 +56,20 @@ enum TelegramUploadEvent {
     public var isVisualMedia: Bool { !containsRecordedRoundVideo && presentation == .media && !items.isEmpty && items.allSatisfy { $0.file.mode != .file } }
     public var canUseMediaOptions: Bool { !containsRecordedRoundVideo && presentation == .media && items.contains { $0.file.mode != .file } }
     public var canSwitchPresentation: Bool {
-        usesBatchRecovery && !containsRecordedRoundVideo && items.contains(where: { $0.file.mode != .file }) &&
+        usesBatchRecovery && !containsRecordedMedia && TelegramUploadBatchItem.allowsMedia(items)
+    }
+    public var canUseFilePresentation: Bool {
+        usesBatchRecovery && !containsRecordedMedia && !items.isEmpty &&
             items.allSatisfy { $0.file.mode != .photo || $0.originalFile != nil }
     }
     public var canGroupItems: Bool {
-        !containsRecordedRoundVideo && presentation.allowsGrouping(items.map { (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata) })
+        !containsRecordedMedia && presentation.allowsGrouping(items)
     }
     public var presentedItems: [TelegramUploadBatchItem] { items.compactMap { $0.presented(as: presentation) } }
     @discardableResult public func updatePresentation(_ presentation: TelegramUploadPresentation, contextID: UUID, revision: UUID) -> Bool {
         guard preparationID == contextID, itemsRevision == revision, canEditItems else { return false }
         if self.presentation == presentation { return true }
-        guard canSwitchPresentation else { return false }
+        guard presentation == .file ? canUseFilePresentation : canSwitchPresentation else { return false }
         let previousPresentation = self.presentation, previousGrouping = isGrouped
         videoPlayback.stop(); self.presentation = presentation
         isGrouped = isGrouped && canGroupItems
@@ -248,15 +251,18 @@ enum TelegramUploadEvent {
                             // Recognizable unsafe GIF retains the unchanged document, without suffix reinterpretation.
                         }
                     }
+                    let item = staged[staged.count - 1]
+                    let facts = try await TelegramUploadSourceFactsIO.inspect(itemID: item.id, raw: item.rawSource,
+                        role: item.originalFile == nil ? .prepared : .original, metadata: item.file.metadata)
+                    staged[staged.count - 1] = .init(id: item.id, file: item.file, originalFile: item.originalFile, sourceFacts: facts)
                     try Task.checkCancellation()
                     guard self?.token == request else { throw CancellationError() }
                 }
                 guard let self, self.token == request else { throw CancellationError() }
-                let presentation: TelegramUploadPresentation = selected.allSatisfy { $0.mode == .file }
-                    || !staged.allSatisfy { $0.file.mode != .file } ? .file : .media
-                let grouped = isGrouped && presentation.allowsGrouping(staged.map {
-                    (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata)
-                })
+                var presentation = TelegramUploadSourceClassifier.initialPresentation(for: staged.compactMap(\.sourceFacts),
+                    asMedia: selected.allSatisfy { $0.mode != .file })
+                if presentation == .media && !TelegramUploadBatchItem.allowsMedia(staged) { presentation = .file }
+                let grouped = isGrouped && presentation.allowsGrouping(staged)
                 self.preparation = nil; self.items = staged; self.selectedItemID = staged[0].id
                 self.presentation = presentation; self.isGrouped = grouped
                 self.itemsRevision = UUID(); self.phase = .ready
@@ -284,6 +290,7 @@ enum TelegramUploadEvent {
         if oldIndex == index { return true }
         let oldIDs = items.map(\.id), oldGrouping = isGrouped, oldPresentation = presentation
         let item = items.remove(at: oldIndex); items.insert(item, at: index)
+        normalizePresentationAfterItemEdit()
         itemsRevision = UUID(); persistItems(previousIDs: oldIDs, previousGrouping: oldGrouping, previousPresentation: oldPresentation)
         return true
     }
@@ -294,12 +301,15 @@ enum TelegramUploadEvent {
         let oldIDs = items.map(\.id), oldGrouping = isGrouped, oldPresentation = presentation
         retiredItems.append(items.remove(at: index)); videoPlayback.stop()
         if selectedItemID == id { selectedItemID = items[min(index, items.count - 1)].id; videoCoverRevision = UUID() }
-        if presentation == .media && !items.contains(where: { $0.file.mode != .file }) {
+        normalizePresentationAfterItemEdit()
+        itemsRevision = UUID(); persistItems(previousIDs: oldIDs, previousGrouping: oldGrouping, previousPresentation: oldPresentation)
+        return true
+    }
+    private func normalizePresentationAfterItemEdit() {
+        if presentation == .media && !TelegramUploadBatchItem.allowsMedia(items) {
             presentation = .file; captionRevision = UUID(); videoCoverRevision = UUID()
         }
         isGrouped = isGrouped && canGroupItems
-        itemsRevision = UUID(); persistItems(previousIDs: oldIDs, previousGrouping: oldGrouping, previousPresentation: oldPresentation)
-        return true
     }
     @discardableResult public func updateGrouping(_ grouped: Bool, contextID: UUID, revision: UUID) -> Bool {
         guard preparationID == contextID, itemsRevision == revision, canEditItems, !grouped || canGroupItems else { return false }
@@ -425,7 +435,8 @@ enum TelegramUploadEvent {
         set {
             guard let newValue else { items = []; selectedItemID = nil; return }
             if let index = items.firstIndex(where: { $0.id == selectedItemID }) {
-                items[index] = .init(id: items[index].id, file: newValue, originalFile: items[index].originalFile)
+                items[index] = .init(id: items[index].id, file: newValue, originalFile: items[index].originalFile,
+                    sourceFacts: items[index].sourceFacts)
             } else { items = [.init(id: newValue.id, file: newValue)]; selectedItemID = newValue.id }
         }
     }
@@ -722,9 +733,10 @@ enum TelegramUploadEvent {
                     try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, mediaSpoiler: frozenSpoiler, disposition: .submissionStarted)
                     if let batchItems {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
-                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9, 10, 11, 12, 13].contains(draft.schemaVersion),
+                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(draft.schemaVersion),
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == batchItems.map(\.id), draft.isGrouped == grouped, draft.presentation == presentation,
+                              draft.items.map(\.sourceFacts) == batchItems.map(\.sourceFacts),
                               draft.captionInput == frozen, draft.captionAboveMedia == frozenAbove, draft.mediaSpoiler == frozenSpoiler else {
                             throw TelegramPendingUploadPersistenceError.conflict
                         }
@@ -1082,7 +1094,7 @@ enum TelegramUploadEvent {
             guard items.count == 1, items[0].id == draft.items[0].id else { return false }
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13].contains(draft.schemaVersion),
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(draft.schemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,
@@ -1091,7 +1103,7 @@ enum TelegramUploadEvent {
                   staged.id == saved.id && staged.file.name.utf8.elementsEqual(saved.file.attachment.name.utf8) &&
                   staged.file.size == saved.file.plaintextByteCount && staged.file.mode.rawValue == saved.file.attachment.kind &&
                   staged.file.video == saved.video && telegramPendingUploadCoverMatches(saved.videoCover, staged.file.videoCover) &&
-                  staged.file.metadata == saved.metadata &&
+                  staged.file.metadata == saved.metadata && staged.sourceFacts == saved.sourceFacts &&
                   saved.matchesOriginal(staged.originalFile) &&
                   (try? TelegramUploadFileIO.validateOwnedStage(staged.file)) != nil &&
                   (staged.file.videoCover == nil || (try? TelegramUploadVideoCoverIO.validatedBytes(staged.file.videoCover!)) != nil)

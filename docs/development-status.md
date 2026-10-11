@@ -1,6 +1,67 @@
 # Development status — 2026-10-11
 
-## Current stage: optional WebP transport JPEG verified through native recovery
+## Current stage: standalone owned GIF codec verified; durable integration next
+
+An internal native GIF leaf now inspects owned bytes and produces
+an independent H.264 MP4. It is deliberately not connected to the picker,
+preparation schema, native mapper or storage yet: product GIF remains generic
+File until both original GIF and converted MP4 have durable, separate records.
+No interface, schema, S3 policy, engine recipe, dependency or license changed.
+
+The held no-follow source descriptor survives conversion and output validation;
+exact source facts and an optional lowercase SHA256 bind the immutable bytes.
+GIF87a/89a canvas, every decoded frame and Float delays are bounded:20MiB input,
+4096 per axis,16M canvas pixels,256 frames,256M decoded canvas work and600s.
+Missing/zero/one-centisecond delay becomes0.1. The independent AVFoundation
+writer uses H.264 High4.0/512kbps, no audio or resizing,600-timescale sample PTS
+and the reference's Float-to-Double last-delay repeat boundary. Measured positive
+MP4 duration stays distinct from the eventual reference wire duration0.
+Owned output is bounded128MiB and re-probed for canvas, audio and H.264 before
+return. Writer start/append/finish/cancel stay on a private actor; cancellation
+only schedules actor work and awaits teardown before failed-output cleanup.
+BGRA/sRGB, explicit black matte, disabled frame reordering and offline input are
+independent implementation choices, not copied upstream helper code.
+
+Actual combined stub RED:12 tests/11 failures(11 unexpected). A separate test
+actor-isolation setup failure and two writer Swift6 setup failures are retained
+as compilation failures, not behavior evidence. First compiled native run fails
+16/6 because the test reader supplies no container hint for extensionless owned
+payload paths; production's hinted native validators already accept the output.
+Adding the independently expected video/mp4 hint only to test readers gives
+focused GREEN16/0. Actual pixel/PTS readback proves full and partial canvas,
+disposal2/3, single-frame output, the0.33 Float boundary and unchanged originals.
+Ownership, symlink, forged size, bounds, digest/facts mismatch and pre-cancel
+are covered. In-flight cancellation/mutation, transparency and odd-axis native
+behavior remain unproved; no end-to-end GIF send/recovery claim is made.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**910 XCTest (834 Telegram +76 core), zero failures;32 Python regressions**.
+Final incremental test/build logs have no compile warning; three existing test
+warnings appeared during the earlier compiled focused attempt.266 upstream t19
+teardown diagnostics remain without test failures.
+
+Actual owned synthetic common-window screenshots are inspected after updating
+the QA bundle: strict signatures and raw unsigned built–QA equality pass.
+Mail→Telegram retains chat7 and its S3-off choice. No GIF product flow was exposed;
+codec runtime evidence comes from the native tests above. No personal account,
+Telegram network or microphone was used. Host27.0.1 does not prove minimum26.
+
+Independent frozen source review reports no concrete defect. Root validates
+13 before/end/current source/test/support hashes,13 raw command/exit pointers
+and the author contract's14 terminal hashes with9 unchanged reference/lock/helper
+guards and11 raw pointers. Worker runtime is SKIP; parent gates/UI are separate,
+observed provider/model/usage unknown, no quorum. Current XERJ refresh/check/query and
+reference/engine freshness checks exit0:378 files,347/347 classified code;
+new GIFIO/GIFEncoder hits are source-confirmed. Hosted CI for published WebP
+preview7e2c976 has succeeded in both runs.
+
+Next: retain and re-probe raw GIF plus MP4 independently, strict schema/provenance,
+File/Media projection and exact native attributes, both storage modes and restart
+acceptance. Recorded voice/codec, ordered source options, Archive and caption
+normalization follow. Full Telegram parity and the sequential migration goal
+remain open.
+
+## Historical optional WebP transport JPEG (7e2c976)
 
 Typed WebP now supplies a separate optional first-frame JPEG in native enqueue:
 transformed index0, maximum320px without upscaling, quality0.7 and at most1MiB.
@@ -52,8 +113,8 @@ against source and validates the author contract's10 terminal source/lock hashes
 Independent frozen source review reports no concrete defect; root verifies9 patch
 hashes and14 supporting source/lock/report hashes plus25 raw command/exit pointers.
 Worker runtime is SKIP; root gates/UI remain separate, observed provider/model/
-usage unknown, no quorum. Hosted CI for original-WebP commit036cded is successful
-in both runs; this new preview slice awaits its own publication/CI.
+usage unknown, no quorum. This preview slice is published as7e2c976;
+hosted CI has succeeded in both runs.
 
 Next: GIF typed conversion and explicit voice/codec work, then the frozen ordered
 source-option fold, Archive and caption normalization. Full Telegram parity,

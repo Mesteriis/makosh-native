@@ -645,3 +645,23 @@ Codec/encode failure допускает отсутствие превью; ош�
 прежняя иконка файла; новый JPEG относится к transport representation.
 Полный ordered option fold, Archive и image edits остаются открыты. GPLv2 UI/helper/ассеты не копировались,
 новая codec dependency не добавлялась.
+
+GIF converter сверено с pinned
+`packages/TGGifConverter/Sources/TGGifConverter/TGGifConverter.m:18–254` и
+`SenderController.swift:383–387,448–453`: canvas из GIF header, unclamped Float
+delay с fallback0.1, порог0.011, cumulative PTS с timescale600 и повтор последнего
+кадра при promoted Float delay>0.33. Собственный standalone ImageIO/AVFoundation
+leaf настроен на H.264 High4.0/512kbps. Native readback подтверждает H.264 без
+audio/resize, timing и RGB,
+частичные кадры, disposal2/3 и один кадр. Исходный GIF сохраняется неизменным;
+выходной MP4 имеет отдельный owned ID и положительную измеренную длительность.
+Долговременная пара raw/MP4, schema/provenance, File/Media и native wire duration0
+ещё не подключены. Текущий picker по-прежнему показывает GIF как обычный File.
+
+BGRA/sRGB с явным чёрным фоном, отключённый frame reordering, offline input,
+строгие caps20MiB/4096-axis/16M-canvas/256frames/256M-work/600s и output128MiB —
+собственные решения. Writer находится на отдельном actor; блокирующая native
+отмена не выполняется в вызывающем UI cancellation handler. In-flight cancel,
+transparency и odd-axis runtime остаются отдельными непроверенными случаями.
+Внешний GPLv2 UI и helper code не копировались; Apple SDK не становится
+зависимостью от `.references/`. Новый экран для этого внутреннего этапа не создан.

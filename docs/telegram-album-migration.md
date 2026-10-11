@@ -179,11 +179,19 @@ inputs, including a partial first frame. Native ImageSize/FileName/Sticker order
 canonical MIME, forbidden grouping, independent restore re-probe and original
 local/S3 bytes are covered through native queue receipts. Exact RIFF length,
 20MiB/8192-axis/40M-pixel/256-frame limits deliberately refuse unsafe input instead
-of inventing upstream512×512 fallback dimensions. The optional320px JPEG transport
-preview and the whole-list option fold remain open. The local native proof is on
+of inventing upstream512×512 fallback dimensions. The separate optional320px
+JPEG transport preview is regenerated from authenticated original bytes in
+MediaBox, with complete native receipt checks. The whole-list option fold remains
+open. The local native proof is on
 host27; minimum26 runtime is separate evidence.
 
-GIF and recorded-voice rows remain source contracts, not implemented type support. The prepared engine
+GIF now has a standalone owned ImageIO/AVFoundation codec leaf: bounded source
+canvas/Float delays, independently staged H.264 and real decoded pixel/PTS tests,
+including disposal2/3 and a single frame. Raw GIF remains unchanged. This leaf is
+not connected to product preparation, storage or native mapping yet. Separate raw
+and transformed records, strict provenance and measured-versus-wire duration
+must be integrated before exposing GIF Media. Recorded voice remains a source
+contract without implemented type support. The prepared engine
 a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
 currently expose GIF conversion or Opus products. Its WebP helper is not adopted;
 Makosh uses the independently verified Apple decoder. UIKit wrappers

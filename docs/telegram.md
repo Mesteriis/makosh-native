@@ -1111,8 +1111,8 @@ Thumbnail decoding borrows the downloaded file lease, checks current context/
 resource state and limits its output to 512 px under the existing image caps.
 A ready photo exposes an explicit accessible Button. Media-spoiler attributes
 survive native mapping; visual tiles require a separate Reveal before preview
-or playback. Context/descriptor changes hide them again. Ordinary media rows
-and the complete upstream media renderer remain separate parity work.
+or playback. Context/descriptor changes hide them again. Ordinary photo/video
+rows are described below; the complete upstream media renderer remains open.
 
 Tile click/context actions use exactly that member. In selection mode the
 outer whitespace, author and caption toggle the visible group; metadata also
@@ -1174,3 +1174,40 @@ native checks cover a fresh already-checked Show selection, caption cycling,
 actual process restart, recipient Cancel/re-target and Mail → Telegram. Native
 queue simulation does not establish live server acceptance. No outer GPLv2 code
 or assets were copied; pins, recipe 8, PostgreSQL schemas and S3 format stay fixed.
+
+## Ordinary inline photo and video
+
+History and search use the shared own visual renderer for ordinary photo/video
+attachments, including a single visible album member. Caption text follows the
+attachment. Ordinary images use aspect-fit, while album tiles retain aspect-fill.
+Other file/audio/voice/round-video/unsupported attachments keep their existing
+cards and explicit controls; this slice does not implement their specialized UI.
+
+Own sizing follows verified ChatLayoutUtils.swift:16–32,76–114 and
+ChatMediaItem.swift:600–610: photos fit within 320 points, small-image minimums
+are preserved, captions reserve portrait width, landscape video fits up to 420
+points, and portrait video uses the 320-point bound. Available widths are finite
+and bounded; narrower windows clamp the reference minimums to available width,
+and pathological landscape video keeps at least one pixel of height. These are
+deliberate own adaptations. InvertMedia at ChatMediaItem.swift:774–777, autoload
+and exhaustive pixel parity remain open. Supplemental fitted/aspectFitted source
+in TGUIKit Extensions.swift was read directly; it is outside the original index.
+
+The exact attachment/context reveal guard applies independently in history and
+search. Hidden media exposes Reveal, without photo/preview/player actions; an
+explicit full-file download/save remains available through the context menu.
+Reveal does not open the media automatically. A ready photo then exposes its
+native accessible Button; video uses explicit download and playback controls.
+The existing borrowed-file decode lifetime, cancellation checks and 512-pixel
+thumbnail cap are retained. Whole-message selection hides these inner actions
+and keeps the exact source message ID.
+
+The explicit DEBUG album fixture now passes the same page configuration into
+search as history, preserving media IDs, spoilers, fingerprints and action
+metadata. A regression compares search129 to its history source. Defaults and
+live search are unchanged. Root native checks verify search/history Reveal,
+preview, one-message selection, actual synthetic video playback, portrait fit,
+Mail → Telegram and restart with the ordinary draft preserved and media hidden
+again. These isolated checks do not establish live-account/server acceptance.
+No outer GPLv2 UI/assets were copied; pins, recipe 8, PostgreSQL schema and S3
+format remain unchanged. Actual gate outcomes are in development-status.

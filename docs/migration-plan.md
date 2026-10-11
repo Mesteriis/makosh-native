@@ -198,11 +198,11 @@ UI. Native media spoiler проецируется и требует явного
 thumb512 декодируется с живым file lease. DEBUG album QA включается отдельно и
 использует тот же набор версий в forward/Saved/copy/range/reply источниках.
 Фактические regression/build/native результаты — в development-status.
-Далее остаются exhaustive mosaic parity, одиночные media-spoiler строки,
+Далее остаются exhaustive mosaic parity; ordinary media-spoiler строки описаны ниже;
 specialized forward options и прочие Telegram workflows/живой аккаунт; затем выбранные каналы
 в исходном порядке. Текущая проверка не завершает общую цель переноса.
 
-## Текущий участок: опции автора и подписей пересылки
+## Перенесённый участок: опции автора и подписей пересылки
 
 Меню accessory показывает текущий выбор и counts native авторов/подписей.
 Подпись следует reference coupling до явного выбора автора; повторный выбор
@@ -213,6 +213,23 @@ specialized forward options и прочие Telegram workflows/живой акк
 preference не восстанавливается decode. Saved exception сохраняет default options,
 native transport — hideNames OR hideCaptions. Native AX/restart/retarget и реальные
 регрессии описаны в development-status. PostgreSQL/S3 retention не меняется.
+
+## Текущий участок: обычные фото и видео Telegram
+
+Обычная история и поиск показывают inline photo/video с подписью ниже. Shared
+own renderer сохраняет album fill, а ordinary rows используют aspect-fit и
+bounded размеры из проверенного референса. Hidden media требует отдельного
+Reveal до preview/player; явные full-file download/save доступны отдельно.
+Состояние связано с точным descriptor/context и локально для каждой поверхности.
+Выбор сообщения сохраняет exact ID и скрывает внутренние media actions.
+
+DEBUG album search использует те же media descriptors и версии, что history;
+исправление подтверждено regression и native red → green для search129.
+Native QA принимает фото в search/history, видео115, portrait126, переключение
+Почта → Telegram и restart с сохранённым черновиком и новым Reveal. Core sizing
+имеет deliberate narrow-window/min1px адаптации; invertMedia, autoload,
+specialized renderers и exhaustive pixel parity открыты. Фактические checks и
+source review записаны в development-status; PostgreSQL/S3 retention не меняется.
 
 Полный Telegram, server acceptance, последующие MMail/Aether, WhatsApp, Teams,
 Telemost, backups и standalone packaging остаются открытыми в исходном порядке.

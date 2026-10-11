@@ -1727,7 +1727,7 @@ public final class TelegramModel: ObservableObject {
         let model = TelegramModel()
         let pages = TelegramSyntheticPages(albums: albums)
         model.preview = pages
-        model.search.useSyntheticPreview()
+        model.search.useSyntheticPreview(albums: albums)
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())

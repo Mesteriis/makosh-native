@@ -129,13 +129,27 @@ final class TelegramAttachmentActions: ObservableObject {
     isolated deinit { task?.cancel(); panel?.cancel(nil) }
 }
 
-struct TelegramAttachmentRow: View {
+struct TelegramAttachmentRow<MenuContent: View>: View {
     let attachment: TelegramAttachment
+    let contextID: UUID
+    let hasCaption: Bool
     @ObservedObject var media: TelegramMediaController
     @ObservedObject var actions: TelegramAttachmentActions
     @ObservedObject var playback: TelegramPlaybackController
+    @ViewBuilder let menu: () -> MenuContent
+    @State private var reveal = TelegramMediaRevealState()
 
     var body: some View {
+        if attachment.kind == .photo || attachment.playback == .video {
+            TelegramSingleMediaLayout(attachment: attachment, hasCaption: hasCaption) {
+                TelegramVisualMediaView(attachment: attachment, contextID: contextID, media: media, actions: actions,
+                    playback: playback, identifierPrefix: "telegram.visual", contentMode: .fit, menu: menu)
+            }.clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("telegram.attachment." + attachment.id)
+        } else { fileCard }
+    }
+
+    private var fileCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(attachment.name, systemImage: attachment.kind == .photo ? "photo" : "doc")
                 .font(.callout.weight(.medium)).lineLimit(2)
@@ -144,6 +158,9 @@ struct TelegramAttachmentRow: View {
             }
             if attachment.kind == .unsupported {
                 Text("Этот тип вложения пока недоступен.").font(.caption).foregroundStyle(.secondary)
+            } else if reveal.isHidden(attachment, contextID: contextID) {
+                Button("Показать скрытое вложение", systemImage: "eye") { reveal.reveal(attachment, contextID: contextID) }
+                    .accessibilityIdentifier("telegram.attachment.reveal." + attachment.id)
             } else {
                 if attachment.canDownload { controls(purpose: .full) }
                 if attachment.hasPreview { controls(purpose: .preview) }
@@ -191,5 +208,17 @@ struct TelegramAttachmentRow: View {
                 }
             }
         }.controlSize(.small)
+    }
+}
+
+private struct TelegramSingleMediaLayout: Layout {
+    let attachment: TelegramAttachment
+    let hasCaption: Bool
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        TelegramSingleMediaPresentation.size(attachment, availableWidth: Double(proposal.width ?? 420), hasCaption: hasCaption) ?? .zero
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+            proposal: .init(width: bounds.width, height: bounds.height))
     }
 }

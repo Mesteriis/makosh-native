@@ -227,9 +227,9 @@ public final class TelegramSearchModel: ObservableObject {
     }
 
     #if DEBUG
-    func useSyntheticPreview(presenceObservedAt: Date? = nil) {
+    func useSyntheticPreview(presenceObservedAt: Date? = nil, albums: Bool = false) {
         bind(account: nil)
-        preview = TelegramSyntheticPages(presenceObservedAt: presenceObservedAt)
+        preview = TelegramSyntheticPages(presenceObservedAt: presenceObservedAt, albums: albums)
     }
 
     public func failNextSyntheticMessageSearch() {

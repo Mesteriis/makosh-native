@@ -1,6 +1,64 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram forward author/caption options
+## Current stage: Telegram ordinary photo/video presentation
+
+Telegram remains inside the common Makosh service sidebar, dialog list and
+conversation/dossier. Ordinary history and search now show photo/video inline,
+with caption text below the attachment. A shared own renderer retains album
+behavior; ordinary rows use aspect-fit and reference-derived bounded sizing.
+Photo bounds, small-image minimums, portrait caption space and landscape/portrait
+video sizing are covered by literal geometry regressions. Narrow-window bounds
+and a one-pixel minimum for pathological video dimensions are own adaptations;
+exhaustive pixel parity is not claimed.
+
+Media spoilers require a separate Reveal before preview/photo/player actions.
+The guard belongs to the exact descriptor and account context; search and history
+have separate local reveal state. Explicit full-file download/save remains
+available while hidden, but neither preview nor playback is exposed. Nonvisual
+attachments retain their file cards. DEBUG album search now receives the same
+page configuration as history, preserving hidden descriptors and source versions.
+Default fixtures and live search are unchanged. No outer GPLv2 code/assets were
+copied; dependency pins, recipe 8, PostgreSQL schema and S3 format are unchanged.
+
+Runtime red reproduced 15 failed geometry/search assertions; the focused green
+run passes 10 tests. On an intermediate build with the old UI, native search129
+had no Reveal action: that explicit UI assertion failed before the renderer change.
+Final `scripts/dev-db.sh up`, `scripts/test.sh` and `scripts/build-app.sh` exit 0:
+**587 XCTest (524 Telegram + 63 core), zero failures; 30 Python regressions**.
+Logs retain 126 upstream t19 teardown diagnostics without failure/trap. The first
+diff check caught an extra EOF blank line after extraction; it was removed before
+the final checks. Failed raw evidence remains private and is not a pass.
+
+Actual native AX/screenshots verify hidden search129, explicit full-file loading
+without hidden preview/player menu actions, separate Reveal and photo preview,
+history navigation with a fresh Reveal, exact one-message selection and suppressed
+media actions during selection. Video115 loads explicitly and plays the real
+12-second synthetic fixture; portrait126 uses a full aspect-fit image with caption
+below. Existing album IDs remain available. Mail → Telegram and an owned-process
+restart retain the ordinary draft; restarted search129 requires Reveal again.
+QA uses only the owned encrypted synthetic Postbox and isolated PostgreSQL/S3,
+without personal accounts, Keychain or Telegram network/server operations.
+
+Read-only review found no new source finding in the frozen nine-file snapshot.
+Before/after hashes and sizes match; the unchanged reveal guard was separately
+hashed. Worker runtime/UI/build checks are SKIP; root owns those checks. Observed
+model/provider/usage remain unknown and no quorum is claimed. Caption inversion,
+autoload, specialized audio/round-video/sticker/paid/secret renderers, exhaustive
+pixel parity and live-account acceptance remain open. Later channels, backups and
+standalone packaging remain open; the full sequential migration goal stays active.
+
+Previous forward-options head 58ac00c passed both hosted
+[PR CI](https://github.com/Mesteriis/makosh-native/actions/runs/38104293456) and
+[push CI](https://github.com/Mesteriis/makosh-native/actions/runs/38104290482).
+Current-head publication/CI evidence is recorded separately after publication.
+Final lexical XERJ refresh exits 0: 300 files, 270/270 classified code. Project,
+reference and prepared-engine fingerprints pass; current geometry/shared-view
+and reference sizing query hits were confirmed against source. Strict deep
+signatures and unsigned built/QA payload comparison pass. Final diff check
+passes. Machine configuration, runtime data, indexes and raw QA artifacts remain
+ignored; publication uses the selected-field credential audit.
+
+## Historical Telegram forward author/caption options
 
 Telegram remains in the common service-sidebar/list/conversation window. The
 forward accessory now shows checked author and caption choices with counts of

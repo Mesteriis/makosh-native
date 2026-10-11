@@ -51,6 +51,23 @@ import XCTest
         XCTAssertEqual(reply.source.fingerprint, "synthetic-version-1-10003-127-album")
     }
 
+    func testAlbumSearchRetainsHiddenMediaDescriptorAndSourceVersionFromHistory() async throws {
+        let model = fixture()
+        let history = try XCTUnwrap(model.messages.first { $0.id == "synthetic:10003:129" })
+        model.search.messageQuery = "сообщение 129 "
+        let clock = ContinuousClock(), deadline = ContinuousClock().now.advanced(by: .seconds(2))
+        while model.search.messageStatus != .ready, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(model.search.messageStatus, .ready)
+        let result = try XCTUnwrap(model.search.messages.first)
+        XCTAssertEqual(model.search.messages.count, 1)
+        XCTAssertEqual(result.actionMetadata?.fingerprint, "synthetic-version-1-10003-129-album")
+        XCTAssertEqual(result.attachments.first?.isSpoiler, true)
+        XCTAssertEqual(result.attachments, history.attachments)
+        XCTAssertEqual(result.actionMetadata, history.actionMetadata)
+    }
+
     func testAlbumShiftRangeUsesCurrentVersionsInsteadOfInvalidatingMembers() throws {
         let model = fixture(), selected = try select(model, number: 130)
         XCTAssertTrue(model.toggleMessageSelection(messageID: "synthetic:10003:122", sessionID: selected.id,

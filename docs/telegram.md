@@ -1422,6 +1422,10 @@ commented out. No GPLv2 UI/assets or reference credentials were copied.
 Admission matches the persisted video descriptor. The same-transaction local
 receipt additionally checks one queued video, exact native attributes, MIME,
 size, local resource identity and singleton grouping before accepting its marker.
+Video also requires exactly one bounded generic JPEG previewRepresentation in a
+distinct non-secret local resource. Its ID, size, dimensions, progressive data,
+immediate data, video/personal flags and type hint must match the frozen receipt;
+native representation equality alone omits several of these fields.
 Controller recovery requires the same descriptor, preserves rich input/options,
 and keeps an unknown submission non-resendable. The video modal now shows the
 transformed first frame at the reference's320px decoder bound and exposes
@@ -1437,7 +1441,18 @@ core locally: original bytes enter real MediaBox, message/options and atomic
 receipt survive reopen, and accepted preparations cannot enqueue twice. This
 test creates no Account or network managers. The UI fixture separately retains
 explicit synthetic StoreMessage construction; its queue is not server delivery.
+Outgoing JPEG follows SenderController.swift:104–127: first transformed frame,
+at most320px, quality0.3. Shared MediaBox preparation keeps both resources and
+reads back a complete original and exact JPEG bytes before permitting enqueue;
+subscription runs on the native FIFO data queue after both writes. The first
+synchronous snapshot reports incomplete data as known failure rather than waiting
+for a fetch. Void copy/store calls suppress errors and do not acknowledge success. Cancellation
+stops decoding/observations and guards late callbacks. Real native-core/reopen
+tests retain thumbnail metadata and actual JPEG bytes. The derivative is rebuilt
+from the authenticated original on a ready preparation's recovery; the encrypted
+S3 archive format and PostgreSQL schema are unchanged. The original is never
+transcoded. Owned native CUA verified local synthetic MOV acceptance through this
+shared preparation path in the common window.
 Full Account/media-transform/network pipeline and Telegram server acceptance
-remain unverified. Playback, custom cover, native outgoing JPEG thumbnail/
-previewRepresentations, multiple selection/albums and full visual parity remain
-open. The first frame currently serves only the modal UI.
+remain unverified. Playback, custom cover, multiple selection/albums and full
+visual parity remain open.

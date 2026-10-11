@@ -73,22 +73,32 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
                 file: record, video: file.video, disposition: .submissionStarted)
             XCTAssertTrue(draft.isValid)
             var queuedID: MessageId?
+            var queuedThumbnail: TelegramUploadVideoThumbnailResource?
+            let jpeg = try await TelegramUploadVideoIO.thumbnail(file)
             do {
                 let box = try await open(root.appendingPathComponent("postbox")); previousBox = box
                 let seeded = try await value(nativeVideoSeed(box, draft: draft)); XCTAssertTrue(seeded)
-                let (resource, reference) = try XCTUnwrap(telegramUploadMedia(file))
-                let keep = box.mediaBox.keepResource(id: resource.id).start()
-                defer { keep.dispose() }
-                box.mediaBox.copyResourceData(resource.id, fromTempPath: file.url.path)
+                let (prepared, preparation) = try await prepare(box, file: file)
+                defer { preparation.stop() }
+                let resource = prepared.resource, reference = prepared.reference
+                let thumbnail = try XCTUnwrap(prepared.videoThumbnail); queuedThumbnail = thumbnail
                 let cached = try await value(box.mediaBox.resourceData(resource, pathExtension: nil,
                     option: .complete(waitUntilFetchStatus: false)))
                 XCTAssertTrue(cached.complete); XCTAssertEqual(cached.offset, 0); XCTAssertEqual(cached.size, file.size)
                 XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cached.path)), original)
+                let cachedJPEG = try await value(box.mediaBox.resourceData(thumbnail.resource, pathExtension: nil,
+                    option: .complete(waitUntilFetchStatus: false)))
+                XCTAssertTrue(cachedJPEG.complete); XCTAssertEqual(cachedJPEG.offset, 0)
+                XCTAssertEqual(cachedJPEG.size, Int64(jpeg.data.count))
+                XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cachedJPEG.path)), jpeg.data)
+                XCTAssertEqual(thumbnail.width, 16); XCTAssertEqual(thumbnail.height, 32)
+                XCTAssertNotEqual(thumbnail.id, resource.fileId)
                 let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic")
                 let message = try XCTUnwrap(telegramUploadMessage(caption: input.formattedText, reference: reference,
                     target: target, replySource: nil, captionAboveMedia: true, mediaSpoiler: true))
                 let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID, target: target, file: file,
-                    caption: input.formattedText, captionAboveMedia: true, mediaSpoiler: true, localResourceID: resource.fileId)
+                    caption: input.formattedText, captionAboveMedia: true, mediaSpoiler: true, localResourceID: resource.fileId,
+                    videoThumbnail: thumbnail)
                 let result = try await value(nativeVideoEnqueue(box, message: message, receipt: receipt))
                 XCTAssertEqual(result.0.count, 1); XCTAssertTrue(result.1)
                 let id = try XCTUnwrap(result.0.first ?? nil); queuedID = id
@@ -102,6 +112,8 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
                 let media = try XCTUnwrap(queued.media.first as? TelegramMediaFile)
                 XCTAssertEqual(queued.media.count, 1); XCTAssertEqual(media.mimeType, "video/mp4"); XCTAssertEqual(media.size, file.size)
                 XCTAssertEqual((media.resource as? LocalFileMediaResource)?.fileId, resource.fileId)
+                XCTAssertEqual(media.previewRepresentations.count, 1)
+                XCTAssertTrue(thumbnail.matches(try XCTUnwrap(media.previewRepresentations.first)))
                 XCTAssertEqual(media.attributes, [
                     .Video(duration: 0.3333333432674408, size: PixelDimensions(width: 16, height: 32),
                         flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil),
@@ -122,8 +134,63 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
             XCTAssertEqual(retained.0?.video, file.video)
             XCTAssertEqual(retained.0?.disposition, .accepted(localMessageID: "42:\(id.namespace):\(id.id)"))
             XCTAssertNotNil(retained.1)
+            let retainedMedia = try XCTUnwrap(retained.1?.media.first as? TelegramMediaFile)
+            let thumbnail = try XCTUnwrap(queuedThumbnail)
+            XCTAssertEqual(retainedMedia.previewRepresentations.count, 1)
+            XCTAssertTrue(thumbnail.matches(try XCTUnwrap(retainedMedia.previewRepresentations.first)))
+            let cachedJPEG = try await value(reopened.mediaBox.resourceData(thumbnail.resource, pathExtension: nil,
+                option: .complete(waitUntilFetchStatus: false)))
+            XCTAssertTrue(cachedJPEG.complete)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cachedJPEG.path)), jpeg.data)
             XCTAssertEqual(try Data(contentsOf: source), original)
         }
+    }
+
+    func testCancelledMediaBoxPreparationCannotPublishReadyOrRemoveStage() async throws {
+        let root = try root(), source = root.appendingPathComponent("cancelled.mov")
+        try await writeUploadVideoFixture(source)
+        let file = try await TelegramUploadFileIO.stage(source, mode: .video)
+        defer { try? TelegramUploadFileIO.discard(file) }
+        let box = try await open(root.appendingPathComponent("postbox"))
+        let callback = expectation(description: "Cancelled preparation cannot publish"); callback.isInverted = true
+        let preparation = TelegramUploadMediaBoxPreparation(mediaBox: box.mediaBox, file: file) { _ in callback.fulfill() }
+        preparation.stop()
+        await fulfillment(of: [callback], timeout: 0.2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path))
+    }
+
+    func testFailedMediaBoxWriteReportsKnownFailureBeforeEnqueue() async throws {
+        let root = try root(), source = root.appendingPathComponent("unavailable.mov")
+        try await writeUploadVideoFixture(source)
+        let file = try await TelegramUploadFileIO.stage(source, mode: .video)
+        defer { try? TelegramUploadFileIO.discard(file) }
+        let box = try await open(root.appendingPathComponent("postbox"))
+        let cache = URL(fileURLWithPath: box.mediaBox.basePath)
+        guard cache.path.hasPrefix(root.path + "/") else { throw CocoaError(.fileReadNoPermission) }
+        let backup = cache.appendingPathExtension("owned-backup")
+        try FileManager.default.moveItem(at: cache, to: backup)
+        try Data([0]).write(to: cache)
+        defer {
+            try? FileManager.default.removeItem(at: cache)
+            try? FileManager.default.moveItem(at: backup, to: cache)
+        }
+        let failed = expectation(description: "Suppressed native write error becomes known failure")
+        var result: Result<TelegramPreparedUploadMedia, TelegramUploadFileError>?
+        let preparation = TelegramUploadMediaBoxPreparation(mediaBox: box.mediaBox, file: file) { result = $0; failed.fulfill() }
+        defer { preparation.stop() }
+        await fulfillment(of: [failed], timeout: 2)
+        guard case let .failure(error) = result else { return XCTFail("Missing readback must not publish readiness or wait for the controller deadline") }
+        XCTAssertEqual(error, .unavailable)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path))
+    }
+
+    private func prepare(_ box: Postbox, file: TelegramUploadFile) async throws -> (TelegramPreparedUploadMedia, TelegramUploadMediaBoxPreparation) {
+        let ready = expectation(description: "Original and JPEG read back before enqueue")
+        var result: Result<TelegramPreparedUploadMedia, TelegramUploadFileError>?
+        let preparation = TelegramUploadMediaBoxPreparation(mediaBox: box.mediaBox, file: file) { result = $0; ready.fulfill() }
+        await fulfillment(of: [ready], timeout: 20)
+        do { return (try XCTUnwrap(result).get(), preparation) }
+        catch { preparation.stop(); throw error }
     }
 
     // The UI's explicit synthetic provider must preserve video options and

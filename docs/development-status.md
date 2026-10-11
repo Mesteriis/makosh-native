@@ -1,6 +1,57 @@
 # Development status — 2026-10-11
 
-## Current stage: combined photo/video picker and first-frame preview
+## Current stage: outgoing video JPEG and verified MediaBox preparation
+
+The reference's first-frame JPEG now accompanies ordinary video in one native
+previewRepresentation: preferred transform, at most320px and quality0.3. The
+original video remains byte-for-byte unchanged in the archive. A separate local
+resource carries the derivative, with bounded dimensions/size and canonical
+flags. Photo/file mappings reject a video thumbnail; video mapping requires one.
+No reference folder, generated-engine, PostgreSQL schema or S3 format change is
+needed: recovery regenerates this derivative from the authenticated original.
+
+Production and explicit synthetic providers share MediaBox preparation. Both
+resources have keep leases; a first readback on the native FIFO data queue runs
+after both writes and verifies complete original and exact JPEG bytes before
+caption/reply validation or enqueue. Void writes alone are not an acknowledgement;
+incomplete/wrong data reports known failure. Stop cancels decoding and observations; guarded late callbacks
+cannot publish readiness. The atomic receipt requires the same unique thumbnail
+resource, size, dimensions and every representation flag. Native equality omits
+several of these fields and is deliberately insufficient.
+
+Real encrypted Postbox/MediaBox tests carry MP4/MOV, JPEG and exact native
+representations through the shared enqueue core and reopen. Refusal coverage
+includes missing/extra/changed/secret/noncanonical thumbnails and same-size
+wrong cached bytes. Immediate cancellation suppresses readiness and retains the
+owned stage; deterministic held in-flight decoding/readback cancellation remains
+unverified. Full Account/network/server acceptance remains unverified.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**654 XCTest (591 Telegram +63 core), zero failures;32 Python regressions**.
+Focused93 XCTest and final12 transport regressions pass. Full logs retain152 upstream t19 teardown diagnostics
+without a test failure/trap. Behavior reds: JPEG2tests/1failure, mapping1/2,
+receipt1/16, MediaBox/cache3/4, synthetic video1/2 and real write failure1/2. Missing-API and fixture
+compilation errors are separate. The first MediaBox implementation trapped on
+a MainActor-inherited map callback; constructing that pure map outside MainActor
+fixed the reproduced executor failure, and the real integration then passed.
+Review also exposed ignored incomplete snapshots and a metadata test short-circuit
+caused by its missing thumbnail. The failure-path regression reproduced the
+first issue, then passed after FIFO single-snapshot readback; metadata tests now
+provide a valid thumbnail so their existing guards remain observable.
+
+Owned native CUA QA in the common service/sidebar/dialog window verified MOV
+preparation and local synthetic queue acceptance with the shared MediaBox path;
+caption cleared after acceptance. Strict built/QA signatures and unsigned payload
+match pass. Personal accounts, Keychain and Telegram network were not used.
+Final review/index/publication outcomes are recorded in this slice's private
+root report. Parent dc20186 hosted push38113225482 and PR38113228172 are both
+terminal success for the exact SHA, verified by direct readback.
+
+Next transfer playback, custom cover and albums, then remaining Telegram
+workflows. MMail/Aether, WhatsApp, Teams, Telemost, backups and standalone
+packaging remain open; the full sequential migration goal stays active.
+
+## Historical combined photo/video picker and first-frame preview (dc20186)
 
 Telegram stays in the shared service-sidebar/dialog/conversation/dossier window.
 The attachment menu now follows the reference's Photo or Video choice, with a

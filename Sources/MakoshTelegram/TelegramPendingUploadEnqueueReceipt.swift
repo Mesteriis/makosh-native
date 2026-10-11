@@ -12,15 +12,18 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
     let captionAboveMedia: Bool
     let caption: TelegramFormattedText
     let localResourceID: Int64?
-    init(preparationID: UUID, target: TelegramUploadTarget, file: TelegramUploadFile, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, localResourceID: Int64? = nil) {
+    let videoThumbnail: TelegramUploadVideoThumbnailResource?
+    init(preparationID: UUID, target: TelegramUploadTarget, file: TelegramUploadFile, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, localResourceID: Int64? = nil, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil) {
         self.captionAboveMedia = captionAboveMedia; self.mediaSpoiler = mediaSpoiler
         self.preparationID = preparationID; self.target = target; self.file = file; self.caption = caption
         self.localResourceID = localResourceID
+        self.videoThumbnail = videoThumbnail
     }
     nonisolated func validate(transaction: Transaction) -> Bool { current(transaction: transaction) != nil }
     private nonisolated func current(transaction: Transaction) -> TelegramPendingUploadDraft? {
         guard target.hasValidReplySource,
-              file.mode != .video || localResourceID != nil && telegramUploadVideoAttributes(file) != nil,
+              file.mode == .video ? localResourceID != nil && telegramUploadVideoAttributes(file) != nil &&
+                  videoThumbnail?.isValid == true && videoThumbnail?.id != localResourceID : videoThumbnail == nil,
               case let .success(value) = telegramPendingUploadRead(transaction: transaction, accountID: target.accountID, chatID: target.chatID),
               let draft = value, draft.id == preparationID, draft.disposition == .submissionStarted,
               draft.captionInput.formattedText == caption,
@@ -45,13 +48,15 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
               spoilerCount == (mediaSpoiler ? 1 : 0),
               (entityAttributes.first?.entities ?? []) == caption.engineEntities() else { return false }
         if file.mode == .video {
-            guard let localResourceID, let expected = telegramUploadVideoAttributes(file), queued.media.count == 1,
+            guard let localResourceID, let videoThumbnail, let expected = telegramUploadVideoAttributes(file), queued.media.count == 1,
                   let native = queued.media.first as? TelegramMediaFile,
                   let resource = native.resource as? LocalFileMediaResource,
                   resource.fileId == localResourceID, resource.size == file.size, !resource.isSecretRelated,
                   native.fileId == MediaId(namespace: Namespaces.Media.LocalFile, id: localResourceID),
                   native.mimeType == "video/mp4", native.size == file.size, native.attributes == expected,
                   native.partialReference == nil, native.videoCover == nil,
+                  native.previewRepresentations.count == 1, videoThumbnail.matches(native.previewRepresentations[0]),
+                  native.videoThumbnails.isEmpty, native.immediateThumbnailData == nil,
                   native.alternativeRepresentations.isEmpty, queued.groupingKey == nil else { return false }
         }
         let accepted = TelegramPendingUploadDraft(id: draft.id, revision: UUID(), accountID: draft.accountID,

@@ -18,29 +18,36 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = SyntheticUploadLease()
         guard target.accountID == accountID, target.hasValidReplySource, telegramFormattedCaptionCanSend(caption),
-              (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo || file.mode == .video,
-              let (resource, reference) = telegramUploadMedia(file) else {
+              (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo || file.mode == .video else {
             receive(.rejected); return lease
         }
         let postbox = self.postbox, loseAcknowledgement = self.loseAcknowledgement
         lease.task = Task { [weak lease] in
             do {
                 try await Task.sleep(for: .milliseconds(600))
-                guard lease != nil else { return }
-                receive(.committing)
-                if let postbox, let lease {
-                    let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
-                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
-                        localResourceID: resource.fileId)
-                    lease.operation.set((syntheticUploadCommit(postbox: postbox, receipt: receipt, reference: reference)
-                        |> deliverOnMainQueue).start(next: { event in
-                            MainActor.assumeIsolated {
-                                if case .accepted = event, loseAcknowledgement { receive(.uncertain) }
-                                else { receive(event) }
-                            }
-                        }))
+                guard let lease, !lease.stopped else { return }
+                if let postbox {
+                    lease.preparation = TelegramUploadMediaBoxPreparation(mediaBox: postbox.mediaBox, file: file) { [weak lease] result in
+                        guard let lease, !lease.stopped else { return }
+                        guard case let .success(prepared) = result else { receive(.rejected); lease.stop(); return }
+                        receive(.committing)
+                        guard !lease.stopped else { return }
+                        let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
+                            target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
+                            localResourceID: prepared.resource.fileId, videoThumbnail: prepared.videoThumbnail)
+                        lease.operation.set((syntheticUploadCommit(postbox: postbox, receipt: receipt, reference: prepared.reference)
+                            |> deliverOnMainQueue).start(next: { [weak lease] event in
+                                MainActor.assumeIsolated {
+                                    guard let lease, !lease.stopped else { return }
+                                    if case .accepted = event, loseAcknowledgement { receive(.uncertain) }
+                                    else { receive(event) }
+                                }
+                            }))
+                    }
                     return
                 }
+                receive(.committing)
+                guard !lease.stopped else { return }
                 try await Task.sleep(for: .milliseconds(600))
                 receive(.accepted("synthetic-local:" + UUID().uuidString))
                 for progress in [0.1, 0.5, 1.0] {
@@ -75,8 +82,14 @@ private func syntheticUploadCommit(postbox: Postbox, receipt: TelegramPendingUpl
 @MainActor
 private final class SyntheticUploadLease: TelegramUploadLease {
     var task: Task<Void, Never>?
+    var preparation: TelegramUploadMediaBoxPreparation?
+    private(set) var stopped = false
     let operation = MetaDisposable()
-    func stop() { task?.cancel(); task = nil; operation.dispose() }
+    func stop() {
+        guard !stopped else { return }
+        stopped = true; task?.cancel(); task = nil
+        preparation?.stop(); preparation = nil; operation.dispose()
+    }
     isolated deinit { stop() }
 }
 #endif

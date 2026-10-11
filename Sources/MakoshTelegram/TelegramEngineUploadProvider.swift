@@ -6,15 +6,18 @@ import Postbox
 import SwiftSignalKit
 
 /// New local media has no remote message provenance or invented cloud credentials.
-func telegramUploadMedia(_ file: TelegramUploadFile) -> (LocalFileMediaResource, AnyMediaReference)? {
+func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
     guard file.mode == .video || file.video == nil else { return nil }
-    let resource = LocalFileMediaResource(fileId: Int64.random(in: Int64.min...Int64.max), size: file.size)
+    guard file.mode == .video ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
+    var resourceID = Int64.random(in: Int64.min...Int64.max)
+    while resourceID == videoThumbnail?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
+    let resource = LocalFileMediaResource(fileId: resourceID, size: file.size)
     let media: Media
     switch file.mode {
     case .video:
-        guard let attributes = telegramUploadVideoAttributes(file) else { return nil }
+        guard let attributes = telegramUploadVideoAttributes(file), let videoThumbnail else { return nil }
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
-            partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [],
+            partialReference: nil, resource: resource, previewRepresentations: [videoThumbnail.representation], videoThumbnails: [],
             immediateThumbnailData: nil, mimeType: "video/mp4", size: file.size,
             attributes: attributes, alternativeRepresentations: [])
     case .file:
@@ -60,69 +63,61 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
         let peerID = PeerId(target.chatID)
         guard target.accountID == accountID, target.hasValidReplySource,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(peerID.namespace),
-              telegramFormattedCaptionCanSend(caption), (!captionAboveMedia && !mediaSpoiler) || file.mode != .file,
-              let (resource, reference) = telegramUploadMedia(file) else {
+              telegramFormattedCaptionCanSend(caption), (!captionAboveMedia && !mediaSpoiler) || file.mode != .file else {
             receive(.rejected); return lease
         }
-        let mediaBox = account.postbox.mediaBox
-        lease.keep.set(mediaBox.keepResource(id: resource.id).start())
-        // Void copy API suppresses filesystem errors. It is NOT an acknowledgement.
-        // Unique resource and FIFO data queue let resourceData observe the resulting file.
-        mediaBox.copyResourceData(resource.id, fromTempPath: file.url.path)
-        lease.data.set((mediaBox.resourceData(resource, pathExtension: nil,
-            option: .complete(waitUntilFetchStatus: false)) |> deliverOnMainQueue).start(next: { [weak lease, account] data in
-                guard let lease, !lease.stopped, !lease.validating, !lease.committing,
-                      data.complete, data.offset == 0 else { return }
-                guard data.size == file.size, validUploadCacheFile(data.path, size: file.size) else {
+        lease.preparation = TelegramUploadMediaBoxPreparation(mediaBox: account.postbox.mediaBox, file: file) { [weak lease, account] result in
+            guard let lease, !lease.stopped, !lease.validating, !lease.committing else { return }
+            guard case let .success(prepared) = result else {
+                lease.receive(.rejected); lease.stop(); return
+            }
+            let resource = prepared.resource, reference = prepared.reference
+            lease.validating = true
+            let commit: @MainActor (TelegramMessageActionSource?) -> Void = { [weak lease, account] reply in
+                guard let lease, !lease.stopped, !lease.committing else { return }
+                guard let message = telegramUploadMessage(caption: caption, reference: reference, target: target, replySource: reply, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler) else {
                     lease.receive(.rejected); lease.stop(); return
                 }
-                lease.validating = true
-                lease.data.dispose()
-                let commit: @MainActor (TelegramMessageActionSource?) -> Void = { [weak lease, account] reply in
-                    guard let lease, !lease.stopped, !lease.committing else { return }
-                    guard let message = telegramUploadMessage(caption: caption, reference: reference, target: target, replySource: reply, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler) else {
+                lease.committing = true
+                lease.receive(.committing)
+                guard !lease.stopped else { return }
+                let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
+                    target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
+                    localResourceID: resource.fileId, videoThumbnail: prepared.videoThumbnail)
+                lease.enqueue.set((enqueueUploadWithReceipt(account: account, peerID: peerID,
+                    message: message, receipt: receipt)
+                |> deliverOnMainQueue).start(next: { [weak lease, account] admission in
+                    guard let lease, !lease.stopped, !lease.accepted else { return }
+                    let id: MessageId
+                    switch admission {
+                    case .rejected:
                         lease.receive(.rejected); lease.stop(); return
+                    case .uncertain:
+                        lease.receive(.uncertain); lease.stop(); return
+                    case .accepted(let value): id = value
                     }
-                    lease.committing = true
-                    lease.receive(.committing)
+                    lease.accepted = true
+                    lease.receive(.accepted("\(id.peerId.toInt64()):\(id.namespace):\(id.id)"))
                     guard !lease.stopped else { return }
-                    let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
-                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
-                        localResourceID: resource.fileId)
-                    lease.enqueue.set((enqueueUploadWithReceipt(account: account, peerID: peerID,
-                        message: message, receipt: receipt)
-                    |> deliverOnMainQueue).start(next: { [weak lease, account] admission in
-                        guard let lease, !lease.stopped, !lease.accepted else { return }
-                        let id: MessageId
-                        switch admission {
-                        case .rejected:
-                            lease.receive(.rejected); lease.stop(); return
-                        case .uncertain:
-                            lease.receive(.uncertain); lease.stop(); return
-                        case .accepted(let value): id = value
-                        }
-                        lease.accepted = true
-                        lease.receive(.accepted("\(id.peerId.toInt64()):\(id.namespace):\(id.id)"))
-                        guard !lease.stopped else { return }
-                        lease.pending.set((account.pendingMessageManager.pendingMessageStatus(id)
-                            |> deliverOnMainQueue).start(next: { [weak lease] status, failure in
-                                guard let lease, !lease.stopped else { return }
-                                if failure != nil { lease.receive(.queueFailed) }
-                                else { lease.receive(.progress(status.map { Double($0.progress.progress) })) }
-                                // nil or 100% is not server delivery/read acknowledgement.
-                            }))
-                    }))
-                }
-                lease.captionValidation.set((telegramValidateOutgoingCaption(postbox: account.postbox, formatted: caption)
-                    |> deliverOnMainQueue).start(next: { [weak lease, account] valid in
-                        guard let lease, !lease.stopped else { return }
-                        guard valid else { lease.receive(.rejected); lease.stop(); return }
-                        if let source = target.replySource {
-                            lease.validation.set((validateTelegramReplySource(postbox: account.postbox, accountID: target.accountID, source: source)
-                                |> deliverOnMainQueue).start(next: { fresh in commit(fresh) }))
-                        } else { commit(nil) }
-                    }))
-            }))
+                    lease.pending.set((account.pendingMessageManager.pendingMessageStatus(id)
+                        |> deliverOnMainQueue).start(next: { [weak lease] status, failure in
+                            guard let lease, !lease.stopped else { return }
+                            if failure != nil { lease.receive(.queueFailed) }
+                            else { lease.receive(.progress(status.map { Double($0.progress.progress) })) }
+                            // nil or 100% is not server delivery/read acknowledgement.
+                        }))
+                }))
+            }
+            lease.captionValidation.set((telegramValidateOutgoingCaption(postbox: account.postbox, formatted: caption)
+                |> deliverOnMainQueue).start(next: { [weak lease, account] valid in
+                    guard let lease, !lease.stopped else { return }
+                    guard valid else { lease.receive(.rejected); lease.stop(); return }
+                    if let source = target.replySource {
+                        lease.validation.set((validateTelegramReplySource(postbox: account.postbox, accountID: target.accountID, source: source)
+                            |> deliverOnMainQueue).start(next: { fresh in commit(fresh) }))
+                    } else { commit(nil) }
+                }))
+        }
         return lease
     }
 }
@@ -177,18 +172,35 @@ func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaRe
         localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
 }
 
-func validUploadCacheFile(_ path: String, size: Int64) -> Bool {
+func validUploadCacheFile(_ path: String, size: Int64, expected: Data? = nil) -> Bool {
     guard size >= 0, !path.utf8.contains(0) else { return false }
     let fd = Darwin.open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
     guard fd >= 0 else { return false }
     defer { Darwin.close(fd) }
     var info = stat()
-    return fstat(fd, &info) == 0 && info.st_mode & S_IFMT == S_IFREG && info.st_size == size
+    guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size == size else { return false }
+    guard let expected else { return true }
+    guard size <= 1_048_576, expected.count == size else { return false }
+    var actual = Data(count: expected.count)
+    let readAll = actual.withUnsafeMutableBytes { buffer in
+        var offset = 0
+        while offset < buffer.count {
+            let count = Darwin.read(fd, buffer.baseAddress!.advanced(by: offset), buffer.count - offset)
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { return false }
+            offset += count
+        }
+        return true
+    }
+    var current = stat()
+    return readAll && actual == expected && lstat(path, &current) == 0 &&
+        current.st_dev == info.st_dev && current.st_ino == info.st_ino && current.st_mode & S_IFMT == S_IFREG
 }
 
 @MainActor
 private final class EngineUploadLease: TelegramUploadLease {
-    let keep = MetaDisposable(), data = MetaDisposable(), captionValidation = MetaDisposable(), validation = MetaDisposable(), enqueue = MetaDisposable(), pending = MetaDisposable()
+    var preparation: TelegramUploadMediaBoxPreparation?
+    let captionValidation = MetaDisposable(), validation = MetaDisposable(), enqueue = MetaDisposable(), pending = MetaDisposable()
     let receive: @MainActor (TelegramUploadEvent) -> Void
     var committing = false
     var validating = false
@@ -198,7 +210,8 @@ private final class EngineUploadLease: TelegramUploadLease {
     func stop() {
         guard !stopped else { return }
         stopped = true
-        keep.dispose(); data.dispose(); captionValidation.dispose(); validation.dispose(); enqueue.dispose(); pending.dispose()
+        preparation?.stop(); preparation = nil
+        captionValidation.dispose(); validation.dispose(); enqueue.dispose(); pending.dispose()
         // This disposes observations only. A committed Postbox send is not recalled.
     }
     isolated deinit { stop() }

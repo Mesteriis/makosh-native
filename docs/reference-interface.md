@@ -271,8 +271,17 @@ stem.mp4, video/mp4 и условный Animated. CoreExtension.swift:2953–301
 PreviewSenderController.swift:1743–1754 подтверждают inCollage=true даже для
 свежего одиночного видео; финальный nil groupingKey не меняет этот выбор.
 FetchVideoMediaResource.swift:50–72 сохраняет исходные байты; активной
-перекодировки нет. Эти условия зафиксированы в metadata и тестах. Playback,
-custom cover, сохранение JPEG thumbnail в native MediaBox/previewRepresentations,
-album/multiple selection, dust mask и полная визуальная parity остаются открытыми.
-Первый кадр пока используется только в modal preview, не как исходящий thumbnail.
+перекодировки нет. Эти условия зафиксированы в metadata и тестах.
+
+Первый кадр также кодируется в JPEG quality0.3, как SenderController.swift:104–127,
+и сохраняется отдельным LocalFileMediaResource в native MediaBox. Ровно один
+previewRepresentation передаётся исходящему видео. Общая подготовка проверяет
+complete оригинал и точные байты JPEG до enqueue, удерживая оба ресурса. Первый
+snapshot читается на native FIFO очереди после записей; incomplete даёт отказ,
+а Void запись не считается подтверждением. Receipt проверяет ID, размер, dimensions
+и все флаги явно: native equality часть полей игнорирует. Real MediaBox/shared
+native enqueue/reopen проверяют миниатюру отдельно от synthetic StoreMessage UI.
+Native CUA подтверждает MOV и локальное принятие через общую подготовку.
+Playback, custom cover, album/multiple selection, dust mask и полная визуальная
+parity остаются открытыми.
 Реальная отправка/доставка видео и полная Account pipeline не проверены.

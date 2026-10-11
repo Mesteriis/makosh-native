@@ -2,6 +2,13 @@ import Foundation
 import AVFoundation
 import Darwin
 import UniformTypeIdentifiers
+import ImageIO
+
+struct TelegramUploadVideoThumbnail: Sendable {
+    let data: Data
+    let width: Int32
+    let height: Int32
+}
 
 struct TelegramUploadVideoInfo: Equatable, Sendable {
     let width: Int32
@@ -13,6 +20,23 @@ struct TelegramUploadVideoInfo: Equatable, Sendable {
 }
 
 enum TelegramUploadVideoIO {
+    static func thumbnail(_ file: TelegramUploadFile) async throws -> TelegramUploadVideoThumbnail {
+        let preview = try await poster(file)
+        try Task.checkCancellation()
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw TelegramUploadFileError.invalidVideo
+        }
+        CGImageDestinationAddImage(destination, preview.image,
+            [kCGImageDestinationLossyCompressionQuality: 0.3] as CFDictionary)
+        guard CGImageDestinationFinalize(destination), data.length > 0, data.length <= 1_048_576 else {
+            throw TelegramUploadFileError.invalidVideo
+        }
+        try Task.checkCancellation()
+        return TelegramUploadVideoThumbnail(data: data as Data,
+            width: Int32(preview.image.width), height: Int32(preview.image.height))
+    }
+
     /// Reference SenderController.previewForFile: first frame, transformed,320px.
     static func poster(_ file: TelegramUploadFile) async throws -> TelegramImagePreview {
         try Task.checkCancellation()

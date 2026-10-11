@@ -47,8 +47,12 @@ final class TelegramUploadMappingTests: XCTestCase {
         let link = directory.appendingPathComponent("link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
         XCTAssertTrue(validUploadCacheFile(file.path, size: 3))
+        XCTAssertTrue(validUploadCacheFile(file.path, size: 3, expected: Data([1, 2, 3])))
+        XCTAssertFalse(validUploadCacheFile(file.path, size: 3, expected: Data([3, 2, 1])))
+        XCTAssertFalse(validUploadCacheFile(file.path, size: 3, expected: Data([1, 2])))
         XCTAssertFalse(validUploadCacheFile(file.path, size: 4))
         XCTAssertFalse(validUploadCacheFile(link.path, size: 3))
+        XCTAssertFalse(validUploadCacheFile(link.path, size: 3, expected: Data([1, 2, 3])))
         XCTAssertFalse(validUploadCacheFile(directory.path, size: 0))
         XCTAssertFalse(validUploadCacheFile(file.path + "\0", size: 3))
     }

@@ -1,16 +1,83 @@
 import XCTest
 import Foundation
+import CoreGraphics
+import ImageIO
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadBatchControllerTests: XCTestCase {
+    func testFileSelectionRetainsTheMediaRepresentationForALaterSwitch() async throws {
+        let sources = try makeSources(photos: true), controller = TelegramUploadController()
+        controller.bind(provider: BatchStagingProvider())
+        controller.prepare(sources: [.init(source: sources[0], mode: .file)], isGrouped: false,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready)
+        let item = try XCTUnwrap(controller.items.first)
+        XCTAssertEqual(item.file.mode, .photo)
+        XCTAssertNotNil(item.originalFile, "A later media/file switch must retain both resources")
+        XCTAssertEqual(controller.file?.mode, .file, "The explicit initial file choice must remain active")
+        XCTAssertEqual(controller.file?.name, "first.jpg")
+        XCTAssertEqual(controller.presentation, .file)
+        XCTAssertFalse(controller.isVisualMedia)
+    }
+
+    func testFileVideoSelectionRetainsVideoMetadataForALaterSwitch() async throws {
+        let source = try makeSources()[0].deletingLastPathComponent().appendingPathComponent("original.mov")
+        try await writeUploadVideoFixture(source)
+        let bytes = try Data(contentsOf: source), controller = TelegramUploadController()
+        controller.bind(provider: BatchStagingProvider())
+        controller.prepare(sources: [.init(source: source, mode: .file)], isGrouped: false,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready)
+        let item = try XCTUnwrap(controller.items.first)
+        XCTAssertEqual(item.file.mode, .video); XCTAssertNotNil(item.file.video)
+        XCTAssertNil(item.originalFile, "Video and file presentation use the same original resource")
+        XCTAssertEqual(controller.presentation, .file); XCTAssertEqual(controller.file?.mode, .file)
+        XCTAssertNil(controller.file?.video); XCTAssertFalse(controller.isVisualMedia)
+        XCTAssertEqual(try Data(contentsOf: item.file.url), bytes)
+    }
+
+    func testUndersizedImageUsesItsOriginalFileWithoutPhotoNormalization() async throws {
+        let source = try makeSources()[0].deletingLastPathComponent().appendingPathComponent("small.png")
+        let image = try XCTUnwrap(CGContext(data: nil, width: 39, height: 48, bitsPerComponent: 8,
+            bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(image.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let bytes = try Data(contentsOf: source), controller = TelegramUploadController()
+        controller.bind(provider: BatchStagingProvider())
+        controller.prepare(sources: [.init(source: source, mode: .photo)], isGrouped: false,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready)
+        let item = try XCTUnwrap(controller.items.first)
+        XCTAssertEqual(item.file.mode, .file); XCTAssertEqual(item.file.name, "small.png")
+        XCTAssertNil(item.originalFile); XCTAssertEqual(controller.presentation, .file)
+        XCTAssertEqual(try Data(contentsOf: item.file.url), bytes)
+    }
+
+    func testMixedMediaAndDocumentSelectionPublishesTheWholeListAsFiles() async throws {
+        let photos = try makeSources(photos: true), documents = try makeSources(), controller = TelegramUploadController()
+        controller.bind(provider: BatchStagingProvider())
+        controller.prepare(sources: [.init(source: photos[0], mode: .photo), .init(source: documents[0], mode: .file)],
+            isGrouped: true, target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertEqual(controller.items.count, 2, "A mixed list cannot be discarded or reduced to a subset")
+        XCTAssertEqual(controller.file?.mode, .file)
+        XCTAssertTrue(controller.isGrouped, "File mode permits grouping photos with ordinary documents")
+    }
+
     func testPhotoDerivativeFailureReleasesTheRawCopyBeforePublication() async throws {
-        let sources = try makeSources(), controller = TelegramUploadController()
+        let sources = try makeSources(photos: true), controller = TelegramUploadController()
+        let originalBytes = try Data(contentsOf: sources[0])
         controller.bind(provider: BatchStagingProvider())
         var rawURL: URL?
         controller.stage = { source, _ in
             rawURL = source
             XCTAssertNotEqual(source, sources[0])
-            XCTAssertEqual(try Data(contentsOf: source), Data("first.txt".utf8))
+            XCTAssertEqual(try Data(contentsOf: source), originalBytes)
             throw TelegramUploadFileError.invalidImage
         }
         controller.prepare(sources: [.init(source: sources[0], mode: .photo)], isGrouped: false,
@@ -151,6 +218,12 @@ import Foundation
     var release: CheckedContinuation<Void, Never>?
     var items: [TelegramUploadBatchItem] = []
     init(entered: @escaping () -> Void) { self.entered = entered }
+    func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, presentation: TelegramUploadPresentation,
+                 target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool,
+                 mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws {
+        try await prepare(preparationID: preparationID, items: items, isGrouped: isGrouped, target: target,
+            captionInput: captionInput, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler, originalDraft: originalDraft)
+    }
     func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, target: TelegramUploadTarget,
                  captionInput: TelegramComposerInput, captionAboveMedia: Bool, mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws {
         self.items = items

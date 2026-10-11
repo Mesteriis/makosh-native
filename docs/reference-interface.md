@@ -542,16 +542,46 @@ Native QA теперь проверяет visual10+1, перенос11-го ID �
 очередью. В отдельном наборе удаляется именно11-й ID; оставшиеся10 тоже приняты.
 После restart принятые подготовки не воскресают, а прежний crashed submission
 восстанавливается uncertain без повторной отправки. Context-menu действия
-проверены мышью; сам drag/drop жест пока не проверен. Whole-list
-классификация, переключение исходных media/file и archive остаются открытыми.
+проверены мышью; сам drag/drop жест пока не проверен. Полная whole-list
+классификация и archive остаются открытыми.
 Telegram остаётся в общем WorkspaceView; live Telegram sending не проверялся.
 
 Новые photo preparations из picker, включая одиночный выбор, сохраняют исходный файл отдельно от JPEG, как
 требует граница `PreviewSenderController.swift:1617–1622` /
 `SenderController.swift:331–360,390–391`: media/file строятся из текущего source URL,
 а JPEG — отдельный ресурс. Макош сначала делает собственную неизменяемую копию
-исходника и генерирует JPEG из неё. Schema7 связывает оба S3-объекта с item UUID;
-legacy JPEG-only подготовки не получают выдуманный оригинал. Сам переключатель
-media/file и archive ещё впереди. Референсные image edits отдельно заменяют текущий
+исходника и генерирует JPEG из неё. Schema7 связывает оба durable-ресурса с item UUID;
+legacy JPEG-only подготовки не получают выдуманный оригинал. Schema8 добавляет переключатель
+media/file; archive остаётся открытым. Референсные image edits отдельно заменяют текущий
 URL; перенос этой операции не следует из сохранения raw source. Runtime референса
 не запускался; GPLv2 UI/ассеты не копировались.
+
+Schema8 хранит media/file choice всего набора. Сверены
+`PreviewSenderController.swift:275–287,1743–1784`, `ThumbUtils.swift:222–260`,
+`CoreExtension.swift:2953–3015` и `SenderController.swift:404–458` на том же pin.
+Существующее меню подготовки предлагает оба режима и показывает текущий выбор.
+File rows используют исходные имена/размеры; mixed list начинает с File,
+переключение в Media снимает недопустимую группировку. Caption placement,
+spoiler и cover сохраняются; File принудительно отправляет подпись снизу.
+Mode write меняет только Postbox metadata, сохраняет исходные local/S3 IDs и блокирует
+Send до подтверждения. Native PNG regression проверяет настоящий FileName,
+точные исходные байты MediaBox и complete receipt после восстановления.
+
+Оставшиеся различия классификации явные: static-photo admission использует
+pixel dimensions, upstream — NSImage logical size; GIF/WebP/multiframe media
+conversion не перенесена и исходники остаются файлами. Filename audio eligibility
+не заменяет upstream native music/voice attributes. Archive и image edits открыты.
+
+Сверены также `PreviewSenderController.swift:1690–1705,388–393`: mixed Media
+допускает spoiler/placement, а grouping требует all-visual eligibility. Макош
+разделяет эти условия. Regression удерживает actual mode CAS до rebind, затем
+роняет запись до commit и проверяет original-store retry, запрет stale restore,
+cancel/newer-pointer guards. Native UI evidence для текущего payload приведено
+в development-status.md. GPLv2 UI/ассеты не копировались.
+
+Removing the final visual item from mixed Media normalizes the remaining list to
+File in one guarded metadata write, retaining captions and authenticated resources.
+Strict schema8 decoding still rejects document-only Media. Frozen original-store
+list/mode writes preserve retry and the latest caption/options after rebind,
+including removal of the final visual item; a caption-only save cannot hide an
+unconfirmed list change.

@@ -1722,9 +1722,10 @@ transactional admission/receipts and observation of every queued ID. The picker,
 controller and recovery protocol now carry the whole ordered set. Native preview
 uses groups of at most10 visual items or individual document rows. Reorder,
 remove, selection, recovery and covers use stable item IDs. Full receipt matching
-never substitutes the first queued ID for the complete result. Whole-list mode
-and group eligibility, raw-original switching, archive preparation and caption
-normalization remain required steps in [telegram-album-migration.md](telegram-album-migration.md).
+never substitutes the first queued ID for the complete result. Whole-list mode,
+basic group eligibility and raw-original switching are implemented below. Archive
+preparation, full classification and caption normalization remain in
+[telegram-album-migration.md](telegram-album-migration.md).
 No first-item fallback or automatic resend is available.
 
 Real Postbox/PostgreSQL/S3 regressions verify three ordered files including a
@@ -1745,14 +1746,14 @@ The broader sequential Telegram/product goal remains open.
 New picker photo preparations, including a single selected photo, first copy the selected source into an
 owned stage, then derive JPEG from that frozen copy. The JPEG keeps the selected
 filename stem with `.jpg`; the raw source keeps its original filename and bytes.
-Both resources share one stable item ID but have different temporary and S3
-object IDs. Raw photos retain the existing20MiB preparation bound. Videos and
+Both resources share one stable item ID but have different temporary and durable
+record IDs. Each chat's policy selects S3 or encrypted local preparation. Raw photos retain the existing20MiB preparation bound. Videos and
 ordinary files already retain their source payload; no extra copy is added here.
 
 Schema7 stores raw photo metadata as `originalFile`, with attachment ID
 `original:<item UUID>`. JPEG and cover attachment IDs remain unchanged. Every
-source is captured before the first S3 write, and the whole preparation is
-published only after every resource is stored. Retry compares original metadata
+source is captured before publication, and the whole preparation is
+published only after every resource has an authenticated durable receipt. Retry compares original metadata
 and streamed plaintext SHA256. Restoration authenticates all records, returning
 both stages or cleaning the entire restored set on failure. Reorder/remove,
 detached writes, cancellation and accepted receipts preserve the source binding;
@@ -1763,13 +1764,12 @@ Schemas1–6 remain readable. A schema7 pointer requires originals for every pho
 schema6 rejects source-bearing records. Metadata matching during native photo
 submission validates raw stage ownership/name/size; only the active JPEG enters
 MediaBox and gets the before/after-copy digest verification. The raw bytes are
-authenticated during archive restore and initial-write retry. Future file-mode
-conversion must separately verify its selected raw payload before enqueue.
-Legacy JPEG-only preparations cannot reconstruct original bytes. This foundation
-does not implement media/file switching or archive mode; both remain open.
-Single photo selection uses the ordered preparation path without grouping,
-preserving the existing single-photo preview and options. Existing single-file
-and video paths, and legacy programmatic preparation APIs, remain compatible.
+authenticated during archive restore and initial-write retry. Schema8 file-mode
+submission separately verifies its selected raw payload before enqueue.
+Legacy JPEG-only preparations cannot reconstruct original bytes. Archive mode
+remains open. Every new picker selection uses the ordered path, including one
+file/video/photo without grouping. Legacy programmatic single-file/video APIs
+remain compatible.
 
 Real controller/Postbox/PostgreSQL/S3 regressions cover edited order/removal,
 restoration, a later video's cover following its ID, later-stage failure cleanup,
@@ -1779,14 +1779,14 @@ uses a valid isolated native author separately from account sentinel -1; its
 regression reproduced and fixed the native PeerId assertion. Owned native QA
 verifies11 visual items, cross-group menu actions, exact restart recovery, local
 queue acceptance and no resurrection; native drag/drop and live delivery remain
-unverified. Prepared photo bytes are normalized JPEG, not a raw-original mode.
+unverified. Media presentation selects the normalized JPEG; File selects the retained original.
 
 ## Native batch provider: album migration step2
 
 Schema6 accepts a complete ordered array of typed Local message IDs, including
 one leading text ID for separate sends with a nonempty caption. Partial, duplicate,
 foreign-peer or non-Local IDs cannot acknowledge a preparation. The original
-ordered S3 records and caption/options remain in the accepted pointer.
+ordered durable records and caption/options remain in the accepted pointer.
 
 The Account and isolated native providers share sequential all-resource MediaBox
 preparation and transaction hooks. Every original must match its archived
@@ -1814,3 +1814,53 @@ Lost callbacks retain complete acceptance and stale snapshots cannot enqueue
 again. Native queue insertion cannot be rolled back by a failed acknowledgement;
 this is uncertain, never permission to resend. Account network transformations,
 server delivery and reconnection remain unverified; no personal account is used.
+
+## Whole-list media/file presentation
+
+Schema8 adds explicit `presentation` without replacing the ordered canonical
+resources. New file-picker images retain raw bytes and the prepared JPEG; videos
+retain one original payload plus video metadata. Mixed sets stay complete and
+initially select file presentation. Both choices appear in the existing preview
+menu when the retained resources permit switching. File rows use original names,
+sizes and bytes. Legacy photos without a retained original cannot switch.
+
+Mode changes perform metadata-only guarded writes: exact account/chat/preparation,
+reply, item order and previous mode/grouping must match a prepared pointer.
+An exact committed retry reuses the current pointer. No S3 recapture occurs.
+Reorder/remove, cover changes, caption writes, cancellation and native complete
+receipts retain the mode. Send stays disabled until mode persistence succeeds.
+Switching to media clears grouping for a mixed media/document set; returning to
+files retains that cleared choice. File grouping rejects WebP and mixed audio/
+non-audio filenames. Full native music/voice classification remains unfinished.
+
+Caption placement/spoiler and video cover remain stored across switches. File
+submission forces caption below while retaining the chosen spoiler, matching
+the verified reference state/send boundary. Returning to media restores the
+retained placement and cover. Native original-file enqueue verifies the selected
+record's plaintext SHA256 before and after copying to MediaBox.
+
+Static-photo admission inspects an owned no-follow byte snapshot: at least40
+pixels each side, aspect at most10:1, existing8192/40M-pixel and20MiB limits,
+one decoded frame. Smaller/extreme/unsupported images remain original files;
+GIF/WebP/multiframe inputs are never flattened into photos. This uses pixels,
+while upstream `ThumbUtils` uses `NSImage.size`, and GIF/WebP media conversion/
+option ordering are not yet migrated. This is not full reference parity.
+
+Media option eligibility is separate from all-visual grouping/layout: a mixed
+photo/document set in Media retains caption placement, spoiler and one-shot
+spoiler actions. File mode keeps those controls unavailable. A frozen original-
+store mode/list request survives rebind and before-commit/lost-ACK failure;
+restoration and send stay blocked until confirmation or an explicit retry.
+Remove, reorder and grouping changes use the same frozen request boundary, so
+rebinding cannot replace an unconfirmed list update with a caption-only save. Cancellation and
+a newer preparation cannot be overwritten. Cancelling also releases a retained
+failed mode request. The latest caption/options remain bound to the original chat.
+
+Schema8 rejects missing/unknown presentation and Media with only documents.
+Removing the final visual item normalizes the remaining set to File in one
+metadata write, guarded by the exact previous mode/order/grouping. An exact
+committed retry reuses that pointer; stale mode, cancellation and a newer
+preparation cannot be overwritten. Legacy schema6/7 writes remain compatible.
+Local-only preparations retain every authenticated receipt and encrypted envelope
+byte across mode changes, restart and later policy re-enable/resume. These writes
+never create S3 copies; the per-chat prohibition also covers every initial resource.

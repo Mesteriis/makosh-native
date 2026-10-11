@@ -1,6 +1,71 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram per-chat S3 choice verified; media/file mode next
+## Current stage: Telegram Media/File mode and local-only recovery verified
+
+The existing Telegram preparation menu switches the complete ordered set between
+Media and File. Schema8 retains canonical resources; File selects a photo's raw
+original and verifies its digest before/after copying to MediaBox. All new picker
+selections use ordered preparation, including single files. Mixed sets start in
+File, disable grouping in Media and retain caption/placement/spoiler across modes.
+Static-photo eligibility leaves GIF/WebP/multiframe and unsupported inputs as
+original files. Full reference classification, archive mode and caption trimming
+remain open; this is not complete Telegram parity.
+
+The per-chat S3 prohibition from46bf2d9 remains intact: every initial outgoing
+resource uses an encrypted local envelope/receipt when disabled. Mode/list edits
+are metadata-only; local resources never become S3 resume jobs after re-enabling.
+Personal cloud chats default on, groups/channels off. Message versions and existing
+archive objects remain retained, and PostgreSQL stores no file payload bytes.
+
+Independent source review identified four concrete P2 defects. Actual regressions
+first reproduced mixed Media option refusal and lost detached mode retry, then
+final-visual removal leaving invalid Media (14 tests/20 failures), and list/mode
+retry lost after rebind (21 tests/28 failures). Fixes preserve media controls for a
+mixed set, atomic remaining-list/File normalization, exact old/new mode/order/group
+CAS and original-store requests with latest caption/options across rebind and retry.
+Restore/send stay blocked until confirmation; cancellation/newer pointers cannot
+be overwritten. A separate cancellation-retention regression also passed after
+cleanup. Corrected compatibility coverage passes43 tests, including legacy schema6/7.
+Raw compile/setup and invalid test-fixture failures remain separate from PASS gates.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0.
+The final full gate passes **827 XCTest (751 Telegram +76 core), zero failures;
+32 Python regressions**. The recompiled test target emits three existing warnings
+(two weak-reference mutability suggestions and an unreachable catch), plus248
+upstream t19 teardown diagnostics without test failures. Earlier incremental
+812/820 gates are superseded by this final source snapshot.
+
+Owned native QA verifies off → select PNG+TXT → File/Media/File → caption/options
+retained → remove the two selected synthetic sources → SIGTERM. Preparation began
+on the preceding built snapshot; final built payload then restores the same two
+stable IDs, original179/37-byte payloads and10-UTF16 caption. It repeats mode
+switching with retained placement/spoiler, accepts all three native queue IDs,
+and stays closed after another restart. Separate real Postbox/S3 readbacks before
+and after acceptance pass (one test each): same preparation/three canonical records,
+local state, exact payloads, empty archive-file metadata and absent S3 objects
+under local and conventional keys. Mail→Telegram retains the chat/off choice.
+A second native mixed preparation removes its sole photo and leaves one ready
+24-byte document; it was explicitly cancelled. Actual screenshots were inspected.
+Strict signatures/raw unsigned built–QA payload equality pass. No personal account,
+Keychain or Telegram network was exercised.
+
+Frozen independent source review and two delta reviews close all four findings
+with no new concrete defect in the touched route. Root revalidates all19 source/test
+hashes; worker runtime is SKIP and observed provider/model/usage remain unknown.
+Final project XERJ refresh/check/query exit0:361 indexed files,330/330 code;
+reference freshness check exits0 and source reads confirm retrieval. Engine/license
+pins and the reference-free build boundary remain unchanged. Private QA/readback
+helpers and their temporary test are excluded from publication. Selected-credential
+publication audit exits0:366 publishable files/five selected fields, zero matched
+files or PR-body matches. Git and hosted-CI publication are recorded separately.
+
+Next: complete upstream whole-list classification/options, archive preparation and
+caption normalization, then remaining Telegram action/search/profile/settings and
+live-account validation. MMail/Aether, WhatsApp, Teams, Telemost, dossiers, portable
+backup/restore and standalone packaging follow in the existing order. Local
+preparation collection/portable backup remain unfinished. The sequential goal is active.
+
+## Historical per-chat S3 prohibition (46bf2d9)
 
 The common conversation header exposes **Сохранять файлы в S3**. Personal cloud
 chats default on; groups and channels default off. Exact service/account/chat

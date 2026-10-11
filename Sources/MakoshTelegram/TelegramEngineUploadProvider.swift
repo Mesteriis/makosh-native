@@ -190,10 +190,11 @@ func telegramUploadMessage(caption: String, reference: AnyMediaReference, target
 }
 
 func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference?, target: TelegramUploadTarget,
-                           replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false) -> EnqueueMessage? {
+                           replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
+                           presentation: TelegramUploadPresentation? = nil) -> EnqueueMessage? {
     guard telegramFormattedCaptionCanSend(caption), target.hasValidReplySource,
           reference != nil || telegramFormattedTextCanSend(caption),
-          (!captionAboveMedia && !mediaSpoiler) || reference?.media is TelegramMediaImage ||
+          (presentation != nil && reference != nil) || (!captionAboveMedia && !mediaSpoiler) || reference?.media is TelegramMediaImage ||
               (reference?.media as? TelegramMediaFile)?.isVideo == true else { return nil }
     if let captured = target.replySource {
         guard let replySource, replySource.accountID == captured.accountID,

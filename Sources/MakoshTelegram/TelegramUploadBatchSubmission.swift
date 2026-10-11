@@ -36,15 +36,18 @@ enum TelegramUploadBatchAdmission {
          enqueue: @escaping (TelegramUploadBatchEnqueueReceipt, [EnqueueMessage]) -> Signal<TelegramUploadBatchAdmission, NoError>,
          observe: (([MessageId]) -> Signal<TelegramUploadBatchEvent, NoError>)? = nil,
          receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) {
-        self.postbox = postbox; self.items = items; self.draft = draft; self.target = target
+        self.postbox = postbox
+        self.items = draft.schemaVersion == 8 ? items.compactMap { $0.presented(as: draft.presentation) } : items
+        self.draft = draft; self.target = target
         self.enqueue = enqueue; self.observe = observe; self.receive = receive
         guard accountID == target.accountID, draft.accountID == accountID, target.chatID == draft.chatID,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
-              target.hasValidReplySource, draft.isValid, [6, 7].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
-              items.count == draft.items.count,
+              target.hasValidReplySource, draft.isValid, [6, 7, 8].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+              items.count == draft.items.count, self.items.count == items.count,
               zip(items, draft.items).allSatisfy({ $0.id == $1.id && $1.matchesOriginal($0.originalFile) }),
-              (try? TelegramUploadBatchPlan(items: items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
-                captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler)) != nil else {
+              (try? TelegramUploadBatchPlan(items: self.items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
+                captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
+                presentation: draft.schemaVersion == 8 ? draft.presentation : nil)) != nil else {
             finish(.rejected); return
         }
         prepareNext()
@@ -54,7 +57,11 @@ enum TelegramUploadBatchAdmission {
         guard !stopped, !committing else { return }
         let index = resources.count
         guard index < items.count else { commit(); return }
-        let item = items[index], digest = draft.items[index].file.plaintextSHA256
+        let item = items[index]
+        guard let record = draft.schemaVersion == 8 ? draft.items[index].payload(for: draft.presentation) : draft.items[index].file else {
+            finish(.rejected); return
+        }
+        let digest = record.plaintextSHA256
         let preparation = TelegramUploadMediaBoxPreparation(mediaBox: postbox.mediaBox, file: item.file,
             expectedPlaintextSHA256: digest) { [weak self] result in
                 guard let self, !self.stopped, !self.committing, self.resources.count == index else { return }
@@ -69,7 +76,8 @@ enum TelegramUploadBatchAdmission {
         guard !stopped, !committing else { return }
         do {
             let plan = try TelegramUploadBatchPlan(items: items, isGrouped: draft.isGrouped,
-                caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler)
+                caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
+                presentation: draft.schemaVersion == 8 ? draft.presentation : nil)
             var keys: [Int64] = []
             while keys.count < plan.groupCount {
                 let key = Int64.random(in: Int64.min...Int64.max)

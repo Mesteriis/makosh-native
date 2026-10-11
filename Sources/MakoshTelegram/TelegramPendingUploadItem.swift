@@ -1,5 +1,18 @@
 import Foundation
 import MakoshCore
+import UniformTypeIdentifiers
+
+/// Presentation changes select an existing resource; they never rename JPEG bytes into an original.
+public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
+    case media, file
+
+    func allowsGrouping(_ files: [(name: String, isVisual: Bool)]) -> Bool {
+        guard !files.isEmpty, !files.contains(where: { ($0.name as NSString).pathExtension.lowercased() == "webp" }),
+              self != .media || files.allSatisfy(\.isVisual) else { return false }
+        let audio = files.map { UTType(filenameExtension: ($0.name as NSString).pathExtension)?.conforms(to: .audio) == true }
+        return !audio.contains(true) || audio.allSatisfy { $0 }
+    }
+}
 
 /// Stable preparation identity, independent of preview position or restored tmp path.
 internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identifiable {
@@ -42,6 +55,10 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
         }
     }
 
+    func payload(for presentation: TelegramUploadPresentation) -> ArchiveFileRecord? {
+        presentation == .file && file.attachment.kind == "photo" ? originalFile : file
+    }
+
     static func isDurable(_ file: ArchiveFileRecord) -> Bool {
         if file.state == .stored { return true }
         guard file.state == .local, case .some(.outgoing) = file.purpose else { return false }
@@ -70,6 +87,15 @@ public struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
     public let originalFile: TelegramUploadFile?
     public init(id: UUID, file: TelegramUploadFile, originalFile: TelegramUploadFile? = nil) {
         self.id = id; self.file = file; self.originalFile = originalFile
+    }
+    public func presented(as presentation: TelegramUploadPresentation) -> Self? {
+        guard presentation == .file else { return self }
+        if file.mode == .photo {
+            guard let originalFile else { return nil }
+            return .init(id: id, file: originalFile, originalFile: originalFile)
+        }
+        return .init(id: id, file: TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .file,
+            pixelWidth: nil, pixelHeight: nil, url: file.url, directory: file.directory), originalFile: originalFile)
     }
     func discard(using discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard) throws {
         var failure: (any Error)?

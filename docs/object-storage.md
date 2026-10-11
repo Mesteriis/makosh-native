@@ -79,6 +79,12 @@ copies. Existing S3 objects remain readable regardless of the current choice.
 Local preparation is retained on cancellation/acceptance; automatic collection
 and portable backup/restore are unfinished.
 
+Schema8 Media/File switches select existing canonical resources through guarded
+Postbox metadata updates. File presentation selects a photo’s authenticated raw
+original; Media selects its JPEG. The same local/S3 records, covers and encrypted
+spool bytes remain unchanged across switches and restart. Enabling S3 later does
+not promote a local preparation, including after a mode change or resume.
+
 ## Capture, storage and recovery
 
 ```text

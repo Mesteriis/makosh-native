@@ -24,12 +24,15 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
     let messages: [Message]
     let groupCount: Int
     init(items: [TelegramUploadBatchItem], isGrouped: Bool, caption: TelegramFormattedText,
-         captionAboveMedia: Bool = false, mediaSpoiler: Bool = false) throws {
+         captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil) throws {
         guard !items.isEmpty, Set(items.map(\.id)).count == items.count,
               items.allSatisfy({ $0.id != TelegramPendingUploadDraft.zeroUUID }),
               telegramFormattedCaptionCanSend(caption),
-              items.allSatisfy({ $0.file.mode == .file }) || items.allSatisfy({ $0.file.mode != .file }),
-              (!captionAboveMedia && !mediaSpoiler) || items.allSatisfy({ $0.file.mode != .file }) else {
+              presentation != nil || items.allSatisfy({ $0.file.mode == .file }) || items.allSatisfy({ $0.file.mode != .file }),
+              presentation != nil || (!captionAboveMedia && !mediaSpoiler) || items.allSatisfy({ $0.file.mode != .file }),
+              presentation == nil || !isGrouped || presentation!.allowsGrouping(items.map {
+                  (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file)
+              }) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         let empty = try TelegramFormattedText(text: "")
@@ -46,7 +49,7 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
             let captionIndex = items[start].file.mode == .file ? end - 1 : start
             for index in start..<end {
                 result.append(.init(itemID: items[index].id, caption: !leadingText && index == captionIndex ? caption : empty,
-                    groupIndex: grouped ? start / 10 : nil, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler))
+                    groupIndex: grouped ? start / 10 : nil, captionAboveMedia: presentation == .file ? false : captionAboveMedia, mediaSpoiler: mediaSpoiler))
             }
         }
         messages = result

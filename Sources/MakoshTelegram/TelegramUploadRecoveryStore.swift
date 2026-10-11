@@ -14,14 +14,33 @@ import Foundation
                            cover: TelegramUploadVideoCover?) async throws
     func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, target: TelegramUploadTarget,
                  captionInput: TelegramComposerInput, captionAboveMedia: Bool, mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws
+    func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, presentation: TelegramUploadPresentation,
+                 target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool,
+                 mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws
     func restoreItems(draft: TelegramPendingUploadDraft) async throws -> [TelegramUploadBatchItem]
     func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],
                      isGrouped: Bool, target: TelegramUploadTarget) async throws
+    func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool,
+                     previousPresentation: TelegramUploadPresentation, orderedIDs: [UUID], isGrouped: Bool,
+                     presentation: TelegramUploadPresentation, target: TelegramUploadTarget) async throws
+    func updatePresentation(preparationID: UUID, orderedIDs: [UUID], previousPresentation: TelegramUploadPresentation,
+                            previousGrouping: Bool, presentation: TelegramUploadPresentation, isGrouped: Bool,
+                            target: TelegramUploadTarget) async throws
     func replaceVideoCover(preparationID: UUID, itemID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                            cover: TelegramUploadVideoCover?) async throws
 }
 
 extension TelegramUploadRecoveryStore {
+    func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, presentation: TelegramUploadPresentation,
+                 target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool,
+                 mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
+    func updatePresentation(preparationID: UUID, orderedIDs: [UUID], previousPresentation: TelegramUploadPresentation,
+                            previousGrouping: Bool, presentation: TelegramUploadPresentation, isGrouped: Bool,
+                            target: TelegramUploadTarget) async throws {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
     // Legacy adapters fail closed until they explicitly implement whole-set writes.
     func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, target: TelegramUploadTarget,
                  captionInput: TelegramComposerInput, captionAboveMedia: Bool, mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws {
@@ -33,6 +52,11 @@ extension TelegramUploadRecoveryStore {
     }
     func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],
                      isGrouped: Bool, target: TelegramUploadTarget) async throws {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
+    func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool,
+                     previousPresentation: TelegramUploadPresentation, orderedIDs: [UUID], isGrouped: Bool,
+                     presentation: TelegramUploadPresentation, target: TelegramUploadTarget) async throws {
         throw TelegramPendingUploadPersistenceError.incompatibleData
     }
     func replaceVideoCover(preparationID: UUID, itemID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,

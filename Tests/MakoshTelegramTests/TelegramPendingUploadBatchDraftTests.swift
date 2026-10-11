@@ -28,6 +28,60 @@ func pendingUploadBatchFixture() throws -> TelegramPendingUploadDraft {
 }
 
 final class TelegramPendingUploadBatchDraftTests: XCTestCase {
+    func testMediaPresentationCannotAdmitOnlyDocumentResources() throws {
+        var json = try pendingUploadBatchJSON()
+        json["schemaVersion"] = 8; json["presentation"] = "media"; json["isGrouped"] = false
+        let draft = try JSONDecoder().decode(TelegramPendingUploadDraft.self,
+            from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertFalse(draft.isValid, "Media mode requires at least one photo or video, even without grouping")
+    }
+
+    func testExplicitPresentationCannotBeMissingUnknownOrHiddenInAnOlderSchema() throws {
+        for (version, presentation): (Int, Any?) in [(8, nil), (8, "archive"), (7, "file")] {
+            var json = try pendingUploadBatchJSON()
+            json["schemaVersion"] = version; json["presentation"] = presentation
+            XCTAssertThrowsError(try JSONDecoder().decode(TelegramPendingUploadDraft.self,
+                from: JSONSerialization.data(withJSONObject: json)))
+        }
+    }
+
+    func testExplicitPresentationRejectsAnIneligibleWholeListGroup() throws {
+        for (names, mode, valid) in [
+            (["first.txt", "second.pdf"], "file", true),
+            (["first.mp3", "second.m4a"], "file", true),
+            (["first.mp3", "second.pdf"], "file", false),
+            (["first.webp", "second.pdf"], "file", false),
+            (["first.txt", "second.pdf"], "media", false)
+        ] {
+            var json = try pendingUploadBatchJSON(), items = json["items"] as! [[String: Any]]
+            for index in items.indices {
+                var file = items[index]["file"] as! [String: Any], attachment = file["attachment"] as! [String: Any]
+                attachment["name"] = names[index]; file["attachment"] = attachment; items[index]["file"] = file
+            }
+            json["items"] = items; json["schemaVersion"] = 8; json["presentation"] = mode
+            let draft = try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: json))
+            XCTAssertEqual(draft.isValid, valid, "\(mode): \(names)")
+        }
+    }
+
+    // A mode change must survive restart without rewriting or dropping resources.
+    func testExplicitFilePresentationSurvivesTheWholePreparationCodec() throws {
+        var json = try pendingUploadBatchJSON()
+        json["schemaVersion"] = 8; json["presentation"] = "file"
+        let draft: TelegramPendingUploadDraft
+        do { draft = try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: json)) }
+        catch { return XCTFail("An explicit file presentation must decode with every ordered resource retained") }
+        XCTAssertTrue(draft.isValid)
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        XCTAssertEqual(encoded["presentation"] as? String, "file")
+        XCTAssertEqual(draft.items.map(\.id), [UUID(uuidString: "00000000-0000-0000-0000-000000000011")!, UUID(uuidString: "00000000-0000-0000-0000-000000000012")!])
+        var downgraded = encoded; downgraded["schemaVersion"] = 6
+        do {
+            let invalid = try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: downgraded))
+            XCTAssertFalse(invalid.isValid, "An older schema cannot silently ignore a changed send mode")
+        } catch is DecodingError {}
+    }
+
     func testRawPhotoSourceCannotBeDroppedOrDowngradedIntoAnOlderBatch() throws {
         var json = try pendingUploadBatchJSON(), items = json["items"] as! [[String: Any]]
         var original = items[0]["file"] as! [String: Any]

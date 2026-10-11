@@ -7,11 +7,12 @@ struct TelegramUploadBatchPreview: View {
     let contextID: UUID
 
     var body: some View {
+        let items = upload.presentedItems
         ScrollView {
             VStack(spacing: 10) {
                 if upload.isVisualMedia && upload.isGrouped {
-                    ForEach(Array(stride(from: 0, to: upload.items.count, by: 10)), id: \.self) { start in
-                        let group = Array(upload.items[start..<min(start + 10, upload.items.count)])
+                    ForEach(Array(stride(from: 0, to: items.count, by: 10)), id: \.self) { start in
+                        let group = Array(items[start..<min(start + 10, items.count)])
                         TelegramAlbumMosaicLayout(aspects: group.map { item in
                             Double(item.file.pixelWidth ?? 1) / Double(max(1, item.file.pixelHeight ?? 1))
                         }) {
@@ -21,7 +22,7 @@ struct TelegramUploadBatchPreview: View {
                         }.clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                 } else {
-                    ForEach(upload.items) { item in itemView(item, compact: false) }
+                    ForEach(items) { item in itemView(item, compact: false) }
                 }
             }.frame(maxWidth: .infinity)
         }.frame(maxHeight: 320)

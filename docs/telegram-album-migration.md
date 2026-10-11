@@ -17,14 +17,14 @@ metadata and every queued reply attribute bind the complete batch to its source
 thread, canonical quote and absence of a todo item.
 
 The picker, upload controller, recovery protocol and preparation UI now carry
-ordered schema6/7 items. Multi-selection, stable-ID reorder/remove, grouping,
+ordered schema6/7/8 items. Multi-selection, stable-ID reorder/remove, grouping,
 later-item covers and whole-set restart use the existing upload state machine.
 Grouped visual previews split at10; documents remain individual preview rows.
-Existing schema1–5 preparations remain supported. Whole-list presentation and
-group eligibility, original-file mode switching and archive preparation remain
-open. New picker photo preparations, including single selection, retain both normalized JPEG and a separately
-encrypted raw source under schema7. File-mode switching is still pending; it must
-use that source, never renamed normalized bytes. Existing schema1–6 photos have
+Existing schema1–5 preparations remain supported. Schema8 implements whole-list Media/File presentation and
+basic grouping eligibility. Full upstream classification and archive preparation
+remain open. New picker photo preparations, including single selection, retain
+both normalized JPEG and a separately encrypted raw source. File mode selects
+that source and verifies its digest during native enqueue. Existing schema1–6 photos have
 no recoverable raw source unless it was separately retained. Real
 Account/network delivery has not been exercised; native queue tests
 use synthetic peers and encrypted Postbox.
@@ -38,8 +38,9 @@ items per group. Caption formatting, placement, spoilers and reply attribution
 must reach the intended messages. Stable item IDs connect preview actions,
 recovered files, covers and native resources across reorder and restart.
 
-Every original payload and accepted cover lives in encrypted S3; PostgreSQL
-contains authenticated metadata. The account-bound Postbox pointer publishes the
+Every original payload and accepted cover is encrypted in S3 when the exact chat
+choice permits it, or in the private local spool when disabled. PostgreSQL never
+stores file payload bytes; encrypted Postbox pointers contain metadata only. The account-bound Postbox pointer publishes the
 whole ordered preparation with one revision change. Failure may retain immutable
 objects, but must not publish a partial album. Unknown enqueue outcomes remain
 non-resendable. Native admission and receipts must cover all queued messages in
@@ -110,8 +111,9 @@ or malformed native acknowledgement after queue insertion remains uncertain;
 it does not roll back or justify resending. A durable complete receipt survives
 lost callbacks and rejects stale resubmission.
 
-Whole-list presentation/grouping eligibility, reference trimming of unformatted
-input and mode/archive normalization remain for step4. Per-item actions are now
+Whole-list Media/File presentation and basic grouping eligibility are integrated.
+Reference trimming of unformatted input, full GIF/WebP/music/voice classification
+and archive preparation remain for step4. Per-item actions are now
 bound to stable IDs; native context-menu reorder/remove across the10/11 boundary,
 whole-set restart and local queue acceptance are verified. The drag/drop gesture
 and reference runtime remain unexecuted.
@@ -119,3 +121,26 @@ A whitespace-only leading text is currently rejected by text admission rather
 than silently dropped. Later-group actions must use stable item IDs, never the
 reference's local-chunk index against the global URL list. Reference runtime and
 live Telegram delivery remain separate, unexecuted evidence boundaries.
+
+## Explicit presentation and local-only compatibility
+
+Schema8 stores Media/File alongside the same ordered canonical resources. File
+uses raw photo originals and strips active video metadata/cover from the selected
+file representation; switching back preserves their canonical records. Media
+requires at least one photo/video, and mixed Media cannot group its whole list.
+Deleting its final visual item changes the remaining set to File atomically with
+its order; previous mode/order/grouping guard the write and exact lost-ACK retry.
+Mode and item changes retain the original store and latest caption/options across
+rebind, failure and retry; cancellation/newer pointers stay protected.
+Strict decoding still rejects externally supplied document-only Media.
+Caption placement/spoiler controls remain available for mixed Media independently
+of mosaic eligibility. A frozen mode CAS survives navigation/failure and retries
+only the original store; cancelled/newer pointers are never revived. Send and
+restoration remain blocked while the retained write needs confirmation.
+
+Existing schema1–7 are readable; explicit mode fields cannot hide in older schemas.
+An older binary must fail closed on schema8. Resolve pending preparations before
+rollback, preserving pointers, local encrypted spool, S3 objects and archive keys.
+Mode switches are metadata-only and cannot recapture or promote local resources,
+even after the S3 choice is enabled later. Local collection/portable backup remain
+unfinished. Current gates and actual native UI evidence are in development-status.md.

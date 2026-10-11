@@ -98,6 +98,159 @@ import SwiftSignalKit
         try await assertLegacyPreparation(namespace: Namespaces.Peer.CloudUser, enabled: false, video: true)
     }
 
+    func testSchemaEightMediaPreparationSwitchesLocalResourcesWithoutS3Promotion() async throws {
+        try await assertLocalModeSwitches(initial: .media)
+    }
+
+    func testSchemaEightFilePreparationSwitchesLocalResourcesWithoutS3Promotion() async throws {
+        try await assertLocalModeSwitches(initial: .file)
+    }
+
+    // A metadata switch must work after every source and owned input stage is gone.
+    // Re-enabling S3 cannot turn an existing local preparation into a remote copy.
+    private func assertLocalModeSwitches(initial: TelegramUploadPresentation) async throws {
+        let db = try database(), config = try configuration(), root = try directory()
+        let chat = peer(Namespaces.Peer.CloudUser), preparation = UUID(), path = root.appendingPathComponent("postbox")
+        let target = TelegramUploadTarget(accountID: 1, chatID: chat, title: "Synthetic local modes")
+        let caption = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Local modes 😀",
+            entities: [.init(offset: 0, length: 5, kind: .bold)]))
+        var expected: [[Data]] = [], saved: TelegramPendingUploadDraft?
+        var canonical: [ArchiveFileRecord] = [], spool: [String: Data] = [:], stageDirectories: [URL] = []
+        do {
+            let archive = try repository(db, config, root)
+            try await archive.setConversationFileSavingEnabled(identity: identity(chat), enabled: false)
+            let documentURL = root.appendingPathComponent("mode-document.txt"), photoURL = root.appendingPathComponent("mode-photo.png")
+            let videoURL = root.appendingPathComponent("mode-video.mov"), coverURL = root.appendingPathComponent("mode-cover.jpg")
+            try Data("SYNTHETIC_LOCAL_SCHEMA8_DOCUMENT".utf8).write(to: documentURL)
+            try writePhoto(photoURL); try await writeUploadVideoFixture(videoURL); try writeUploadVideoCoverFixture(coverURL)
+            let document = try await TelegramUploadFileIO.stage(documentURL, mode: .file)
+            addTeardownBlock { try TelegramUploadFileIO.discard(document) }
+            let original = try await TelegramUploadFileIO.stageImageSource(photoURL)
+            addTeardownBlock { try TelegramUploadFileIO.discard(original) }
+            let photo = try await TelegramUploadFileIO.stage(photoURL, mode: .photo)
+            addTeardownBlock { try TelegramUploadFileIO.discard(photo) }
+            let rawVideo = try await TelegramUploadFileIO.stage(videoURL, mode: .video)
+            addTeardownBlock { try TelegramUploadFileIO.discard(rawVideo) }
+            let cover = try await TelegramUploadVideoCoverIO.stage(coverURL, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
+            addTeardownBlock { try TelegramUploadFileIO.discard(cover.imageFile) }
+            let items = [TelegramUploadBatchItem(id: UUID(), file: document),
+                TelegramUploadBatchItem(id: UUID(), file: photo, originalFile: original),
+                TelegramUploadBatchItem(id: UUID(), file: withCover(rawVideo, cover))]
+            stageDirectories = [document.directory, photo.directory, original.directory, rawVideo.directory, cover.imageFile.directory]
+            defer { for item in items { try? item.discard() } }
+            expected = try items.map { item in
+                var bytes = [try Data(contentsOf: item.file.url)]
+                if let original = item.originalFile { bytes.append(try Data(contentsOf: original.url)) }
+                if let cover = item.file.videoCover { bytes.append(try Data(contentsOf: cover.url)) }
+                return bytes
+            }
+            XCTAssertNotEqual(expected[1][0], expected[1][1], "Normalized JPEG must differ from the canonical raw PNG")
+            for source in [documentURL, photoURL, videoURL, coverURL] { try FileManager.default.removeItem(at: source) }
+            let box = try await open(path); previousBox = box
+            let session = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                files: { TelegramPendingUploadFiles(repository: archive) })
+            try await session.prepare(preparationID: preparation, items: items, isGrouped: initial == .file,
+                presentation: initial, target: target, captionInput: caption, captionAboveMedia: true,
+                mediaSpoiler: true, originalDraft: nil)
+            let loaded = try await session.load(chatID: chat), draft = try XCTUnwrap(loaded)
+            XCTAssertEqual(draft.schemaVersion, 8); XCTAssertEqual(draft.presentation, initial)
+            canonical = resources(draft)
+            XCTAssertEqual(canonical.count, 5); XCTAssertEqual(Set(canonical.map(\.id)).count, 5)
+            XCTAssertTrue(canonical.allSatisfy { $0.state == .local })
+            try await assertNoS3(canonical, config: config)
+            spool = try localModeSpool(root)
+            XCTAssertEqual(spool.keys.filter { $0.hasSuffix(".local") }.count, 5)
+            XCTAssertEqual(spool.keys.filter { $0.hasSuffix(".envelope") }.count, 5)
+            saved = draft
+        }
+        for stage in stageDirectories { XCTAssertFalse(FileManager.default.fileExists(atPath: stage.path)) }
+        try await waitForPostboxRelease()
+        for (index, next) in [initial == .media ? TelegramUploadPresentation.file : .media, initial].enumerated() {
+            do {
+                let archive = try repository(db, config, root), box = try await open(path); previousBox = box
+                let session = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                    files: { TelegramPendingUploadFiles(repository: archive) })
+                let loaded = try await session.load(chatID: chat), current = try XCTUnwrap(loaded)
+                XCTAssertEqual(current, saved)
+                try await assertLocalModeRestore(current, session: session, expected: expected)
+                if index == 1 {
+                    try await archive.setConversationFileSavingEnabled(identity: identity(chat), enabled: true)
+                    let enabled = try await archive.conversationFileSavingEnabled(identity: identity(chat), defaultEnabled: true)
+                    XCTAssertTrue(enabled)
+                }
+                let resumed = try await archive.resume()
+                XCTAssertEqual(resumed, 0)
+                try await session.updatePresentation(preparationID: preparation, orderedIDs: current.items.map(\.id),
+                    previousPresentation: current.presentation, previousGrouping: current.isGrouped,
+                    presentation: next, isGrouped: next == .file, target: target)
+                let switchedLoad = try await session.load(chatID: chat), switched = try XCTUnwrap(switchedLoad)
+                XCTAssertEqual(switched.schemaVersion, 8); XCTAssertEqual(switched.presentation, next)
+                XCTAssertEqual(switched.items, current.items); XCTAssertEqual(resources(switched), canonical)
+                XCTAssertEqual(switched.captionInput, caption); XCTAssertTrue(switched.captionAboveMedia); XCTAssertTrue(switched.mediaSpoiler)
+                XCTAssertNotEqual(switched.revision, current.revision)
+                // Exact lost-ACK retry cannot rewrite even the metadata pointer.
+                try await session.updatePresentation(preparationID: preparation, orderedIDs: current.items.map(\.id),
+                    previousPresentation: current.presentation, previousGrouping: current.isGrouped,
+                    presentation: next, isGrouped: next == .file, target: target)
+                let retried = try await session.load(chatID: chat)
+                XCTAssertEqual(retried, switched)
+                try await assertLocalModeRestore(switched, session: session, expected: expected)
+                XCTAssertEqual(try localModeSpool(root), spool, "Mode changes/resume cannot recapture or promote a local resource")
+                try await assertNoS3(canonical, config: config)
+                saved = switched
+            }
+            try await waitForPostboxRelease()
+        }
+        let archive = try repository(db, config, root), box = try await open(path)
+        let session = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+            files: { TelegramPendingUploadFiles(repository: archive) })
+        let loaded = try await session.load(chatID: chat), final = try XCTUnwrap(loaded)
+        XCTAssertEqual(final, saved); XCTAssertEqual(final.presentation, initial)
+        XCTAssertEqual(resources(final), canonical)
+        let enabled = try await archive.conversationFileSavingEnabled(identity: identity(chat), defaultEnabled: false)
+        XCTAssertTrue(enabled, "The explicit re-enable must survive repository recreation")
+        let resumed = try await archive.resume()
+        XCTAssertEqual(resumed, 0)
+        try await assertLocalModeRestore(final, session: session, expected: expected)
+        XCTAssertEqual(try localModeSpool(root), spool)
+        try await assertNoS3(canonical, config: config)
+        XCTAssertEqual(try db.execute("SELECT count(*) FROM \"\(db.schema)\".archive_file_events"), [["0"]])
+    }
+
+    private func assertLocalModeRestore(_ draft: TelegramPendingUploadDraft, session: TelegramPendingUploadSession,
+                                        expected: [[Data]]) async throws {
+        let restored = try await session.restoreItems(draft: draft)
+        defer { for item in restored { try? item.discard() } }
+        XCTAssertEqual(restored.map(\.id), draft.items.map(\.id)); XCTAssertEqual(restored.count, 3)
+        for (item, bytes) in zip(restored, expected) {
+            var actual = [try Data(contentsOf: item.file.url)]
+            if let original = item.originalFile { actual.append(try Data(contentsOf: original.url)) }
+            if let cover = item.file.videoCover { actual.append(try Data(contentsOf: cover.url)) }
+            XCTAssertEqual(actual, bytes)
+        }
+        let photo = try XCTUnwrap(restored.first { $0.originalFile != nil })
+        let storedPhoto = try XCTUnwrap(draft.items.first { $0.originalFile != nil })
+        let effective = try XCTUnwrap(photo.presented(as: draft.presentation))
+        let payload = try XCTUnwrap(storedPhoto.payload(for: draft.presentation))
+        let bytes = try Data(contentsOf: effective.file.url)
+        let image = try XCTUnwrap(CGImageSourceCreateWithData(bytes as CFData, nil))
+        let type = try XCTUnwrap(CGImageSourceGetType(image))
+        if draft.presentation == .file {
+            XCTAssertEqual(effective.file.mode, .file); XCTAssertEqual(effective.file.name, "mode-photo.png")
+            XCTAssertEqual(bytes, expected[1][1]); XCTAssertEqual(type as String, "public.png")
+            XCTAssertEqual(payload, storedPhoto.originalFile)
+        } else {
+            XCTAssertEqual(effective.file.mode, .photo); XCTAssertEqual(effective.file.name, "mode-photo.jpg")
+            XCTAssertEqual(bytes, expected[1][0]); XCTAssertEqual(type as String, "public.jpeg")
+            XCTAssertEqual(payload, storedPhoto.file)
+        }
+    }
+
+    private func localModeSpool(_ root: URL) throws -> [String: Data] {
+        let files = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("queue"), includingPropertiesForKeys: nil)
+        return try Dictionary(uniqueKeysWithValues: files.map { ($0.lastPathComponent, try Data(contentsOf: $0)) })
+    }
+
     private func assertLegacyPreparation(namespace: PeerId.Namespace, enabled: Bool?, video: Bool = false) async throws {
         let db = try database(), config = try configuration(), root = try directory(), chat = peer(namespace)
         let preparation = UUID(), path = root.appendingPathComponent("postbox")

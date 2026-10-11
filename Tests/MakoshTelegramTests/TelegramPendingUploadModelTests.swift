@@ -16,6 +16,8 @@ import SwiftSignalKit
         var prepareGate: CheckedContinuation<Void, Error>?
         var restoreGate: CheckedContinuation<Void, Error>?
         var savedDraft: TelegramPendingUploadDraft?
+        func replaceVideoCover(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                               cover: TelegramUploadVideoCover?) async throws { throw TelegramUploadFileError.unavailable }
         func load(chatID: Int64) async throws -> TelegramPendingUploadDraft? {
             try await withCheckedThrowingContinuation { loads.append((chatID, $0)) }
         }

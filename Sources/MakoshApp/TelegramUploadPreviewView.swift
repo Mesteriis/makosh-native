@@ -6,6 +6,10 @@ struct TelegramUploadPreviewView: View {
     @ObservedObject private var upload: TelegramUploadController
     let contextID: UUID
     @State private var captionError: String?
+    @State private var coverEditor: TelegramVideoCoverEditorPresentation?
+    @State private var coverChoiceID: UUID?
+    @State private var coverTask: Task<Void, Never>?
+    @State private var coverError: String?
     init(model: TelegramModel, contextID: UUID) {
         self.model = model; upload = model.upload; self.contextID = contextID
     }
@@ -29,6 +33,7 @@ struct TelegramUploadPreviewView: View {
                 Spacer()
                 if isVisualMedia {
                     Menu {
+                        videoCoverButtons(revision: upload.videoCoverRevision)
                         spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                         placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                     } label: { Image(systemName: "ellipsis.circle") }
@@ -43,6 +48,7 @@ struct TelegramUploadPreviewView: View {
             .accessibilityElement(children: .contain).accessibilityIdentifier("telegram.upload.header")
             .contextMenu {
                 if isVisualMedia {
+                    videoCoverButtons(revision: upload.videoCoverRevision)
                     spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                     placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                 }
@@ -65,7 +71,7 @@ struct TelegramUploadPreviewView: View {
                     placeholder: "Подпись к вложению", inputChanged: { input in
                         _ = upload.updateCaptionInput(input, contextID: captionContext)
                     }, submit: send)
-                    .id(captionContext).disabled(upload.phase != .ready)
+                    .id(captionContext).disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving)
                 Text("Подпись: \(upload.caption.utf16.count)/1024").font(.caption).foregroundStyle(.secondary)
             }
             if let error = upload.error {
@@ -76,6 +82,7 @@ struct TelegramUploadPreviewView: View {
                     .accessibilityIdentifier("telegram.upload.recoveryStatus")
             }
             if let captionError { Text(captionError).font(.caption).foregroundStyle(.red) }
+            if let coverError { Text(coverError).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.videoCoverError") }
             Divider()
             HStack {
                 TelegramUploadStatusView(upload: upload, synthetic: model.isSyntheticPreview)
@@ -108,20 +115,69 @@ struct TelegramUploadPreviewView: View {
         }
         .padding(20).frame(width: 520)
         .interactiveDismissDisabled(!canDismiss)
-        .onDisappear { upload.dismissPreparation(contextID: contextID) }
+        .sheet(item: $coverEditor, onDismiss: {
+            if let coverChoiceID { upload.cancelVideoCoverEdit(coverChoiceID) }
+            coverChoiceID = nil
+        }) { editor in
+            TelegramVideoCoverEditorView(presentation: editor, upload: upload) { coverEditor = nil }
+        }
+        .onChange(of: upload.videoCoverEditingID) { _, new in
+            if let coverChoiceID, new != coverChoiceID { coverEditor = nil }
+        }
+        .onDisappear {
+            coverTask?.cancel()
+            if let coverChoiceID { upload.cancelVideoCoverEdit(coverChoiceID) }
+            coverEditor = nil
+            upload.dismissPreparation(contextID: contextID)
+        }
+    }
+    @ViewBuilder private func videoCoverButtons(revision: UUID) -> some View {
+        if upload.file?.mode == .video {
+            Button(upload.file?.videoCover == nil ? "Добавить обложку" : "Изменить обложку") { chooseVideoCover(revision: revision) }
+                .disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.choose")
+            if upload.file?.videoCover != nil {
+                Button("Удалить обложку") {
+                    guard let edit = upload.beginVideoCoverEdit(contextID: contextID, revision: revision) else { return }
+                    if !upload.commitVideoCover(nil, editID: edit) { upload.cancelVideoCoverEdit(edit) }
+                }.disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.remove")
+            }
+            Divider()
+        }
+    }
+    private func chooseVideoCover(revision: UUID) {
+        guard let video = upload.file?.video,
+              let edit = upload.beginVideoCoverEdit(contextID: contextID, revision: revision) else { return }
+        coverChoiceID = edit; coverError = nil
+        coverTask = Task { @MainActor in
+            defer { coverTask = nil }
+            guard let source = await TelegramVideoCoverPanel.choose(), !Task.isCancelled,
+                  upload.videoCoverEditingID == edit else { upload.cancelVideoCoverEdit(edit); return }
+            do {
+                let selection = try await TelegramUploadVideoCoverIO.openSelection(source)
+                guard !Task.isCancelled, upload.videoCoverEditingID == edit else {
+                    try? TelegramUploadVideoCoverIO.discardSelection(selection); return
+                }
+                do { coverEditor = try TelegramVideoCoverEditorPresentation(id: edit, selection: selection, video: video) }
+                catch { try? TelegramUploadVideoCoverIO.discardSelection(selection); throw error }
+            } catch {
+                guard !Task.isCancelled, upload.videoCoverEditingID == edit else { return }
+                upload.cancelVideoCoverEdit(edit)
+                coverError = "Не удалось открыть изображение для обложки. Выберите другой файл."
+            }
+        }
     }
     private func placementButton(context: UUID, revision: UUID, above: Bool) -> some View {
         Button(above ? "Переместить подпись вниз" : "Переместить подпись вверх") {
             upload.updateCaptionPlacement(!above, contextID: context, revision: revision)
         }
-        .disabled(upload.phase != .ready || upload.preparationContextID != contextID)
+        .disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving || upload.preparationContextID != contextID)
         .accessibilityIdentifier("telegram.upload.captionPlacement")
     }
     private func spoilerButton(context: UUID, revision: UUID, spoiler: Bool) -> some View {
         Button(spoiler ? "Отключить спойлер" : "Скрыть под спойлером") {
             upload.updateMediaSpoiler(!spoiler, contextID: context, revision: revision)
         }
-        .disabled(upload.phase != .ready || upload.preparationContextID != contextID)
+        .disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving || upload.preparationContextID != contextID)
         .accessibilityIdentifier("telegram.upload.spoiler")
     }
     private func send() {
@@ -147,7 +203,7 @@ private struct TelegramUploadFilePreview: View {
     @State private var failed = false
     private var isVideo: Bool { file.mode == .video }
     private var previewKey: String { file.id.uuidString + ":" + (file.videoCover?.id.uuidString ?? "frame") }
-    private var playsVideo: Bool { isVideo && file.videoCover == nil && !mediaSpoiler && upload.phase == .ready }
+    private var playsVideo: Bool { isVideo && file.videoCover == nil && !mediaSpoiler && upload.phase == .ready && upload.videoCoverEditingID == nil && !upload.isVideoCoverSaving }
     var body: some View {
         VStack(spacing: 10) {
             if file.mode == .photo || isVideo {

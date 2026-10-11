@@ -31,9 +31,86 @@ enum TelegramUploadEvent {
 }
 
 @MainActor public final class TelegramUploadController: ObservableObject {
+    @Published public private(set) var videoCoverRevision = UUID()
+    @Published public private(set) var videoCoverEditingID: UUID?
+    @Published private var videoCoverWriteRevision: UUID?
+    public var isVideoCoverSaving: Bool { videoCoverWriteRevision != nil }
+    public var canEditVideoCover: Bool {
+        phase == .ready && file?.mode == .video && target != nil && provider?.accountID == target?.accountID &&
+            videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy &&
+            (recoveryStore == nil ? !requiresRecovery : recoveryPrepared && recoveryStore?.accountID == target?.accountID)
+    }
+    public func beginVideoCoverEdit(contextID: UUID, revision: UUID) -> UUID? {
+        guard preparationID == contextID, videoCoverRevision == revision, canEditVideoCover else { return nil }
+        videoPlayback.stop()
+        let id = UUID(); videoCoverEditingID = id
+        return id
+    }
+    public func cancelVideoCoverEdit(_ editID: UUID) {
+        guard videoCoverEditingID == editID else { return }
+        videoCoverEditingID = nil; videoCoverRevision = UUID()
+    }
+    /// A true return transfers ownership of the new cover to this preparation.
+    @discardableResult public func commitVideoCover(_ cover: TelegramUploadVideoCover?, editID: UUID) -> Bool {
+        guard videoCoverEditingID == editID, phase == .ready, !isRecoveryBusy,
+              let id = preparationID, let original = file, original.mode == .video,
+              let target, provider?.accountID == target.accountID,
+              recoveryStore == nil ? !requiresRecovery : recoveryPrepared && recoveryStore?.accountID == target.accountID else { return false }
+        if let cover {
+            guard cover.id != original.id, (try? TelegramUploadVideoCoverIO.validatedBytes(cover)) != nil else {
+                error = "Не удалось применить обложку. Выберите изображение заново."; return false
+            }
+        }
+        videoCoverEditingID = nil; videoCoverRevision = UUID(); videoPlayback.stop(); error = nil
+        file = TelegramUploadFile(id: original.id, name: original.name, size: original.size, mode: original.mode,
+            pixelWidth: original.pixelWidth, pixelHeight: original.pixelHeight, url: original.url, directory: original.directory,
+            video: original.video, videoCover: cover)
+        if let old = original.videoCover, old.id != cover?.id {
+            do { try discard(old.imageFile) }
+            catch { self.error = "Не удалось удалить временную копию предыдущей обложки." }
+        }
+        if let store = recoveryStore {
+            videoCoverWriteRevision = videoCoverRevision
+            persistVideoCover(store: store, original: original, cover: cover, target: target,
+                id: id, bound: bindingID, revision: videoCoverRevision)
+        }
+        return true
+    }
+    private func persistVideoCover(store: any TelegramUploadRecoveryStore, original: TelegramUploadFile,
+                                   cover: TelegramUploadVideoCover?, target: TelegramUploadTarget,
+                                   id: UUID, bound: UUID, revision: UUID) {
+        guard bindingID == bound, preparationID == id, videoCoverWriteRevision == revision, phase == .ready else { return }
+        isRecoveryBusy = true; recoveryPrepared = false; recoveryRetry = nil
+        recoveryStatus = "Сохраняем обложку…"
+        let input = captionInput, above = captionAboveMedia, spoiler = mediaSpoiler
+        Task { [weak self] in
+            guard self?.bindingID == bound, self?.preparationID == id, self?.videoCoverWriteRevision == revision else { return }
+            do {
+                try await store.replaceVideoCover(preparationID: id, file: original, target: target, cover: cover)
+                // A previous caption/options write may have failed. Confirm the
+                // visible snapshot as well before this preparation can send.
+                try await store.save(preparationID: id, chatID: target.chatID, captionInput: input,
+                    captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .prepared)
+                guard let self, self.bindingID == bound, self.preparationID == id,
+                      self.videoCoverWriteRevision == revision, self.phase == .ready else { return }
+                self.videoCoverWriteRevision = nil; self.isRecoveryBusy = false; self.recoveryPrepared = true
+                self.recoveryStatus = nil; self.recoveryRetry = nil
+            } catch {
+                guard let self, self.bindingID == bound, self.preparationID == id,
+                      self.videoCoverWriteRevision == revision, self.phase == .ready else { return }
+                self.isRecoveryBusy = false; self.recoveryPrepared = false
+                self.recoveryStatus = "Не удалось подтвердить сохранение обложки. Повторите сохранение перед отправкой."
+                self.recoveryRetry = { [weak self] in
+                    self?.persistVideoCover(store: store, original: original, cover: cover, target: target,
+                        id: id, bound: bound, revision: revision)
+                }
+            }
+        }
+    }
     public let videoPlayback = TelegramUploadVideoPlaybackController()
     public func openVideoPreview(contextID: UUID) async {
-        guard preparationID == contextID, phase == .ready, !mediaSpoiler, let file, file.mode == .video, file.videoCover == nil else { return }
+        guard preparationID == contextID, phase == .ready, !mediaSpoiler, videoCoverEditingID == nil, !isVideoCoverSaving,
+              let file, file.mode == .video, file.videoCover == nil else { return }
         await videoPlayback.load(file)
     }
     public func stopVideoPreview(contextID: UUID) {
@@ -47,7 +124,7 @@ enum TelegramUploadEvent {
     @Published public private(set) var mediaSpoiler = false
     @discardableResult
     public func updateMediaSpoiler(_ spoiler: Bool, contextID: UUID, revision: UUID) -> Bool {
-        guard token == contextID, captionRevision == revision, phase == .ready,
+        guard token == contextID, captionRevision == revision, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving,
               file?.mode == .photo || file?.mode == .video else { return false }
         if mediaSpoiler != spoiler {
             if spoiler { videoPlayback.stop() }
@@ -59,7 +136,7 @@ enum TelegramUploadEvent {
     @Published public private(set) var captionRevision = UUID()
     @discardableResult
     public func updateCaptionPlacement(_ above: Bool, contextID: UUID, revision: UUID) -> Bool {
-        guard token == contextID, captionRevision == revision, phase == .ready,
+        guard token == contextID, captionRevision == revision, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving,
               file?.mode == .photo || file?.mode == .video else { return false }
         if captionAboveMedia != above {
             captionAboveMedia = above; captionRevision = UUID(); persistCaption()
@@ -69,6 +146,7 @@ enum TelegramUploadEvent {
     public var caption: String {
         get { captionInput.formattedText.text }
         set {
+            guard videoCoverEditingID == nil, !isVideoCoverSaving else { return }
             guard !newValue.utf8.elementsEqual(caption.utf8) else { return }
             guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: newValue)) else {
                 error = "Не удалось сохранить подпись."; return
@@ -126,7 +204,7 @@ enum TelegramUploadEvent {
     var discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard
 
     public init() {}
-    public var canSend: Bool { phase == .ready && !isRecoveryBusy && ((!requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && telegramFormattedCaptionCanSend(captionInput.formattedText) }
+    public var canSend: Bool { phase == .ready && videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy && ((!requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && telegramFormattedCaptionCanSend(captionInput.formattedText) }
     public var canCancel: Bool { phase == .preparing || phase == .ready || phase == .storing }
     public var captionContextID: UUID { token }
     public var preparationContextID: UUID? { preparationID }
@@ -157,7 +235,7 @@ enum TelegramUploadEvent {
 
     @discardableResult
     public func updateCaptionInput(_ input: TelegramComposerInput, contextID: UUID) -> Bool {
-        guard token == contextID, phase == .ready else { return false }
+        guard token == contextID, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving else { return false }
         if captionInput != input { captionInput = input; captionRevision = UUID() }
         error = nil; persistCaption(); return true
     }
@@ -284,6 +362,7 @@ enum TelegramUploadEvent {
 
     private func resetObservation() {
         recoveryRestoreEpoch = UUID()
+        videoCoverEditingID = nil; videoCoverWriteRevision = nil; videoCoverRevision = UUID()
         // Rebinding detaches UI observation, not the user's latest preparation.
         // The original initial-write task consumes this snapshot on completion.
         if recoveryInitialInFlight, let id = preparationID, cancelledRecoveryContents[id] == nil {
@@ -385,15 +464,15 @@ enum TelegramUploadEvent {
     }
     private func persistCaption() {
         guard let store = recoveryStore, recoveryPrepared, let id = preparationID, let target, phase == .ready else { return }
-        let bound = bindingID, input = captionInput, above = captionAboveMedia, spoiler = mediaSpoiler
+        let bound = bindingID, input = captionInput, above = captionAboveMedia, spoiler = mediaSpoiler, coverRevision = videoCoverRevision
         Task { [weak self] in
             guard self?.bindingID == bound, self?.preparationID == id, self?.phase == .ready, self?.captionInput == input, self?.captionAboveMedia == above, self?.mediaSpoiler == spoiler else { return }
             do {
                 try await store.save(preparationID: id, chatID: target.chatID, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .prepared)
-                guard let self, self.bindingID == bound, self.preparationID == id, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
+                guard let self, self.bindingID == bound, self.preparationID == id, self.videoCoverRevision == coverRevision, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
                 self.recoveryStatus = nil; self.recoveryRetry = nil
             } catch {
-                guard let self, self.bindingID == bound, self.preparationID == id, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
+                guard let self, self.bindingID == bound, self.preparationID == id, self.videoCoverRevision == coverRevision, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
                 self.recoveryStatus = "Не удалось сохранить подпись. Повторите сохранение перед отправкой."
                 self.recoveryRetry = { [weak self] in self?.persistCaption() }
             }

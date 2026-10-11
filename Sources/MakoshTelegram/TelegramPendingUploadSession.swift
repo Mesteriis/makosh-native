@@ -18,6 +18,42 @@ import SwiftSignalKit
         try await serial { [self] in try await read(chatID: chatID) }
     }
 
+    func replaceVideoCover(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                           cover: TelegramUploadVideoCover?) async throws {
+        guard target.accountID == accountID, target.hasValidReplySource, file.mode == .video,
+              file.video?.isValid(name: file.name, size: file.size) == true else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        // Freeze the owned inode before suspension. The account-bound write can
+        // finish after the editor/window releases its temporary path.
+        let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
+        try await serial { [self] in
+            guard let current = try await read(chatID: target.chatID), current.id == preparationID,
+                  current.disposition == .prepared, current.file.attachment.kind == "video",
+                  current.file.attachment.name.utf8.elementsEqual(file.name.utf8),
+                  current.file.plaintextByteCount == file.size, current.video == file.video,
+                  current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            // A lost ACK may already have installed this exact cover. Reuse its
+            // object instead of appending another copy or reverting to the old one.
+            if telegramPendingUploadCoverMatches(current.videoCover, cover) { return }
+            guard telegramPendingUploadCoverMatches(current.videoCover, file.videoCover) else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            let saved: TelegramPendingUploadVideoCover?
+            if let cover, let capture {
+                saved = try await files().saveCover(cover, accountID: accountID, chatID: target.chatID,
+                    preparationID: preparationID, capture: capture)
+            } else { saved = nil }
+            let updated = TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: current.chatID,
+                title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
+                mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft,
+                replyTarget: current.replyTarget, file: current.file, video: current.video, videoCover: saved)
+            try await write(updated, expectedRevision: current.revision)
+        }
+    }
+
     func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                  captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?) async throws {
         try await serial { [self] in

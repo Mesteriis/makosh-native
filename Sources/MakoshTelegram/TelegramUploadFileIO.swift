@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import ImageIO
 import CoreGraphics
+import CryptoKit
 
 public enum TelegramUploadMode: String, Equatable, Sendable { case file, photo, video }
 
@@ -43,19 +44,19 @@ public enum TelegramUploadFileIO {
         try await stage(source, mode: mode, coverCrop: nil)
     }
 
-    static func stageVideoCover(_ source: URL, crop: CGRect) async throws -> TelegramUploadFile {
+    static func stageVideoCover(_ source: URL, crop: CGRect, expectedSHA256: String? = nil) async throws -> TelegramUploadFile {
         guard crop.origin.x.isFinite, crop.origin.y.isFinite, crop.size.width.isFinite, crop.size.height.isFinite,
               crop.origin.x >= 0, crop.origin.y >= 0, crop.size.width > 0, crop.size.height > 0,
               crop.origin.x + crop.size.width <= 1, crop.origin.y + crop.size.height <= 1 else {
             throw TelegramUploadFileError.invalidImage
         }
-        return try await stage(source, mode: .photo, coverCrop: crop)
+        return try await stage(source, mode: .photo, coverCrop: crop, expectedCoverSHA256: expectedSHA256)
     }
 
-    private static func stage(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?) async throws -> TelegramUploadFile {
+    private static func stage(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String? = nil) async throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
-            let file = try prepare(source, mode: mode, coverCrop: coverCrop)
+            let file = try prepare(source, mode: mode, coverCrop: coverCrop, expectedCoverSHA256: expectedCoverSHA256)
             guard mode == .video else { return file }
             do {
                 let info = try await TelegramUploadVideoIO.inspect(file)
@@ -160,7 +161,7 @@ public enum TelegramUploadFileIO {
         return true
     }
 
-    private static func prepare(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?) throws -> TelegramUploadFile {
+    private static func prepare(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String?) throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
@@ -218,6 +219,10 @@ public enum TelegramUploadFileIO {
                     guard count > 0 else { throw TelegramUploadFileError.unavailable }
                     offset += count
                 }
+            }
+            if let expectedCoverSHA256,
+               SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() != expectedCoverSHA256 {
+                throw TelegramUploadFileError.unavailable
             }
             guard let imageSource = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
                   let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],

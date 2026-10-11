@@ -295,8 +295,8 @@ replacement, spoiler/cancel/rebind/send и отказ повреждённой �
 Финальная native CUA проверила animated portrait MOV, accessibility видео,
 скрытие под спойлером, Escape и ordinary draft после restart. Native key/occlusion
 notifications отдельно через CUA не проверялись; события контроллера проверены.
-Меню/editor custom cover, album/multiple selection, dust mask и полная визуальная
-parity остаются открытыми. Основа хранения/передачи обложки описана ниже.
+Базовое меню/editor custom cover описано ниже; album/multiple selection, dust mask
+и полная визуальная parity остаются открытыми.
 Реальная отправка/доставка видео и полная Account pipeline не проверены.
 
 ## Обложка видео: хранение, передача и восстановление
@@ -321,7 +321,26 @@ accepted receipt и сохранённые байты; следующий restar
 первый кадр и оригинал. Account/network/server delivery остаются непроверенными.
 
 PreviewSenderController.swift:318–382,1575–1583 задаёт Upload/Change/Remove,
-single photo picker и crop editor. Эти пользовательские действия и сериализованная
-замена обложки ещё не перенесены. Текущий этап предоставляет основу и восстановление
-уже сохранённой обложки. Outer GPLv2 UI/asset не копируется; общий sidebar и
-подготовка сохраняют прежнее окно.
+single photo picker и crop editor. Эти действия теперь доступны в прежнем меню
+подготовки: одиночный NSOpenPanel, вложенный редактор, «Отмена» слева и «Готово»
+справа. Собственная рамка перемещается, меняет размер четырьмя углами и сохраняет
+фиксированное соотношение сторон. Стрелки и accessibility adjustment доступны
+без мыши. SelectionRectView.swift:53–112 выбирает точный preset; при отсутствии
+совпадения остаётся Original, то есть aspect самого изображения. Это не выбор
+ближайшего preset. Замена сериализована и привязана к account/preparation;
+повтор после неизвестного ACK сохраняет тот же S3 object. Удаление обложки
+снимает её с текущей подготовки, сохраняя все предыдущие версии в архиве.
+
+Native CUA проверила выбор RGB-образца, resize/стрелку/перетаскивание угла,
+Cancel/Done, замену, снятие обложки, перезапуски и synthetic acceptance в общей
+оболочке. Ошибка открытия меню после восстановления воспроизведена тестом и
+исправлена. Postbox/S3 readback проверяет исходное видео, подпись, receipt и три
+сохранённые версии; accepted подготовка повторно не открывается.
+
+Различия с полным EditImageModalController/EditImageControls остаются явными:
+нет rotate/mirror/draw/undo и остальных четырёх handles; начальная рамка пока
+нормализована к изображению вместо референсных200pt в fitted canvas. Источник
+редактора предварительно нормализуется в JPEG до2560px, quality0.85; референс
+редактирует полный оригинал. Это базовый crop workflow, а не полная parity.
+Outer GPLv2 UI/asset не копируется; общий sidebar и подготовка сохраняют прежнее
+окно. Account/network/server delivery остаётся непроверенным.

@@ -7,11 +7,16 @@ actor TelegramPendingUploadFiles {
     private let repository: ArchiveFileRepository
     init(repository: ArchiveFileRepository) { self.repository = repository }
 
-    func saveCover(_ cover: TelegramUploadVideoCover, accountID: Int64, chatID: Int64, preparationID: UUID) async throws -> TelegramPendingUploadVideoCover {
+    static func captureCover(_ cover: TelegramUploadVideoCover) throws -> ArchiveFileCapture {
         _ = try TelegramUploadVideoCoverIO.validatedBytes(cover)
-        let capture = try ArchiveFileCapture(file: cover.url, byteCount: cover.size)
         guard cover.name == telegramAttachmentName(cover.name) else { throw TelegramUploadFileError.unavailable }
-        let record = try await repository.capture(capture,
+        return try ArchiveFileCapture(file: cover.url, byteCount: cover.size)
+    }
+
+    func saveCover(_ cover: TelegramUploadVideoCover, accountID: Int64, chatID: Int64, preparationID: UUID,
+                   capture: ArchiveFileCapture? = nil) async throws -> TelegramPendingUploadVideoCover {
+        let frozen = try capture ?? Self.captureCover(cover)
+        let record = try await repository.capture(frozen,
             identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
             attachment: MessageArchiveAttachment(id: "video-cover", kind: "photo", name: cover.name, size: cover.size))
         guard record.plaintextSHA256 == cover.sha256, record.plaintextByteCount == cover.size else {

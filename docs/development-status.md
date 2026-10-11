@@ -1,6 +1,54 @@
 # Development status — 2026-10-11
 
-## Current stage: custom video cover storage, transport and restoration
+## Current stage: video cover picker, crop, replacement and removal
+
+Telegram stays inside the common service-sidebar/dialog/conversation/dossier
+window. The existing preparation menu now exposes Add/Change/Remove cover,
+following PreviewSenderController.swift:318–382. A single-image NSOpenPanel
+opens an owned snapshot in a nested crop editor with Cancel/Done, fixed aspect,
+move, four corner resize handles, arrow keys and accessibility size adjustment.
+SelectionRectView.swift:53–112 chooses an exact matching preset, otherwise
+Original (the image's aspect); it does not approximate a nonstandard video ratio.
+The applied JPEG is bounded to 320px and quality1.0; original video and ordinary
+first-frame thumbnail remain separate. Outer GPLv2 UI/assets are not copied.
+
+Account-bound serialized replacement freezes the cover inode before suspension,
+checks the preparation/revision and reuses the committed object after lost ACK.
+Previous encrypted S3 cover versions remain retained after change/removal.
+Picker/crop ownership and digest verification on the same source read prevent
+applying a replacement of the displayed snapshot. Editing or unconfirmed cover
+persistence blocks sending; explicit retry confirms cover plus visible caption
+and options. Late results cannot alter a rebound account/window. Native QA found
+a restored-ID/caption-generation mismatch that made cover menu actions no-ops;
+a behavior red reproduced it and the durable-ID/editor guards now admit them.
+Another behavior red covers resaving a previously failed caption with the cover.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**684 XCTest (621 Telegram +63 core), zero failures;32 Python regressions**.
+Final focused33 tests pass. The full log retains160 upstream t19 teardown
+diagnostics without test failure. Session, geometry, snapshot and controller
+behavior reds precede their implementations. Missing-API/CGFloat/catch-shadow
+compilation errors and readback fixture setup/dimension errors are recorded
+separately from behavior evidence. Final gates and corrected readbacks pass.
+
+Owned native CUA QA exercises image selection, crop adjustment, Cancel/Done,
+replacement/removal, restored preparations and local synthetic acceptance.
+Readback verifies unchanged original video, exact caption, accepted receipt and
+all three retained S3 cover versions. Restart restores the selected cover or its
+removal and does not reopen an accepted preparation. Strict built/QA signatures
+and unsigned payload match pass. Personal accounts, Keychain, Telegram network
+and server delivery remain untested. Parent 5b13eae push38116708250 and
+PR38116711546 CI are terminal success for that exact SHA, verified directly.
+
+This is basic cover editing, not complete reference-editor parity. Rotation,
+mirror, drawing/undo, all eight handles and exact initial 200pt crop sizing are
+still open. Selection currently uses photo normalization (JPEG at most2560px,
+quality0.85), rather than the reference editor's full original source. Albums,
+complete Telegram parity, MMail/Aether, WhatsApp, Teams, Telemost, backups and
+standalone packaging remain open; the sequential goal stays active. Final
+index/review/publication evidence stays in the private root report.
+
+## Historical custom video cover storage, transport and restoration (5b13eae)
 
 Telegram remains in the common service-sidebar/dialog/conversation/dossier
 window. The cover groundwork follows SenderController.swift:130–165,374–382

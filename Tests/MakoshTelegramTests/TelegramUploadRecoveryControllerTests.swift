@@ -41,6 +41,8 @@ import ImageIO
         var spoilers: [Bool] = []
         func load(chatID: Int64) async throws -> TelegramPendingUploadDraft? { nil }
         func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile { throw Failure.synthetic }
+        func replaceVideoCover(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                               cover: TelegramUploadVideoCover?) async throws { throw Failure.synthetic }
         func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                      captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?) async throws {
             preparedIDs.append(preparationID)

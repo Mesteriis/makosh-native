@@ -1466,8 +1466,9 @@ replacement, cleanup ordering, invalid preparation and immediate cancellation.
 Owned final CUA verifies animated portrait MOV, labelled native accessibility,
 spoiler hiding and Escape preserving the ordinary draft. Restart preserves that
 draft without cancelled-media resurrection. Native window notifications and held
-in-flight cancellation remain separately unverified in CUA. The cover workflow
-menu/editor, multiple selection/albums and full visual parity remain open.
+in-flight cancellation remain separately unverified in CUA. The basic cover
+workflow below is exposed; complete editor parity, multiple selection/albums and
+full visual parity remain open.
 
 ### Custom video cover storage, transport and restoration
 
@@ -1503,7 +1504,47 @@ following the selected reference. Spoiler hides the image from accessibility.
 Owned native CUA QA used a pre-saved synthetic cover, edited its caption, toggled
 spoiler, restarted and accepted it through the local synthetic provider. Read-only
 Postbox/S3 readback verified the accepted record and retained JPEG; restart did
-not restore the accepted preparation. User-facing Upload/Change/Remove cover,
-photo picker/crop editor and serialized replacement are still pending. This is
-groundwork, not a completed cover editing workflow. Full Account/network/server
-delivery remains unverified.
+not restore the accepted preparation. Full Account/network/server delivery
+remains unverified.
+
+### Video cover picker, crop and serialized replacement
+
+The existing preparation menu exposes Add/Change/Remove. A small asynchronous
+NSOpenPanel helper selects one image; SwiftUI owns the editor and preparation
+context. The editor owns a normalized photo snapshot, verifies its displayed
+digest against the exact bounded bytes read for Apply, and releases only owned
+stages. Cancel/Done, drag/move, four corner resize handles, keyboard arrows and
+accessibility adjustment operate a fixed aspect. Reference bestDimension selects
+an exact preset when available, otherwise Original; nonstandard video ratios are
+not rounded to a preset. The final crop produces the same bounded cover format.
+
+TelegramPendingUploadSession.replaceVideoCover freezes its source FD before
+suspension, serializes against the account-bound pending draft, checks current
+preparation/metadata/reply and prior cover, then writes with CAS. A repeated
+desired cover reuses its saved object after unknown ACK; an old editor or a
+submitted preparation cannot overwrite it. Original, prior cover objects,
+caption/options and archive formats remain retained. Removing the current cover
+restores ordinary video preview and writes a coverless schema4 preparation.
+
+The controller has separate editor/write generations. Editing and any unresolved
+cover write block send and caption/options changes. Successful replacement also
+confirms the visible caption/options snapshot, including recovery from an earlier
+failed caption write. Errors require explicit persistence retry; they never retry
+enqueue. Detached account-bound writes may finish, while late results cannot
+publish into a new account/window. A restored preparation uses its durable ID
+independently of the rich editor's caption generation. Cancellation/rebinding
+clears editing context and releases stages without removing archived objects.
+
+Owned CUA QA selects, adjusts, applies/cancels, changes/removes and restores the
+cover in the common workspace, then accepts it through the local synthetic queue.
+Readback verifies exact caption, unchanged original, receipt and three previous/
+current retained S3 cover objects. Restart does not reopen the accepted draft.
+This uses isolated synthetic Postbox/PostgreSQL/S3, without personal account,
+Keychain or Telegram network. Real persistence regressions cover replacement,
+idempotence, stale editor, submission freeze and retained previous bytes.
+
+Remaining editor differences: rotation, mirror, drawing/undo, eight-handle parity
+and reference initial200pt crop sizing are not implemented. The picker currently
+uses the existing photo normalization (JPEG at most2560px, quality0.85) before
+the final cover crop, instead of retaining the reference editor's original image.
+This is basic cover editing, not complete Telegram/editor visual parity.

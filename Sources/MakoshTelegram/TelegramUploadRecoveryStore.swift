@@ -10,4 +10,6 @@ import Foundation
     func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput, captionAboveMedia: Bool, mediaSpoiler: Bool,
               disposition: TelegramPendingUploadDisposition) async throws
     func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile
+    func replaceVideoCover(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
+                           cover: TelegramUploadVideoCover?) async throws
 }

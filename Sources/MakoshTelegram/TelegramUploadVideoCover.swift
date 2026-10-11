@@ -18,9 +18,40 @@ public struct TelegramUploadVideoCover: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct TelegramUploadVideoCoverSelection: Identifiable, Sendable {
+    public var id: UUID { file.id }
+    public let preview: TelegramImagePreview
+    let file: TelegramUploadFile
+}
+
 public enum TelegramUploadVideoCoverIO {
+    public static func openSelection(_ source: URL) async throws -> TelegramUploadVideoCoverSelection {
+        let file = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        do {
+            let preview = try await TelegramUploadFileIO.preview(file)
+            try Task.checkCancellation()
+            return TelegramUploadVideoCoverSelection(preview: preview, file: file)
+        } catch {
+            try? TelegramUploadFileIO.discard(file)
+            throw error
+        }
+    }
+    public static func discardSelection(_ selection: TelegramUploadVideoCoverSelection) throws {
+        try TelegramUploadFileIO.discard(selection.file)
+    }
+    public static func discardCover(_ cover: TelegramUploadVideoCover) throws {
+        try TelegramUploadFileIO.discard(cover.imageFile)
+    }
+    public static func stage(_ selection: TelegramUploadVideoCoverSelection, crop: CGRect) async throws -> TelegramUploadVideoCover {
+        try TelegramUploadFileIO.validateOwnedStage(selection.file)
+        guard let digest = selection.preview.originalSHA256 else { throw TelegramUploadFileError.unavailable }
+        return try await stagedCover(selection.file.url, crop: crop, expectedSHA256: digest)
+    }
     public static func stage(_ source: URL, crop: CGRect) async throws -> TelegramUploadVideoCover {
-        let file = try await TelegramUploadFileIO.stageVideoCover(source, crop: crop)
+        try await stagedCover(source, crop: crop, expectedSHA256: nil)
+    }
+    private static func stagedCover(_ source: URL, crop: CGRect, expectedSHA256: String?) async throws -> TelegramUploadVideoCover {
+        let file = try await TelegramUploadFileIO.stageVideoCover(source, crop: crop, expectedSHA256: expectedSHA256)
         do {
             try Task.checkCancellation()
             guard let width = file.pixelWidth, let height = file.pixelHeight,

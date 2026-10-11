@@ -16,6 +16,8 @@ packages. For direct SwiftPM commands, prepare first:
 ```sh
 brew install libpq pkg-config openssl@3 cmake ninja
 python3 scripts/prepare-telegram.py
+python3 scripts/prepare-opus.py
+python3 scripts/prepare-opusfile.py
 source scripts/libpq-env.sh
 swift build --product Makosh -j 4
 ```
@@ -1902,6 +1904,43 @@ Local-only and S3 preparations share the same strict pointer and byte checks.
 The S3-off policy still prohibits all new remote copies, including preparation;
 later re-enable does not promote local resources. Actual owned M4A UI and private
 Postbox/PostgreSQL/S3 evidence are recorded in development-status.md.
+
+Ordinary Ogg/Opus now takes a separate byte-derived path through pinned libogg1.3.6
+and libopusfile0.12, using the reviewed libopus1.5.1 decoder. A real1.25s recording
+reproduced CoreAudio/AVFoundation's erroneous13s duration. The new probe derives
+duration from trimmed48kHz PCM totals, preserves first matching TITLE/ARTIST
+comments including whitespace, and decodes an initial fragment of each chained
+link. First-link tags describe a chain. This tag policy is explicit; exact
+AVFoundation/reference metadata enumeration parity is not claimed.
+
+Strict libogg walking rejects CRC resynchronization, page/packet holes,
+multiplexed serials, repeated serials, missing EOS, trailing bytes and malformed
+Opus packet durations. Completed packets are counted against each page's granule;
+non-EOS timestamps must agree, EOS cannot invent samples, and cropped initial
+offsets, pre-skip and end trimming follow [RFC7845 sections4.4–4.5](https://www.rfc-editor.org/rfc/rfc7845.html#section-4.4).
+Each independently derived link total must equal libopusfile's PCM total.
+Bounds are128MiB,64 sequential links,8 channels per link,
+1MiB per packet,4096 comments,4096UTF8 bytes per selected tag and one week total
+duration. Invalid UTF8/NUL comments are refused. Whole-stream PCM integrity is
+not claimed: every link gets a bounded initial decode. Other Ogg codecs still
+use the existing native probe; exhaustive Vorbis metadata support remains open.
+
+The held-fd callbacks have bounded reads/seeks, cancellation and explicit ARC
+lifetime. The final inode/time snapshot remains mandatory. Picker Ogg recognition
+uses bytes even with an opaque or misleading name; typed native music uses
+audio/ogg, Audio(false), nil waveform and its original FileName. It never gains
+recorded intent or rewrites bytes. Schema9 is unchanged. Capture/restore/MediaBox
+re-probe the same facts; an older erroneous frozen duration fails equality and
+cannot silently rewrite or enqueue. S3 OFF has no new-copy exception, and later
+enabling cannot promote local preparations.
+
+The existing common-window File sheet still shows the document icon, original
+filename, size, caption and explicit Send/Cancel. A dedicated ordinary-music
+player and tag presentation are not implemented by this probe change. Actual
+owned synthetic UI restores an opaque `.bin` Opus preparation after restart
+with its original picker source renamed, chat7 and S3 OFF preserved. Explicit
+Send reaches only the synthetic local queue; closing observation and returning
+from Mail retain conservative uncertainty without automatic resend.
 
 
 ### Typed original WebP preparation

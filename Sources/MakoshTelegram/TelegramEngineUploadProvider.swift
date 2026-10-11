@@ -54,6 +54,7 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             attributes.append(.Audio(isVoice: true, duration: Int(voice.duration), title: nil, performer: nil, waveform: voice.waveform))
         }
         if case let .audio(audio) = file.metadata {
+            if (try? TelegramUploadAudioIO.hasOggSignature(file)) == true { mime = "audio/ogg" }
             attributes.append(.Audio(isVoice: false, duration: Int(audio.duration), title: audio.title, performer: audio.performer, waveform: nil))
         }
         if case let .webP(webP) = file.metadata {

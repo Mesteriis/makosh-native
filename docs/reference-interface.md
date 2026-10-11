@@ -577,8 +577,8 @@ Send до подтверждения. Native PNG regression проверяет �
 точные исходные байты MediaBox и complete receipt после восстановления.
 
 Оставшиеся различия классификации явные: WebP сохраняет исходные байты с native sticker attributes. Static-photo admission уже использует
-NSImage logical size. Полный ordered classifier, обычный OGG/Opus и recorder UI ещё
-открыты, как Archive и image edits.
+NSImage logical size. Полный ordered classifier, exhaustive Ogg/Vorbis и полная
+recorder visual/gesture parity ещё открыты, как Archive и image edits.
 
 Сверены также `PreviewSenderController.swift:1690–1705,388–393`: mixed Media
 допускает spoiler/placement, а grouping требует all-visual eligibility. Макош
@@ -611,6 +611,15 @@ CoreAudio определяет container MIME по owned bytes; AVFoundation п�
 iTunes/QuickTime Identifier сравниваются с Key constants; их runtime equality
 не доказана. Макош использует native Identifier и проверенные теги M4A, поэтому
 буквальное runtime совпадение с этой особенностью upstream не заявлено.
+
+Обычный Ogg/Opus сохраняет тот же экран File общего окна. Отдельная byte-probe
+через проверенные BSD3 libogg/libopusfile исправляет ошибочную native длительность
+13s для1.25s файла и отсутствие TITLE/ARTIST. Это собственная адаптация: длительность
+берётся из trimmed PCM/granules, теги — первые соответствующие комментарии первого
+link, с сохранением whitespace. Суффикс не создаёт Voice; исходные байты остаются
+неизменными, native MIME audio/ogg и Audio(false)/FileName сохраняются после restart.
+Полное metadata enumeration референса, все Ogg codecs и whole-stream PCM decode
+не заявлены. Boundaries и актуальная UI QA записаны в development-status.md.
 
 
 WebP сверено с `SenderController.swift:288–292,327–330,390–391,466–474`,
@@ -696,7 +705,7 @@ transparency и odd-axis runtime остаются отдельными непр�
 pre-skip. Независимый decoder/CRC regression подтверждает точный PCM trim.
 Собственные one-packet/page, vendor Makosh, отсутствие comment padding и
 600s/20MiB limits отличаются от writer референса. GPL recorder/OpusBinding/
-libogg code не скопирован. Отдельный explicit prepare(samples:) теперь сохраняет
+Telegram-bundled libogg code не скопирован. Отдельный explicit prepare(samples:) теперь сохраняет
 schema11 с sampleCount/SHA256/nullable waveform, восстанавливает запись через
 encrypted local/S3 и передаёт только native Audio(isVoice:true), audio/ogg,
 nil media size, без FileName/preview/cover — как SenderController:295–312.

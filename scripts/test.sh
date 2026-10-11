@@ -4,6 +4,8 @@ cd "$(dirname "$0")/.."
 source scripts/libpq-env.sh
 python3 scripts/prepare-telegram.py
 python3 scripts/prepare-opus.py
+python3 scripts/prepare-opusfile.py
+python3 scripts/test-opusfile-preparation.py
 python3 scripts/test-opus-preparation.py
 python3 scripts/test-telegram-preparation.py
 python3 scripts/test-telegram-search-adaptation.py

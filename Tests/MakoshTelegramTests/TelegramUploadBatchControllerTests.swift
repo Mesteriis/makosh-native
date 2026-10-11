@@ -5,6 +5,24 @@ import ImageIO
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadBatchControllerTests: XCTestCase {
+    func testOpusAndMP3AreOrdinaryGroupedMusicEvenWithMisleadingNames() async throws {
+        let root = try makeSources()[0].deletingLastPathComponent()
+        let opus = root.appendingPathComponent("opaque.bin"), mp3 = root.appendingPathComponent("music.mp3")
+        try uploadOpusAudioFixture().write(to: opus); try writeUploadMP3AudioFixture(mp3)
+        let controller = TelegramUploadController(); controller.bind(provider: BatchStagingProvider())
+        defer { controller.clear() }
+        controller.prepare(sources: [.init(source: opus, mode: .file), .init(source: mp3, mode: .file)],
+            isGrouped: true, target: .init(accountID: 1, chatID: 42, title: "Synthetic music"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(controller.presentation, .file)
+        XCTAssertTrue(controller.isGrouped); XCTAssertTrue(controller.canGroupItems)
+        XCTAssertEqual(controller.items.count, 2)
+        XCTAssertEqual(controller.items.first?.file.metadata, .audio(.init(duration: 1, title: " Synthetic Opus ", performer: "Synthetic Artist")))
+        XCTAssertEqual(controller.items.last?.file.metadata, .audio(.init(duration: 1, title: "Synthetic MP3", performer: "Synthetic Artist")))
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(controller.items.first?.file.url)), try uploadOpusAudioFixture())
+        XCTAssertTrue(controller.items.allSatisfy { $0.originalFile == nil && $0.file.metadata?.voice == nil })
+    }
+
     func testFileSelectionRetainsTheMediaRepresentationForALaterSwitch() async throws {
         let sources = try makeSources(photos: true), controller = TelegramUploadController()
         controller.bind(provider: BatchStagingProvider())

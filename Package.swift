@@ -11,6 +11,7 @@ let package = Package(
     ],
     dependencies: [
         .package(name: "MakoshOpus", path: ".local/voice-codec"),
+        .package(name: "MakoshOpusFile", path: ".local/opusfile-codec"),
         .package(name: "TelegramCore", path: ".local/telegram-engine/submodules/TelegramCore"),
         .package(name: "OpenSSLEncryption", path: ".local/telegram-engine/submodules/OpenSSLEncryptionProvider"),
         .package(name: "SSignalKit", path: ".local/telegram-engine/submodules/SSignalKit"),
@@ -24,6 +25,8 @@ let package = Package(
         .target(name: "MakoshOpusControl", dependencies: [.product(name: "COpus", package: "MakoshOpus")]),
         .target(name: "MakoshTelegram", dependencies: ["MakoshCore",
             "MakoshOpusControl", .product(name: "COpus", package: "MakoshOpus"),
+            .product(name: "COgg", package: "MakoshOpusFile"),
+            .product(name: "COpusFile", package: "MakoshOpusFile"),
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
             .product(name: "SwiftSignalKit", package: "SSignalKit"),

@@ -195,6 +195,7 @@ enum TelegramUploadEvent {
                         staged.append(.init(id: original.id, file: original))
                         let type = UTType(filenameExtension: (original.name as NSString).pathExtension)
                         let photoCandidate = source.mode == .photo || type?.conforms(to: .image) == true
+                        let oggCandidate = try TelegramUploadAudioIO.hasOggSignature(original)
                         do {
                             if let webP = try await TelegramUploadWebPIO.inspect(original) {
                                 let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
@@ -211,14 +212,14 @@ enum TelegramUploadEvent {
                                     metadata: .gif(.init(width: gif.width, height: gif.height,
                                         frameDurations: gif.frameDurations, sourceSHA256: digest)))
                                 staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
-                            } else if photoCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original) {
+                            } else if photoCandidate && !oggCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original) {
                                 let jpeg = try await stage(original.url, .photo)
                                 let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
                                 let file = TelegramUploadFile(id: jpeg.id, name: name, size: jpeg.size, mode: jpeg.mode,
                                     pixelWidth: jpeg.pixelWidth, pixelHeight: jpeg.pixelHeight, url: jpeg.url,
                                     directory: jpeg.directory, video: jpeg.video, videoCover: jpeg.videoCover)
                                 staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
-                            } else if type?.preferredMIMEType?.hasPrefix("video/") == true {
+                            } else if !oggCandidate && type?.preferredMIMEType?.hasPrefix("video/") == true {
                                 do {
                                     let info = try await TelegramUploadVideoIO.inspect(original)
                                     let metadata = TelegramUploadVideoMetadata(width: info.width, height: info.height,
@@ -230,7 +231,7 @@ enum TelegramUploadEvent {
                                 } catch TelegramUploadFileError.invalidVideo {
                                     // An ordinary file choice remains usable when its video suffix is misleading.
                                 }
-                            } else if type?.conforms(to: .audio) == true || type?.preferredMIMEType?.hasPrefix("audio/") == true {
+                            } else if oggCandidate || type?.conforms(to: .audio) == true || type?.preferredMIMEType?.hasPrefix("audio/") == true {
                                 do {
                                     let audio = try await TelegramUploadAudioIO.inspect(original)
                                     let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,

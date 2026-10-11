@@ -103,9 +103,27 @@ works without the bare source cache or research checkouts. The app bundles the
 unchanged COPYING and 68 deduplicated leading source copyright/license blocks,
 with their selected file paths, in the two Opus notice files below. Selection
 and notice review found BSD-style grants; this is not a vulnerability audit.
-The GPL macOS recorder, OpusBinding writer and bundled libogg helpers are not
+The GPL macOS recorder, OpusBinding writer and Telegram-bundled libogg helpers are not
 copied or linked. Makosh's fixed-signature C control boundary and bounded Swift
 Ogg framing are independently authored. No prebuilt codec is downloaded.
+
+## Ordinary Opus file provenance
+
+`Dependencies/OpusFile.lock.json` independently pins the official
+[libogg1.3.6](https://www.xiph.org/downloads/) and
+[opusfile0.12](https://opus-codec.org/downloads/) release archives, their unchanged
+BSD3 COPYING, source-list manifests and complete prepared file-set fingerprint.
+`scripts/prepare-opusfile.py` selects two libogg and four libopusfile C sources,
+five unchanged headers and one own fixed-width macOS type header. SwiftPM links
+the existing reviewed libopus1.5.1. All selected upstream sources retain their
+notices. No upstream configure/build/installer executes; no prebuilt codec is used.
+
+The core `stream.c` helpers remain unchanged because the core has unconditional
+references to them. Makosh calls only its own held-descriptor callbacks; close
+ownership stays with Swift. `http.c`, opusurl, examples and their network/TLS
+dependencies are excluded. Prepared sources are authenticated on every warm use,
+without the archive cache, network or research checkouts. The callback facade,
+strict page admission and ordinary music policy are independently authored.
 
 ## Included license texts and attributions
 
@@ -120,6 +138,8 @@ Ogg framing are independently authored. No prebuilt codec is downloaded.
 | Apple Reachability sample portions | [Apple sample-code license](LICENSES/Apple-Reachability-LICENSE.txt); wrapper source retains its upstream notices |
 | Dynamically linked local OpenSSL 3 (verified local version 3.6.4) | [Release license](LICENSES/OpenSSL-3.6.4-LICENSE.txt), Apache 2.0; source: [official release](https://github.com/openssl/openssl/tree/openssl-3.6.4) |
 | libopus 1.5.1 portable C sources, Xiph.Org Foundation and named contributors | BSD-style grants; [unchanged COPYING](LICENSES/Opus-1.5.1-COPYING.txt), [selected source attributions](LICENSES/Opus-1.5.1-source-notices.txt) |
+| libogg1.3.6, Xiph.org Foundation | [Unchanged BSD3 COPYING](LICENSES/libogg-BSD3.txt) |
+| libopusfile0.12, Xiph.Org Foundation and contributors | [Unchanged BSD3 COPYING](LICENSES/libopusfile-BSD3.txt) |
 | Independently authored Makosh code | [MIT](LICENSES/Makosh-MIT.txt) |
 
 Apache 2.0 is compatible with GPL v3 according to the [Apache licensing FAQ](https://www.apache.org/foundation/license-faq.html#GPL).

@@ -169,12 +169,16 @@ preparation can also have `inCollage=true`, independently of actual send groupin
 | Recorded round video | Explicit recorder intent, original MP4 and Video(ceil duration,200x200,instantRoundVideo). | Encoded H264/AAC entry, strict schema13 controller prepare/restore/explicit Send, authenticated local/S3 recovery and atomic native round ACL/queue/reopen implemented. Camera/common recorder/model/UI remain open; full-asset timing is an explicit local policy. |
 
 Ordinary music now has a verified owned pipeline for synthetic WAV, tagged M4A
-and ID3 MP3. Schema9 carries exact duration/title/performer through File/Media
+and ID3 MP3, plus byte-probed ordinary Ogg/Opus. Schema9 carries exact duration/title/performer through File/Media
 projection, policy-aware storage, byte re-probe, MediaBox and complete native
 receipts. Generic legacy files never acquire music metadata from their suffix.
 When any item is typed music, File grouping requires every item to be typed music;
 a generic `.wav` cannot join it by name. The full ordered classifier above remains
-open, including ordinary OGG/Opus. Explicit recorded provenance now uses schema11.
+open; exhaustive Ogg/Vorbis metadata remains open. Ordinary Opus uses pinned
+libogg/libopusfile, initial PCM decode per link and reconciled packet/granule
+duration, preserving original bytes and OFF policy. Explicit recorded provenance
+uses schema11. New ordered source facts require a new schema; schema1–13 must
+retain their existing payload and validation meanings.
 
 WebP now has a strict schema9 owned original pipeline too. Content-derived
 ImageIO inspection proves bounded frame0/canvas dimensions for static and animated

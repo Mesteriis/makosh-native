@@ -4,6 +4,26 @@ import AudioToolbox
 import Darwin
 
 enum TelegramUploadAudioIO {
+    /// A byte hint only; typed music still requires the complete owned audio probe.
+    static func hasOggSignature(_ raw: TelegramUploadFile) throws -> Bool {
+        try Task.checkCancellation()
+        try TelegramUploadFileIO.validateOwnedStage(raw)
+        let fd = Darwin.open(raw.url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw TelegramUploadFileError.unavailable }
+        defer { Darwin.close(fd) }
+        var original = stat()
+        guard fstat(fd, &original) == 0, original.st_mode & S_IFMT == S_IFREG,
+              original.st_uid == getuid(), original.st_mode & 0o777 == 0o600,
+              original.st_size == raw.size else { throw TelegramUploadFileError.unavailable }
+        var bytes = [UInt8](repeating: 0, count: 4)
+        var count: Int
+        repeat { count = pread(fd, &bytes, 4, 0) } while count < 0 && errno == EINTR && !Task.isCancelled
+        try Task.checkCancellation()
+        guard count >= 0 else { throw TelegramUploadFileError.unavailable }
+        try TelegramUploadVideoIO.validateSnapshot(raw, fd: fd, original: original)
+        return count == 4 && bytes == Array("OggS".utf8)
+    }
+
     static func inspect(_ raw: TelegramUploadFile) async throws -> TelegramUploadAudioMetadata {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) { try await inspectOwned(raw) }
@@ -26,6 +46,11 @@ enum TelegramUploadAudioIO {
               original.st_uid == getuid(), original.st_mode & 0o777 == 0o600,
               original.st_size == raw.size else { throw TelegramUploadFileError.unavailable }
         do {
+            if let metadata = try TelegramUploadOpusIO.inspect(fd: fd, size: raw.size) {
+                try Task.checkCancellation()
+                try TelegramUploadVideoIO.validateSnapshot(raw, fd: fd, original: original)
+                return metadata
+            }
             // The owned payload has no extension. Derive its native hint from bytes on the held fd.
             let mime = try containerMIME(fd: fd, size: raw.size)
             try Task.checkCancellation()

@@ -182,6 +182,14 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         try await typedReopenAndEnqueue(enabled: true, webP: false)
     }
 
+    func testOrdinaryOpusRestoresAndEnqueuesWithoutAnyS3Copy() async throws {
+        try await typedReopenAndEnqueue(enabled: false, webP: false, opus: true)
+    }
+
+    func testOrdinaryOpusRestoresAndEnqueuesFromEncryptedS3Preparation() async throws {
+        try await typedReopenAndEnqueue(enabled: true, webP: false, opus: true)
+    }
+
     func testTypedWebPRestoresAndEnqueuesFromEncryptedLocalPreparationWithoutS3() async throws {
         try await typedReopenAndEnqueue(enabled: false, webP: true)
     }
@@ -190,16 +198,17 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         try await typedReopenAndEnqueue(enabled: true, webP: true)
     }
 
-    private func typedReopenAndEnqueue(enabled: Bool, webP: Bool) async throws {
+    private func typedReopenAndEnqueue(enabled: Bool, webP: Bool, opus: Bool = false) async throws {
         let database = try PendingFilesTestDatabase()
         addTeardownBlock { try database.cleanup() }
         let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
-        let archiveRoot = try root(), path = try root(), source = archiveRoot.appendingPathComponent(webP ? "Synthetic.bin" : "Synthetic.m4a")
+        let archiveRoot = try root(), path = try root(), source = archiveRoot.appendingPathComponent(webP || opus ? "Synthetic.bin" : "Synthetic.m4a")
         if webP { try writeUploadWebPFixture(source, fixture: .partialCanvas) }
+        else if opus { try uploadOpusAudioFixture().write(to: source) }
         else { try await writeUploadTaggedAudioFixture(source, title: "Synthetic 😀", performer: "Artist") }
         let bytes = try Data(contentsOf: source)
         let expected: TelegramUploadMetadata = webP ? .webP(.init(width: 320, height: 160))
-            : .audio(.init(duration: 1, title: "Synthetic 😀", performer: "Artist"))
+            : .audio(.init(duration: 1, title: opus ? " Synthetic Opus " : "Synthetic 😀", performer: opus ? "Synthetic Artist" : "Artist"))
         let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic audio")
         let caption = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Music 😀"))
         let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
@@ -301,7 +310,10 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
                     XCTAssertEqual(image.width, 320); XCTAssertEqual(image.height, 160)
                 }
             } else {
-                XCTAssertEqual(native.attributes, [.Audio(isVoice: false, duration: 1, title: "Synthetic 😀", performer: "Artist", waveform: nil), .FileName(fileName: "Synthetic.m4a")])
+                if opus { XCTAssertEqual(native.mimeType, "audio/ogg") }
+                XCTAssertEqual(native.attributes, [.Audio(isVoice: false, duration: 1,
+                    title: opus ? " Synthetic Opus " : "Synthetic 😀", performer: opus ? "Synthetic Artist" : "Artist", waveform: nil),
+                    .FileName(fileName: opus ? "Synthetic.bin" : "Synthetic.m4a")])
             }
             XCTAssertEqual(message?.text, "Music 😀")
             let data = (box.mediaBox.resourceData(native.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))

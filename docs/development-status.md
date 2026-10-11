@@ -1,6 +1,88 @@
-# Development status — 2026-10-11
+# Development status — 2026-10-12
 
-## Current stage: finished round preview in the common Telegram window
+## Current stage: ordinary Opus music through the existing common-window File flow
+
+Ordinary picked Ogg/Opus now derives duration and TITLE/ARTIST from bytes using
+independently pinned official libogg1.3.6/libopusfile0.12 and the existing reviewed
+libopus1.5.1 decoder. A real1.25s recorder-generated file reproduced the native
+probe's erroneous13s duration. Opaque/misleading filenames now reach this probe;
+native submission keeps original bytes, Audio(false), nil waveform, audio/ogg
+and FileName. Recorder intent is never inferred. Schema9 remains unchanged;
+older erroneous frozen metadata fails independent recovery equality rather than
+being rewritten or sent. First matching tags of the first link retain whitespace.
+
+The held-descriptor probe verifies full Ogg CRC/framing/packet structure and
+reconciles packet durations with page granules, cropped initial offsets, pre-skip
+and EOS trimming. Independently calculated link totals must equal libopusfile.
+Every link gets an initial PCM fragment decode; whole-stream PCM integrity is
+not established. Bounds cover bytes, sequential links, channels, packets, tags,
+duration and callback reads/seeks. Explicit ARC lifetime lasts through op_free.
+In-flight cancellation inside a C callback is not runtime-proved.
+
+The separate lock and preparation recipe authenticate unchanged source/license/
+manifest bytes and all17 prepared files. No upstream build tool executes.
+Selected stream.c remains for unconditional core references; HTTP/opusurl/TLS
+modules are excluded. Warm reuse verifies both recipe and imported helper hashes,
+works without archive cache/network/reference checkouts, and refuses old markers.
+The old generated directory was preserved before pinned offline re-preparation.
+Both unchanged BSD3 notices are bundled; own code remains MIT, combined app GPLv3.
+No outer TelegramSwift GPLv2-only code/assets/credentials are copied.
+
+Compiled duration RED1/1 becomes focused GREEN14/0:11 probe cases, one mixed
+Opus/MP3 controller case and two actual Postbox/PostgreSQL/S3 recovery cases.
+Review found a forged CRC-correct EOS timestamp; real RED1/1 precedes the packet/
+granule fix and final green gates. Missing completed granules, cropped initial
+offsets, first-page EOS, continued70KiB tags, stereo and actual pre-cancelled probe
+entry are covered. Imported-helper marker RED1/1 becomes Python GREEN7/0; the
+compile manifest, fixed-width ABI header and source list have independent hashes.
+Original characterization/setup/path/schema-evolution failures remain distinct.
+
+`scripts/dev-db.sh up`, final `scripts/test.sh` and `scripts/build-app.sh` exit0:
+**1,155 XCTest cases (1,079 Telegram +76 core),1 skipped,0 failures;45 Python
+regressions**. All425 source/test/dependency/script/license files remain frozen
+through the final full suite/build/UI. The full run emits24 unchanged upstream C
+integer-conversion warnings and three pre-existing Swift test warnings;394
+existing upstream t19 teardown diagnostics remain without failures. The
+host-permission skip is separate. Strict built/owned-QA signatures and raw
+unsigned executable equality pass.
+
+Actual owned synthetic AX/screenshots verify Attachments→File using a12,388-byte
+Opus fixture renamed `.bin`, chat7 with S3 OFF, original filename/size/caption,
+ready status and explicit Send/Cancel in the existing File sheet. With that sheet
+open, UI Quit left the process running; restart used verified owned SIGTERM.
+The picker source was reversibly renamed. Selecting chat7 restores the same ready
+preparation without that path. Explicit Send reaches only the synthetic local
+queue; closing observation and Mail→Telegram retain conservative uncertainty/no
+automatic resend, selected chat7 and S3 OFF. A dedicated music player/tag preview
+is still open; the current sheet has a generic document card. No personal Account,
+Telegram network, hardware input or permission grant used.
+
+S3 OFF forbids every new copy, including preparation; local encrypted records
+never promote after enable. Actual integration cases assert no archive events,
+no S3 object, resume0 and later enable/resume0, including after source removal and
+reopen. PostgreSQL stores encrypted metadata, never file bytes. Immutable message
+versions and archived files survive remote deletion and preparation cleanup.
+
+Root verifies the frozen revised8-file probe snapshot/copies and25 original raw
+check exits, plus247 fold-research and95 dependency-review artifact hashes and69
+audio-research command/exit records. Two bounded reviews' findings are resolved;
+parent owns final runtime gates and the later helper/test delta. Provider-internal
+transfer and observed provider/model/usage remain unknown; no quorum.
+Final active XERJ own/reference queries are source-confirmed. Project v6 refresh/
+check exits0:443 files,406/406 classified code; pinned reference/engine checks
+are fresh. The new nested lock made project v5 refuse schema evolution(exit1);
+v6 is a separate prefix, not a reconstructed pass.
+
+Remaining: full ordered source classifier needs separate strict source facts
+without changing schemas1–13; Archive/caption normalization, dedicated music
+preview, exhaustive Vorbis/other Ogg metadata, full reference visual/gesture parity
+and subsequent services remain open. Physical routes, system prompts, Account/
+server/recipient and minimum26 runtime proof remain unexecuted. Full Telegram
+migration and the overall goal remain open. Both hosted runs for preceding
+head3460086 passed; current Opus publication/hosted checks are tracked separately
+and no hosted success for this new slice is claimed.
+
+## Historical finished round preview in the common Telegram window (3460086)
 
 Ready and restored round preparations now keep the264pt circular aspect-fill
 player inside the300pt common-window overlay. The capture ring disappears. A

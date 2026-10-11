@@ -22,15 +22,26 @@ struct TelegramVoiceRecordButton: NSViewRepresentable {
         view.move = model.voiceRecording.move
         view.release = model.voiceRecording.release
         view.send = model.voiceRecording.send
+        view.toggle = {
+            guard model.voiceInputContextID == inputContext, model.canStartVoiceRecording else { return }
+            model.voiceRecording.toggleKind()
+        }
         view.canBegin = canBegin
         view.locked = phase == .locked
         view.isEnabled = view.canBegin || phase == .recording || phase == .locked || phase == .authorizing
-        view.image = NSImage(systemSymbolName: view.locked ? "paperplane.fill" : "mic.fill", accessibilityDescription: nil)?
+        let round = model.voiceRecording.selectedKind == .roundVideo
+        view.image = NSImage(systemSymbolName: view.locked ? "paperplane.fill" : round ? "video.fill" : "mic.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 22, weight: .regular))
         view.contentTintColor = phase == .recording || view.locked ? .white : .controlAccentColor
         view.layer?.backgroundColor = phase == .recording || view.locked ? NSColor.controlAccentColor.cgColor : nil
-        view.setAccessibilityLabel(view.locked ? "Отправить запись" : "Записать голосовое сообщение")
-        view.toolTip = view.locked ? "Отправить запись" : "Удерживайте для записи. Потяните вверх, чтобы закрепить; отпустите вне кнопки для отмены."
+        view.setAccessibilityLabel(view.locked ? "Отправить запись" : round ? "Записать круглое видео" : "Записать голосовое сообщение")
+        view.toolTip = view.locked ? "Отправить запись" : "Клик — сменить тип записи. Удерживайте для записи, потяните вверх, чтобы закрепить; отпустите вне кнопки для отмены."
+        view.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: "Переключить тип записи") { [weak view] in
+                guard let view, view.canBegin else { return false }
+                view.toggle(); return true
+            }
+        ])
     }
     static func dismantleNSView(_ view: VoiceButton, coordinator: ()) {
         view.invalidateHold(); view.cancelCapture()
@@ -40,6 +51,7 @@ struct TelegramVoiceRecordButton: NSViewRepresentable {
         var move: (Double) -> Void = { _ in }
         var release: (Bool) -> Void = { _ in }
         var send: () -> Void = {}
+        var toggle: () -> Void = {}
         var cancelCapture: () -> Void = {}
         var canBegin = false, locked = false
         private var hold: Task<Void, Never>?
@@ -81,8 +93,11 @@ struct TelegramVoiceRecordButton: NSViewRepresentable {
             move(event.locationInWindow.y - startPoint.y)
         }
         override func mouseUp(with event: NSEvent) {
+            let hadPress = startPoint != nil
             hold?.cancel(); hold = nil; startPoint = nil
-            if began { began = false; release(bounds.contains(convert(event.locationInWindow, from: nil))) }
+            let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+            if began { began = false; release(inside) }
+            else if hadPress, inside, canBegin { toggle() }
         }
         @objc private func accessibleAction() {
             guard isEnabled else { return }

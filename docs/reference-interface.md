@@ -849,12 +849,34 @@ ban, сохраняя privacy/cache/access/fee/slow-mode и once огранич�
 проверяет свежий snapshot до вставки в той же Postbox transaction, с network time
 offset. ACK не сканирует pending повторно, чтобы не учитывать собственную вставку.
 
-Экран на этом этапе не меняется. Общая синтетическая панель проверена фактически:
-chat7 S3 OFF и переход Почта→Telegram сохраняют выбор/OFF. Это не доказательство
-round recorder или retained schema13 UI. Ещё нет подключённого camera/common
-recorder/model handoff, короткого переключения, camera preview/ring, проверенного
-crop/mirror/white circular edge, capture timing и camera+audio permission/readiness.
-Reference start асинхронно ждёт оба формата; будущая граница не должна принимать
-warmup за завершение. Native once receipt сохраняет точный режим, OFF не допускает
-новые S3 копии. Синтетический enqueue/reopen не доказывает server acceptance,
-recipient playback, реальную камеру или minimum26 runtime.
+### Общая запись круглого видео
+
+Тот же desktop pin проверен в VideoRecorderModalController.swift:38 и
+VideoRecorderModalView.swift:25–54: modal300pt, capture circle264pt,
+progress281pt/line4, aspect-fill и mirrored preview. Макош независимо реализует
+эту геометрию в центральном overlay общей Telegram-панели; common composer
+сохраняет hold/lock/cancel/once и таймер. Короткий клик переключает voice/video,
+300ms hold начинает запись, вверх>100pt закрепляет. Accessibility custom action
+переключает тип, Press начинает закреплённую запись. Начальный тип остаётся Voice.
+
+Camera→audio permission проверяет контекст после каждого prompt. Асинхронный
+start ждёт оба формата, warmup остаётся authorizing и допускает отмену; timeout
+не ждёт зависший источник. Native capture queue отделена от sample writer queue.
+Собственный writer кодирует300x300 H264/mono AAC44.1, делает central square,
+горизонтальное отражение и белый круговой край. Проверки декодированных пикселей
+относятся к этому writer, а не к физической ориентации камеры. Capture clock
+использует audio end−first video, но готовый MP4 дополнительно проходит прежнюю
+full-asset schema13 политику. В ней сохраняется описанное выше отличие duration.
+
+Model handoff сохраняет обычный/once режим в local/S3 подготовке, применяет fresh
+round ACL перед Send и оставляет подготовку при отказе. Prepared/restored UI
+показывает frozen режим, статус восстановления и явный Send/Cancel. OFF запрещает
+любые новые S3 копии, local record после включения не повышается в S3.
+
+Оставшиеся отличия: overlay вместо reference modal, системные символы вместо
+GPLv2-only placeholder/shadow/assets, отсутствие end-file player и полного
+визуального/gesture совпадения. На60s Макош готовит запись и ждёт Send; reference
+runTimer вызывает отправку. Синтетическая камера явно обозначена и не открывает
+устройства. Текущие actual UI результаты записаны в development-status.md;
+кодирование/очередь/синтетический экран не доказывают server acceptance, recipient
+playback, реальную камеру, route/orientation/throughput или minimum26 runtime.

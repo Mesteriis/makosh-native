@@ -73,6 +73,10 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.media.saved")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
+            .overlay {
+                TelegramRoundVideoRecorderView(recording: model.voiceRecording, synthetic: model.isSyntheticPreview)
+                    .allowsHitTesting(false)
+            }
             .onChange(of: model.selectedChatID) { _, _ in
                 attachmentActions.cancel(); profilePresented = false
                 closeMessageSearch()
@@ -474,8 +478,10 @@ struct TelegramDraftsSyntheticPreviewView: View {
                 guard let index = arguments.firstIndex(of: "--telegram-drafts-synthetic-preview"), arguments.indices.contains(index + 1) else {
                     throw CocoaError(.fileReadUnknown)
                 }
-                model = try await TelegramModel.syntheticDraftPreview(directory: URL(fileURLWithPath: arguments[index + 1]),
+                let preview = try await TelegramModel.syntheticDraftPreview(directory: URL(fileURLWithPath: arguments[index + 1]),
                     albums: arguments.contains("--telegram-albums-qa"))
+                if arguments.contains("--telegram-round-video-qa") { preview.voiceRecording.toggleKind() }
+                model = preview
             } catch { failure = "Не удалось открыть отдельное синтетическое хранилище черновиков." }
         }
     }

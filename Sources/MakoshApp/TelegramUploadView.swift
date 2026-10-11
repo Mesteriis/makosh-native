@@ -108,22 +108,24 @@ struct TelegramUploadView: View {
                 }
             }
             if !upload.showsPreparationPreview, upload.phase != .idle || upload.error != nil {
-                if upload.isRecordedVoice {
-                    Label(upload.isOneTimeVoice ? "Одноразовое голосовое сообщение" : "Голосовое сообщение",
-                        systemImage: upload.isOneTimeVoice ? "1.circle.fill" : "waveform")
-                        .font(.callout).accessibilityIdentifier("telegram.voice.preparedMode")
+                if upload.isRecordedVoice || upload.isRecordedRoundVideo {
+                    let round = upload.isRecordedRoundVideo
+                    let once = round ? upload.isOneTimeRoundVideo : upload.isOneTimeVoice
+                    Label(round ? (once ? "Одноразовое круглое видео" : "Круглое видео") : (once ? "Одноразовое голосовое сообщение" : "Голосовое сообщение"),
+                        systemImage: once ? "1.circle.fill" : round ? "video.fill" : "waveform")
+                        .font(.callout).accessibilityIdentifier(round ? "telegram.roundVideo.preparedMode" : "telegram.voice.preparedMode")
                     if let status = upload.recoveryStatus {
                         HStack {
-                            Text(status).font(.caption).accessibilityIdentifier("telegram.voice.recoveryStatus")
+                            Text(status).font(.caption).accessibilityIdentifier(round ? "telegram.roundVideo.recoveryStatus" : "telegram.voice.recoveryStatus")
                             if upload.canRetryRecovery { Button("Повторить сохранение", action: upload.retryRecovery) }
                         }
                     }
                     if let contextID, upload.canCancel {
                         HStack {
-                            Button("Отправить запись") { model.sendPreparedVoice(contextID: contextID) }
-                                .disabled(!upload.canSend).accessibilityIdentifier("telegram.voice.sendPrepared")
+                            Button("Отправить запись") { model.sendPreparedRecording(contextID: contextID) }
+                                .disabled(!upload.canSend).accessibilityIdentifier(round ? "telegram.roundVideo.sendPrepared" : "telegram.voice.sendPrepared")
                             Button("Отменить подготовку") { upload.dismissPreparation(contextID: contextID) }
-                                .accessibilityIdentifier("telegram.voice.cancelPrepared")
+                                .accessibilityIdentifier(round ? "telegram.roundVideo.cancelPrepared" : "telegram.voice.cancelPrepared")
                         }
                     }
                 }

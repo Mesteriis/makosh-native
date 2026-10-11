@@ -2296,8 +2296,49 @@ scan, which would count this transaction's own new message; it still validates t
 frozen draft/media/once/reply receipt. Real local queue regressions cover distinct
 bans, privacy/fees, exact slow deadline, prior pending messages and invalid clock.
 
-The hardware/common round recorder, model handoff and retained schema13 UI remain
-open. Short-click voice/video, camera+audio permissions/readiness and actual
-capture/crop/mirror/preview/timing are the next dependency. No camera, microphone,
-personal Account or Telegram server execution is established by these
-offline/native-queue/controller tests.
+### Asynchronous round capture in the common recorder
+
+The shared recorder keeps Voice as its initial kind. A short click switches
+voice/round; a300ms hold starts the selected kind, upward movement>100pt locks,
+and release outside cancels. An accessibility custom action switches kind;
+accessibility Press starts and locks. Kind, target, context and optional once mode
+freeze for the current recording. Round has its own rights, permission and handoff
+closures; voice behavior and its600s cap remain compatible.
+
+Camera then microphone authorization occurs only after an explicit recording
+action, with current-context checks before and after each asynchronous prompt.
+The capture provider checks existing grants and never prompts. Its native session
+configuration/start/cleanup run on a dedicated queue. Start stays pending until
+both video and audio have arrived, under a10s startup deadline; cancelling warmup
+or navigating away invalidates the capture before a late completion can publish.
+
+An independent owned writer produces300x300 H264/mono AAC44.1kHz MP4. It centrally
+crops BGRA input, mirrors horizontally and composites a white circular edge.
+Samples use one serial writer queue, bounded input/output and pixel pool, strict
+monotonic timing and cancellation. Capture duration uses audio end minus first
+video timestamp, with60s sample/wall caps and a2s audio-stall bound. A finished
+file still passes the existing full-asset schema13 admission; no capture-clock
+equivalence is inferred from arbitrary MP4. Temporary files are private and
+owned; cancellation/failure removes staging and refuses later publication.
+
+The central300pt overlay contains a264pt circular preview and281pt/4pt progress
+ring while the common composer retains hold/lock/cancel/once controls. A60s cap
+prepares the record without sending. Prepared or restored round UI shows the
+frozen mode and explicit Send/Cancel. Release/Send rechecks the correct round
+rights; changed rights retain the preparation for another explicit action.
+OFF remains encrypted local-only and never promotes after re-enable.
+
+DEBUG synthetic QA generates its own pixels/PCM through the same writer without
+constructing capture inputs or requesting permission. Its preview is explicitly
+labelled synthetic. Native encoding and isolated durable-queue tests do not prove
+camera hardware, physical orientation/routes, device throughput, system prompts,
+personal Account/server/recipient behavior or minimum26 runtime. The reference's
+end-file player, placeholder/shadow assets, exact modal/gesture parity and cap-time
+automatic send remain differences; Makosh cap-time preparation requires Send.
+
+For isolated DEBUG screen QA, `--telegram-round-video-qa` can accompany
+`--telegram-drafts-synthetic-preview <owned-test-Postbox>` to start with round
+selected. It changes only this synthetic fixture's initial kind, never starts a
+recording, and does not replace gesture testing. Pending recovery additionally
+requires `--telegram-pending-upload-qa`, an isolated `qa_telegram_dossier_` schema
+through `--database-config` and explicit `--storage-config`, as before.

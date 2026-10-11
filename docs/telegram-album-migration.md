@@ -248,7 +248,7 @@ Continue in this dependency order:
    native path through the preparation controller, with strict >0.5s new-recording
    admission and durable native enqueue. Native capture, peer/slow-mode gates and
    common-window hold/lock/cancel now connect it. Full visual/gesture parity,
-   one-time/round video, hardware and server proof remain open. Bound frames, dimensions,
+   end-file round preview, hardware and server proof remain open. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every
    typed resource. Off remains encrypted local-only; mode edits never recapture.
@@ -276,16 +276,22 @@ One-time recorded Voice now uses strict schema12 while ordinary Voice keeps11.
 Its frozen true-only metadata binds native media TTL through restoration and the
 complete queue receipt; ordinary chat auto-delete stays separate. OFF forbids all
 new S3 copies. See telegram.md and development-status.md for supported targets,
-compatibility, raw RED/GREEN checks and current UI/server limitations. Round video,
-remaining classifier order, Archive/caption normalization and sequential migration
+compatibility, raw RED/GREEN checks and current UI/server limitations. Full round
+preview parity, remaining classifier order, Archive/caption normalization and sequential migration
 remain open; this is not completion of the full Telegram migration.
 
 Explicit encoded round-video now uses schema13, its own native mapper and durable
 controller preparation/restoration/explicit Send. Fresh native admission selects
 banSendInstantVideos independently of voice/ordinary-video bans and checks current
 privacy/fees/slow mode before insertion in the receipt transaction. ACK excludes
-the pending scan of its own insertion. It adds no picker inference or camera UI.
-Next implement async camera+audio readiness/permission/cancellation ownership,
-reference capture geometry/timing and common recorder/model/retained UI with actual
-isolated visual evidence. Keep OFF/no-promotion and immutable retention rules. See
-telegram.md and reference-interface.md for strict profile and remaining differences.
+the pending scan of its own insertion. Picked square files still never infer round.
+The async camera+audio provider now waits for both sample formats, owns timeout/
+cancellation and feeds an independent300-square mirrored/circular H264/AAC writer.
+The common recorder/model handles short-click kind selection, hold/lock/once,
+permission/context cancellation, durable handoff and retained explicit Send UI.
+The60s cap prepares without automatic send. OFF/no-promotion and immutable retention
+remain. Actual UI checks and full gates are recorded in development-status.md;
+reference modal/end-file player parity, physical hardware/routes/orientation,
+server/recipient and minimum26 proof remain open. Next complete round preview
+parity, then ordered classification and Archive/caption normalization. See
+telegram.md and reference-interface.md for the strict profile and differences.

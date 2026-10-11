@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 import MakoshCore
 import TelegramCore
 import SwiftSignalKit
@@ -17,7 +18,7 @@ private func roundQueuedMessage(_ box: Postbox, id: MessageId) -> Signal<Message
 private func roundQueuePeers(_ box: Postbox, chatTTL: Bool, chatID: Int64 = 42,
     access: RoundQueueAccess? = nil) -> Signal<Void, NoError> {
     box.transaction { transaction in
-        let peers = [Int64(1),42].map { id in
+        let peers = [Int64(1),42,10001].map { id in
             TelegramUser(id: PeerId(id), accessHash: nil, firstName: "Synthetic round", lastName: nil,
                 username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [],
                 emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil,
@@ -93,6 +94,12 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
 }
 
 @MainActor final class TelegramRecordedRoundVideoPendingTests: XCTestCase {
+    #if DEBUG
+    func testModelLocalRoundRechecksRightsBeforeDurableSend() async throws { try await controllerQueue(s3: false, once: false, modelDriven: true) }
+    func testModelS3RoundRechecksRightsBeforeDurableSend() async throws { try await controllerQueue(s3: true, once: false, modelDriven: true) }
+    func testModelLocalOnceRoundRetainsFrozenIntentAfterDeniedSend() async throws { try await controllerQueue(s3: false, once: true, modelDriven: true) }
+    func testModelS3OnceRoundRetainsFrozenIntentAfterDeniedSend() async throws { try await controllerQueue(s3: true, once: true, modelDriven: true) }
+    #endif
     func testLocalControllerRoundRestoresAndSendsOnlyExplicitly() async throws { try await controllerQueue(s3: false, once: false) }
     func testS3ControllerRoundRestoresAndSendsOnlyExplicitly() async throws { try await controllerQueue(s3: true, once: false) }
     func testLocalControllerOnceRoundRestoresAndSendsOnlyExplicitly() async throws { try await controllerQueue(s3: false, once: true) }
@@ -281,13 +288,14 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
     }
     // Catches schema13 restore/send allowlists, accidental resume-send and S3
     // policy regressions at the actual controller→durable→native queue boundary.
-    private func controllerQueue(s3: Bool, once: Bool) async throws {
+    private func controllerQueue(s3: Bool, once: Bool, modelDriven: Bool = false) async throws {
+        let accountID: Int64 = modelDriven ? -1 : 1, chatID: Int64 = modelDriven ? 10001 : 42
         let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
         let configuration = try config(), archiveRoot = try root(), postboxRoot = try root()
         let archive = try archive(database, configuration, archiveRoot)
-        let policy = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        let policy = MessageArchiveIdentity(service: "telegram", accountID: String(accountID), conversationID: String(chatID), messageID: "synthetic-policy")
         try await archive.setConversationFileSavingEnabled(identity: policy, enabled: s3)
-        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic round")
+        let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: "Synthetic round")
         let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
         var accepted: TelegramPendingUploadDraft?
         do {
@@ -295,22 +303,66 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             let seeded = expectation(description: "Controller synthetic round peers")
             let seed = (roundQueuePeers(box, chatTTL: false) |> deliverOnMainQueue).start(next: { seeded.fulfill() })
             defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
-            let store = session(box, archive), provider = RoundLocalQueueProvider(box)
+            let store = session(box, archive, accountID: accountID), provider = RoundLocalQueueProvider(box, accountID: accountID)
+            #if DEBUG
+            let model = modelDriven ? TelegramModel.syntheticPreview() : nil
+            model?.selectedChatID = chatID
+            var controller = model?.upload ?? TelegramUploadController()
+            #else
             var controller = TelegramUploadController()
+            #endif
             controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
             defer { controller.bind(provider: nil) }
-            guard controller.prepareRecordedRoundVideo(bytes: bytes, target: target, isOneTime: once) else {
-                return XCTFail("Controller refused explicit round recording")
+            #if DEBUG
+            if let model {
+                let capture = ModelPendingRoundCapture(bytes)
+                model.voiceRecording.toggleKind()
+                model.voiceRecording.authorizeRoundVideo = { true }
+                model.voiceRecording.makeRoundVideoCapture = { capture }
+                var checks = 0, onceChecks = 0
+                model.voiceRecording.roundVideoEligibility = { _ in
+                    checks += 1; return checks <= 2 ? .allowed : .voicePrivacy
+                }
+                model.voiceRecording.roundVideoOneTimeEligibility = { _ in onceChecks += 1; return onceChecks == 1 }
+                // Voice ACL must never authorize the round recording or final send.
+                model.voiceRecording.eligibility = { _ in .restricted }
+                model.beginVoiceRecording()
+                for _ in 0..<1_000 where model.voiceRecording.phase == .authorizing { try await Task.sleep(for: .milliseconds(5)) }
+                XCTAssertEqual(model.voiceRecording.phase, .recording)
+                if once {
+                    model.voiceRecording.move(upward: 101); model.voiceRecording.setOneTime(true)
+                    XCTAssertTrue(model.voiceRecording.isOneTime); model.voiceRecording.send()
+                } else { model.voiceRecording.release(inside: true) }
+                for _ in 0..<1_000 where model.voiceRecording.isActive { try await Task.sleep(for: .milliseconds(10)) }
+                XCTAssertEqual(model.voiceRecording.phase, .idle)
+                XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(provider.submissions, 0)
+                guard controller.phase == .ready else { return }
+                XCTAssertNotNil(model.error)
+            } else {
+                guard controller.prepareRecordedRoundVideo(bytes: bytes, target: target, isOneTime: once) else {
+                    return XCTFail("Controller refused explicit round recording")
+                }
             }
+            #else
+            XCTAssertTrue(controller.prepareRecordedRoundVideo(bytes: bytes, target: target, isOneTime: once))
+            #endif
             for _ in 0..<1_000 where !controller.canSend && controller.phase != .failed {
                 try await Task.sleep(for: .milliseconds(10))
             }
             XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.phase, .ready)
-            let stage = try XCTUnwrap(controller.file), loaded = try await store.load(chatID: 42)
+            let stage = try XCTUnwrap(controller.file), loaded = try await store.load(chatID: chatID)
             let prepared = try XCTUnwrap(loaded)
             XCTAssertEqual(prepared.schemaVersion, 13); XCTAssertEqual(prepared.disposition, .prepared)
             XCTAssertEqual(prepared.items.first?.metadata?.roundVideo?.isOneTime, once)
             XCTAssertEqual(prepared.items.first?.file.state, s3 ? .stored : .local)
+            #if DEBUG
+            if let model {
+                model.voiceRecording.roundVideoEligibility = { _ in .allowed }
+                model.voiceRecording.roundVideoOneTimeEligibility = { _ in true }
+                model.sendPreparedVoice(contextID: prepared.id)
+            }
+            #endif
+            if !modelDriven {
             controller.bind(provider: nil)
             let recovered = try await store.restoreItems(draft: prepared)
             controller = TelegramUploadController()
@@ -326,11 +378,12 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             XCTAssertEqual(provider.submissions, 0); XCTAssertTrue(controller.canSend)
             controller.send(contextID: UUID()); XCTAssertEqual(provider.submissions, 0)
             controller.send(contextID: prepared.id)
-            for _ in 0..<1_000 where controller.phase == .storing || controller.phase == .enqueuing {
+            }
+            for _ in 0..<1_000 where controller.phase == .ready || controller.phase == .storing || controller.phase == .enqueuing {
                 try await Task.sleep(for: .milliseconds(10))
             }
             XCTAssertEqual(controller.phase, .queued(nil)); XCTAssertEqual(provider.submissions, 1)
-            let saved = try await store.load(chatID: 42), value = try XCTUnwrap(saved)
+            let saved = try await store.load(chatID: chatID), value = try XCTUnwrap(saved)
             guard case let .acceptedBatch(ids) = value.disposition, let id = ids.first else {
                 return XCTFail("Controller did not retain native round admission")
             }
@@ -355,11 +408,11 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             accepted = value
         }
         try await released()
-        let frozen = try XCTUnwrap(accepted), box = try await open(postboxRoot), store = session(box, archive)
-        let loaded = try await store.load(chatID: 42); XCTAssertEqual(loaded, frozen)
+        let frozen = try XCTUnwrap(accepted), box = try await open(postboxRoot), store = session(box, archive, accountID: accountID)
+        let loaded = try await store.load(chatID: chatID); XCTAssertEqual(loaded, frozen)
         let restored = try await store.restoreItems(draft: frozen)
         defer { for item in restored { try? item.discard() } }
-        let controller = TelegramUploadController(), provider = RoundLocalQueueProvider(box)
+        let controller = TelegramUploadController(), provider = RoundLocalQueueProvider(box, accountID: accountID)
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
         XCTAssertFalse(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
         controller.send(); XCTAssertEqual(provider.submissions, 0)
@@ -382,8 +435,8 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
         try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema, configuration: configuration,
             spoolDirectory: root.appendingPathComponent("queue"), keyProvider: { _,_ in Data(repeating: 0x68, count: 32) })
     }
-    private func session(_ box: Postbox, _ archive: ArchiveFileRepository) -> TelegramPendingUploadSession {
-        TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+    private func session(_ box: Postbox, _ archive: ArchiveFileRepository, accountID: Int64 = 1) -> TelegramPendingUploadSession {
+        TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: accountID),
             files: { TelegramPendingUploadFiles(repository: archive) })
     }
     private weak var previousBox: Postbox?
@@ -418,14 +471,14 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
 }
 
 @MainActor private final class RoundLocalQueueProvider: TelegramUploadBatchProvider {
-    let accountID: Int64 = 1
+    let accountID: Int64
     private let box: Postbox
     private(set) var submissions = 0
-    init(_ box: Postbox) { self.box = box }
+    init(_ box: Postbox, accountID: Int64 = 1) { self.box = box; self.accountID = accountID }
     func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
         receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
         submissions += 1
-        return TelegramUploadBatchSubmission(postbox: box, accountID: 1, items: items, draft: draft, target: target,
+        return TelegramUploadBatchSubmission(postbox: box, accountID: accountID, items: items, draft: draft, target: target,
             enqueue: { [box] receipt, messages in
                 roundQueueEnqueue(box, receipt: receipt, messages: messages, forge: nil)
             }, receive: receive)
@@ -438,3 +491,16 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
     }
 }
 @MainActor private final class RoundUnusedLease: TelegramUploadLease { func stop() {} }
+
+#if DEBUG
+@MainActor private final class ModelPendingRoundCapture: TelegramRoundVideoCapture {
+    let bytes: Data
+    init(_ bytes: Data) { self.bytes = bytes }
+    var isRecording = false
+    var duration: Double { 1.25 }; var level: Float { 0.5 }
+    var previewSession: AVCaptureSession? { nil }
+    func start() async throws { isRecording = true }
+    func stop() async throws -> Data { isRecording = false; return bytes }
+    func cancel() { isRecording = false }
+}
+#endif

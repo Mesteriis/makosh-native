@@ -1,6 +1,78 @@
 # Development status — 2026-10-11
 
-## Current stage: round-video controller recovery and atomic native rights
+## Current stage: asynchronous round capture in the common Telegram window
+
+The shared Voice/round recorder now owns asynchronous camera startup, readiness,
+context cancellation, kind-specific rights and durable model handoff. Camera then
+microphone authorization rechecks context around each prompt; the inert provider
+only checks grants. Warmup waits for video and audio under10s; cancellation and
+late completion cannot revive an old recording. Round has60s sample/wall bounds
+and a2s audio-stall watchdog. The cap prepares without automatic sending.
+
+An independent private writer produces300-square H264/mono AAC44.1 MP4 with central
+crop, horizontal mirror and white circular edge. Actual encoded/decoded fixtures
+verify output geometry, timing, the60s bound and cleanup. Separate native-started
+state fixes a reproduced first-frame backpressure crash; PCM sample count and
+duration must agree. Disconnect notifications use immutable device identities.
+The final bytes still pass existing full-asset schema13 admission, preserving its
+explicit duration difference from the reference capture clock.
+
+Common composer hold/lock/cancel/once remains; short click selects Voice/round and
+an accessibility custom action offers kind switching. The central300pt overlay,
+264pt circle and281pt/4pt ring follow the pinned reference source. Prepared/restored
+round UI uses its frozen mode and explicit Send/Cancel. Fresh kind-specific rights
+before Send retain the prepared record after denial. Real PostgreSQL/S3/encrypted
+Postbox model regressions cover ordinary/once ON/OFF, later explicit Send, native
+bytes/TTL, accepted reopen/no resend and OFF/no promotion.
+
+Compiled root permission RED4/8 and model/pending RED7/19 become GREEN28/0 and
+27/0 in their recorded scopes. Controller leaf RED12/71 becomes GREEN28/0 with
+existing voice/permission cases. Capture/writer/synthetic RED13/19 and PCM RED1/2
+precede final focused GREEN18/0. Initial backpressure RED is a real native
+exception/signal6, not assertion-only failure. Separate compile/setup failures,
+extensionless test-fixture decode failure, stale-query procedural error and
+unavailable optional metadata-validator exit2 remain private and distinct.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,129 XCTest cases (1,053 Telegram +76 core),1 skipped,0 failures;38 Python
+regressions**. After adding an explicit DEBUG initial-round fixture, root repeats
+the full suite/build on all19 frozen source/test/script files. No compile warnings
+in either full run;390 existing upstream t19 teardown diagnostics remain without
+failures. Deterministic permission checks use no device; one host-permission case
+is skipped. Strict signatures, raw unsigned built/owned-QA payload equality and
+camera/microphone purpose-key equality pass.
+
+Actual owned synthetic AX/screenshots verify the common sidebar, chat7 S3 OFF,
+round preview, advancing timer/ring, locked once ON, cancel confirmation and
+Continue recording. At60s it retains a ready once preparation without sending.
+After owned-process restart, chat7 restores once mode and explicit Send/Cancel;
+explicit Send reaches only the synthetic local queue. Closing observation keeps
+conservative uncertainty/no automatic resend. A new active round recording is
+cancelled by Mail→Telegram, preserving selected chat7 and S3 OFF. The fixture
+selects round through an explicit DEBUG argument;
+CUA coordinate clicks fail with noWindowsAvailable, so physical short-click/hold/
+drag and accessibility custom-action invocation are not established. No hardware
+input, permission grant, personal Account or Telegram network is used.
+
+Root independently checks six frozen leaf source/test hashes, five model-review
+hashes, four capture-review hashes, six worker output/report hashes and96 original
+capture artifact hashes. Bounded final read-only reviews find no further actionable
+issue. Initial transfer snapshot and observed route/model/usage remain unknown;
+no quorum or passing route attestation. Final active XERJ queries/source reads and
+project/reference/engine checks pass; project434 files,400/400 classified code.
+
+S3 OFF forbids every new copy, including recording preparation. Local records
+never promote after enable; PostgreSQL stores metadata, not payload bytes.
+Cancellation/acceptance/recipient expiration never purge immutable archived files.
+No dependency/license/engine recipe change or third-party source/assets copied.
+
+Remaining: reference modal/end-file player and full visual/gesture parity, physical
+camera/audio routes/orientation/throughput, native blocked start/stop/finish latency,
+system prompts, Account/server/recipient and minimum26 runtime proof. Next complete
+round preview/playback, then ordered classification, Archive/caption normalization
+and subsequent services. Full Telegram migration and the overall goal remain open.
+
+## Historical round-video controller recovery and atomic native rights (586eda1)
 
 The explicit authored-MP4 entry now connects to TelegramUploadController, strict
 schema13 restoration and explicit Send. Preparation requires a complete durable

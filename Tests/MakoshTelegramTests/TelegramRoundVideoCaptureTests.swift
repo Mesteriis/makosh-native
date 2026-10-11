@@ -1,0 +1,119 @@
+import XCTest
+import AVFoundation
+@testable import MakoshTelegram
+
+@MainActor final class TelegramRoundVideoCaptureTests: XCTestCase {
+    // Catches constructing device inputs while either independently required grant is absent.
+    func testBothAuthorizationStatusesGateBeforeCreatingSource() async throws {
+        for pair: (AVAuthorizationStatus,AVAuthorizationStatus) in [(.authorized,.denied),(.notDetermined,.authorized),(.restricted,.authorized)] {
+            var created = false
+            let capture = TelegramCameraRoundVideoCapture(authorization: { pair }, makeSource: { created = true; return SyntheticRoundSource() })
+            do { try await capture.start(); XCTFail("Unauthorized capture started") }
+            catch { XCTAssertEqual(error as? TelegramRoundVideoCaptureError, .permissionDenied) }
+            XCTAssertFalse(created); XCTAssertFalse(capture.isRecording); XCTAssertNil(capture.previewSession)
+        }
+    }
+    // Catches start reporting success before both actual writer formats can be used.
+    func testStartWaitsForActualSamplesAndStopReturnsValidatedData() async throws {
+        let source = SyntheticRoundSource()
+        let capture = TelegramCameraRoundVideoCapture(authorization: { (.authorized,.authorized) }, makeSource: { source })
+        do {
+            try await capture.start(); XCTAssertTrue(capture.isRecording)
+            XCTAssertEqual(capture.duration, 1, accuracy: 0.001)
+            let bytes = try await capture.stop()
+            XCTAssertFalse(capture.isRecording)
+            let retained = try await capture.stop(); XCTAssertEqual(retained, bytes)
+            let file = try await TelegramRecordedRoundVideoIO.prepare(bytes: bytes)
+            defer { try? TelegramUploadFileIO.discard(file) }
+            XCTAssertEqual(file.video?.width, 300)
+        } catch { XCTFail("Synthetic native capture refused: \(error)") }
+    }
+    // Catches indefinite warmup and a cancelled startup resurrecting via delayed source delivery.
+    func testMissingFormatsTimeoutAndCancellationAreTerminal() async throws {
+        for cancel in [false,true] {
+            let source = SyntheticRoundSource(); source.feeds = false
+            let capture = TelegramCameraRoundVideoCapture(authorization: { (.authorized,.authorized) }, makeSource: { source }, startupTimeout: 0.05)
+            let start = Task { try await capture.start() }
+            if cancel { for _ in 0..<10 { await Task.yield() }; capture.cancel() }
+            do { try await start.value; XCTFail("Unready capture started") }
+            catch { if cancel { XCTAssertTrue(error is CancellationError) } else { XCTAssertEqual(error as? TelegramRoundVideoCaptureError, .unavailable) } }
+            XCTAssertFalse(capture.isRecording)
+            do { _ = try await capture.stop(); XCTFail("Terminal capture returned bytes") } catch {}
+            XCTAssertNil(capture.previewSession)
+        }
+    }
+    // Catches waiting for an uncooperative source task before enforcing the startup deadline.
+    func testHeldSourceStartIsBoundedAndLateCompletionCannotReviveCapture() async throws {
+        for cancelled in [false,true] {
+            let source = HeldRoundSource()
+            let capture = TelegramCameraRoundVideoCapture(authorization: { (.authorized,.authorized) },
+                makeSource: { source }, startupTimeout: 0.3)
+            let start = Task { try await capture.start() }
+            for _ in 0..<200 where !source.held { try await Task.sleep(for: .milliseconds(5)) }
+            XCTAssertTrue(source.held)
+            if cancelled { capture.cancel() }
+            do { try await start.value; XCTFail("Held source bypassed startup boundary") }
+            catch { if cancelled { XCTAssertTrue(error is CancellationError) }
+                else { XCTAssertEqual(error as? TelegramRoundVideoCaptureError, .unavailable) } }
+            source.release()
+            for _ in 0..<20 { await Task.yield() }
+            XCTAssertTrue(source.completed)
+            XCTAssertTrue(source.stopped)
+            XCTAssertFalse(capture.isRecording); XCTAssertNil(capture.previewSession)
+            do { _ = try await capture.stop(); XCTFail("Late startup resurrected recording") } catch {}
+        }
+    }
+    // Catches a source/audio stall leaving native capture active without a bounded watchdog.
+    func testCaptureWatchdogStopsSourceAndRetainsCompletedBytes() async throws {
+        let source = SyntheticRoundSource()
+        let capture = TelegramCameraRoundVideoCapture(authorization: { (.authorized,.authorized) }, makeSource: { source }, captureTimeout: 0.05)
+        do {
+            try await capture.start()
+            for _ in 0..<100 where capture.isRecording { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertFalse(capture.isRecording)
+            let bytes = try await capture.stop(); XCTAssertFalse(bytes.isEmpty)
+            XCTAssertTrue(source.stopped)
+        } catch { XCTFail("Watchdog lost recording: \(error)") }
+    }
+    // Catches a stopped audio stream waiting the full60s while video capture remains active.
+    func testAudioStallWatchdogFinalizesLastValidSamples() async throws {
+        let source = SyntheticRoundSource()
+        let capture = TelegramCameraRoundVideoCapture(authorization: { (.authorized,.authorized) }, makeSource: { source }, audioStallTimeout: 0.05)
+        do {
+            try await capture.start()
+            for _ in 0..<100 where capture.isRecording { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertFalse(capture.isRecording); XCTAssertTrue(source.stopped)
+            let bytes = try await capture.stop(); XCTAssertFalse(bytes.isEmpty)
+        } catch { XCTFail("Audio stall lost valid recording: \(error)") }
+    }
+    // Catches reusing a cancelled one-shot capture, or public construction touching a device.
+    func testPublicConstructionIsInertAndCancelCannotBeReused() async throws {
+        let capture = try TelegramCameraRoundVideoCapture()
+        XCTAssertNil(capture.previewSession); XCTAssertFalse(capture.isRecording)
+        capture.cancel()
+        do { try await capture.start(); XCTFail("Cancelled capture restarted") } catch { XCTAssertTrue(error is CancellationError) }
+    }
+}
+
+@MainActor private final class SyntheticRoundSource: TelegramRoundVideoCaptureSource {
+    var previewSession: AVCaptureSession? { nil }
+    var feeds = true, stopped = false
+    func start(writer: TelegramRoundVideoCaptureWriter) async throws { if feeds { try await roundCaptureFeed(writer) } }
+    func stop() async { stopped = true }
+    func cancel() { stopped = true }
+}
+
+@MainActor private final class HeldRoundSource: TelegramRoundVideoCaptureSource {
+    var previewSession: AVCaptureSession? { nil }
+    var held = false, completed = false, stopped = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    func start(writer: TelegramRoundVideoCaptureWriter) async throws {
+        try await writer.appendVideo(roundCapturePixels(), at: .zero)
+        try await writer.appendAudio(roundCaptureAudio(offset: 0, count: 1470))
+        await withCheckedContinuation { continuation = $0; held = true }
+        completed = true
+    }
+    func release() { let saved = continuation; continuation = nil; saved?.resume() }
+    func stop() async { stopped = true }
+    func cancel() { stopped = true } // Deliberately does not release start's external operation.
+}

@@ -83,6 +83,7 @@ struct TelegramSyntheticPages {
                 authorID: message.isOutgoing ? -1 : 999, canReply: true, canEdit: message.isOutgoing && !unsupported,
                 canForward: id != 120, canDeleteLocally: true, canDeleteForEveryone: message.isOutgoing,
                 allowsEmptyEdit: caption && !unsupported, editLimit: caption ? 1024 : 4096,
+                hasMedia: caption,
                 formattedText: try? TelegramFormattedText(text: message.text, entities: entities), canCopy: id != 120)
             return albums ? telegramSyntheticAlbumMessage(message) : message
         }

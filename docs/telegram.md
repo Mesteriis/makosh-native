@@ -1228,7 +1228,7 @@ still toggles the exact visible group during message selection. This follows
 ChatRowItem.swift:114–121,1766–1767,1788, ChatGroupedItem.swift:43–52,1169–1172 and
 ChatMediaItem.swift:774–777. CoreExtension.swift:307–320,1534–1539 confirms the
 interactive-media and WebM boundary; broader animation/map/paid/secret parity is
-not claimed. Sending a new caption-above option remains open.
+not claimed. Caption placement in new media preparation remains open.
 
 The explicit DEBUG album fixture marks messages126 and129 above media; defaults
 are unchanged and search/history share placement with the same descriptors and
@@ -1236,3 +1236,35 @@ versions. Mapping regressions use native photo/video/attribute objects and cover
 history/search, default order, excluded cards, first-member placement, empty
 captions and file albums. Actual owned synthetic native checks and their limits
 are recorded in development-status. PostgreSQL/S3 retention is unchanged.
+
+## Editing caption placement
+
+The inline edit accessory offers Move Caption Up/Down for a message with media,
+within the existing edit permissions. Its whole surface accepts the context
+menu. The session starts from the raw native InvertMediaMessageAttribute,
+including nonvisual files whose renderer deliberately keeps the caption below.
+Text/entities/selection and placement remain independent per-chat state in the
+current account context. A placement-only edit is valid, including an empty
+supported caption; unchanged content and invalid or over-limit edits are refused.
+
+Menu and submit actions capture session/revision/context; busy or uncertain
+operations cannot change placement. Switching chats/services retains the edit;
+cancel/reopen restores the source, and restart resets this temporary mode while
+preserving the ordinary draft. An applied acknowledgement clears only the exact
+submitted session, retaining newer input.
+
+Dispatch builds edit content from the freshly validated Postbox message. Legacy
+callers that omit additive metadata therefore retain the native flag; an explicit
+placement remains an override. The existing engine API receives invertMediaAttribute.
+Its unchanged-text reconciliation compares raw placement as well as text/entities.
+References: ChatInputAccessory.swift:194–206, ChatInterfaceState.swift:1040–1043,
+ChatController.swift:3827–3849, ChatPresentationInterfaceState.swift:1163–1185,
+and the independently prepared RequestEditMessage.swift:185–195 (flag bit16).
+No outer UI code/assets, pins, recipe8 or storage schemas changed.
+
+Regression coverage includes native request content, nonvisual raw-state
+preservation, real encrypted Postbox validation, legacy callers, stale menu/submit,
+uncertainty and late acknowledgement. Owned native synthetic QA verifies the
+whole-band menu, placement-only confirmation, text/chat/service preservation,
+cancel/reopen, synthetic acknowledgement and restart. It does not establish
+live-server acceptance or new-media preparation placement.

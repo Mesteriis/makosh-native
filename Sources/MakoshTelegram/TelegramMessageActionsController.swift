@@ -14,6 +14,8 @@ public struct TelegramMessageActionMetadata: Equatable, Sendable {
     public let migrationChatID: Int64?
     public let allowsEmptyEdit: Bool
     public let editLimit: Int
+    public let hasMedia: Bool
+    public let captionAboveMedia: Bool
     public let threadID: Int64?
     public let formattedText: TelegramFormattedText?
     public let canEditOutgoingChannel: Bool
@@ -27,12 +29,13 @@ public struct TelegramMessageActionMetadata: Equatable, Sendable {
     public init(peerID: Int64, namespace: Int32, messageID: Int32, fingerprint: String, text: String,
                 authorID: Int64?, canReply: Bool, canEdit: Bool, canForward: Bool,
                 canDeleteLocally: Bool, canDeleteForEveryone: Bool, canEditAsAdmin: Bool = false,
-                canDeleteAsAdmin: Bool = false, canDeleteIncomingPrivate: Bool = false, migrationChatID: Int64? = nil, allowsEmptyEdit: Bool = false, editLimit: Int = 4096, threadID: Int64? = nil, formattedText: TelegramFormattedText? = nil,
+                canDeleteAsAdmin: Bool = false, canDeleteIncomingPrivate: Bool = false, migrationChatID: Int64? = nil, allowsEmptyEdit: Bool = false, editLimit: Int = 4096, hasMedia: Bool = false, captionAboveMedia: Bool = false, threadID: Int64? = nil, formattedText: TelegramFormattedText? = nil,
                 canEditOutgoingChannel: Bool = false, canDeleteOutgoingChannel: Bool = false, canCopy: Bool = false) {
         self.peerID = peerID; self.namespace = namespace; self.messageID = messageID
         self.fingerprint = fingerprint; self.text = text; self.authorID = authorID
         self.canEditAsAdmin = canEditAsAdmin; self.canDeleteAsAdmin = canDeleteAsAdmin; self.canDeleteIncomingPrivate = canDeleteIncomingPrivate; self.migrationChatID = migrationChatID; self.allowsEmptyEdit = allowsEmptyEdit; self.editLimit = editLimit; self.threadID = threadID; self.formattedText = formattedText
         self.canEditOutgoingChannel = canEditOutgoingChannel; self.canDeleteOutgoingChannel = canDeleteOutgoingChannel
+        self.hasMedia = hasMedia; self.captionAboveMedia = captionAboveMedia
         self.canReply = canReply; self.canEdit = canEdit; self.canForward = canForward; self.canCopy = canCopy
         self.canDeleteLocally = canDeleteLocally; self.canDeleteForEveryone = canDeleteForEveryone
     }
@@ -69,7 +72,7 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
 }
 
 public enum TelegramMessageAction: Equatable, Sendable {
-    case reply(String), replyFormatted(TelegramFormattedText), edit(String), editFormatted(TelegramFormattedText), forward(destinationChatID: Int64), delete(forEveryone: Bool)
+    case reply(String), replyFormatted(TelegramFormattedText), edit(String), editFormatted(TelegramFormattedText, captionAboveMedia: Bool? = nil), forward(destinationChatID: Int64), delete(forEveryone: Bool)
 }
 public enum TelegramMessageActionPhase: Equatable, Sendable {
     case idle, validating, committing, queued, applied, rejected, uncertain
@@ -91,10 +94,12 @@ func telegramMessageActionAllowed(_ action: TelegramMessageAction, source: Teleg
         return source.canEdit && (source.metadata.formattedText?.entities.isEmpty ?? true) &&
             text.utf16.count <= source.editLimit && !text.utf8.elementsEqual(source.text.utf8) &&
             (!text.isEmpty || source.metadata.allowsEmptyEdit)
-    case let .editFormatted(formatted):
+    case let .editFormatted(formatted, placement):
         guard source.canEdit, formatted.isEditable, source.metadata.formattedText?.isEditable != false else { return false }
+        let changedPlacement = placement.map { $0 != source.metadata.captionAboveMedia } ?? false
+        guard !changedPlacement || source.metadata.hasMedia else { return false }
         let original = source.metadata.formattedText ?? (try? TelegramFormattedText(text: source.text))
-        return formatted.text.utf16.count <= source.editLimit && formatted != original &&
+        return formatted.text.utf16.count <= source.editLimit && (formatted != original || changedPlacement) &&
             (!formatted.text.isEmpty || source.metadata.allowsEmptyEdit)
     case .forward: return source.canForward
     case let .delete(everyone): return everyone ? source.canDeleteForEveryone : source.canDeleteLocally

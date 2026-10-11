@@ -10,7 +10,9 @@ edits and attachment captions. Shift-Return inserts a newline; Return also
 inserts a newline when ⌘Enter is selected.
 
 An inline Telegram edit keeps its text, formatting and selection when switching
-chats or services in the same window. Cancelling it returns to the separate
+chats or services in the same window. For media, right-click the edit accessory
+to move its caption above or below; changing only placement can be saved, and
+editing text preserves the native placement. Cancelling it returns to the separate
 ordinary draft/reply. Active edits remain in memory and reset after app restart.
 
 Forwarding opens the selected recipient in the same workspace, with a source

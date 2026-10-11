@@ -60,6 +60,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
         migrationChatID: group?.migrationReference?.peerId.toInt64(),
         allowsEmptyEdit: message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile },
         editLimit: message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile } ? 1024 : 4096,
+        hasMedia: !message.media.isEmpty, captionAboveMedia: message.attributes.contains { $0 is InvertMediaMessageAttribute },
         threadID: message.threadId, formattedText: formatted,
         canEditOutgoingChannel: outgoingChannel, canDeleteOutgoingChannel: outgoingChannel, canCopy: supportedPeer && !protected)
 }
@@ -73,6 +74,12 @@ func validateTelegramMessageAction(postbox: Postbox, accountID: Int64, action: T
                                    source: TelegramMessageActionSource) -> Signal<Bool, NoError> {
     validatedTelegramActionSource(postbox: postbox, accountID: accountID, source: source, action: action)
     |> map { $0 != nil }
+}
+
+func validatedTelegramEditContent(postbox: Postbox, accountID: Int64, action: TelegramMessageAction,
+                                  source: TelegramMessageActionSource) -> Signal<TelegramMessageEditContent?, NoError> {
+    validatedTelegramActionSource(postbox: postbox, accountID: accountID, source: source, action: action)
+    |> map { fresh in fresh.flatMap { TelegramMessageEditContent(action: action, source: $0) } }
 }
 
 func validateTelegramReplySource(postbox: Postbox, accountID: Int64,
@@ -96,7 +103,7 @@ private func validatedTelegramActionSource(postbox: Postbox, accountID: Int64,
         if case let .replyFormatted(formatted)? = action {
             guard telegramFormattedTextCanSend(formatted, transaction: transaction) else { return nil }
         }
-        if case let .editFormatted(formatted)? = action {
+        if case let .editFormatted(formatted, _)? = action {
             for entity in formatted.entities {
                 if case let .textMention(peerID) = entity.kind {
                     // apiInputUser is internal upstream; otherwise it drops this entity.
@@ -121,11 +128,10 @@ private func validatedTelegramActionSource(postbox: Postbox, accountID: Int64,
     }
 }
 
-private func reconcileEditedMessage(account: Account, id: MessageId, formatted: TelegramFormattedText) -> Signal<Bool, NoError> {
+private func reconcileEditedMessage(account: Account, id: MessageId, content: TelegramMessageEditContent) -> Signal<Bool, NoError> {
     account.postbox.transaction { transaction in
         guard let message = transaction.getMessage(id) else { return false }
-        let entities = message.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.flatMap(\.entities)
-        return (try? telegramFormattedText(text: message.text, entities: entities)) == formatted
+        return content.matches(message)
     }
 }
 
@@ -140,9 +146,18 @@ private func reconcileEditedMessage(account: Account, id: MessageId, formatted: 
             receive(.rejected); return lease
         }
         let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
-        lease.validation.set((validateTelegramMessageAction(postbox: account.postbox, accountID: accountID, action: action, source: source) |> deliverOnMainQueue).start(next: { [weak lease, account] valid in
+        let validation: Signal<(valid: Bool, editContent: TelegramMessageEditContent?), NoError>
+        switch action {
+        case .edit, .editFormatted:
+            validation = validatedTelegramEditContent(postbox: account.postbox, accountID: accountID, action: action, source: source)
+                |> map { (valid: $0 != nil, editContent: $0) }
+        default:
+            validation = validateTelegramMessageAction(postbox: account.postbox, accountID: accountID, action: action, source: source)
+                |> map { (valid: $0, editContent: nil) }
+        }
+        lease.validation.set((validation |> deliverOnMainQueue).start(next: { [weak lease, account] result in
             guard let lease, !lease.stopped else { return }
-            guard valid else { lease.emit(.rejected); return }
+            guard result.valid else { lease.emit(.rejected); return }
             lease.receive(.committing)
             guard !lease.stopped else { return }
             switch action {
@@ -169,24 +184,18 @@ private func reconcileEditedMessage(account: Account, id: MessageId, formatted: 
                     lease?.emit(ids.first.flatMap { $0 } == nil ? .uncertain : .queued)
                 }))
             case .edit, .editFormatted:
-                let formatted: TelegramFormattedText
-                switch action {
-                case let .edit(text):
-                    guard let plain = try? TelegramFormattedText(text: text) else { lease.emit(.rejected); return }
-                    formatted = plain
-                case let .editFormatted(value): formatted = value
-                default: lease.emit(.rejected); return
-                }
+                guard let content = result.editContent else { lease.emit(.rejected); return }
                 // Empty plain messages are invalid; an empty supported media caption is allowed.
-                lease.operation.set((TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: formatted.text,
-                    media: .keep, entities: TextEntitiesMessageAttribute(entities: formatted.engineEntities()), inlineStickers: [:])
+                lease.operation.set((TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: content.formatted.text,
+                    media: .keep, entities: TextEntitiesMessageAttribute(entities: content.formatted.engineEntities()), inlineStickers: [:],
+                    invertMediaAttribute: content.invertMediaAttribute)
                     |> deliverOnMainQueue).start(next: { [weak lease] result in
                         if case let .done(changed) = result {
                             guard let lease, !lease.stopped else { return }
                             if changed { lease.emit(.applied) }
                             else {
                                 // false also covers missing input peer/message, not only NOT_MODIFIED.
-                                lease.reconciliation.set((reconcileEditedMessage(account: account, id: id, formatted: formatted)
+                                lease.reconciliation.set((reconcileEditedMessage(account: account, id: id, content: content)
                                     |> deliverOnMainQueue).start(next: { [weak lease] matches in
                                         lease?.emit(matches ? .applied : .uncertain)
                                     }))

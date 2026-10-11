@@ -1,6 +1,56 @@
 # Development status — 2026-10-11
 
-## Current stage: received Telegram captions above visual media
+## Current stage: Telegram caption editing placement
+
+Telegram remains in the common Makosh service-sidebar/dialog/conversation window.
+The inline edit accessory now offers Move Caption Up/Down across its full surface,
+following verified TelegramSwift behavior. Raw native placement is independent
+of text/entities/selection and received presentation. Placement-only edits are
+accepted; menu/submit capture session/revision/context, reject stale or uncertain
+actions, and preserve newer input on an old acknowledgement. Edit requests and
+unchanged-text reconciliation retain/check native placement.
+
+Read-only review identified a legacy-caller boundary where correct native
+fingerprints could accompany omitted additive metadata. A real Postbox regression
+reproduced two failures; dispatch now builds content from the freshly validated
+message. The final frozen nine-file source snapshot and eleven supporting files,
+plus two additional supporting sources, have matching before/after hashes;
+the finding is resolved with no remaining source finding. Worker runtime/build/UI
+checks are SKIP; root verified these gates. Observed model/provider/usage remain
+unknown and no quorum is claimed.
+
+Initial runtime red: ten tests, 25 failed assertions. Missing-API compilation and
+an async-autoclosure test compile error are separate failed evidence; the latter
+was corrected before runtime red. Focused green: 46 tests. Final
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit 0:
+**599 XCTest (536 Telegram +63 core), zero failures; 30 Python regressions**.
+The full suite was repeated after the legacy boundary fix. The log retains 126
+upstream t19 teardown diagnostics without a test failure/trap.
+
+Native old-UI red confirms the missing accessory menu. An intermediate new UI
+opened it on text but missed the empty middle of the band; contentShape repairs
+that confirmed hit-area gap. Final owned native AX/screenshots verify whole-band
+right-click, up/down menu state, placement-only enabled confirmation with unchanged
+text, preservation through text edits/chat switches/Mail→Telegram, cancel/source
+reopen, synthetic applied acknowledgement and restart. The ordinary draft is
+preserved; restart resets temporary edits. QA uses only owned encrypted synthetic
+Postbox and isolated PostgreSQL/S3, without personal accounts, Keychain or Telegram
+network/server operations. Strict deep signatures and unsigned built/QA payload
+match pass. Live-server acceptance is not established.
+
+Final lexical XERJ refresh exits 0: 303 files, 273/273 classified code;
+project/reference/engine fingerprints and scoped queries pass. Current source
+hits were checked directly. Selected-field publication audit checks 308 publishable
+files and the PR body against five credential fields, with zero matches. Machine
+configuration, indexes, runtime and raw QA artifacts stay ignored.
+
+Previous 40964da passed both hosted PR and push CI. Current-head publication/CI
+and final index/audit evidence are recorded separately after publication.
+New-media preparation placement is the next reference workflow. Specialized
+renderers, autoload, exhaustive pixel parity, later channels, backups and standalone
+packaging remain open; the full sequential migration goal stays active.
+
+## Historical received Telegram captions above visual media
 
 Telegram stays inside the common Makosh service sidebar, dialog list and
 conversation/dossier. Received photo and ordinary-video messages now retain the

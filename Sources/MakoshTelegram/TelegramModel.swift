@@ -381,7 +381,7 @@ public final class TelegramModel: ObservableObject {
             let submitted: TelegramFormattedText?
             switch action {
             case let .edit(text): submitted = try? TelegramFormattedText(text: text)
-            case let .editFormatted(value): submitted = value
+            case let .editFormatted(value, _): submitted = value
             default: return
             }
             let captured = self.submittedEditSession
@@ -1042,10 +1042,35 @@ public final class TelegramModel: ObservableObject {
               input.formattedText.isEditable else { return false }
         guard current.input != input else { return true }
         messageEditSessions[current.source.chatID] = TelegramMessageEditSession(id: current.id,
-            source: current.source, author: current.author, contextID: contextID, input: input)
+            source: current.source, author: current.author, contextID: contextID, input: input,
+            captionAboveMedia: current.captionAboveMedia)
         editDrafts[EditDraftKey(current.source)] = input.formattedText
         projectMessageEditSession()
         return true
+    }
+
+    @discardableResult
+    public func updateMessageEditCaptionPlacement(_ above: Bool, sessionID: UUID, revision: UUID, contextID: UUID) -> Bool {
+        guard phase == .ready, !isBusy, contextID == accountGeneration,
+              messageSelection.session == nil, !isForwardComposerLocked, composerDraftRecoveryError == nil,
+              !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
+              !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
+              let current = messageEditSession, current.id == sessionID, current.revision == revision,
+              current.contextID == contextID, current.source.accountID == draftAccountID,
+              current.source.chatID == selectedChatID, current.source.canEdit, current.source.metadata.hasMedia else { return false }
+        guard current.captionAboveMedia != above else { return true }
+        messageEditSessions[current.source.chatID] = TelegramMessageEditSession(id: current.id,
+            source: current.source, author: current.author, contextID: contextID,
+            input: current.input, captionAboveMedia: above)
+        projectMessageEditSession()
+        return true
+    }
+
+    @discardableResult
+    public func submitMessageEdit(sessionID: UUID, revision: UUID, contextID: UUID) -> Bool {
+        guard let current = messageEditSession, current.id == sessionID, current.revision == revision,
+              current.contextID == contextID, current.canSubmit else { return false }
+        return performMessageAction(current.action, source: current.source, contextID: contextID)
     }
 
     @discardableResult
@@ -1109,14 +1134,10 @@ public final class TelegramModel: ObservableObject {
             }
         }
         submittedEditSession = nil
-        let edited: TelegramFormattedText?
-        switch action {
-        case let .edit(value): edited = try? TelegramFormattedText(text: value)
-        case let .editFormatted(value): edited = value
-        default: edited = nil
-        }
-        if let edited, let session = messageEditSession, session.source == source,
-           session.contextID == contextID, session.input.formattedText == edited {
+        if let edited = TelegramMessageEditContent(action: action, source: source),
+           let session = messageEditSession, session.source == source, session.contextID == contextID {
+            guard session.input.formattedText == edited.formatted,
+                  session.captionAboveMedia == edited.captionAboveMedia else { return false }
             submittedEditSession = session
         }
         // Capture before perform: providers may synchronously acknowledge.

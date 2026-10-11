@@ -41,6 +41,19 @@ struct TelegramInlineEditView: View {
     var body: some View {
         VStack(spacing: 0) {
             TelegramInputAccessoryView(title: "Изменить сообщение",detail: session.source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(session.source),symbol: "pencil",onClose: close)
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("telegram.actions.editAccessory")
+                .contextMenu {
+                    if session.source.metadata.hasMedia {
+                        Button(session.captionAboveMedia ? "Переместить подпись вниз" : "Переместить подпись вверх") {
+                            _ = model.updateMessageEditCaptionPlacement(!session.captionAboveMedia,
+                                sessionID: session.id, revision: session.revision, contextID: session.contextID)
+                        }
+                        .disabled(controller.isBusy || controller.phase == .uncertain || currentSession?.revision != session.revision)
+                        .accessibilityIdentifier("telegram.actions.captionPlacement")
+                    }
+                }
             HStack(alignment: .bottom,spacing: 12) {
                 TelegramRichTextEditor(value: Binding(get: { currentSession?.input.formattedText ?? session.input.formattedText },set: { _ in }),
                     error: $editorError,selection: session.input.selection,inputChanged: { input in
@@ -65,15 +78,11 @@ struct TelegramInlineEditView: View {
         guard model.phase == .ready,!model.isBusy,!model.isRestoringPendingUpload,
               model.pendingUploadRecoveryError == nil,!controller.isBusy,controller.phase != .uncertain,editorError == nil,
               let current = currentSession,model.selectedChatID == current.source.chatID else { return false }
-        let draft = current.input.formattedText,source = current.source
-        guard draft.isEditable,draft.text.utf16.count <= source.editLimit,
-              !draft.text.isEmpty || source.metadata.allowsEmptyEdit else { return false }
-        return draft != source.metadata.formattedText &&
-            (source.metadata.formattedText != nil || !draft.text.utf8.elementsEqual(source.text.utf8) || !draft.entities.isEmpty)
+        return current.canSubmit
     }
     private func submit() {
         guard canSubmit,let current = currentSession else { return }
-        rejected = !model.performMessageAction(.editFormatted(current.input.formattedText),source: current.source,contextID: current.contextID)
+        rejected = !model.submitMessageEdit(sessionID: current.id,revision: current.revision,contextID: current.contextID)
     }
     private func close() {
         guard let current = currentSession else { return }

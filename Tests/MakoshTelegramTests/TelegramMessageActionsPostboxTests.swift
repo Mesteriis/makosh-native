@@ -11,13 +11,13 @@ private func actionPeer(_ id: PeerId, accessHash: TelegramPeerAccessHash? = nil)
         nameColor: nil,backgroundEmojiId: nil,profileColor: nil,profileBackgroundEmojiId: nil,
         subscriberCount: nil,verificationIconFileId: nil)
 }
-private func actionFixture(_ box: Postbox, peer: PeerId, text: String, flags: StoreMessageFlags = [], update: Bool = false, media: [Media] = []) -> Signal<Message?, NoError> {
+private func actionFixture(_ box: Postbox, peer: PeerId, text: String, flags: StoreMessageFlags = [], update: Bool = false, media: [Media] = [], attributes: [MessageAttribute] = []) -> Signal<Message?, NoError> {
     box.transaction { transaction in
         transaction.updatePeersInternal([actionPeer(peer)],update: { _,new in new })
         let id = MessageId(peerId: peer,namespace: Namespaces.Message.Cloud,id: 1)
         let message = StoreMessage(id: id,globallyUniqueId: nil,groupingKey: nil,threadId: nil,
             timestamp: Int32(Date().timeIntervalSince1970) - 1,flags: flags,tags: [],globalTags: [],
-            localTags: [],forwardInfo: nil,authorId: peer,text: text,attributes: [],media: media)
+            localTags: [],forwardInfo: nil,authorId: peer,text: text,attributes: attributes,media: media)
         if update { transaction.updateMessage(id) { _ in .update(message) } }
         else { _ = transaction.addMessages([message],location: .Random) }
         return transaction.getMessage(id)
@@ -122,8 +122,28 @@ private func actionDeleteAndJournal(_ box: Postbox, id: MessageId) -> Signal<Res
         XCTAssertNotNil(emptyReply); XCTAssertEqual(emptyReply?.text, "")
         let staleReply = try await value(validateTelegramReplySource(postbox: postbox,accountID: account,source: source))
         XCTAssertNil(staleReply)
-
-
+        let placeAbove = TelegramMessageAction.editFormatted(try .init(text: ""), captionAboveMedia: true)
+        let placementAllowed = try await value(validateTelegramMessageAction(postbox: postbox, accountID: account, action: placeAbove, source: emptySource))
+        XCTAssertTrue(placementAllowed)
+        _ = try await value(actionFixture(postbox, peer: peer, text: "", update: true, media: [photo], attributes: [InvertMediaMessageAttribute()]))
+        let placedResult = try await value(actionCommittedMessage(postbox, peer: peer))
+        let placed = try XCTUnwrap(placedResult)
+        let placedSource = telegramMessageActionSource(placed, accountID: account, chatID: account)
+        XCTAssertNotEqual(placedSource.fingerprint, emptySource.fingerprint)
+        let stalePlacement = try await value(validateTelegramMessageAction(postbox: postbox, accountID: account, action: placeAbove, source: emptySource))
+        XCTAssertFalse(stalePlacement)
+        let placeBelow = TelegramMessageAction.editFormatted(try .init(text: ""), captionAboveMedia: false)
+        let resetAllowed = try await value(validateTelegramMessageAction(postbox: postbox, accountID: account, action: placeBelow, source: placedSource))
+        XCTAssertTrue(resetAllowed)
+        // An existing caller can retain a native fingerprint while omitting new
+        // additive metadata fields. Transport must use the freshly stored flag.
+        let legacy = TelegramMessageActionSource(accountID: account, chatID: account, peerID: account,
+            namespace: 0, messageID: 1, fingerprint: placedSource.fingerprint, text: "",
+            canReply: true, canEdit: true, canForward: true, canDeleteLocally: true, canDeleteForEveryone: true)
+        for action in [TelegramMessageAction.edit("Legacy changed"), .editFormatted(try .init(text: "Legacy changed"))] {
+            let resolved = try await value(validatedTelegramEditContent(postbox: postbox, accountID: account, action: action, source: legacy))
+            XCTAssertNotNil(try XCTUnwrap(resolved).invertMediaAttribute, "Legacy text edits must preserve the fresh native caption flag")
+        }
         _ = try await value(actionFixture(postbox,peer: peer,text: "edited",update: true))
         let editedResult = try await value(actionCommittedMessage(postbox,peer: peer))
         let edited = try XCTUnwrap(editedResult)

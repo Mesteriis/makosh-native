@@ -17,12 +17,14 @@ metadata and every queued reply attribute bind the complete batch to its source
 thread, canonical quote and absence of a todo item.
 
 The picker, upload controller, recovery protocol and preparation UI now carry
-ordered schema6/7/8/9 items. Multi-selection, stable-ID reorder/remove, grouping,
+ordered schema6/7/8/9/10 items. Multi-selection, stable-ID reorder/remove, grouping,
 later-item covers and whole-set restart use the existing upload state machine.
 Grouped visual previews split at10; documents remain individual preview rows.
 Existing schema1–5 preparations remain supported. Schema8 implements whole-list Media/File presentation and
-basic grouping eligibility. Schema9 adds strict ordinary-audio metadata and its
-native attributes without reinterpreting legacy files. Full upstream classification and archive preparation
+basic grouping eligibility. Schema9 adds strict ordinary-audio/WebP metadata and
+native attributes without reinterpreting legacy files. Schema10 adds a separately
+retained raw GIF/validated MP4 pair, bound source SHA256/canvas/Float delays and
+File/Media projection without recapture. Full upstream classification and archive preparation
 remain open. New picker photo preparations, including single selection, retain
 both normalized JPEG and a separately encrypted raw source. File mode selects
 that source and verifies its digest during native enqueue. Existing schema1–6 photos have
@@ -113,7 +115,7 @@ it does not roll back or justify resending. A durable complete receipt survives
 lost callbacks and rejects stale resubmission.
 
 Whole-list Media/File presentation and basic grouping eligibility are integrated.
-Reference trimming of unformatted input, full GIF/WebP/music/voice classification
+Reference trimming of unformatted input, the complete ordered source-option fold and recorded voice
 and archive preparation remain for step4. Per-item actions are now
 bound to stable IDs; native context-menu reorder/remove across the10/11 boundary,
 whole-set restart and local queue acceptance are verified. The drag/drop gesture
@@ -185,12 +187,17 @@ MediaBox, with complete native receipt checks. The whole-list option fold remain
 open. The local native proof is on
 host27; minimum26 runtime is separate evidence.
 
-GIF now has a standalone owned ImageIO/AVFoundation codec leaf: bounded source
+GIF now uses an owned ImageIO/AVFoundation codec: bounded source
 canvas/Float delays, independently staged H.264 and real decoded pixel/PTS tests,
-including disposal2/3 and a single frame. Raw GIF remains unchanged. This leaf is
-not connected to product preparation, storage or native mapping yet. Separate raw
-and transformed records, strict provenance and measured-versus-wire duration
-must be integrated before exposing GIF Media. Recorded voice remains a source
+including disposal2/3 and a single frame. Raw GIF remains unchanged. Strict schema10
+binds separate encrypted raw/transformed records to the source hash and facts;
+both storage policies, retry, File/Media and whole-pair restoration are implemented.
+Native Media uses measured MP4 bytes with wire duration0; File uses the raw GIF
+with image/gif/ImageSize independent of its suffix. An optional raw frame0 JPEG
+is regenerated only in MediaBox; complete native receipts cover its distinct ID
+and representation flags. No new S3 copy is permitted while the chat flag is off,
+including outgoing preparation; local pairs are never promoted on re-enable.
+Recorded voice remains a source
 contract without implemented type support. The prepared engine
 a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
 currently expose GIF conversion or Opus products. Its WebP helper is not adopted;
@@ -223,15 +230,15 @@ reorder. Do not serialize invalid Makosh state to reproduce that upstream quirk.
 
 Continue in this dependency order:
 
-1. Extend the strict typed metadata/schema9 introduced for ordinary music while preserving schema1–8 meanings.
+1. Extend strict typed metadata/schema9–10 while preserving schema1–8 meanings.
    Separate source facts, canonical payload and raw projection; reject unknown,
    missing or cross-kind metadata. Never reinterpret legacy generic files from
    suffixes. Bind source facts to stable item ID, owned raw size/digest and resource
    role, including logical image eligibility independent of JPEG pixels.
 2. Extend the owned music probe with the remaining byte probes and typed transformations. Music and WebP retain
    original bytes; WebP's separate optional first-frame320px JPEG transport preview
-   is now regenerated from authenticated bytes in MediaBox only. GIF must retain
-   both original and validated MP4. Explicit voice
+   is now regenerated from authenticated bytes in MediaBox only. GIF now retains
+   both original and validated MP4 with a separate optional raw-frame JPEG. Explicit voice
    needs offline Opus/Ogg codec and waveform proof. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every

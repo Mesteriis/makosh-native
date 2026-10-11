@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 import ImageIO
 import Darwin
+import CryptoKit
 @testable import MakoshTelegram
 
 @MainActor
@@ -54,6 +55,81 @@ final class TelegramUploadGIFIOTests: XCTestCase {
         let result = try await TelegramUploadGIFIO.inspect(file)
         XCTAssertNil(result)
         XCTAssertEqual(try Data(contentsOf: file.url), Data("synthetic text".utf8))
+    }
+
+    // Catches refusing a correctly bound immutable GIF or changing bytes during inspection.
+    func testCorrectDigestReadsGIFWithoutChangingBytes() async throws {
+        let bytes = uploadGIFTimingFixture
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let file = try await stage(bytes)
+        let result = try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: digest)
+        let info = try XCTUnwrap(result)
+        XCTAssertEqual(info.width, 32); XCTAssertEqual(info.height, 16)
+        XCTAssertEqual(info.frameDurations, [Float(0.05), 0.2, 0.4])
+        XCTAssertEqual(try Data(contentsOf: file.url), bytes)
+    }
+
+    // Catches ignoring the expected digest even though ImageIO accepts the GIF.
+    func testWrongDigestRejectsGIF() async throws {
+        let file = try await stage(uploadGIFTimingFixture)
+        do {
+            _ = try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: String(repeating: "0", count: 64))
+            XCTFail("A GIF with the wrong frozen digest must be unavailable")
+        } catch { XCTAssertEqual(error as? TelegramUploadFileError, .unavailable) }
+    }
+
+    // Catches accepting noncanonical, missing-length or nonhex digest claims.
+    func testMalformedDigestIsRejected() async throws {
+        let bytes = uploadGIFTimingFixture
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let file = try await stage(bytes)
+        for invalid in ["", String(repeating: "0", count: 63), String(repeating: "0", count: 65),
+                        String(repeating: "g", count: 64), digest.uppercased()] {
+            do {
+                _ = try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: invalid)
+                XCTFail("Malformed frozen digest must be unavailable")
+            } catch { XCTAssertEqual(error as? TelegramUploadFileError, .unavailable) }
+        }
+    }
+
+    // Catches trusting equal canvas/timings/size after the owned bytes have changed.
+    func testChangedSameFactsBytesRejectOriginalDigest() async throws {
+        let original = uploadGIFTimingFixture
+        let digest = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+        var changed = original
+        changed[16] = 254 // Red palette component; all dimensions, frame data and delays stay unchanged.
+        XCTAssertEqual(changed.count, original.count)
+        XCTAssertNotEqual(changed, original)
+        let file = try await stage(original)
+        let before = try await TelegramUploadGIFIO.inspect(file)
+        try changed.write(to: file.url)
+        let after = try await TelegramUploadGIFIO.inspect(file)
+        XCTAssertEqual(after, before)
+        do {
+            _ = try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: digest)
+            XCTFail("Equal GIF facts must not authorize different bytes")
+        } catch { XCTAssertEqual(error as? TelegramUploadFileError, .unavailable) }
+        XCTAssertEqual(try Data(contentsOf: file.url), changed)
+    }
+
+    // Catches treating nil classification as successful verification of a supplied digest.
+    func testExpectedDigestOnNonGIFIsRejected() async throws {
+        let bytes = Data("synthetic text".utf8)
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let file = try await stage(bytes, name: "claimed.gif")
+        do {
+            _ = try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: digest)
+            XCTFail("An expected GIF digest must fail closed for non-GIF bytes")
+        } catch { XCTAssertEqual(error as? TelegramUploadFileError, .unavailable) }
+    }
+
+    // Catches decoding GIF facts before rejecting a mismatched frozen byte binding.
+    func testWrongDigestIsRejectedBeforeMalformedGIFFacts() async throws {
+        let file = try await stage(Data(uploadGIFTimingFixture.prefix(18)))
+        do {
+            _ = try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: String(repeating: "0", count: 64))
+            XCTFail("Digest mismatch must throw before native GIF fact decoding")
+        } catch { XCTAssertEqual(error as? TelegramUploadFileError, .unavailable) }
     }
 
     // Catches accepting malformed or excessive GIF before bounded native decoding.

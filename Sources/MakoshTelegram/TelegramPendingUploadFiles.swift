@@ -110,7 +110,7 @@ actor TelegramPendingUploadFiles {
               TelegramPendingUploadItem.isDurable(record), record.attachment.id == attachmentID,
               let mode = TelegramUploadMode(rawValue: record.attachment.kind),
               (mode == .video) == (video != nil),
-              metadata.map({ mode == .file && $0.isValid }) ?? true,
+              metadata.map({ (mode == .file || (mode == .video && $0.gif != nil)) && $0.isValid }) ?? true,
               record.attachment.size == record.plaintextByteCount,
               record.attachment.name == telegramAttachmentName(record.attachment.name) else { throw TelegramUploadFileError.unavailable }
         let id = UUID()

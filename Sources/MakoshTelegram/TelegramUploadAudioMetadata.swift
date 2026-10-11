@@ -48,11 +48,18 @@ public struct TelegramUploadAudioMetadata: Codable, Equatable, Sendable {
 public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
     case audio(TelegramUploadAudioMetadata)
     case webP(TelegramUploadWebPMetadata)
+    case gif(TelegramUploadGIFMetadata)
+
+    var gif: TelegramUploadGIFMetadata? {
+        guard case let .gif(value) = self else { return nil }
+        return value
+    }
 
     public var isValid: Bool {
         switch self {
         case let .audio(value): value.isValid
         case let .webP(value): value.isValid
+        case let .gif(value): value.isValid
         }
     }
 
@@ -64,6 +71,7 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
         switch try values.decode(String.self, forKey: .kind) {
         case "audio": self = .audio(try values.decode(TelegramUploadAudioMetadata.self, forKey: .payload))
         case "webp": self = .webP(try values.decode(TelegramUploadWebPMetadata.self, forKey: .payload))
+        case "gif": self = .gif(try values.decode(TelegramUploadGIFMetadata.self, forKey: .payload))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: values,
                 debugDescription: "Unknown upload metadata kind")
@@ -78,6 +86,9 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
             try values.encode(value, forKey: .payload)
         case let .webP(value):
             try values.encode("webp", forKey: .kind)
+            try values.encode(value, forKey: .payload)
+        case let .gif(value):
+            try values.encode("gif", forKey: .kind)
             try values.encode(value, forKey: .payload)
         }
     }

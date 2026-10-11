@@ -1848,7 +1848,7 @@ For example64×64 pixels at144DPI remain an original file (32×32 points), while
 32×32 pixels at36DPI can become a photo (64×64 points). Both paths retain exact
 raw bytes after source removal; normalized JPEG pixels do not reclassify the source.
 GIF/WebP/multiframe inputs are never flattened into static photos. WebP typed
-originals are supported below; GIF conversion, ordered whole-list options and
+originals and GIF conversion are supported below; ordered whole-list options and
 recorded-voice attributes remain open; the verified dependency order is in `telegram-album-migration.md`.
 
 Media option eligibility is separate from all-visual grouping/layout: a mixed
@@ -1876,8 +1876,9 @@ Schema9 adds a strict `{kind:"audio",payload:{duration,title,performer}}` descri
 on ordered file items. Required keys, exact types, bounded UTF8 tags/no NUL and
 integral native seconds0…604800 are enforced. Unknown/extra fields, explicit null,
 cross-kind data and any video/cover/original field on typed music are refused.
-Schema1–8 reject typed metadata; schema9 requires at least one typed item and an
-explicit File/Media choice. Legacy generic files never infer metadata on restore.
+Schema1–8 reject typed metadata; schema9 requires at least one audio/WebP item and
+an explicit File/Media choice. Schema10 adds GIF pairs below. Legacy generic files
+never infer metadata on restore.
 
 Picker preparation probes an owned no-follow file with exact uid/0600/size.
 CoreAudio reads its held descriptor with a16MiB cumulative sniff budget and
@@ -1949,7 +1950,40 @@ and creates no archive record or S3 copy even when S3 is enabled. Generic legacy
 files retain an empty preview. Composer File presentation still shows its file
 icon; this change supplies the native transport representation.
 
-Full ordered source options (including40-point/aspect rules), GIF conversion
-and explicit voice remain open.
+Full ordered source options (including40-point/aspect rules) and explicit voice remain open.
 Apple ImageIO and owned synthetic fixtures add no codec dependency or copied GPL UI.
 Actual owned UI/host and full gate results are recorded in development-status.md.
+
+### Typed GIF preparation
+
+The picker inspects owned GIF87a/89a bytes before suffix-based photo/music
+classification. Bounded ImageIO/AVFoundation conversion produces an independent
+H.264 MP4 while retaining the unchanged raw source. Schema10 requires both
+records, exact source SHA256, canvas and Float frame delays; unknown/null/cross-kind
+fields, duplicate resource IDs, covers, zero raw size and output over128MiB are
+refused. Schema9 cannot contain GIF; legacy generic preparations remain untyped.
+
+Every canonical/raw capture is frozen before the first save. Pair verification
+binds raw hash/facts and canonical canvas/name/no-audio metadata; restored bytes
+are independently re-probed and any partial restoration is cleaned up. Canonical
+MP4 hashes authenticate the converted bytes. Recovery retains measured positive
+Float32 duration; generic video re-probe does not add a second H.264-codec check.
+Retry, list and Media/File changes reuse the pair's original durable records.
+
+Media maps MP4 to Video(duration0,flags[],nil optional fields), Animated only when
+not inCollage, then FileName. File selects raw GIF with image/gif, ImageSize and
+original FileName regardless of suffix. Its optional raw-frame0 JPEG uses max320
+without upscaling, quality0.7 and cap1MiB. The frozen raw SHA/facts are checked
+through a held owned snapshot. Ownership/hash/cancellation errors fail; optional
+native encoding failure may omit the preview. Its distinct gifPreview role is
+mutually exclusive with video thumbnail, cover and WebP preview. MediaBox exact
+readback and complete admission/ACK checks cover all IDs and representation flags.
+
+S3 OFF prohibits every new remote copy of either payload, including preparation.
+The encrypted local pair survives restart and never promotes after re-enable;
+PostgreSQL holds metadata, not payload bytes. The regenerated JPEG stays only in
+MediaBox even with S3 ON. Real local/S3 native regressions cover both presentations
+and no resend. The existing common-window preparation UI is retained. GIF cover
+editing is disabled because the reference's GIF sender ignores its custom cover;
+reference-interface.md records this difference and the source pin. Recorded
+voice, full ordered source options, Archive and image editing remain open.

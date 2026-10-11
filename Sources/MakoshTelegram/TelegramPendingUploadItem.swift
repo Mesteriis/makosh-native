@@ -14,13 +14,14 @@ public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
     }
 
     func allowsGrouping(_ files: [(name: String, isVisual: Bool, metadata: TelegramUploadMetadata?)]) -> Bool {
-        if files.contains(where: { $0.metadata != nil }) {
+        if files.contains(where: { if case .webP = $0.metadata { true } else { false } }) { return false }
+        if files.contains(where: { if case .audio = $0.metadata { true } else { false } }) {
             return self == .file && files.allSatisfy {
                 guard case let .audio(audio) = $0.metadata else { return false }
                 return !$0.isVisual && audio.isValid && ($0.name as NSString).pathExtension.lowercased() != "webp"
             }
         }
-        return allowsGrouping(files.map { (name: $0.name, isVisual: $0.isVisual) })
+        return allowsGrouping(files.map { (name: $0.metadata?.gif != nil ? "original.gif" : $0.name, isVisual: $0.isVisual) })
     }
 }
 
@@ -59,7 +60,9 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
         originalFile = try c.decodeIfPresent(ArchiveFileRecord.self, forKey: .originalFile)
         // A null discriminator cannot silently turn typed media into a generic file.
         metadata = c.contains(.metadata) ? try c.decode(TelegramUploadMetadata.self, forKey: .metadata) : nil
-        guard metadata == nil || (!c.contains(.video) && !c.contains(.videoCover) && !c.contains(.originalFile)) else {
+        guard metadata == nil || (metadata?.gif != nil
+            ? video != nil && originalFile != nil && !c.contains(.videoCover)
+            : !c.contains(.video) && !c.contains(.videoCover) && !c.contains(.originalFile)) else {
             throw DecodingError.dataCorruptedError(forKey: .metadata, in: c, debugDescription: "Conflicting typed preparation resources")
         }
     }
@@ -70,16 +73,27 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
 
     func isValid(identity: MessageArchiveIdentity, legacy: Bool) -> Bool {
         guard id != TelegramPendingUploadDraft.zeroUUID &&
-            (metadata.map { file.attachment.kind == "file" && video == nil && videoCover == nil && originalFile == nil && $0.isValid } ?? true) &&
+            (metadata.map { value in
+                value.gif != nil ? validGIFPair : file.attachment.kind == "file" && video == nil && videoCover == nil && originalFile == nil && value.isValid
+            } ?? true) &&
             (file.attachment.kind == "video") == (video != nil) &&
             (video?.isValid(name: file.attachment.name, size: file.plaintextByteCount) ?? true) &&
             (videoCover == nil || video != nil) &&
             (videoCover?.isValid(identity: identity, attachmentID: legacy ? "video-cover" : Self.coverAttachmentID(id)) ?? true) &&
             Self.validRecord(file, identity: identity, attachmentID: legacy ? "prepared" : Self.attachmentID(id)) else { return false }
         guard let originalFile else { return true }
-        return !legacy && file.attachment.kind == "photo" && originalFile.attachment.kind == "file" &&
+        return !legacy && (file.attachment.kind == "photo" || metadata?.gif != nil) && originalFile.attachment.kind == "file" &&
             originalFile.plaintextByteCount <= 20 * 1024 * 1024 &&
             Self.validRecord(originalFile, identity: identity, attachmentID: Self.originalAttachmentID(id))
+    }
+
+    private var validGIFPair: Bool {
+        guard let gif = metadata?.gif, gif.isValid, let video, let originalFile else { return false }
+        return file.attachment.kind == "video" && videoCover == nil && !video.hasAudio &&
+            file.plaintextByteCount <= 128 * 1024 * 1024 && originalFile.plaintextByteCount > 0 &&
+            video.width == gif.width && video.height == gif.height &&
+            gif.sourceSHA256 == originalFile.plaintextSHA256 &&
+            file.attachment.name == telegramAttachmentName((originalFile.attachment.name as NSString).deletingPathExtension + ".mp4")
     }
 
     func matchesOriginal(_ staged: TelegramUploadFile?) -> Bool {
@@ -94,7 +108,7 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
     }
 
     func payload(for presentation: TelegramUploadPresentation) -> ArchiveFileRecord? {
-        presentation == .file && file.attachment.kind == "photo" ? originalFile : file
+        presentation == .file && (file.attachment.kind == "photo" || metadata?.gif != nil) ? originalFile : file
     }
 
     static func isDurable(_ file: ArchiveFileRecord) -> Bool {
@@ -126,11 +140,27 @@ public struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
     public init(id: UUID, file: TelegramUploadFile, originalFile: TelegramUploadFile? = nil) {
         self.id = id; self.file = file; self.originalFile = originalFile
     }
+    func verifyGIFPair() async throws {
+        guard let gif = file.metadata?.gif else { return }
+        guard file.mode == .video, let originalFile, originalFile.mode == .file,
+              originalFile.metadata == nil, originalFile.video == nil, originalFile.videoCover == nil,
+              originalFile.id != file.id,
+              file.name == telegramAttachmentName((originalFile.name as NSString).deletingPathExtension + ".mp4") else {
+            throw TelegramUploadFileError.invalidGIF
+        }
+        try TelegramUploadFileIO.validateMetadata(file)
+        guard try await TelegramUploadGIFIO.inspect(originalFile, expectedPlaintextSHA256: gif.sourceSHA256) == gif.info else {
+            throw TelegramUploadFileError.invalidGIF
+        }
+    }
     public func presented(as presentation: TelegramUploadPresentation) -> Self? {
         guard presentation == .file else { return self }
-        if file.mode == .photo {
+        if file.mode == .photo || file.metadata?.gif != nil {
             guard let originalFile else { return nil }
-            return .init(id: id, file: originalFile, originalFile: originalFile)
+            let projected = TelegramUploadFile(id: originalFile.id, name: originalFile.name, size: originalFile.size,
+                mode: .file, pixelWidth: nil, pixelHeight: nil, url: originalFile.url, directory: originalFile.directory,
+                metadata: file.metadata)
+            return .init(id: id, file: projected, originalFile: originalFile)
         }
         return .init(id: id, file: TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .file,
             pixelWidth: nil, pixelHeight: nil, url: file.url, directory: file.directory, metadata: file.metadata), originalFile: originalFile)

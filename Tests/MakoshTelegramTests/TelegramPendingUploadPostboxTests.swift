@@ -52,6 +52,128 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
     var refuseCapture = false
 }
 @MainActor final class TelegramPendingUploadPostboxTests: XCTestCase {
+    func testGIFLocalMediaRestoresBothResourcesAndEnqueuesWithoutS3() async throws {
+        try await gifReopenAndEnqueue(enabled: false, presentation: .media)
+    }
+    func testGIFLocalFileRestoresBothResourcesAndEnqueuesWithoutS3() async throws {
+        try await gifReopenAndEnqueue(enabled: false, presentation: .file)
+    }
+    func testGIFS3MediaRestoresBothResourcesAndEnqueues() async throws {
+        try await gifReopenAndEnqueue(enabled: true, presentation: .media)
+    }
+    func testGIFS3FileRestoresBothResourcesAndEnqueues() async throws {
+        try await gifReopenAndEnqueue(enabled: true, presentation: .file)
+    }
+
+    // Catches missing pair capture/restore, projection recapture, S3 policy bypass and restart resend.
+    private func gifReopenAndEnqueue(enabled: Bool, presentation: TelegramUploadPresentation) async throws {
+        let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), path = try root(), source = archiveRoot.appendingPathComponent("Synthetic.bin")
+        try uploadGIFTimingFixture.write(to: source)
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x54, count: 32) })
+        let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        try await archive.setConversationFileSavingEnabled(identity: identity, enabled: enabled)
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic GIF")
+        let caption = try TelegramComposerInput(formattedText: .init(text: "GIF 😀"))
+        var saved: TelegramPendingUploadDraft?, mp4 = Data()
+        do {
+            let box = try await open(path); previousBox = box
+            let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                files: { TelegramPendingUploadFiles(repository: archive) })
+            // Releasing the controller models process exit; clear() is an explicit cancellation.
+            let controller = TelegramUploadController()
+            controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+            controller.prepare(sources: [.init(source: source, mode: .file)], isGrouped: false, target: target, captionInput: caption)
+            for _ in 0..<1000 where !controller.canSend && controller.error == nil && controller.phase != .failed { try await Task.sleep(for: .milliseconds(10)) }
+            guard controller.canSend else { return XCTFail("GIF pair must become durable before send") }
+            let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
+            XCTAssertEqual(first.schemaVersion, 10); XCTAssertEqual(first.presentation, .file)
+            mp4 = try Data(contentsOf: controller.items[0].file.url)
+            // Retry must reuse both resources; selecting Media never creates another archive copy.
+            try await store.prepare(preparationID: first.id, items: controller.items, isGrouped: false, presentation: .file,
+                target: target, captionInput: caption, originalDraft: nil)
+            if presentation == .media {
+                XCTAssertTrue(controller.updatePresentation(.media, contextID: first.id, revision: controller.itemsRevision))
+                for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(10)) }
+            }
+            let changedLoad = try await store.load(chatID: 42), changed = try XCTUnwrap(changedLoad)
+            XCTAssertEqual(changed.items, first.items); XCTAssertEqual(changed.presentation, presentation)
+            saved = changed; try FileManager.default.removeItem(at: source)
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let frozen = try XCTUnwrap(saved), original = try XCTUnwrap(frozen.items[0].originalFile)
+        let records = [frozen.items[0].file, original]
+        XCTAssertNotEqual(records[0].id, records[1].id); XCTAssertNotEqual(records[0].plaintextSHA256, records[1].plaintextSHA256)
+        for record in records {
+            XCTAssertEqual(record.state, enabled ? .stored : .local)
+            let remote = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
+            if enabled { XCTAssertNotNil(remote) } else { XCTAssertNil(remote) }
+        }
+        do {
+            let box = try await open(path); previousBox = box
+            let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                files: { TelegramPendingUploadFiles(repository: archive) })
+            let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
+            XCTAssertEqual(draft, frozen)
+            let restored = try await store.restoreItems(draft: draft)
+            defer { for item in restored { try? item.discard() } }
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored[0].originalFile).url), uploadGIFTimingFixture)
+            XCTAssertEqual(try Data(contentsOf: restored[0].file.url), mp4)
+            let controller = TelegramUploadController(); defer { controller.clear() }
+            controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+            guard controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch) else {
+                return XCTFail("GIF pair must restore through native batch route")
+            }
+            let seeded = expectation(description: "GIF synthetic peers")
+            let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+            defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
+            let queued = expectation(description: "GIF native queue")
+            controller.didQueue = { _, _ in queued.fulfill() }; controller.send(contextID: draft.id)
+            await fulfillment(of: [queued], timeout: 20)
+            let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
+            guard case let .acceptedBatch(ids) = accepted.disposition, ids.count == 1 else { return XCTFail("Complete GIF receipt required") }
+            XCTAssertEqual(accepted.items, draft.items)
+            let readDone = expectation(description: "GIF native payload")
+            var message: Message?
+            let read = (pendingControllerMessage(box, id: ids[0].nativeID) |> deliverOnMainQueue).start(next: { message = $0; readDone.fulfill() })
+            defer { read.dispose() }; await fulfillment(of: [readDone], timeout: 20)
+            let native = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
+            XCTAssertEqual(message?.text, "GIF 😀")
+            if presentation == .media {
+                XCTAssertEqual(native.mimeType, "video/mp4")
+                XCTAssertEqual(native.attributes, [.Video(duration: 0, size: .init(width: 32, height: 16), flags: [], preloadSize: nil, coverTime: nil, videoCodec: nil), .FileName(fileName: "Synthetic.mp4")])
+            } else {
+                XCTAssertEqual(native.mimeType, "image/gif")
+                XCTAssertEqual(native.attributes, [.ImageSize(size: .init(width: 32, height: 16)), .FileName(fileName: "Synthetic.bin")])
+            }
+            XCTAssertEqual(native.previewRepresentations.count, 1)
+            XCTAssertTrue(native.videoThumbnails.isEmpty); XCTAssertNil(native.videoCover)
+            let cacheDone = expectation(description: "GIF native exact bytes"); var cache: MediaResourceData?
+            let reading = (box.mediaBox.resourceData(native.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
+                |> take(1) |> deliverOnMainQueue).start(next: { cache = $0; cacheDone.fulfill() })
+            defer { reading.dispose() }; await fulfillment(of: [cacheDone], timeout: 20)
+            let cached = try XCTUnwrap(cache); XCTAssertTrue(cached.complete)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cached.path)), presentation == .media ? mp4 : uploadGIFTimingFixture)
+            saved = accepted
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let reopened = try await open(path), repository = TelegramPostboxPendingUploadRepository(postbox: reopened, accountID: 1)
+        let final = await load(42, repository: repository); XCTAssertEqual(try final.get(), saved)
+        if !enabled {
+            XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
+            try await archive.setConversationFileSavingEnabled(identity: identity, enabled: true)
+            let promoted = try await archive.resume(); XCTAssertEqual(promoted, 0)
+            for record in records {
+                let absent = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey); XCTAssertNil(absent)
+            }
+        }
+    }
+
     func testTypedAudioRestoresAndEnqueuesFromEncryptedLocalPreparationWithoutS3() async throws {
         try await typedReopenAndEnqueue(enabled: false, webP: false)
     }

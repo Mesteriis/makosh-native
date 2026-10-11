@@ -10,10 +10,13 @@ struct TelegramPreparedUploadMedia {
     let videoThumbnail: TelegramUploadVideoThumbnailResource?
     let videoCover: TelegramUploadVideoThumbnailResource?
     let webPPreview: TelegramUploadVideoThumbnailResource?
+    let gifPreview: TelegramUploadVideoThumbnailResource?
     init(resource: LocalFileMediaResource, reference: AnyMediaReference, videoThumbnail: TelegramUploadVideoThumbnailResource?,
-         videoCover: TelegramUploadVideoThumbnailResource? = nil, webPPreview: TelegramUploadVideoThumbnailResource? = nil) {
+         videoCover: TelegramUploadVideoThumbnailResource? = nil, webPPreview: TelegramUploadVideoThumbnailResource? = nil,
+         gifPreview: TelegramUploadVideoThumbnailResource? = nil) {
         self.resource = resource; self.reference = reference; self.videoThumbnail = videoThumbnail; self.videoCover = videoCover
         self.webPPreview = webPPreview
+        self.gifPreview = gifPreview
     }
 }
 
@@ -25,7 +28,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
     private let expectedPlaintextSHA256: String?
     private let receive: @MainActor (Result<TelegramPreparedUploadMedia, TelegramUploadFileError>) -> Void
 
-    init(mediaBox: MediaBox, file: TelegramUploadFile, expectedPlaintextSHA256: String? = nil,
+    init(mediaBox: MediaBox, file: TelegramUploadFile, originalFile: TelegramUploadFile? = nil, expectedPlaintextSHA256: String? = nil,
          receive: @escaping @MainActor (Result<TelegramPreparedUploadMedia, TelegramUploadFileError>) -> Void) {
         self.receive = receive
         self.expectedPlaintextSHA256 = expectedPlaintextSHA256
@@ -39,7 +42,15 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
                         throw TelegramUploadFileError.unavailable
                     }
                 }
-                let jpeg = file.mode == .video ? try await TelegramUploadVideoIO.thumbnail(file) : nil
+                let jpeg = file.mode == .video && file.metadata?.gif == nil ? try await TelegramUploadVideoIO.thumbnail(file) : nil
+                let gifJPEG: TelegramUploadVideoThumbnail?
+                if let gif = file.metadata?.gif {
+                    guard let raw = originalFile ?? (file.mode == .file ? file : nil), raw.mode == .file,
+                          raw.video == nil, raw.videoCover == nil else { throw TelegramUploadFileError.invalidGIF }
+                    let typed = TelegramUploadFile(id: raw.id, name: raw.name, size: raw.size, mode: .file,
+                        pixelWidth: nil, pixelHeight: nil, url: raw.url, directory: raw.directory, metadata: .gif(gif))
+                    gifJPEG = try await TelegramUploadGIFIO.thumbnail(typed)
+                } else { gifJPEG = nil }
                 let webPJPEG: TelegramUploadVideoThumbnail?
                 if case .webP = file.metadata {
                     webPJPEG = try await TelegramUploadWebPIO.thumbnail(file, expectedPlaintextSHA256: expectedPlaintextSHA256)
@@ -47,7 +58,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
                 let cover = try file.videoCover.map { try TelegramUploadVideoCoverIO.validatedBytes($0) }
                 try Task.checkCancellation()
                 guard let self, !self.stopped else { return }
-                self.store(mediaBox: mediaBox, file: file, videoJPEG: jpeg, webPJPEG: webPJPEG, coverBytes: cover)
+                self.store(mediaBox: mediaBox, file: file, videoJPEG: jpeg, webPJPEG: webPJPEG, gifJPEG: gifJPEG, coverBytes: cover)
             } catch {
                 guard let self, !self.stopped, !Task.isCancelled else { return }
                 self.finish(.failure(error as? TelegramUploadFileError ?? .unavailable))
@@ -56,24 +67,25 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
     }
 
     private func store(mediaBox: MediaBox, file: TelegramUploadFile, videoJPEG: TelegramUploadVideoThumbnail?,
-                       webPJPEG: TelegramUploadVideoThumbnail?, coverBytes: Data?) {
+                       webPJPEG: TelegramUploadVideoThumbnail?, gifJPEG: TelegramUploadVideoThumbnail?, coverBytes: Data?) {
         // The byte identity is shared; the mutually exclusive media roles stay explicit.
-        let jpeg = videoJPEG ?? webPJPEG
+        let jpeg = videoJPEG ?? webPJPEG ?? gifJPEG
         let thumbnail = jpeg.map { TelegramUploadVideoThumbnailResource(id: Int64.random(in: Int64.min...Int64.max),
             width: $0.width, height: $0.height, size: Int64($0.data.count)) }
         let videoThumbnail = videoJPEG == nil ? nil : thumbnail
         let webPPreview = webPJPEG == nil ? nil : thumbnail
+        let gifPreview = gifJPEG == nil ? nil : thumbnail
         let cover = file.videoCover.map { staged -> TelegramUploadVideoThumbnailResource in
             var id = Int64.random(in: Int64.min...Int64.max)
             while id == thumbnail?.id { id = Int64.random(in: Int64.min...Int64.max) }
             return TelegramUploadVideoThumbnailResource(id: id, width: staged.width, height: staged.height, size: staged.size)
         }
         guard let (resource, reference) = telegramUploadMedia(file, videoThumbnail: videoThumbnail, videoCover: cover,
-            webPPreview: webPPreview) else {
+            webPPreview: webPPreview, gifPreview: gifPreview) else {
             finish(.failure(.unavailable)); return
         }
         let prepared = TelegramPreparedUploadMedia(resource: resource, reference: reference, videoThumbnail: videoThumbnail,
-            videoCover: cover, webPPreview: webPPreview)
+            videoCover: cover, webPPreview: webPPreview, gifPreview: gifPreview)
         keep.set(mediaBox.keepResource(id: resource.id).start())
         if let thumbnail, let jpeg {
             thumbnailKeep.set(mediaBox.keepResource(id: thumbnail.resource.id).start())

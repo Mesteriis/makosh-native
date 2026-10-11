@@ -1,6 +1,71 @@
 # Development status — 2026-10-11
 
-## Current stage: standalone owned GIF codec verified; durable integration next
+## Current stage: durable GIF pair, native File/Media and restart verified
+
+GIF classification now binds owned raw bytes to the converted H.264 MP4 using
+strict schema10 source SHA256, canvas and Float delays. The two payloads have
+separate encrypted records. File selects the original, Media selects the MP4;
+mode edits and retry reuse the same records. Both resources are frozen before
+the first save and re-probed after all-or-cleanup restoration. Unsafe recognizable
+GIF remains an unchanged generic file; old generic drafts are not reclassified.
+Schema1–9 meanings and existing audio/WebP behavior remain supported.
+
+Native GIF Media has reference wire duration0 with exact Video/FileName and
+Animated only outside collage; measured positive duration stays in recovery.
+File uses image/gif/ImageSize/original filename independently of suffix. A
+separate optional original-frame0 JPEG (max320/no upscale, quality0.7, cap1MiB)
+is regenerated in MediaBox only. Exact payload/preview readback, distinct IDs,
+complete representation flags and native attributes bind admission and ACK.
+GIF cover editing is disabled: the reference exposes that menu through isVideo
+but its GIF sender ignores customPreview. This difference is recorded in
+reference-interface.md. No dependency, engine recipe or license changed.
+
+S3 OFF forbids every new S3 copy, including outgoing raw/MP4 preparation.
+Both records stay in authenticated encrypted local storage; re-enable never
+promotes them. No payload bytes are stored in PostgreSQL. Four real
+Postbox/PostgreSQL/S3 regressions cover both presentations with ON/OFF, restart,
+exact native bytes and no resend. Literal schema bounds regressions close the
+independent review's raw-zero/canonical-over128MiB admission finding.
+
+Actual behavioral REDs are retained separately from compilation/setup failures:
+schema4/4 unexpected, controller4/9, local pair1/1, preview6/11, native mapper2/8,
+shared-resource admission1/2 and pair-bounds2 failures. One restart test initially
+called explicit cancellation through clear(); its corrected process-release
+fixture then failed only for the missing preview. Focused final GREEN47/0.
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**940 XCTest (864 Telegram +76 core), zero failures;32 Python regressions**.
+Current full test/build logs have no compile warning. Existing upstream t19
+teardown diagnostics remain without test failures.
+
+Owned synthetic common-window QA picks a1247-byte GIF under .bin with S3 OFF,
+switches File→Media→File, retains its15-UTF16 caption after removal of the chosen
+source path and process restart, and accepts one native queue ID. File/Media
+screenshots were inspected. Strict bundle signatures and raw unsigned built–QA
+payload equality pass. Separate stopped-app Postbox/PostgreSQL/S3 readbacks
+before/after native acceptance each pass1/0: same preparation and two local IDs,
+exact raw/MP4 bytes/hashes/facts/caption, absent local/conventional S3 objects,
+empty file archive metadata and separate32×16 native JPEG/default flags.
+The second process restart does not resurrect a preparation or queue it again;
+Mail→Telegram retains chat7 and S3 OFF. Temporary private readback tests were
+removed. No personal account, Telegram
+network or microphone was used. Host27.0.1 does not prove minimum26 runtime.
+
+Independent final source review reports no new actionable defect; the prior
+bounds finding is closed. Root verifies20 before/end/current patch hashes and
+30 raw command/exit pointers; preview author contract has2 current file hashes,
+4 unchanged read dependencies and10 raw pointers. Worker runtime is SKIP;
+parent gates/UI are separate, observed provider/model/usage unknown, no quorum.
+The mid-edit XERJ refresh failed because source changed during indexing; its
+failure is retained. Final frozen XERJ refresh/check/query and reference/engine
+freshness checks exit0:383 files,352/352 classified code. Root source-confirms
+GIF pair/preview hits; no stale mid-edit index is reused.
+Hosted CI for published standalone codec500facc succeeded in both runs.
+
+Next: recorded voice/codec, ordered source options, Archive and caption
+normalization. Full Telegram parity, live Account/server validation, remaining
+channels and the sequential migration goal remain open.
+
+## Historical standalone GIF codec (500facc)
 
 An internal native GIF leaf now inspects owned bytes and produces
 an independent H.264 MP4. It is deliberately not connected to the picker,

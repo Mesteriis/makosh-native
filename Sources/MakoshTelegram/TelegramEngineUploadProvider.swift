@@ -9,6 +9,7 @@ import SwiftSignalKit
 func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil,
                          videoCover: TelegramUploadVideoThumbnailResource? = nil,
                          webPPreview: TelegramUploadVideoThumbnailResource? = nil,
+                         gifPreview: TelegramUploadVideoThumbnailResource? = nil,
                          resourceID requestedResourceID: Int64? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
     guard (try? TelegramUploadFileIO.validateMetadata(file)) != nil else { return nil }
     guard file.mode == .video || (file.video == nil && file.videoCover == nil),
@@ -16,23 +17,27 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
     if let staged = file.videoCover {
         guard videoCover?.width == staged.width, videoCover?.height == staged.height, videoCover?.size == staged.size else { return nil }
     }
-    guard file.mode == .video ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
+    guard file.mode == .video && file.metadata?.gif == nil ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
     guard file.mode == .video ? videoCover?.isValid ?? true : videoCover == nil,
           videoCover == nil || videoCover?.id != videoThumbnail?.id else { return nil }
     if let webPPreview {
         guard file.mode == .file, case .webP = file.metadata, webPPreview.isValid,
               webPPreview.id != videoThumbnail?.id, webPPreview.id != videoCover?.id else { return nil }
     }
-    if let requestedResourceID, requestedResourceID == videoThumbnail?.id || requestedResourceID == videoCover?.id || requestedResourceID == webPPreview?.id { return nil }
+    if let gifPreview {
+        guard file.metadata?.gif != nil, gifPreview.isValid, videoThumbnail == nil,
+              videoCover == nil, webPPreview == nil else { return nil }
+    }
+    if let requestedResourceID, requestedResourceID == videoThumbnail?.id || requestedResourceID == videoCover?.id || requestedResourceID == webPPreview?.id || requestedResourceID == gifPreview?.id { return nil }
     var resourceID = requestedResourceID ?? Int64.random(in: Int64.min...Int64.max)
-    while resourceID == videoThumbnail?.id || resourceID == videoCover?.id || resourceID == webPPreview?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
+    while resourceID == videoThumbnail?.id || resourceID == videoCover?.id || resourceID == webPPreview?.id || resourceID == gifPreview?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
     let resource = LocalFileMediaResource(fileId: resourceID, size: file.size)
     let media: Media
     switch file.mode {
     case .video:
-        guard let attributes = telegramUploadVideoAttributes(file), let videoThumbnail else { return nil }
+        guard let attributes = telegramUploadVideoAttributes(file) else { return nil }
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
-            partialReference: nil, resource: resource, previewRepresentations: [videoThumbnail.representation], videoThumbnails: [],
+            partialReference: nil, resource: resource, previewRepresentations: (gifPreview ?? videoThumbnail).map { [$0.representation] } ?? [], videoThumbnails: [],
             videoCover: videoCover.map { TelegramMediaImage(imageId: MediaId(namespace: 0, id: 0),
                 representations: [$0.representation], immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: []) },
             immediateThumbnailData: nil, mimeType: "video/mp4", size: file.size,
@@ -47,12 +52,16 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             mime = "image/webp"
             attributes.append(.ImageSize(size: PixelDimensions(width: webP.width, height: webP.height)))
         }
+        if let gif = file.metadata?.gif {
+            mime = "image/gif"
+            attributes.append(.ImageSize(size: PixelDimensions(width: gif.width, height: gif.height)))
+        }
         attributes.append(.FileName(fileName: telegramAttachmentName(file.name)))
         if case .webP = file.metadata {
             attributes.append(.Sticker(displayText: "", packReference: nil, maskData: nil))
         }
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
-            partialReference: nil, resource: resource, previewRepresentations: webPPreview.map { [$0.representation] } ?? [], videoThumbnails: [],
+            partialReference: nil, resource: resource, previewRepresentations: (gifPreview ?? webPPreview).map { [$0.representation] } ?? [], videoThumbnails: [],
             immediateThumbnailData: nil, mimeType: mime, size: file.size,
             attributes: attributes, alternativeRepresentations: [])
     case .photo:
@@ -69,6 +78,13 @@ func telegramUploadVideoAttributes(_ file: TelegramUploadFile) -> [TelegramMedia
     guard file.mode == .video, let video = file.video,
           video.isValid(name: file.name, size: file.size), file.pixelWidth == video.width,
           file.pixelHeight == video.height else { return nil }
+    if file.metadata?.gif != nil {
+        var attributes: [TelegramMediaFileAttribute] = [.Video(duration: 0,
+            size: PixelDimensions(width: video.width, height: video.height), flags: [], preloadSize: nil, coverTime: nil, videoCodec: nil)]
+        if !video.inCollage { attributes.append(.Animated) }
+        attributes.append(.FileName(fileName: telegramAttachmentName(file.name)))
+        return attributes
+    }
     var attributes: [TelegramMediaFileAttribute] = [
         .Video(duration: video.duration, size: PixelDimensions(width: video.width, height: video.height),
             flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil),

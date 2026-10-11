@@ -569,15 +569,14 @@ Static photo admission теперь использует размер исход
 Нативная проверка в общей форме: PNG64×64@144DPI остаётся файлом354bytes;
 PNG32×32@36DPI получает JPEG795bytes и сохраняет исходный PNG267bytes. File/Media
 и подпись переживают удаление выбранного файла и restart при выключенном S3.
-GIF/voice mappings ещё не реализованы; ordinary music и WebP описаны ниже. Полный source contract,
+GIF, ordinary music и WebP описаны ниже; recorded voice ещё не реализован. Полный source contract,
 включая order-dependent WebP options и отдельные native kinds, записан в
 `telegram-album-migration.md`; это не заявление о полном совпадении с референсом.
 Mode write меняет только Postbox metadata, сохраняет исходные local/S3 IDs и блокирует
 Send до подтверждения. Native PNG regression проверяет настоящий FileName,
 точные исходные байты MediaBox и complete receipt после восстановления.
 
-Оставшиеся различия классификации явные: GIF/multiframe media conversion
-не перенесена; WebP сохраняет исходные байты с native sticker attributes. Static-photo admission уже использует
+Оставшиеся различия классификации явные: WebP сохраняет исходные байты с native sticker attributes. Static-photo admission уже использует
 NSImage logical size. Полный ordered classifier, OGG/Opus и recorded voice ещё
 открыты, как Archive и image edits.
 
@@ -650,13 +649,34 @@ GIF converter сверено с pinned
 `packages/TGGifConverter/Sources/TGGifConverter/TGGifConverter.m:18–254` и
 `SenderController.swift:383–387,448–453`: canvas из GIF header, unclamped Float
 delay с fallback0.1, порог0.011, cumulative PTS с timescale600 и повтор последнего
-кадра при promoted Float delay>0.33. Собственный standalone ImageIO/AVFoundation
+кадра при promoted Float delay>0.33. Собственный ImageIO/AVFoundation
 leaf настроен на H.264 High4.0/512kbps. Native readback подтверждает H.264 без
 audio/resize, timing и RGB,
 частичные кадры, disposal2/3 и один кадр. Исходный GIF сохраняется неизменным;
 выходной MP4 имеет отдельный owned ID и положительную измеренную длительность.
-Долговременная пара raw/MP4, schema/provenance, File/Media и native wire duration0
-ещё не подключены. Текущий picker по-прежнему показывает GIF как обычный File.
+Schema10 теперь сохраняет raw GIF и MP4 отдельными encrypted local/S3 records,
+с canvas/Float delays и SHA256 именно исходных байтов. Обе копии проверяются до
+первого сохранения и после восстановления; retry и File/Media меняют metadata,
+не создавая новых копий. При S3 OFF оба ресурса локальные, без последующей
+автоматической загрузки после включения флага. Legacy generic files не получают
+новый тип по расширению; узнаваемый небезопасный GIF остаётся исходным файлом.
+
+Media выбирает MP4 с точными Video(duration0, flags[]), FileName и Animated
+только вне collage; измеренная положительная MP4 duration остаётся в recovery.
+File выбирает исходные байты с image/gif, ImageSize и исходным FileName даже
+под .bin. Отдельный optional JPEG из raw frame0 имеет max320 без увеличения,
+quality0.7 и cap1MiB; создаётся в MediaBox, не как новый S3/archive record.
+FIFO readback проверяет его байты; native admission/ACK проверяют отдельный ID,
+все representation flags и отсутствие лишних/переупорядоченных attributes.
+
+На том же pin сверены PreviewSenderController.swift:316–318 и
+SenderController.swift:383–386: upstream допускает меню cover для GIF через
+media.isVideo, но GIF generator игнорирует customPreview. Макош отключает
+действие cover для GIF; это явное отличие, без сохранения неиспользуемой обложки.
+Image edit/paint применяются к TelegramMediaImage, не этому GIF-file mapping.
+Существующие Media spoiler/caption controls сохранены. Нативная синтетическая
+форма проверена с одним GIF под .bin в File и Media, подписью и restart после
+удаления выбранного source path; точные gate/readback результаты — в development-status.md.
 
 BGRA/sRGB с явным чёрным фоном, отключённый frame reordering, offline input,
 строгие caps20MiB/4096-axis/16M-canvas/256frames/256M-work/600s и output128MiB —
@@ -664,4 +684,4 @@ BGRA/sRGB с явным чёрным фоном, отключённый frame re
 отмена не выполняется в вызывающем UI cancellation handler. In-flight cancel,
 transparency и odd-axis runtime остаются отдельными непроверенными случаями.
 Внешний GPLv2 UI и helper code не копировались; Apple SDK не становится
-зависимостью от `.references/`. Новый экран для этого внутреннего этапа не создан.
+зависимостью от `.references/`. Используется существующая форма общей оболочки Макош.

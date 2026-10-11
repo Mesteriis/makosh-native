@@ -13,11 +13,39 @@ struct TelegramUploadGIFInfo: Equatable, Sendable {
 enum TelegramUploadGIFError: Error, Equatable { case invalidGIF }
 
 enum TelegramUploadGIFIO {
-    static func inspect(_ raw: TelegramUploadFile) async throws -> TelegramUploadGIFInfo? {
+    static func thumbnail(_ raw: TelegramUploadFile) async throws -> TelegramUploadVideoThumbnail? {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
             let snapshot = try GIFSnapshot(raw)
-            guard let data = try snapshot.gifData() else { return nil as TelegramUploadGIFInfo? }
+            guard let frozen = raw.metadata?.gif, frozen.isValid else {
+                throw TelegramUploadGIFError.invalidGIF
+            }
+            guard let data = try snapshot.gifData() else { throw TelegramUploadFileError.unavailable }
+            try validateDigest(frozen.sourceSHA256, data: data)
+            guard try facts(data) == frozen.info else { throw TelegramUploadGIFError.invalidGIF }
+            try Task.checkCancellation()
+            let preview = thumbnailData(data, canvasWidth: frozen.width, canvasHeight: frozen.height)
+            try Task.checkCancellation()
+            try snapshot.validate()
+            return preview
+        }
+        return try await withTaskCancellationHandler {
+            let preview = try await worker.value
+            try Task.checkCancellation()
+            return preview
+        } onCancel: { worker.cancel() }
+    }
+
+    static func inspect(_ raw: TelegramUploadFile,
+                        expectedPlaintextSHA256: String? = nil) async throws -> TelegramUploadGIFInfo? {
+        try Task.checkCancellation()
+        let worker = Task.detached(priority: .utility) {
+            let snapshot = try GIFSnapshot(raw)
+            guard let data = try snapshot.gifData() else {
+                guard expectedPlaintextSHA256 == nil else { throw TelegramUploadFileError.unavailable }
+                return nil as TelegramUploadGIFInfo?
+            }
+            try validateDigest(expectedPlaintextSHA256, data: data)
             let info = try facts(data)
             try snapshot.validate()
             try Task.checkCancellation()
@@ -36,13 +64,7 @@ enum TelegramUploadGIFIO {
         let worker = Task.detached(priority: .utility) {
             let snapshot = try GIFSnapshot(raw)
             guard let data = try snapshot.gifData() else { throw TelegramUploadGIFError.invalidGIF }
-            if let digest = expectedPlaintextSHA256 {
-                guard digest.utf8.count == 64,
-                      digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
-                      SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == digest else {
-                    throw TelegramUploadFileError.unavailable
-                }
-            }
+            try validateDigest(expectedPlaintextSHA256, data: data)
             let actual = try facts(data)
             guard actual == expected else { throw TelegramUploadGIFError.invalidGIF }
             try snapshot.validate()
@@ -66,6 +88,40 @@ enum TelegramUploadGIFIO {
                 throw error
             }
         } onCancel: { worker.cancel() }
+    }
+
+    private static func thumbnailData(_ data: Data, canvasWidth: Int32,
+                                      canvasHeight: Int32) -> TelegramUploadVideoThumbnail? {
+        autoreleasepool {
+            guard let source = CGImageSourceCreateWithData(data as CFData,
+                [kCGImageSourceShouldCache: false] as CFDictionary),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0,
+                    [kCGImageSourceThumbnailMaxPixelSize: min(320, max(Int(canvasWidth), Int(canvasHeight))),
+                     kCGImageSourceCreateThumbnailFromImageAlways: true,
+                     kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary),
+                  image.width > 0, image.height > 0, image.width <= 320, image.height <= 320,
+                  image.width <= Int(canvasWidth), image.height <= Int(canvasHeight) else { return nil }
+            let output = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else {
+                return nil
+            }
+            CGImageDestinationAddImage(destination, image,
+                [kCGImageDestinationLossyCompressionQuality: 0.7] as CFDictionary)
+            guard CGImageDestinationFinalize(destination), output.length > 0,
+                  output.length <= 1_048_576 else { return nil }
+            return .init(data: output as Data, width: Int32(image.width), height: Int32(image.height))
+        }
+    }
+
+    private static func validateDigest(_ expected: String?, data: Data) throws {
+        guard let expected else { return }
+        try Task.checkCancellation()
+        guard expected.utf8.count == 64,
+              expected.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+              SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == expected else {
+            throw TelegramUploadFileError.unavailable
+        }
+        try Task.checkCancellation()
     }
 
     /// The global GIF canvas bounds decoding even when a frame updates only a patch.

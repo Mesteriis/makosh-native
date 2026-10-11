@@ -30,7 +30,7 @@ public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
 }
 
 public enum TelegramUploadFileError: LocalizedError, Equatable {
-    case unavailable, tooLarge, invalidImage, invalidVideo, invalidAudio, invalidWebP, stagingFailed
+    case unavailable, tooLarge, invalidImage, invalidVideo, invalidAudio, invalidWebP, invalidGIF, stagingFailed
     public var errorDescription: String? {
         switch self {
         case .unavailable: "Выбранный файл недоступен или изменён. Выберите его снова."
@@ -39,6 +39,7 @@ public enum TelegramUploadFileError: LocalizedError, Equatable {
         case .invalidVideo: "Не удалось подготовить видео. Можно отправить оригинал как файл."
         case .invalidAudio: "Не удалось проверить аудиофайл. Можно отправить оригинал как файл."
         case .invalidWebP: "Не удалось проверить WebP. Можно отправить оригинал как файл."
+        case .invalidGIF: "Не удалось проверить GIF. Можно отправить оригинал как файл."
         case .stagingFailed: "Не удалось подготовить временную копию вложения. Проверьте свободное место и доступ."
         }
     }
@@ -127,8 +128,8 @@ public enum TelegramUploadFileIO {
     static func restoredStage(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, url: URL, directory: URL,
                               video: TelegramUploadVideoMetadata? = nil, metadata: TelegramUploadMetadata? = nil) async throws -> TelegramUploadFile {
         guard mode == .video || video == nil else { throw TelegramUploadFileError.unavailable }
-        let provisional = TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: nil, pixelHeight: nil,
-            url: url, directory: directory, metadata: metadata)
+        let provisional = TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: video?.width, pixelHeight: video?.height,
+            url: url, directory: directory, video: video, metadata: metadata)
         try validateOwnedStage(provisional)
         try await verifyMetadata(provisional)
         if mode == .file { return provisional }
@@ -139,7 +140,7 @@ public enum TelegramUploadFileIO {
                   info.duration == video.duration, info.hasAudio == video.hasAudio else { throw TelegramUploadFileError.invalidVideo }
             try Task.checkCancellation()
             return TelegramUploadFile(id: id, name: name, size: size, mode: mode,
-                pixelWidth: video.width, pixelHeight: video.height, url: url, directory: directory, video: video)
+                pixelWidth: video.width, pixelHeight: video.height, url: url, directory: directory, video: video, metadata: metadata)
         }
         _ = try await TelegramDownloadedFileIO.image(source: url, expectedSize: size)
         try Task.checkCancellation()
@@ -158,6 +159,19 @@ public enum TelegramUploadFileIO {
         switch metadata {
         case .audio: invalid = .invalidAudio
         case .webP: invalid = .invalidWebP
+        case let .gif(gif):
+            guard gif.isValid, file.videoCover == nil else { throw TelegramUploadFileError.invalidGIF }
+            if file.mode == .file {
+                guard file.video == nil, file.pixelWidth == nil, file.pixelHeight == nil,
+                      file.size > 0, file.size <= 20 * 1024 * 1024 else { throw TelegramUploadFileError.invalidGIF }
+            } else {
+                guard file.mode == .video, let video = file.video, !video.hasAudio,
+                      video.isValid(name: file.name, size: file.size),
+                      (file.name as NSString).pathExtension == "mp4", file.size <= 128 * 1024 * 1024,
+                      video.width == gif.width, video.height == gif.height,
+                      file.pixelWidth == video.width, file.pixelHeight == video.height else { throw TelegramUploadFileError.invalidGIF }
+            }
+            return
         }
         guard file.mode == .file, file.video == nil, file.videoCover == nil,
               file.pixelWidth == nil, file.pixelHeight == nil, metadata.isValid else { throw invalid }
@@ -172,6 +186,16 @@ public enum TelegramUploadFileIO {
             guard try await TelegramUploadAudioIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidAudio }
         case let .webP(frozen):
             guard try await TelegramUploadWebPIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidWebP }
+        case let .gif(frozen):
+            if file.mode == .file {
+                guard try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: frozen.sourceSHA256) == frozen.info else {
+                    throw TelegramUploadFileError.invalidGIF
+                }
+            } else {
+                let info = try await TelegramUploadVideoIO.inspect(file)
+                guard let video = file.video, info.width == frozen.width, info.height == frozen.height,
+                      info.duration == video.duration, !info.hasAudio else { throw TelegramUploadFileError.invalidGIF }
+            }
         }
         try Task.checkCancellation()
     }

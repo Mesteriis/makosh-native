@@ -9,14 +9,16 @@ struct TelegramUploadBatchResource: Sendable {
     let videoThumbnail: TelegramUploadVideoThumbnailResource?
     let videoCover: TelegramUploadVideoThumbnailResource?
     let webPPreview: TelegramUploadVideoThumbnailResource?
+    let gifPreview: TelegramUploadVideoThumbnailResource?
     init(item: TelegramUploadBatchItem, plaintextSHA256: String, prepared: TelegramPreparedUploadMedia) {
         self.item = item; self.plaintextSHA256 = plaintextSHA256; resourceID = prepared.resource.fileId
         videoThumbnail = prepared.videoThumbnail; videoCover = prepared.videoCover
         webPPreview = prepared.webPPreview
+        gifPreview = prepared.gifPreview
     }
     var reference: AnyMediaReference? {
         telegramUploadMedia(item.file, videoThumbnail: videoThumbnail, videoCover: videoCover,
-            webPPreview: webPPreview, resourceID: resourceID)?.1
+            webPPreview: webPPreview, gifPreview: gifPreview, resourceID: resourceID)?.1
     }
 }
 
@@ -32,7 +34,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, [6, 7, 8, 9].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, [6, 7, 8, 9, 10].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
@@ -60,6 +62,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             if let thumbnail = resource.videoThumbnail { ids.append(thumbnail.id) }
             if let cover = resource.videoCover { ids.append(cover.id) }
             if let preview = resource.webPPreview { ids.append(preview.id) }
+            if let preview = resource.gifPreview { ids.append(preview.id) }
         }
         guard Set(ids).count == ids.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         self.draft = draft; self.target = target; self.resources = resources; self.plan = plan; self.groupKeys = groupKeys
@@ -132,7 +135,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
                 if let file = queued.media[0] as? TelegramMediaFile {
                     guard file.videoThumbnails.isEmpty,
                           telegramUploadNativeVideoCoverMatches(file.videoCover, resource: resource.videoCover) else { return false }
-                    if let thumbnail = resource.videoThumbnail ?? resource.webPPreview {
+                    if let thumbnail = resource.videoThumbnail ?? resource.webPPreview ?? resource.gifPreview {
                         guard file.previewRepresentations.count == 1, thumbnail.matches(file.previewRepresentations[0]) else { return false }
                     } else if !file.previewRepresentations.isEmpty { return false }
                 }

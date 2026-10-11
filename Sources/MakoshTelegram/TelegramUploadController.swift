@@ -192,6 +192,16 @@ enum TelegramUploadEvent {
                                     mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
                                     directory: original.directory, metadata: .webP(webP))
                                 staged[staged.count - 1] = .init(id: original.id, file: file)
+                            } else if let gif = try await TelegramUploadGIFIO.inspect(original) {
+                                let capture = try TelegramPendingUploadFiles.captureFile(original)
+                                let digest = try capture.plaintextSHA256()
+                                let converted = try await TelegramUploadGIFIO.convert(original, expected: gif, expectedPlaintextSHA256: digest)
+                                let file = TelegramUploadFile(id: converted.id, name: converted.name, size: converted.size,
+                                    mode: .video, pixelWidth: converted.pixelWidth, pixelHeight: converted.pixelHeight,
+                                    url: converted.url, directory: converted.directory, video: converted.video,
+                                    metadata: .gif(.init(width: gif.width, height: gif.height,
+                                        frameDurations: gif.frameDurations, sourceSHA256: digest)))
+                                staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
                             } else if photoCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original) {
                                 let jpeg = try await stage(original.url, .photo)
                                 let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
@@ -224,6 +234,8 @@ enum TelegramUploadEvent {
                             }
                         } catch TelegramUploadFileError.invalidWebP {
                             // Recognizable unsafe WebP remains an unchanged generic file, without suffix reinterpretation.
+                        } catch TelegramUploadGIFError.invalidGIF {
+                            // Recognizable unsafe GIF retains the unchanged document, without suffix reinterpretation.
                         }
                     }
                     try Task.checkCancellation()
@@ -304,7 +316,7 @@ enum TelegramUploadEvent {
     @Published private var videoCoverWriteRevision: UUID?
     public var isVideoCoverSaving: Bool { videoCoverWriteRevision != nil }
     public var canEditVideoCover: Bool {
-        phase == .ready && file?.mode == .video && target != nil && provider?.accountID == target?.accountID &&
+        phase == .ready && file?.mode == .video && file?.metadata?.gif == nil && target != nil && provider?.accountID == target?.accountID &&
             videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy &&
             (recoveryStore == nil ? !requiresRecovery : recoveryPrepared && recoveryStore?.accountID == target?.accountID)
     }
@@ -595,7 +607,7 @@ enum TelegramUploadEvent {
                     try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, mediaSpoiler: frozenSpoiler, disposition: .submissionStarted)
                     if let batchItems {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
-                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9].contains(draft.schemaVersion),
+                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9, 10].contains(draft.schemaVersion),
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == batchItems.map(\.id), draft.isGrouped == grouped, draft.presentation == presentation,
                               draft.captionInput == frozen, draft.captionAboveMedia == frozenAbove, draft.mediaSpoiler == frozenSpoiler else {
@@ -953,7 +965,7 @@ enum TelegramUploadEvent {
             guard items.count == 1, items[0].id == draft.items[0].id else { return false }
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9].contains(draft.schemaVersion),
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9, 10].contains(draft.schemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,

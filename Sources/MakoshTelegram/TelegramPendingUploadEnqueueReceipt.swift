@@ -8,8 +8,10 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
     let preparationID: UUID
     let target: TelegramUploadTarget
     let file: TelegramUploadFile
+    let captionAboveMedia: Bool
     let caption: TelegramFormattedText
-    init(preparationID: UUID, target: TelegramUploadTarget, file: TelegramUploadFile, caption: TelegramFormattedText) {
+    init(preparationID: UUID, target: TelegramUploadTarget, file: TelegramUploadFile, caption: TelegramFormattedText, captionAboveMedia: Bool = false) {
+        self.captionAboveMedia = captionAboveMedia
         self.preparationID = preparationID; self.target = target; self.file = file; self.caption = caption
     }
     nonisolated func validate(transaction: Transaction) -> Bool { current(transaction: transaction) != nil }
@@ -18,6 +20,7 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
               case let .success(value) = telegramPendingUploadRead(transaction: transaction, accountID: target.accountID, chatID: target.chatID),
               let draft = value, draft.id == preparationID, draft.disposition == .submissionStarted,
               draft.captionInput.formattedText == caption,
+              draft.captionAboveMedia == captionAboveMedia,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
               draft.file.attachment.name.utf8.elementsEqual(file.name.utf8),
               draft.file.plaintextByteCount == file.size, draft.file.attachment.size == file.size,
@@ -30,10 +33,12 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
               let queued = transaction.getMessage(id), !queued.flags.contains(.Incoming),
               queued.text.utf8.elementsEqual(caption.text.utf8) else { return false }
         let entityAttributes = queued.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }
+        let placementCount = queued.attributes.filter { $0 is InvertMediaMessageAttribute }.count
         guard entityAttributes.count <= 1,
+              placementCount == (captionAboveMedia ? 1 : 0),
               (entityAttributes.first?.entities ?? []) == caption.engineEntities() else { return false }
         let accepted = TelegramPendingUploadDraft(id: draft.id, revision: UUID(), accountID: draft.accountID,
-            chatID: draft.chatID, title: draft.title, captionInput: draft.captionInput,
+            chatID: draft.chatID, title: draft.title, captionInput: draft.captionInput, captionAboveMedia: draft.captionAboveMedia,
             originalDraft: draft.originalDraft, replyTarget: draft.replyTarget, file: draft.file,
             disposition: .accepted(localMessageID: "\(id.peerId.toInt64()):\(id.namespace):\(id.id)"))
         if case .success = telegramPendingUploadWrite(transaction: transaction, accountID: draft.accountID,

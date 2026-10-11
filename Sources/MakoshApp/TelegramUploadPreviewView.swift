@@ -11,13 +11,30 @@ struct TelegramUploadPreviewView: View {
     }
     private var canDismiss: Bool { upload.canCancel || upload.phase == .uncertain }
     var body: some View {
+        let captionContext = upload.captionContextID
+        let captionRevision = upload.captionRevision
+        let captionAbove = upload.captionAboveMedia
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(upload.file?.mode == .photo ? "Отправить фото" : "Отправить вложение").font(.headline)
                 Spacer()
+                if upload.file?.mode == .photo {
+                    Menu {
+                        placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
+                    } label: { Image(systemName: "ellipsis.circle") }
+                        .menuStyle(.borderlessButton).fixedSize()
+                        .accessibilityLabel("Действия с фото").accessibilityIdentifier("telegram.upload.actions")
+                }
                 Button { upload.dismissPreparation(contextID: contextID) } label: { Image(systemName: "xmark") }
                     .buttonStyle(.plain).disabled(!canDismiss).keyboardShortcut(.cancelAction)
                     .accessibilityLabel("Отменить подготовку").accessibilityIdentifier("telegram.upload.cancel")
+            }
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .contain).accessibilityIdentifier("telegram.upload.header")
+            .contextMenu {
+                if upload.file?.mode == .photo {
+                    placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
+                }
             }
             if let target = upload.target {
                 Label("Получатель: \(target.title)", systemImage: "paperplane").font(.callout)
@@ -67,6 +84,13 @@ struct TelegramUploadPreviewView: View {
         .padding(20).frame(width: 520)
         .interactiveDismissDisabled(!canDismiss)
         .onDisappear { upload.dismissPreparation(contextID: contextID) }
+    }
+    private func placementButton(context: UUID, revision: UUID, above: Bool) -> some View {
+        Button(above ? "Переместить подпись вниз" : "Переместить подпись вверх") {
+            upload.updateCaptionPlacement(!above, contextID: context, revision: revision)
+        }
+        .disabled(upload.phase != .ready || upload.preparationContextID != contextID)
+        .accessibilityIdentifier("telegram.upload.captionPlacement")
     }
     private func send() {
         guard upload.canSend, captionError == nil else { return }

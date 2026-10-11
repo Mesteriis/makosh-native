@@ -14,25 +14,49 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
     let chatID: Int64
     let title: String
     let captionInput: TelegramComposerInput
+    let captionAboveMedia: Bool
     let originalDraft: TelegramComposerDraft?
     let replyTarget: TelegramComposerReplyTarget?
     let file: ArchiveFileRecord
     let disposition: TelegramPendingUploadDisposition
     init(id: UUID, revision: UUID = UUID(), accountID: Int64, chatID: Int64, title: String,
-         captionInput: TelegramComposerInput, originalDraft: TelegramComposerDraft?,
+         captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, originalDraft: TelegramComposerDraft?,
          replyTarget: TelegramComposerReplyTarget?, file: ArchiveFileRecord,
          disposition: TelegramPendingUploadDisposition = .prepared) {
-        schemaVersion = 1; self.id = id; self.revision = revision; self.accountID = accountID
+        schemaVersion = 2; self.id = id; self.revision = revision; self.accountID = accountID
         self.chatID = chatID; self.title = title; self.captionInput = captionInput
+        self.captionAboveMedia = captionAboveMedia
         self.originalDraft = originalDraft; self.replyTarget = replyTarget; self.file = file
         self.disposition = disposition
+    }
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, id, revision, accountID, chatID, title, captionInput, captionAboveMedia
+        case originalDraft, replyTarget, file, disposition
+    }
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        id = try c.decode(UUID.self, forKey: .id); revision = try c.decode(UUID.self, forKey: .revision)
+        accountID = try c.decode(Int64.self, forKey: .accountID); chatID = try c.decode(Int64.self, forKey: .chatID)
+        title = try c.decode(String.self, forKey: .title)
+        captionInput = try c.decode(TelegramComposerInput.self, forKey: .captionInput)
+        // Only the original schema may omit placement. New data must be explicit.
+        captionAboveMedia = schemaVersion == 1
+            ? try c.decodeIfPresent(Bool.self, forKey: .captionAboveMedia) ?? false
+            : try c.decode(Bool.self, forKey: .captionAboveMedia)
+        originalDraft = try c.decodeIfPresent(TelegramComposerDraft.self, forKey: .originalDraft)
+        replyTarget = try c.decodeIfPresent(TelegramComposerReplyTarget.self, forKey: .replyTarget)
+        file = try c.decode(ArchiveFileRecord.self, forKey: .file)
+        disposition = try c.decode(TelegramPendingUploadDisposition.self, forKey: .disposition)
     }
     static func archiveIdentity(accountID: Int64, chatID: Int64, preparationID: UUID) -> MessageArchiveIdentity {
         .init(service: "telegram", accountID: String(accountID), conversationID: String(chatID),
               messageID: "pending-upload:" + preparationID.uuidString.lowercased())
     }
     var isValid: Bool {
-        guard schemaVersion == 1, id != Self.zeroUUID, revision != Self.zeroUUID,
+        guard [1, 2].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+              !captionAboveMedia || file.attachment.kind == "photo",
+              id != Self.zeroUUID, revision != Self.zeroUUID,
               title.utf8.count <= 4096, !title.utf8.contains(0),
               captionInput.formattedText.text.utf8.count <= 64 * 1024,
               (try? TelegramComposerInput(formattedText: captionInput.formattedText, selection: captionInput.selection)) == captionInput,

@@ -8,10 +8,12 @@ import Foundation
         let accountID: Int64 = 1
         var calls = 0
         var submissions: [(UUID, TelegramFormattedText)] = []
+        var placements: [Bool] = []
         var callback: (@MainActor (TelegramUploadEvent) -> Void)?
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText,
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false,
                     receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
             submissions.append((preparationID, caption))
+            placements.append(captionAboveMedia)
             calls += 1; callback = receive; return Lease()
         }
     }
@@ -27,19 +29,21 @@ import Foundation
         var preparedIDs: [UUID] = []
         var savedIDs: [UUID] = []
         var saves: [(TelegramComposerInput, TelegramPendingUploadDisposition)] = []
+        var placements: [Bool] = []
         func load(chatID: Int64) async throws -> TelegramPendingUploadDraft? { nil }
         func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile { throw Failure.synthetic }
         func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
-                     captionInput: TelegramComposerInput, originalDraft: TelegramComposerDraft?) async throws {
+                     captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, originalDraft: TelegramComposerDraft?) async throws {
             preparedIDs.append(preparationID)
             prepares += 1
             if failPrepare { throw Failure.synthetic }
             if holdPrepare { try await withCheckedThrowingContinuation { prepareGate = $0 } }
         }
-        func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput,
+        func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false,
                   disposition: TelegramPendingUploadDisposition) async throws {
             savedIDs.append(preparationID)
             saves.append((captionInput, disposition))
+            placements.append(captionAboveMedia)
             if case .cancelled = disposition, holdCancel {
                 try await withCheckedThrowingContinuation { cancelGate = $0 }
             }
@@ -51,14 +55,53 @@ import Foundation
     }
     private let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic")
     private func drain() async { for _ in 0..<100 { await Task.yield() } }
-    private func setup(store: Store) -> (TelegramUploadController, Provider) {
+    private func setup(store: Store, mode: TelegramUploadMode = .file) -> (TelegramUploadController, Provider) {
         let controller = TelegramUploadController(), provider = Provider()
-        controller.stage = { _, _ in .init(id: UUID(), name: "synthetic.txt", size: 1, mode: .file,
+        controller.stage = { _, _ in .init(id: UUID(), name: "synthetic.txt", size: 1, mode: mode,
             pixelWidth: nil, pixelHeight: nil, url: URL(fileURLWithPath: "/synthetic/payload"), directory: URL(fileURLWithPath: "/synthetic")) }
         controller.discard = { _ in }
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-        controller.prepare(source: URL(fileURLWithPath: "/synthetic/source"), mode: .file, target: target, caption: "original")
+        controller.prepare(source: URL(fileURLWithPath: "/synthetic/source"), mode: mode, target: target, caption: "original")
         return (controller, provider)
+    }
+    func testPlacementDuringInitialPersistenceIsSavedAndFrozenThroughAcceptanceRetry() async throws {
+        let store = Store(); store.holdPrepare = true; store.holdSubmission = true
+        let (controller, provider) = setup(store: store, mode: .photo)
+        await drain(); XCTAssertNotNil(store.prepareGate)
+        XCTAssertTrue(controller.updateCaptionPlacement(true, contextID: controller.captionContextID, revision: controller.captionRevision))
+        store.prepareGate?.resume(); store.prepareGate = nil
+        await drain()
+        XCTAssertEqual(store.placements.last, true, "Initial save must catch a newer placement even with identical input")
+        controller.send(); await drain(); XCTAssertNotNil(store.saveGate)
+        XCTAssertEqual(store.placements.last, true)
+        XCTAssertFalse(controller.updateCaptionPlacement(false, contextID: controller.captionContextID, revision: controller.captionRevision))
+        controller.caption = "newer input after frozen send"
+        store.saveGate?.resume(); store.saveGate = nil
+        await drain(); XCTAssertEqual(provider.placements, [true])
+        store.failAccepted = true
+        provider.callback?(.committing); provider.callback?(.accepted("receipt"))
+        await drain(); XCTAssertEqual(controller.phase, .uncertain)
+        XCTAssertEqual(store.saves.last?.0.formattedText.text, "original"); XCTAssertEqual(store.placements.last, true)
+        store.failAccepted = false; controller.retryRecovery(); await drain()
+        XCTAssertEqual(provider.calls, 1); XCTAssertEqual(store.placements.last, true)
+        XCTAssertEqual(controller.caption, "newer input after frozen send")
+    }
+    func testCancellationDuringInitialWriteRetainsFrozenCaptionAndPlacementAfterRebind() async throws {
+        let store = Store(); store.holdPrepare = true
+        let (controller, _) = setup(store: store, mode: .photo)
+        await drain(); XCTAssertNotNil(store.prepareGate)
+        controller.caption = "cancelled caption 😀"
+        XCTAssertTrue(controller.updateCaptionPlacement(true, contextID: controller.captionContextID, revision: controller.captionRevision))
+        controller.cancelPreparation(); controller.clear()
+        let nextStore = Store()
+        controller.bind(provider: Provider(), recoveryStore: nextStore, requiresRecovery: true)
+        store.prepareGate?.resume(); store.prepareGate = nil
+        await drain()
+        XCTAssertEqual(store.saves.last?.1, .cancelled)
+        XCTAssertEqual(store.saves.last?.0.formattedText.text, "cancelled caption 😀")
+        XCTAssertEqual(store.placements.last, true)
+        XCTAssertTrue(nextStore.saves.isEmpty)
+        XCTAssertEqual(controller.phase, .idle); XCTAssertFalse(controller.captionAboveMedia)
     }
     func testInitialPersistenceAndLatestCaptionSubmissionGateProvider() async throws {
         let store = Store(); store.holdPrepare = true; store.holdSubmission = true

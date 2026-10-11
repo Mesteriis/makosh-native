@@ -338,7 +338,7 @@ import SwiftSignalKit
     private final class UploadProvider: TelegramUploadProvider {
         let accountID: Int64 = -1
         var callback: (@MainActor (TelegramUploadEvent) -> Void)?
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText,
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false,
                     receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
             callback = receive; return UploadLease()
         }

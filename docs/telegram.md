@@ -1228,7 +1228,7 @@ still toggles the exact visible group during message selection. This follows
 ChatRowItem.swift:114–121,1766–1767,1788, ChatGroupedItem.swift:43–52,1169–1172 and
 ChatMediaItem.swift:774–777. CoreExtension.swift:307–320,1534–1539 confirms the
 interactive-media and WebM boundary; broader animation/map/paid/secret parity is
-not claimed. Caption placement in new media preparation remains open.
+not claimed. New-photo preparation placement is described below.
 
 The explicit DEBUG album fixture marks messages126 and129 above media; defaults
 are unchanged and search/history share placement with the same descriptors and
@@ -1267,4 +1267,41 @@ preservation, real encrypted Postbox validation, legacy callers, stale menu/subm
 uncertainty and late acknowledgement. Owned native synthetic QA verifies the
 whole-band menu, placement-only confirmation, text/chat/service preservation,
 cancel/reopen, synthetic acknowledgement and restart. It does not establish
-live-server acceptance or new-media preparation placement.
+live-server acceptance. New-photo preparation is described separately below.
+
+## New-photo caption placement
+
+Photo preparation offers Move Caption Up/Down in its native actions menu and
+header context menu, including an empty caption. The input stays beneath the
+preview, matching the reference’s active layout; choosing placement changes the
+outgoing message. Ordinary file preparation has no placement action. Video,
+album preparation and other reference media options remain separate open work.
+
+Text/entities/selection and placement have independent state. Menu actions
+capture the preparation context and caption revision; old menus, submission and
+uncertain phases cannot change the flag. A send freezes input and placement
+together, persists the submission marker, and passes the native
+InvertMediaMessageAttribute through the existing media enqueue boundary. Reply
+and thread validation remain required. Admission checks the pending flag and the
+same-transaction receipt requires exactly the corresponding native attribute
+count. Acceptance records preserve the choice; an unknown outcome never resends.
+
+Pending JSON now writes schemaVersion2 with an explicit captionAboveMedia Bool.
+Legacy schemaVersion1 without the field restores below; version1 with an above
+flag, version2 without the field, future schemas and above on a file are refused.
+Older Makosh versions reject version2 rather than silently losing placement.
+The existing envelope, PostgreSQL schema and encrypted S3 format are unchanged.
+Recovery restores the normalized photo, rich input and placement without
+submitting. Initial-write races, persistence retries and cancellation retain the
+frozen choice. Cancellation payloads are held only until their in-flight initial
+write ends; cancellation tasks/retries own their frozen copy afterwards.
+
+Verified references: PreviewSenderController.swift:62–66 (effective file mode
+below), 388–394 (media action), 544–560 (inactive input-reordering code),
+1893–1897 (leadingText); SenderController.swift:643–644 (native attribute).
+These are inspected workflows; no outer UI code/assets or embedded credentials
+were copied. Independently pinned engine recipe8 remains unchanged. Root tests
+include real encrypted Postbox admission/reopen and real PostgreSQL/S3 photo
+restoration. Native owned synthetic QA verifies actions/context menus, text
+preservation, restart, queue acknowledgement, file exclusion and cancellation.
+It establishes no live Telegram server acceptance.

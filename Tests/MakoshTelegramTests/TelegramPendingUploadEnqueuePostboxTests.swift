@@ -18,12 +18,14 @@ private func receiptRaw(_ box: Postbox, account: Int64, chat: Int64, bytes: Data
         return transaction.getPreferencesEntry(key: key)?.data
     }
 }
-private func receiptEnqueue(_ box: Postbox, receipt: TelegramPendingUploadEnqueueReceipt, id: MessageId, returnedIDs: [MessageId?]? = nil) -> Signal<Bool, NoError> {
+private func receiptEnqueue(_ box: Postbox, receipt: TelegramPendingUploadEnqueueReceipt, id: MessageId, returnedIDs: [MessageId?]? = nil,
+                            placementCount: Int = 0) -> Signal<Bool, NoError> {
     box.transaction { transaction in
         guard receipt.validate(transaction: transaction) else { return false }
         let message = StoreMessage(id: id, globallyUniqueId: nil, groupingKey: nil, threadId: nil,
             timestamp: 100, flags: [.Unsent], tags: [], globalTags: [], localTags: [], forwardInfo: nil,
-            authorId: nil, text: receipt.caption.text, attributes: telegramOutgoingTextAttributes(receipt.caption), media: [])
+            authorId: nil, text: receipt.caption.text,
+            attributes: telegramOutgoingTextAttributes(receipt.caption) + (0..<placementCount).map { _ in InvertMediaMessageAttribute() }, media: [])
         _ = transaction.addMessages([message], location: .Random)
         return receipt.acknowledge(transaction: transaction, messageIDs: returnedIDs ?? [id])
     }
@@ -48,6 +50,40 @@ private func receiptMismatchedMessage(_ box: Postbox, receipt: TelegramPendingUp
     }
 }
 @MainActor final class TelegramPendingUploadEnqueuePostboxTests: XCTestCase {
+    func testNativePlacementMustMatchAdmissionAndReceiptSurvivesReopen() async throws {
+        let path = try root()
+        let draft = try pendingUploadMutating(pendingUploadFixture(disposition: .submissionStarted)) {
+            $0["captionAboveMedia"] = true
+            var file = $0["file"] as! [String: Any], attachment = file["attachment"] as! [String: Any]
+            attachment["kind"] = "photo"; file["attachment"] = attachment; $0["file"] = file
+        }
+        let id = MessageId(peerId: PeerId(draft.chatID), namespace: Namespaces.Message.Local, id: 31)
+        do {
+            let box = try await open(path); previousBox = box
+            let seeded = try await value(receiptSeed(box, draft: draft)); XCTAssertTrue(seeded)
+            let file = TelegramUploadFile(id: UUID(), name: draft.file.attachment.name, size: draft.file.plaintextByteCount,
+                mode: .photo, pixelWidth: 30, pixelHeight: 60, url: URL(fileURLWithPath: "/unused"), directory: URL(fileURLWithPath: "/unused"))
+            let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic")
+            let wrong = TelegramPendingUploadEnqueueReceipt(preparationID: draft.id, target: target, file: file,
+                caption: draft.captionInput.formattedText, captionAboveMedia: false)
+            let refused = try await value(receiptEnqueue(box, receipt: wrong, id: id)); XCTAssertFalse(refused)
+            let right = TelegramPendingUploadEnqueueReceipt(preparationID: draft.id, target: target, file: file,
+                caption: draft.captionInput.formattedText, captionAboveMedia: true)
+            for count in [0, 2] {
+                let mismatch = try await value(receiptEnqueue(box, receipt: right, id: id, placementCount: count))
+                XCTAssertFalse(mismatch)
+                let unchanged = try await value(receiptRead(box, account: 1, chat: 42, id: id))
+                XCTAssertEqual(unchanged.0?.disposition, .submissionStarted)
+            }
+            let accepted = try await value(receiptEnqueue(box, receipt: right, id: id, placementCount: 1)); XCTAssertTrue(accepted)
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let reopened = try await open(path)
+        let stored = try await value(receiptRead(reopened, account: 1, chat: 42, id: id))
+        XCTAssertTrue(stored.1); XCTAssertEqual(stored.0?.captionAboveMedia, true)
+        XCTAssertEqual(stored.0?.disposition, .accepted(localMessageID: "42:\(Namespaces.Message.Local):31"))
+    }
     private weak var previousBox: Postbox?
     private func open(_ root: URL) async throws -> Postbox {
         initializeAccountManagement()

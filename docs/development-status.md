@@ -1,6 +1,61 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram caption editing placement
+## Current stage: new-photo caption placement
+
+Telegram remains inside the common Makosh service-sidebar/dialog/conversation
+window. New photo preparation offers Move Caption Up/Down through native actions
+and header context menus, including an empty caption. The editor remains below
+the preview, as in the active reference layout. File preparation has no placement
+action. Text/entities/selection and placement remain independent; captured
+context/revision rejects stale menus and sending/uncertain states.
+
+Submission freezes input and placement together, stores the marker and passes
+InvertMediaMessageAttribute to the native queue. Admission/atomic receipt check
+the exact flag; acceptance retries retain the choice without resubmitting.
+Pending JSON writes schema2 with an explicit Bool. Legacy schema1 restores below;
+malformed/future versions and above-on-file fail closed. Older apps refuse schema2.
+The PostgreSQL schema, encrypted S3 format, engine pins and recipe8 are unchanged.
+
+Initial runtime red: five tests, fourteen failed assertions. Recovery runtime red:
+nine tests, eleven failed assertions. Missing-API compilation, a duplicate-parameter
+compile error from the initial API scaffolding, and an orchestration syntax error
+are separate failed evidence. Final scripts/dev-db.sh up, scripts/test.sh and
+scripts/build-app.sh exit0: **609 XCTest (546 Telegram +63 core), zero failures;
+30 Python regressions**. Full tests/build repeated after review cleanup. Logs
+retain130 upstream t19 teardown diagnostics without a test failure/trap.
+
+Real encrypted Postbox tests check native placement admission/receipt and reopen.
+Real PostgreSQL/S3 tests restore normalized photo bytes, caption, placement and
+cancellation with immutable archive retention. Native old-UI red confirms missing
+placement menus. Owned native AX/screenshots verify actions/header context menus,
+default/reset choice, preservation after text editing/restart, synthetic queue
+acknowledgement, file exclusion, cancellation, Mail→Telegram, and final restart
+without resurrecting the cancelled photo. Ordinary input survives cancellation.
+Strict deep signatures and unsigned built/QA payload match pass. QA uses only
+owned encrypted synthetic Postbox and isolated PostgreSQL/S3, without personal
+accounts, Keychain or Telegram network/server operations. Server acceptance is
+not established.
+
+Read-only source review identified retention of cancelled caption payloads in an
+unbounded controller dictionary. Payloads now exist there only while their
+initial write is in flight and are consumed on completion; task/retry retains
+the frozen copy. The cancellation/rebind regression passes before/after this
+cleanup; memory volume was not measured and no failing memory test is claimed.
+The final source freeze covers17 changed and9 supporting files; worker and root
+hashes/bytes match with no remaining source finding. Final lexical XERJ refresh
+exits0 (304 files,274/274 code); project/reference/engine fingerprints and scoped
+queries pass with source-confirmed hits. Publication audit checks309 publishable
+files and the PR body against5 credential fields, with zero matches. Worker
+runtime gates are SKIP; root owns them. Observed route/usage remain unknown.
+
+Previous bac77ff hosted PR/push CI was still in progress at the current live
+observation; no pass or terminal result is inferred. New-head publication and
+CI are recorded separately after publication. Photo albums/video preparation,
+other media options, autoload, specialized renderers, exhaustive visual parity,
+live-account acceptance, later channels, backups and standalone packaging remain
+open. The full sequential migration goal stays active.
+
+## Historical Telegram caption editing placement
 
 Telegram remains in the common Makosh service-sidebar/dialog/conversation window.
 The inline edit accessory now offers Move Caption Up/Down across its full surface,

@@ -13,8 +13,8 @@ import SwiftSignalKit
         func load(chatID: Int64) async throws -> TelegramPendingUploadDraft? {
             try await withCheckedThrowingContinuation { loads.append((chatID, $0)) }
         }
-        func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget, captionInput: TelegramComposerInput, originalDraft: TelegramComposerDraft?) async throws {}
-        func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput, disposition: TelegramPendingUploadDisposition) async throws {}
+        func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, originalDraft: TelegramComposerDraft?) async throws {}
+        func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, disposition: TelegramPendingUploadDisposition) async throws {}
         func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile {
             restored += 1
             guard let file else { throw TelegramUploadFileError.unavailable }; return file
@@ -106,7 +106,7 @@ import SwiftSignalKit
     private final class Provider: TelegramUploadProvider {
         let accountID: Int64 = -1
         var submissions = 0
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease { submissions += 1; return Lease() }
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease { submissions += 1; return Lease() }
     }
     func testPreparedAndUnknownSubmissionRestoreWithoutAutomaticSendOrNewerDraftOverwrite() async throws {
         for unknown in [false, true] {

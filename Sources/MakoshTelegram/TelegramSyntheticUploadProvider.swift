@@ -14,10 +14,11 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
     init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false) {
         self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement
     }
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = SyntheticUploadLease()
-        guard target.accountID == accountID, target.hasValidReplySource, telegramFormattedCaptionCanSend(caption) else {
+        guard target.accountID == accountID, target.hasValidReplySource, telegramFormattedCaptionCanSend(caption),
+              !captionAboveMedia || file.mode == .photo else {
             receive(.rejected); return lease
         }
         let postbox = self.postbox, loseAcknowledgement = self.loseAcknowledgement
@@ -28,7 +29,7 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
                 receive(.committing)
                 if let postbox, let lease {
                     let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
-                        target: target, file: file, caption: caption)
+                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia)
                     lease.operation.set((syntheticUploadCommit(postbox: postbox, receipt: receipt)
                         |> deliverOnMainQueue).start(next: { event in
                             MainActor.assumeIsolated {
@@ -55,11 +56,13 @@ private func syntheticUploadCommit(postbox: Postbox, receipt: TelegramPendingUpl
     postbox.transaction { transaction in
         guard receipt.validate(transaction: transaction), let (_, reference) = telegramUploadMedia(receipt.file) else { return .rejected }
         let uniqueID = Int64.random(in: Int64.min...Int64.max)
+        var attributes = telegramOutgoingTextAttributes(receipt.caption)
+        if receipt.captionAboveMedia { attributes.append(InvertMediaMessageAttribute()) }
         let message = StoreMessage(peerId: PeerId(receipt.target.chatID), namespace: Namespaces.Message.Local,
             globallyUniqueId: uniqueID, groupingKey: nil, threadId: receipt.target.replySource?.threadID,
             timestamp: 100, flags: [.Unsent], tags: [], globalTags: [], localTags: [],
             forwardInfo: nil, authorId: nil, text: receipt.caption.text,
-            attributes: telegramOutgoingTextAttributes(receipt.caption), media: [reference.media])
+            attributes: attributes, media: [reference.media])
         let id = transaction.addMessages([message], location: .Random)[uniqueID]
         guard receipt.acknowledge(transaction: transaction, messageIDs: [id]), let id else { return .uncertain }
         return .accepted("\(id.peerId.toInt64()):\(id.namespace):\(id.id)")

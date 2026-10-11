@@ -1,4 +1,6 @@
 import XCTest
+import ImageIO
+import CoreGraphics
 import Foundation
 import TelegramCore
 import SwiftSignalKit
@@ -118,6 +120,12 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
     }
 
     func testPendingCaptionAndFileReopenTogetherAndCancellationRetainsArchive() async throws {
+        try await pendingCaptionAndFileReopen(mode: .file)
+    }
+    func testPendingPhotoPlacementReopensWithRealS3BytesAndCancellationRetainsChoice() async throws {
+        try await pendingCaptionAndFileReopen(mode: .photo)
+    }
+    private func pendingCaptionAndFileReopen(mode: TelegramUploadMode) async throws {
         guard let configPath = ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"] else {
             throw MessageArchiveError.invalid
         }
@@ -125,10 +133,17 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         let database = try PendingFilesTestDatabase()
         addTeardownBlock { try database.cleanup() }
         let path = try root(), archiveRoot = try root()
-        let source = archiveRoot.appendingPathComponent("synthetic.txt")
-        let bytes = Data("Synthetic pending file e\u{301} 😀".utf8)
-        try bytes.write(to: source)
-        let staged = try await TelegramUploadFileIO.stage(source, mode: .file)
+        let source = archiveRoot.appendingPathComponent(mode == .photo ? "synthetic.jpg" : "synthetic.txt")
+        if mode == .photo {
+            let context = try XCTUnwrap(CGContext(data: nil, width: 40, height: 20, bitsPerComponent: 8,
+                bytesPerRow: 40, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+            context.setFillColor(gray: 0.4, alpha: 1); context.fill(CGRect(x: 0, y: 0, width: 40, height: 20))
+            let image = try XCTUnwrap(context.makeImage())
+            let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.jpeg" as CFString, 1, nil))
+            CGImageDestinationAddImage(destination, image, nil); XCTAssertTrue(CGImageDestinationFinalize(destination))
+        } else { try Data("Synthetic pending file e\u{301} 😀".utf8).write(to: source) }
+        let staged = try await TelegramUploadFileIO.stage(source, mode: mode)
+        let bytes = try Data(contentsOf: staged.url)
         addTeardownBlock { try TelegramUploadFileIO.discard(staged) }
         func archiveRepository() throws -> ArchiveFileRepository {
             try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
@@ -142,7 +157,7 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         let original = TelegramComposerDraft(accountID: 1, chatID: 42, text: "Original input", replyTarget: reply)
         let caption = try pendingUploadFixture().captionInput
         let pending = TelegramPendingUploadDraft(id: preparationID, accountID: 1, chatID: 42,
-            title: "Synthetic recipient", captionInput: caption, originalDraft: original, replyTarget: reply,
+            title: "Synthetic recipient", captionInput: caption, captionAboveMedia: mode == .photo, originalDraft: original, replyTarget: reply,
             file: savedFile, disposition: .submissionStarted)
         try await seedThenRelease(path, draft: pending)
         try TelegramUploadFileIO.discard(staged)
@@ -153,6 +168,7 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         let result = try await load(42, repository: repository).get()
         let restored = try XCTUnwrap(result)
         XCTAssertEqual(restored.captionInput, caption)
+        XCTAssertEqual(restored.captionAboveMedia, mode == .photo)
         XCTAssertEqual(Array(restored.captionInput.formattedText.text.utf8), Array(caption.formattedText.text.utf8))
         XCTAssertEqual(restored.originalDraft, original)
         XCTAssertEqual(restored.replyTarget, reply)
@@ -163,14 +179,14 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         addTeardownBlock { try TelegramUploadFileIO.discard(recoveredFile) }
         XCTAssertEqual(try Data(contentsOf: recoveredFile.url), bytes)
         XCTAssertEqual(recoveredFile.name, staged.name)
-        let cancelled = TelegramPendingUploadDraft(id: restored.id, accountID: restored.accountID, chatID: restored.chatID,
-            title: restored.title, captionInput: restored.captionInput, originalDraft: restored.originalDraft,
-            replyTarget: restored.replyTarget, file: restored.file, disposition: .cancelled)
-        try await save(cancelled, expected: restored.revision, repository: repository).get()
+        let session = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: reopenedArchive) })
+        try await session.save(preparationID: restored.id, chatID: restored.chatID, captionInput: restored.captionInput,
+            captionAboveMedia: restored.captionAboveMedia, disposition: .cancelled)
         let retainedFiles = try await reopenedArchive.files(identity: savedFile.identity, attachmentID: "prepared")
         XCTAssertEqual(retainedFiles, [savedFile], "Cancelling preparation retains immutable archived bytes")
         let retainedDraft = try await load(42, repository: repository).get()
         XCTAssertEqual(retainedDraft?.disposition, .cancelled)
+        XCTAssertEqual(retainedDraft?.captionAboveMedia, mode == .photo)
         let lateWrite = await save(restored, expected: restored.revision, repository: repository)
         if case .failure(.conflict) = lateWrite {} else { XCTFail("Late writer must not resurrect the cancelled preparation") }
     }

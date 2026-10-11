@@ -25,6 +25,25 @@ import SwiftSignalKit
 }
 
 @MainActor final class TelegramPendingUploadSessionTests: XCTestCase {
+    func testPlacementWritesSurviveSessionRecreationAndAcceptedMarker() async throws {
+        let first = try pendingUploadMutating(pendingUploadFixture()) {
+            var file = $0["file"] as! [String: Any], attachment = file["attachment"] as! [String: Any]
+            attachment["kind"] = "photo"; file["attachment"] = attachment; $0["file"] = file
+        }
+        let repository = PendingSessionRepository(first)
+        let session = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
+        try await session.save(preparationID: first.id, chatID: first.chatID, captionInput: first.captionInput,
+            captionAboveMedia: true, disposition: .prepared)
+        let reopened = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
+        let loaded = try await reopened.load(chatID: first.chatID)
+        XCTAssertEqual(loaded?.captionAboveMedia, true)
+        try await reopened.save(preparationID: first.id, chatID: first.chatID, captionInput: first.captionInput,
+            captionAboveMedia: true, disposition: .submissionStarted)
+        try await reopened.save(preparationID: first.id, chatID: first.chatID, captionInput: first.captionInput,
+            captionAboveMedia: true, disposition: .accepted(localMessageID: "receipt"))
+        XCTAssertEqual(repository.value?.captionAboveMedia, true)
+        XCTAssertEqual(repository.value?.originalDraft, first.originalDraft)
+    }
     func testPendingWritesSerializeAcrossCallerCancellationAndTombstoneRejectsResurrection() async throws {
         let first = try pendingUploadFixture(), repository = PendingSessionRepository(nil)
         repository.value = first; repository.holdNextWrite = true

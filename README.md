@@ -15,6 +15,11 @@ to move its caption above or below; changing only placement can be saved, and
 editing text preserves the native placement. Cancelling it returns to the separate
 ordinary draft/reply. Active edits remain in memory and reset after app restart.
 
+For a new photo, use the preparation window’s actions menu to move its caption
+above or below. The choice survives text edits and recovery after restart;
+ordinary files keep captions below. Prepared bytes are encrypted in S3, with
+metadata in PostgreSQL and the pending draft in encrypted Postbox.
+
 Forwarding opens the selected recipient in the same workspace, with a source
 accessory and optional rich comment. The forward draft/options survive chat and
 service switches and restart; cancelling the forward keeps the comment/reply.

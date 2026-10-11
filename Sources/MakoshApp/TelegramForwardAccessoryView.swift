@@ -8,17 +8,24 @@ struct TelegramForwardAccessoryView: View {
     init(model: TelegramModel) { self.model = model; forward = model.composerForward }
     var body: some View {
         if let intent = model.composerForwardIntent {
+            let contextID = model.messageActionContextID, chatID = model.selectedChatID, revision = model.composerForwardRevision
+            let authorCount = Set(forward.previews.compactMap(\.authorID)).count
+            let captionCount = forward.previews.filter(\.hasCaption).count
             TelegramInputAccessoryView(title: title(intent), detail: detail(intent), symbol: "arrowshape.turn.up.right",
                 cancelLabel: "Отменить пересылку", cancelID: "telegram.forward.cancel", onClose: model.cancelComposerForward)
                 .disabled(model.isForwardComposerLocked)
                 .accessibilityIdentifier("telegram.forward.subject")
                 .contextMenu {
-                    Button("Показывать имя отправителя") { options(intent, names: false, captions: intent.hideCaptions) }
-                    Button("Скрыть имя отправителя") { options(intent, names: true, captions: intent.hideCaptions) }
-                    if forward.previews.contains(where: \.hasCaption) {
+                    optionItem(.authorHidden(false), title: authorCount == 1 ? "Показывать имя отправителя (1)" : "Показывать имена отправителей (\(authorCount))",
+                        selected: !intent.hideNames, id: "showAuthor", intent: intent, context: contextID, chat: chatID, revision: revision)
+                    optionItem(.authorHidden(true), title: authorCount == 1 ? "Скрыть имя отправителя (1)" : "Скрыть имена отправителей (\(authorCount))",
+                        selected: intent.hideNames, id: "hideAuthor", intent: intent, context: contextID, chat: chatID, revision: revision)
+                    if captionCount > 0 {
                         Divider()
-                        Button("Показывать подпись") { options(intent, names: intent.hideNames, captions: false) }
-                        Button("Скрыть подпись") { options(intent, names: true, captions: true) }
+                        optionItem(.captionsHidden(false), title: captionCount == 1 ? "Показывать подпись (1)" : "Показывать подписи (\(captionCount))",
+                            selected: !intent.hideCaptions, id: "showCaption", intent: intent, context: contextID, chat: chatID, revision: revision)
+                        optionItem(.captionsHidden(true), title: captionCount == 1 ? "Скрыть подпись (1)" : "Скрыть подписи (\(captionCount))",
+                            selected: intent.hideCaptions, id: "hideCaption", intent: intent, context: contextID, chat: chatID, revision: revision)
                     }
                     Divider()
                     Button("Другой получатель…") {
@@ -46,7 +53,7 @@ struct TelegramForwardAccessoryView: View {
         }
     }
     private func title(_ intent: TelegramComposerForwardIntent) -> String {
-        if intent.hideNames || intent.hideCaptions { return "Пересылка без имени отправителя" }
+        if intent.hideNames { return "Пересылка без имени отправителя" }
         return intent.sources.count == 1 ? "Переслать: \(forward.previews.first?.author ?? "сообщение")" : "Переслать сообщения: \(intent.sources.count)"
     }
     private func detail(_ intent: TelegramComposerForwardIntent) -> String {
@@ -56,8 +63,13 @@ struct TelegramForwardAccessoryView: View {
         guard let formatted = preview.formattedText else { return "Форматирование сообщения недоступно" }
         return preview.text.isEmpty ? "Сообщение с вложением" : TelegramMessagePresentation.plainText(formatted)
     }
-    private func options(_ intent: TelegramComposerForwardIntent, names: Bool, captions: Bool) {
-        model.updateForwardOptions(hideNames: names, hideCaptions: captions, intentID: intent.id, contextID: model.messageActionContextID)
+    private func optionItem(_ option: TelegramForwardOption, title: String, selected: Bool, id: String,
+                            intent: TelegramComposerForwardIntent, context: UUID, chat: Int64?, revision: UUID?) -> some View {
+        Toggle(title, isOn: Binding(get: { selected }, set: { _ in
+            guard let chat, let revision else { return }
+            _ = model.updateForwardOption(option, intentID: intent.id, contextID: context,
+                expectedChatID: chat, expectedRevision: revision)
+        })).accessibilityIdentifier("telegram.forward.option." + id)
     }
 }
 

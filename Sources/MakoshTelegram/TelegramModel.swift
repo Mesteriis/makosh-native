@@ -840,12 +840,27 @@ public final class TelegramModel: ObservableObject {
         refreshComposerForward()
     }
 
+    @discardableResult
+    public func updateForwardOption(_ option: TelegramForwardOption, intentID: UUID, contextID: UUID,
+                                    expectedChatID: Int64, expectedRevision: UUID) -> Bool {
+        guard contextID == accountGeneration, !isForwardComposerLocked,
+              let accountID = draftAccountID, let chatID = selectedChatID, chatID == expectedChatID,
+              composerForwardRevision == expectedRevision,
+              let intent = composerForwardIntent, intent.id == intentID else { return false }
+        if case .captionsHidden = option, !composerForward.previews.contains(where: \.hasCaption) { return false }
+        if let changed = drafts.setForwardIntent(intent.applying(option), accountID: accountID, chatID: chatID) {
+            persistComposerDraft(changed)
+        }
+        refreshComposerForward()
+        return true
+    }
+
     public func updateForwardOptions(hideNames: Bool, hideCaptions: Bool, intentID: UUID, contextID: UUID) {
         guard contextID == accountGeneration, !isForwardComposerLocked,
               let accountID = draftAccountID, let chatID = selectedChatID,
               let intent = composerForwardIntent, intent.id == intentID else { return }
         let changedIntent = TelegramComposerForwardIntent(id: intent.id, sources: intent.sources,
-            hideNames: hideNames, hideCaptions: hideCaptions)
+            hideNames: hideNames, hideCaptions: hideCaptions, explicitHideNames: hideNames)
         if let changed = drafts.setForwardIntent(changedIntent, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
         refreshComposerForward()
     }
@@ -874,7 +889,8 @@ public final class TelegramModel: ObservableObject {
         guard let originChat = selectedChatID else { return false }
         knownChats[destinationChatID] = destination
         pendingForwardStage = (contextID, destinationChatID,
-            TelegramComposerForwardIntent(sources: intent.sources, hideNames: intent.hideNames, hideCaptions: intent.hideCaptions),
+            TelegramComposerForwardIntent(sources: intent.sources, hideNames: intent.hideNames, hideCaptions: intent.hideCaptions,
+                explicitHideNames: intent.explicitHideNames),
             (originChat, intentID))
         selectedChatID = destinationChatID
         applyPendingForwardStage()

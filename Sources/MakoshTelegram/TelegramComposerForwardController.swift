@@ -9,8 +9,11 @@ public struct TelegramComposerForwardPreview: Equatable, Sendable, Identifiable 
     public let formattedText: TelegramFormattedText?
     public let canCopy: Bool
     public let hasCaption: Bool
-    public init(id: String, author: String, text: String, formattedText: TelegramFormattedText?, canCopy: Bool, hasCaption: Bool = false) {
-        self.id = id; self.author = author; self.text = text; self.formattedText = formattedText; self.canCopy = canCopy; self.hasCaption = hasCaption
+    public let authorID: Int64?
+    public init(id: String, author: String, text: String, formattedText: TelegramFormattedText?, canCopy: Bool,
+                hasCaption: Bool = false, authorID: Int64? = nil) {
+        self.id = id; self.author = author; self.text = text; self.formattedText = formattedText; self.canCopy = canCopy
+        self.hasCaption = hasCaption; self.authorID = authorID
     }
 }
 @MainActor protocol TelegramComposerForwardLease: AnyObject { func cancel() }

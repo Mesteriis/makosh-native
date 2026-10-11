@@ -94,6 +94,12 @@ private func forwardSummary(_ box: Postbox, draft: TelegramComposerDraft) -> Sig
     }
 }
 
+private func forwardPreviewAuthors(_ box: Postbox, draft: TelegramComposerDraft) -> Signal<[Int64?]?, NoError> {
+    box.transaction { transaction in
+        telegramForwardBatch(transaction: transaction, accountID: 1, draft: draft)?.previews.map(\.authorID)
+    }
+}
+
 @MainActor final class TelegramForwardEngineTests: XCTestCase {
     private func value<T>(_ signal: Signal<T, NoError>) async throws -> T {
         let done = expectation(description: "Synthetic forward transaction")
@@ -127,6 +133,13 @@ private func forwardSummary(_ box: Postbox, draft: TelegramComposerDraft) -> Sig
         defer { a.dispose(); b.dispose() }
         await fulfillment(of: [stores], timeout: 20)
         return box
+    }
+    func testNativePreviewRetainsAuthorIdentityForOptionCounts() async throws {
+        let box = try await open(); let _: Void = try await value(forwardSeed(box))
+        let sources = try await value(forwardSources(box))
+        let draft = TelegramComposerDraft(accountID: 1, chatID: 42, text: "", forwardIntent: .init(sources: sources))
+        let authors = try await value(forwardPreviewAuthors(box, draft: draft))
+        XCTAssertEqual(authors, [7, 7])
     }
     func testNativeBatchRetainsRichCommentReplyAndForwardOptions() async throws {
         let box = try await open(); let _: Void = try await value(forwardSeed(box))

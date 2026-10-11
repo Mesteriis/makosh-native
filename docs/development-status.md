@@ -1,6 +1,57 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram album history and selection
+## Current stage: Telegram forward author/caption options
+
+Telegram remains in the common service-sidebar/list/conversation window. The
+forward accessory now shows checked author and caption choices with counts of
+distinct native author IDs and captioned messages. Caption changes follow the
+reference's default author coupling until the user explicitly chooses an author
+option, including choosing the already checked Show item. Later caption changes
+retain that choice. Menu actions freeze context/chat/intent/draft revision and
+refuse stale or uncertain composers. Rich input, UTF16 selection and reply remain
+independent. Ordinary re-targeting retains the choice; Saved re-targeting keeps
+its previously verified fresh default options.
+
+The optional schema-4 `explicitHideNames` field survives draft persistence and
+restart. Missing legacy fields remain valid; malformed types and inconsistent
+known flags are refused. Persistence of this explicit choice is Makosh's own
+adaptation: the reference's `tempSenderName` is not restored by decoding. The
+accessory title follows the author preference, while native transport retains
+the reference's `hideNames || hideCaptions` rule. No outer GPLv2 UI/assets were
+copied. Pins, recipe 8, PostgreSQL schema and S3 format are unchanged.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh` and `scripts/build-app.sh` exit 0:
+**582 XCTest (519 Telegram + 63 core), zero failures; 30 Python regressions**.
+Logs retain 126 upstream t19 teardown diagnostics without failure/trap. Initial
+missing-API compilation errors are separate from runtime reds, which reproduced
+missing coupling/preference, stale-menu and native preview-identity behavior.
+One first-green fixture expectation used account ID 999 instead of the existing
+outgoing synthetic author's -1; correcting that literal left production behavior
+unchanged. Failed raw logs remain private and are not passes.
+
+Actual native AX/screenshots verify checked counts 1/3, default caption cycling,
+fresh already-checked Show-author selection, both explicit author choices,
+ordinary re-targeting, picker Cancel and Mail → Telegram preservation. An actual
+owned-process restart followed by another caption cycle retains explicit Show.
+An initial coordinate-only attempt did not establish that choice; the fresh
+exact-AX replay passes without a source change. No coordinate-hit fix is claimed.
+QA uses only the owned encrypted synthetic Postbox and isolated PostgreSQL/S3;
+no personal account, Keychain or Telegram network/server operation was used.
+
+Read-only review found no new source finding in the frozen nine-file snapshot;
+before/after hashes and sizes match. Worker runtime gates are SKIP; root owns
+the tests/build/native checks. Observed model/provider/usage remain unknown and
+no quorum is claimed. Exhaustive media/options/special/topic/secret/paid behavior,
+singleton spoiler rendering and live-account acceptance remain open. Later
+channels, backups and standalone packaging remain open; the full sequential
+migration goal stays active. Final lexical XERJ refresh exits 0: 297 files, 267/267 classified code.
+Project/reference/engine fingerprints pass; current option/reference query hits
+were confirmed against source. Strict deep signatures and unsigned built/QA
+payload comparison pass. Publication audit checks 302 publishable files and the
+PR body against five selected credential fields, with zero matches. Machine
+configuration, runtime data, indexes and raw QA artifacts remain ignored.
+
+## Historical Telegram album history and selection
 
 Telegram remains inside the shared Makosh service sidebar, dialog list and
 conversation/dossier. The loaded history now projects native UI album identities
@@ -56,7 +107,10 @@ an upstream SqliteValueBox WAL assertion. Inspection found an asynchronous test
 StorageBox-open/fixture-removal lifecycle gap. The fixture now waits for both
 storage boxes before teardown; final local gates pass. This repairs a verified
 race opportunity, without establishing the historical trap's exact cause or
-weakening the engine assertion. New-head hosted CI is tracked separately.
+weakening the engine assertion. Album head 92769eff passed both hosted
+[PR CI](https://github.com/Mesteriis/makosh-native/actions/runs/38103351575) and
+[push CI](https://github.com/Mesteriis/makosh-native/actions/runs/38103348144).
+Forward-options head CI is tracked separately.
 
 Exhaustive mosaic pixel parity, ordinary singleton spoiler rendering, remaining
 media/options/special/topic/secret/paid behavior and live-account acceptance stay

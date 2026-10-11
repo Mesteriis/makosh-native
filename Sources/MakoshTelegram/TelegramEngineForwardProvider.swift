@@ -85,7 +85,9 @@ nonisolated func telegramForwardBatch(transaction: Transaction, accountID: Int64
         let options = ForwardOptionsMessageAttribute(hideNames: intent.hideNames || intent.hideCaptions, hideCaptions: intent.hideCaptions)
         messages.append(.forward(source: id, threadId: nil, grouping: intent.sources.count > 1 ? .auto : .none, attributes: [options], correlationId: nil))
         previews.append(.init(id: "\(frozen.peerID):\(frozen.namespace):\(frozen.messageID)", author: message.author.map(telegramPeerTitle) ?? "Сообщение",
-            text: message.text, formattedText: source.metadata.formattedText, canCopy: source.canCopy, hasCaption: !message.text.isEmpty && message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile }))
+            text: message.text, formattedText: source.metadata.formattedText, canCopy: source.canCopy,
+            hasCaption: !message.text.isEmpty && message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile },
+            authorID: message.author?.id.toInt64()))
     }
     return TelegramForwardBatch(messages: messages, previews: previews)
 }

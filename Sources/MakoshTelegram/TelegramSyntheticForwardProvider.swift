@@ -79,7 +79,7 @@ nonisolated func syntheticForwardPreviews(_ draft: TelegramComposerDraft, pages:
         let source = TelegramMessageActionSource(metadata: metadata, accountID: -1, chatID: frozen.chatID)
         guard source.canForward, TelegramComposerForwardSource(source: source) == frozen else { return nil }
         result.append(.init(id: item.id, author: item.author, text: item.text, formattedText: metadata.formattedText,
-            canCopy: source.canCopy, hasCaption: !item.attachments.isEmpty && !item.text.isEmpty))
+            canCopy: source.canCopy, hasCaption: !item.attachments.isEmpty && !item.text.isEmpty, authorID: metadata.authorID))
     }
     return result
 }

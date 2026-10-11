@@ -1139,3 +1139,38 @@ Regressions reproduce the initial mismatched fixture versions before fixing
 those bindings. The native DEBUG queue remains a simulation; it does not prove
 live Telegram Account/server acceptance. Actual root checks and remaining
 limitations are recorded in development-status.
+
+## Ordinary forward author and caption options
+
+The accessory menu follows ChatInputAccessory.swift:244–294: checked Show/Hide
+author choices count distinct nonnil native author IDs; caption choices count
+resolved captioned messages and are absent when none exist. A typed action freezes
+the account context, chat, intent ID and draft revision. Stale menus and locked
+uncertain composers cannot overwrite newer state. Choosing an author option,
+including the already checked Show item, records an explicit preference. Until
+that choice, hiding/showing captions also hides/shows author names. After it,
+caption changes preserve the author preference.
+
+Schema 4 adds optional `explicitHideNames` to the existing forward intent, without
+changing its ID or source versions. Missing legacy fields decode as nil and keep
+their stored flags; malformed field types and explicit/active flag disagreement
+are refused. The preference survives ordinary recipient changes and persistent
+draft reload. Saved re-targeting intentionally creates fresh default options,
+as in the previously verified reference exception. Input, UTF16 selection and
+reply remain independent of option changes.
+
+Reference ChatInterfaceState.swift:1178–1179,1310–1318,1348 persists the two flags
+but resets `tempSenderName` when decoding. Persisting Makosh's explicit preference
+is an intentional adaptation rather than identical upstream restart behavior.
+The accessory title reflects `hideNames`; outgoing native options still use
+`hideNames || hideCaptions` (SenderController.swift:504–505). Thus choosing Show
+author while hiding captions preserves the UI preference for later changes;
+native transport still suppresses author attribution while captions are hidden.
+
+Model/JSON regressions cover coupling, both explicit preferences, stale revisions,
+wrong scopes, locked recovery, legacy/malformed fields and ordinary re-targeting.
+An encrypted Postbox transaction verifies native preview author identity. Root
+native checks cover a fresh already-checked Show selection, caption cycling,
+actual process restart, recipient Cancel/re-target and Mail → Telegram. Native
+queue simulation does not establish live server acceptance. No outer GPLv2 code
+or assets were copied; pins, recipe 8, PostgreSQL schemas and S3 format stay fixed.

@@ -99,6 +99,10 @@ import SwiftSignalKit
             replyTarget: submitted.replyTarget, forwardIntent: submitted.forwardIntent, forwardDisposition: .submissionStarted)
         provider.callback?(.committing(started)); provider.callback?(.uncertain)
         XCTAssertTrue(model.isForwardComposerLocked); XCTAssertFalse(model.sendComposerForward())
+        XCTAssertFalse(model.updateForwardOption(.authorHidden(true), intentID: try XCTUnwrap(submitted.forwardIntent).id,
+            contextID: model.messageActionContextID, expectedChatID: 10002,
+            expectedRevision: try XCTUnwrap(model.composerForwardRevision)))
+        XCTAssertEqual(model.composerForwardIntent, submitted.forwardIntent)
         XCTAssertFalse(model.sendMessage(try .init(text: "must not send alone")))
         XCTAssertFalse(model.updateComposerInput(try .init(formattedText: .init(text: "replacement")), contextID: model.messageActionContextID, chatID: 10002))
         model.cancelComposerForward(); XCTAssertNotNil(model.composerForwardIntent)

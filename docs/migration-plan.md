@@ -178,12 +178,13 @@ wholebatch revalidation, explicit scope и atomic native delete admission (recip
 `development-status.md`; initial Saved branch добавлен с wholebatch native admission,
 отдельным receipt и restart без resend. Accessory Saved переносит только forward,
 сохраняя rich input/selection/reply; Cancel до dispatch удерживает forward как
-явная адаптация. Normal option parity остаётся открытой. Forward picker референса
+явная адаптация. Author/caption options описаны ниже; specialized parity остаётся
+открытой. Forward picker референса
 скрывает comment input; комментарий вводится в recipient composer, поэтому ранее
 записанный picker-comment gap снят после source-проверки видимости.
 Общий порядок переноса сохранён.
 
-## Текущий участок: альбомы Telegram
+## Перенесённый участок: альбомы Telegram
 
 Native UI groupInfo проецируется в видимые history rows без расширения серверной
 группы или загрузки соседней страницы. Фото/видео используют собственную мозаику;
@@ -197,6 +198,21 @@ UI. Native media spoiler проецируется и требует явного
 thumb512 декодируется с живым file lease. DEBUG album QA включается отдельно и
 использует тот же набор версий в forward/Saved/copy/range/reply источниках.
 Фактические regression/build/native результаты — в development-status.
-Далее остаются exhaustive mosaic parity, одиночные media-spoiler строки, normal
-forward options и прочие Telegram workflows/живой аккаунт; затем выбранные каналы
+Далее остаются exhaustive mosaic parity, одиночные media-spoiler строки,
+specialized forward options и прочие Telegram workflows/живой аккаунт; затем выбранные каналы
 в исходном порядке. Текущая проверка не завершает общую цель переноса.
+
+## Текущий участок: опции автора и подписей пересылки
+
+Меню accessory показывает текущий выбор и counts native авторов/подписей.
+Подпись следует reference coupling до явного выбора автора; повторный выбор
+отмеченного Show тоже закрепляет preference. Captured context/chat/intent/revision
+защищают от старого меню и unknown outcomes. Optional schema4 preference сохраняется
+при ordinary retarget и restart, не меняя rich input/selection/reply; legacy без
+поля читается. Persisted explicit choice — собственная адаптация: upstream temp
+preference не восстанавливается decode. Saved exception сохраняет default options,
+native transport — hideNames OR hideCaptions. Native AX/restart/retarget и реальные
+регрессии описаны в development-status. PostgreSQL/S3 retention не меняется.
+
+Полный Telegram, server acceptance, последующие MMail/Aether, WhatsApp, Teams,
+Telemost, backups и standalone packaging остаются открытыми в исходном порядке.

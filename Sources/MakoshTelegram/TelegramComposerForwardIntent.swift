@@ -40,16 +40,32 @@ public struct TelegramForwardQueueID: Codable, Equatable, Sendable {
 public enum TelegramComposerForwardDisposition: Codable, Equatable, Sendable {
     case prepared, submissionStarted, accepted([TelegramForwardQueueID])
 }
+public enum TelegramForwardOption: Equatable, Sendable {
+    case authorHidden(Bool), captionsHidden(Bool)
+}
 public struct TelegramComposerForwardIntent: Codable, Equatable, Sendable {
     public let id: UUID
     public let sources: [TelegramComposerForwardSource]
     public let hideNames: Bool
     public let hideCaptions: Bool
-    public init(id: UUID = UUID(), sources: [TelegramComposerForwardSource], hideNames: Bool = false, hideCaptions: Bool = false) {
+    public let explicitHideNames: Bool?
+    public init(id: UUID = UUID(), sources: [TelegramComposerForwardSource], hideNames: Bool = false, hideCaptions: Bool = false,
+                explicitHideNames: Bool? = nil) {
         self.id = id; self.sources = sources; self.hideNames = hideNames; self.hideCaptions = hideCaptions
+        self.explicitHideNames = explicitHideNames
+    }
+    public func applying(_ option: TelegramForwardOption) -> Self {
+        switch option {
+        case let .authorHidden(hidden):
+            return .init(id: id, sources: sources, hideNames: hidden, hideCaptions: hideCaptions, explicitHideNames: hidden)
+        case let .captionsHidden(hidden):
+            return .init(id: id, sources: sources, hideNames: explicitHideNames ?? hidden, hideCaptions: hidden,
+                explicitHideNames: explicitHideNames)
+        }
     }
     public var isValid: Bool {
-        guard !sources.isEmpty, sources.count <= 100, sources.allSatisfy(\.isValid) else { return false }
+        guard !sources.isEmpty, sources.count <= 100, sources.allSatisfy(\.isValid),
+              explicitHideNames.map({ $0 == hideNames }) ?? true else { return false }
         let keys = sources.map { "\($0.peerID):\($0.namespace):\($0.messageID)" }
         return Set(keys).count == keys.count
     }

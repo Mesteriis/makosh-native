@@ -1894,6 +1894,18 @@ Bounded decoders and incomplete MIME aliases remain explicit compatibility gaps
 in `reference-interface.md` and `telegram-album-migration.md`. Older binaries
 refuse newer schemas; retain pointers, encrypted resources and keys when rolling back.
 
+### Internal ZIP codec
+
+The next Archive slice has an independently authored internal ZIP32 writer and
+streaming inspector over system zlib. It preserves ordered raw sources, hidden/
+empty files and allocated collision names; verifies exact headers, CRC/SHA and
+fresh owned source bytes without extraction. Count/name/catalog memory limits
+are separate from the1500MiB raw-byte cap. See telegram-album-migration.md and
+THIRD_PARTY_NOTICES.md for the profile, limits and SDK notice.
+This codec is not yet used by the controller, storage or native queue. Strict
+schema16, N-originals-plus-ZIP recovery, S3 policy reuse and one-ZIP receipt remain
+the next integration work; existing ordinary preparations still use schema15.
+
 ### Versioned caption projection
 
 Schema15 retains the exact raw rich input and selection. The native send plan

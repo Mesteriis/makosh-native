@@ -125,6 +125,21 @@ dependencies are excluded. Prepared sources are authenticated on every warm use,
 without the archive cache, network or research checkouts. The callback facade,
 strict page admission and ordinary music policy are independently authored.
 
+## System ZIP compression
+
+Makosh's independently authored ZIP32 writer and streaming verifier use the
+Swift SDK `zlib` module, which autolinks the operating system's
+`/usr/lib/libz.1.dylib`. The reviewed development SDK header and runtime report
+1.2.12. No zlib implementation or binary is vendored; the retained
+[SDK copyright and license notice](LICENSES/Zlib-SDK-1.2.12-LICENSE.txt) is the
+verbatim notice from that header. It credits Jean-loup Gailly and Mark Adler.
+
+The implementation uses the documented raw DEFLATE and CRC32 APIs. ZIP record
+layout was independently implemented using the published
+[PKWARE ZIP specification](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT).
+No specification body or reference Zip/MiniZip implementation is redistributed.
+This internal codec layer does not yet enable Archive sending in the UI.
+
 ## Included license texts and attributions
 
 | Component | License / retained notice |
@@ -137,6 +152,7 @@ strict page admission and ordinary music policy are independently authored.
 | SQLite portions | Public domain; original blessing retained in prepared `sqlite3.c` |
 | Apple Reachability sample portions | [Apple sample-code license](LICENSES/Apple-Reachability-LICENSE.txt); wrapper source retains its upstream notices |
 | Dynamically linked local OpenSSL 3 (verified local version 3.6.4) | [Release license](LICENSES/OpenSSL-3.6.4-LICENSE.txt), Apache 2.0; source: [official release](https://github.com/openssl/openssl/tree/openssl-3.6.4) |
+| Operating-system libz, reviewed SDK/runtime 1.2.12, Jean-loup Gailly and Mark Adler | [Retained SDK Zlib license notice](LICENSES/Zlib-SDK-1.2.12-LICENSE.txt); no implementation vendored |
 | libopus 1.5.1 portable C sources, Xiph.Org Foundation and named contributors | BSD-style grants; [unchanged COPYING](LICENSES/Opus-1.5.1-COPYING.txt), [selected source attributions](LICENSES/Opus-1.5.1-source-notices.txt) |
 | libogg1.3.6, Xiph.org Foundation | [Unchanged BSD3 COPYING](LICENSES/libogg-BSD3.txt) |
 | libopusfile0.12, Xiph.Org Foundation and contributors | [Unchanged BSD3 COPYING](LICENSES/libopusfile-BSD3.txt) |

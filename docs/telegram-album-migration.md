@@ -370,11 +370,26 @@ more than one selected source, no grouping/spoiler. The reference flattens names
 with ignored copy failures and enumerates unsorted/skipsHiddenFiles; do not
 reproduce content omission, duplicate-basename loss or unstable member order.
 Its Zip→MiniZip local package license/provenance and error/cancellation handling
-are not sufficiently established for adoption. No library or ZIP writer has been
-added. Next implementation must review an exact ZIP format/platform API boundary,
-retain N ordered immutable originals plus one ZIP record under a new explicit
-schema, send only one ZIP with one complete native receipt, and fail atomically
-on cancellation/I/O/collision/bounds. S3 OFF forbids ZIP and member uploads,
+are not sufficiently established for adoption. Makosh now has an independently
+authored internal ZIP32 writer and streaming inspector over system zlib; no
+upstream ZIP implementation is copied. The profile uses ordered flat UTF8 names,
+best raw DEFLATE for nonempty files, Store for empty files, CRC32, seekable local
+headers, no extra/comment fields and a deterministic1980-01-01 timestamp. Case
+and NFC collisions receive stable numeric suffixes while later original names
+remain reserved. Hidden and empty sources are retained.
+
+Product bounds are2–1024 sources,1500MiB aggregate raw bytes,1024 UTF8 bytes per
+source name,1040 per allocated name and1MiB total central-directory metadata.
+Count/name/catalog preflight precedes source path IO. The inspector streams
+inflated bytes without extracting files and compares exact local/central/EOCD
+structure, names/order/count, CRC/SHA256 and freshly read owned raw sources.
+Cancellation and inode snapshots prevent publishing partial or changed input.
+An outer authenticated ZIP record digest is still required from its future caller.
+
+Archive is not connected to the controller, durable preparation or native queue
+yet. Next retain N ordered immutable originals plus one ZIP record under strict
+schema16, send only one ZIP with one complete native receipt, and preserve atomic
+publication on cancellation/I/O/bounds. S3 OFF forbids ZIP and member uploads,
 including preparation; local encrypted records never promote after enable.
 A photo/GIF `originalFile` pair is not an Archive representation. Restart, stale
 CAS, native resource integrity and no automatic resend need real regressions.

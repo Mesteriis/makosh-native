@@ -1,6 +1,59 @@
 # Development status — 2026-10-12
 
-## Current stage: versioned reference caption projection
+## Current stage: internal ZIP codec
+
+This Archive slice adds independently authored ZIP32 writer/inspection over
+the SDK's system zlib module. Ordered owned raw stages become one private
+`Telegram Archive.zip`; hidden/empty sources remain present. Case/NFC basename
+collisions receive stable suffixes while later original names stay reserved.
+Nonempty members use best raw DEFLATE, empty members Store; UTF8 names, CRC32,
+patched local headers, exact central/EOCD and1980-01-01 timestamp are explicit.
+The inspector compares each decoded stream's count/SHA/CRC with both the manifest
+and freshly read owned raw bytes, without extracting files. Source-name binding
+uses exact UTF8 spelling. Cancellation and inode snapshots bracket the operation.
+
+Review found that the raw-byte cap did not bound central-directory/name memory.
+Compiled root RED reproduces missing metadata preflight before source IO; shared
+product limits now enforce2–1024 sources,1500MiB raw bytes,1024 UTF8 source-name
+bytes,1040 allocated-name bytes and1MiB central metadata. A separate compiled RED
+reproduces canonical-equivalent source-name substitution before the byte binding
+fix. Final review also found output/source identity disagreement. A compiled
+RED2/5 precedes writer preflight alignment: output ID differs from every source
+item/file ID, and source file IDs are nonzero. Final focused **31 XCTest,0
+failures** covers these boundaries, real1024
+sources, exact64KiB output sizes, multichunk incompressible input, independent
+Python zipfile readback, literal raw-DEFLATE ZIP, tampering, cancellation and
+changed-source cleanup. Original failed/stub runs remain recorded separately.
+
+`scripts/dev-db.sh up`, final `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,236 XCTest (1,160 Telegram +76 core),1 skipped,0 failures;45 Python tests**.
+All444 source/test/dependency/script/license/reference-lock files and14 review
+copies remain frozen through final gates. Warm gates emit no compile warnings;
+437 existing upstream t19 diagnostics remain without test failures. One
+microphone-authorization test is skipped. Strict built signature, system libz
+linkage and exact retained notice in the app bundle pass. The zlib SDK/runtime
+1.2.12 notice is retained; no implementation is vendored or engine pin changed.
+
+Final bounded review and its identity-fix delta have no remaining actionable
+findings. Root verifies268 delivery/artifact/copy checks,40 original worker
+commands (38 exit0,2 nonzero),6 explicitly unrun checks and the444-file/14-copy
+freeze. Earlier research verification remains separate:429 integrity checks,
+66 commands,4 nonzero,5 unrun. Failed root evidence setup, missing-path inspection
+and nullable-check verifier setup remain recorded; corrected verification does
+not turn those failures into PASS. Requested route is inherited; observed
+provider/model/usage/internal transfer remain unknown, with no quorum.
+Fresh active XERJ queries are source-confirmed: project v6 refresh/check exit0,
+459 files,421/421 classified code; unchanged reference579cebbf and enginea24bbe45
+checks pass. Both previous85cc hosted CI runs pass; new-head CI is separate.
+
+No visible screen changes in this slice. Archive sending still requires strict
+schema16, N-originals-plus-ZIP recovery, policy-aware install/generation CAS,
+one native document/receipt and actual existing-window UI verification. The codec
+has no storage/account calls; S3 OFF and no-promotion remain required at that
+future integration boundary. Existing preparations continue to use schema15.
+Full Telegram and subsequent services remain the active sequential goal.
+
+## Previous stage: versioned reference caption projection
 
 New ordinary picker preparations use strict schema15: the raw rich editor input,
 selection and source facts remain durable; only the send plan normalizes text.

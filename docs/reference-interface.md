@@ -974,3 +974,12 @@ fixtures восстановлены/hash-checked. Emoji selectText не сраб
 placeholder/comment переключение и полная visual/gesture parity. Conservative
 1024 limit и generic caption UI остаются явными адаптациями. Архивная отправка
 ещё не реализована; совпадение с upstream ZIP wrapper не заявляется.
+
+Внутренний ZIP writer/inspector теперь реализован независимо через системный
+zlib. Он сохраняет порядок, скрытые и пустые файлы; совпадающие имена получают
+суффиксы без потери исходников. Это исправляет проверенные проблемы reference
+copy/enumeration, но не меняет видимое окно и не добавляет кнопку Archive.
+Остаются schema16 с N originals + ZIP, восстановление, один native receipt,
+generation/CAS и реальные проверки Archive в том же общем окне Makosh.
+Пределы и точный внутренний профиль записаны в telegram-album-migration.md;
+полное визуальное совпадение и готовность архивной отправки не заявляются.

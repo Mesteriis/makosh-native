@@ -14,6 +14,7 @@ public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
     }
 
     func allowsGrouping(_ files: [(name: String, isVisual: Bool, metadata: TelegramUploadMetadata?)]) -> Bool {
+        if files.contains(where: { $0.metadata?.voice != nil }) { return false }
         if files.contains(where: { if case .webP = $0.metadata { true } else { false } }) { return false }
         if files.contains(where: { if case .audio = $0.metadata { true } else { false } }) {
             return self == .file && files.allSatisfy {
@@ -81,6 +82,10 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
             (videoCover == nil || video != nil) &&
             (videoCover?.isValid(identity: identity, attachmentID: legacy ? "video-cover" : Self.coverAttachmentID(id)) ?? true) &&
             Self.validRecord(file, identity: identity, attachmentID: legacy ? "prepared" : Self.attachmentID(id)) else { return false }
+        if let voice = metadata?.voice {
+            guard file.plaintextByteCount > 0, file.plaintextByteCount <= 20 * 1024 * 1024,
+                  voice.plaintextSHA256 == file.plaintextSHA256 else { return false }
+        }
         guard let originalFile else { return true }
         return !legacy && (file.attachment.kind == "photo" || metadata?.gif != nil) && originalFile.attachment.kind == "file" &&
             originalFile.plaintextByteCount <= 20 * 1024 * 1024 &&

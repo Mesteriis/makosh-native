@@ -1848,8 +1848,9 @@ For example64×64 pixels at144DPI remain an original file (32×32 points), while
 32×32 pixels at36DPI can become a photo (64×64 points). Both paths retain exact
 raw bytes after source removal; normalized JPEG pixels do not reclassify the source.
 GIF/WebP/multiframe inputs are never flattened into static photos. WebP typed
-originals and GIF conversion are supported below; ordered whole-list options and
-recorded-voice attributes remain open; the verified dependency order is in `telegram-album-migration.md`.
+originals, GIF conversion and explicit recorded-voice attributes are supported
+below. Ordered whole-list options and recorder interaction remain open; the
+verified dependency order is in `telegram-album-migration.md`.
 
 Media option eligibility is separate from all-visual grouping/layout: a mixed
 photo/document set in Media retains caption placement, spoiler and one-shot
@@ -1951,7 +1952,7 @@ and creates no archive record or S3 copy even when S3 is enabled. Generic legacy
 files retain an empty preview. Composer File presentation still shows its file
 icon; this change supplies the native transport representation.
 
-Full ordered source options (including40-point/aspect rules) and explicit voice remain open.
+Full ordered source options (including40-point/aspect rules) and recorder interaction remain open.
 Apple ImageIO and owned synthetic fixtures add no codec dependency or copied GPL UI.
 Actual owned UI/host and full gate results are recorded in development-status.md.
 
@@ -1986,18 +1987,18 @@ PostgreSQL holds metadata, not payload bytes. The regenerated JPEG stays only in
 MediaBox even with S3 ON. Real local/S3 native regressions cover both presentations
 and no resend. The existing common-window preparation UI is retained. GIF cover
 editing is disabled because the reference's GIF sender ignores its custom cover;
-reference-interface.md records this difference and the source pin. Recorded
-voice, full ordered source options, Archive and image editing remain open.
+reference-interface.md records this difference and the source pin. Recorder UI,
+full ordered source options, Archive and image editing remain open.
 
 
 ## Internal offline recorded-voice codec
 
 The internal `TelegramRecordedVoiceCodec` now encodes explicit mono48kHz Int16
 PCM into Ogg/Opus, then independently parses and decodes its own recordings.
-It is not yet connected to microphone capture, picker classification, durable
-preparations, waveform, playback UI or native outgoing voice attributes.
+The separate explicit-recording path below connects it to durable preparations
+and native Voice attributes. Microphone capture, waveform and playback UI remain open.
 Existing picked audio remains ordinary music/file; filename/MIME never grants
-recorded provenance. There is no new account, microphone or storage action.
+recorded provenance. No microphone or account action is enabled.
 
 Source-confirmed reference: pinned TelegramSwift's
 `packages/TelegramMedia/Sources/AudioRecorder.swift:285–345`, its pinned iOS
@@ -2010,8 +2011,8 @@ no comment padding and the600s/20MiB limits are independent implementation
 choices. The decoder accepts only this bounded recording format, not arbitrary
 Ogg imports: exact headers, mono/rate/gain/map, lacing, CRC, stream/sequence,
 packet duration, final granule and output count all bind admission. CRC detects
-container damage; it is not authentication. Later durable integration still
-needs the authenticated plaintext digest and explicit recorded provenance.
+container damage; it is not authentication. Durable integration below retains
+the authenticated plaintext digest and explicit recorded provenance.
 
 Framing is independently authored against
 [RFC7845](https://www.rfc-editor.org/rfc/rfc7845.html) and
@@ -2029,5 +2030,41 @@ native decoder to check audio correlation and exact trim. Silence, sub-frame
 lengths, PCM/byte bounds, damaged/truncated/trailing data, rechecksummed header/
 sequence/stream/EOS forgeries, bitrate bounds and pre-cancellation are covered.
 In-flight cancellation and full600-second native playback remain unproved.
-Recorder interaction, waveform, durable ON/OFF recovery, native Voice admission
-and live delivery remain open; an offline codec is not a completed voice flow.
+Recorder interaction, waveform and live delivery remain open; an offline codec
+and synthetic native admission do not establish a completed recorder flow.
+
+### Explicit recorded preparation and native Voice
+
+`TelegramRecordedVoiceIO.prepare(samples:)` is the explicit recording entry point.
+It encodes owned PCM, stages `Voice.ogg` in an owned0700 directory/0600 file and
+retains strict voice metadata: Int32 sample count1…28,800,000, lowercase plaintext
+SHA256 and an explicit nullable waveform. Duration is integral sampleCount/48,000,
+including0 for a subsecond recording. Picked Ogg/Opus files remain ordinary files;
+container/MIME/name never grants recorded provenance. The existing20MiB encoded
+limit applies. No product recorder control is connected yet.
+
+Schema11 accepts exactly one explicit voice item, no grouping, caption, spoiler,
+caption-above, source pair or cover. Internal `.file` presentation is its payload
+transport representation. Schema1–10 reject voice; their existing meanings remain
+supported. Frozen metadata binds the archive record's plaintext digest. Capture,
+restore and MediaBox preparation decode actual owned Ogg bytes and compare exact
+PCM count/digest, holding a no-follow descriptor and checking source snapshot.
+Malformed envelopes are refused before archive capture. Optional waveform, when
+present, must be exactly100 packed5-bit values in63 bytes with zero unused bits;
+this slice emits null and does not claim waveform computation.
+
+The chat flag selects authenticated encrypted S3 or encrypted local preparation.
+OFF forbids every new S3 copy, including this preparation. Local records survive
+restart and never promote after re-enable. PostgreSQL stores no payload bytes.
+Retry reuses the same record. Native mapping matches pinned
+`SenderController.swift:295–312`: `audio/ogg`, only Audio(isVoice:true, integral
+duration, nil title/performer, frozen waveform), nil media size, no FileName,
+preview, immediate thumbnail, video thumbnail or cover. The local resource retains
+its actual byte size. Existing guarded batch admission/ACK retains reply handling.
+
+Real encrypted Postbox/PostgreSQL/S3 regressions restore exact bytes in ON/OFF,
+read back native Voice attributes/MediaBox bytes and refuse stale resubmission.
+The accepted pointer survives another reopen. Invalid captions and changed PCM
+facts create no archive record. Exact main-actor test-fixture and hosted compiler
+failures, gates and UI evidence are recorded in development-status.md. There is
+no live Account/server, microphone, waveform or recorder interaction proof yet.

@@ -30,7 +30,7 @@ public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
 }
 
 public enum TelegramUploadFileError: LocalizedError, Equatable {
-    case unavailable, tooLarge, invalidImage, invalidVideo, invalidAudio, invalidWebP, invalidGIF, stagingFailed
+    case unavailable, tooLarge, invalidImage, invalidVideo, invalidAudio, invalidWebP, invalidGIF, invalidVoice, stagingFailed
     public var errorDescription: String? {
         switch self {
         case .unavailable: "Выбранный файл недоступен или изменён. Выберите его снова."
@@ -40,6 +40,7 @@ public enum TelegramUploadFileError: LocalizedError, Equatable {
         case .invalidAudio: "Не удалось проверить аудиофайл. Можно отправить оригинал как файл."
         case .invalidWebP: "Не удалось проверить WebP. Можно отправить оригинал как файл."
         case .invalidGIF: "Не удалось проверить GIF. Можно отправить оригинал как файл."
+        case .invalidVoice: "Не удалось проверить запись голосового сообщения."
         case .stagingFailed: "Не удалось подготовить временную копию вложения. Проверьте свободное место и доступ."
         }
     }
@@ -159,6 +160,9 @@ public enum TelegramUploadFileIO {
         switch metadata {
         case .audio: invalid = .invalidAudio
         case .webP: invalid = .invalidWebP
+        case .voice:
+            invalid = .invalidVoice
+            guard file.size > 0, file.size <= 20 * 1024 * 1024 else { throw invalid }
         case let .gif(gif):
             guard gif.isValid, file.videoCover == nil else { throw TelegramUploadFileError.invalidGIF }
             if file.mode == .file {
@@ -186,6 +190,11 @@ public enum TelegramUploadFileIO {
             guard try await TelegramUploadAudioIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidAudio }
         case let .webP(frozen):
             guard try await TelegramUploadWebPIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidWebP }
+        case let .voice(frozen):
+            let facts = try await TelegramRecordedVoiceIO.inspect(file)
+            guard facts.sampleCount == frozen.sampleCount, facts.plaintextSHA256 == frozen.plaintextSHA256 else {
+                throw TelegramUploadFileError.invalidVoice
+            }
         case let .gif(frozen):
             if file.mode == .file {
                 guard try await TelegramUploadGIFIO.inspect(file, expectedPlaintextSHA256: frozen.sourceSHA256) == frozen.info else {

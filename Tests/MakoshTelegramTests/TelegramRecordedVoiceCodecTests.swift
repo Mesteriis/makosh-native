@@ -107,8 +107,12 @@ import COpus
     }
 
     private func tone(count: Int) -> [Int16] {
-        (0..<count).map { index in Int16(12_000 * sin(Double(index) * 2 * .pi * 440 / 48_000)
-            + 3_000 * sin(Double(index) * 2 * .pi * 1_203 / 48_000)) }
+        (0..<count).map { index in
+            let phase: Double = Double(index) * 2.0 * Double.pi / 48_000.0
+            let fundamental: Double = 12_000.0 * sin(phase * 440.0)
+            let overtone: Double = 3_000.0 * sin(phase * 1_203.0)
+            return Int16(fundamental + overtone)
+        }
     }
 
     private func correlation(_ lhs: [Int16], _ rhs: [Int16]) -> Double {

@@ -1,6 +1,63 @@
 # Development status — 2026-10-11
 
-## Current stage: internal offline voice codec; recorder integration remains open
+## Current stage: explicit durable Voice path; recorder interaction remains open
+
+Explicit recorded PCM now creates an owned Ogg/Opus stage with schema11 voice
+provenance: exact sampleCount, plaintext SHA256 and explicit nullable waveform.
+Schema1–10 reject voice while retaining their existing meanings. One voice item
+has no caption/group/spoiler/above/source pair/cover. Internal File presentation
+is a transport choice; no recorder UI is exposed. Picked files never acquire
+voice provenance from name/MIME/container. Metadata enforces600s/20MiB, and the
+optional100-value5-bit waveform layout is frozen but currently null.
+
+Capture, restore and MediaBox independently decode the owned bytes to verify
+actual PCM count/hash through held no-follow snapshots. Invalid captions/facts
+refuse before archive capture. ON uses authenticated encrypted S3; OFF prohibits
+all new copies, including preparation, and uses authenticated encrypted local
+storage. Local records never promote on re-enable; PostgreSQL stores no payload
+bytes. Retry retains the same record. Native attributes match pinned
+SenderController:295–312: audio/ogg, only Audio(isVoice:true, integral duration,
+nil title/performer, frozen waveform), nil media size and no FileName/preview/
+thumbnail/cover. Actual resource byte size remains available.
+
+Corrected behavioral stub RED9 tests/8 unexpected failures precedes focused
+schema/IO GREEN9/0. Earlier test compilation and exception-autoclosure fixture
+errors are retained separately. Real encrypted Postbox/PostgreSQL/S3 tests cover
+ON/OFF reopen, exact native MediaBox bytes/Voice attributes, complete acceptance,
+stale resend refusal and accepted-pointer reopen. Invalid envelopes/facts create
+no archive record. First integration attempt traps because a test's MainActor
+closure runs on Postbox's queue; moving only transaction fixture bodies outside
+MainActor resolves it. This is a test setup failure, not production RED. Final
+voice GREEN19/0; broader pending/batch/typed compatibility GREEN104/0.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**959 XCTest (883 Telegram +76 core), zero failures;38 Python regressions**.
+Current incremental full/build logs have zero compile warnings. Existing upstream
+t19 teardown diagnostics remain without failures; prior cold C warnings remain
+as documented below. Both hosted runs for ecca7af failed test compilation at the
+same complex tone expression. Explicit typed intermediate steps now compile and
+pass locally; hosted validation of the next publication is separate.
+
+Owned synthetic app update passes strict signatures and raw unsigned built–QA
+payload equality. Actual screenshots/AX inspected: chat7 S3 OFF, Mail opens its
+existing disconnected surface, then Telegram returns to chat7/off. No personal
+account, Telegram network or microphone was used. This is common-window smoke,
+not recorder interaction proof. Host27.0.1 does not establish minimum26 runtime.
+
+Root reviews the focused diff, byte ownership/cancellation, schema compatibility,
+pre-capture failure paths, policy handling, native receipts and regression scope.
+No new dependency, license, engine recipe or interface change; no independent new
+worker/quorum is claimed. Frozen XERJ v5 refresh/check/query and reference/engine
+freshness checks exit0:398 files,364/364 classified code. Actual voice stage/
+metadata and reference VoiceSenderContainer hits are source-confirmed. An initial
+query used the wrong reference prefix and returned no hits; the corrected locked
+prefix succeeds. No stale/empty search is substituted as current evidence.
+
+Next: independently verified waveform, then reference recorder interaction.
+Full ordered classifier, Archive/caption normalization, live Account/server
+validation, remaining channels and the sequential migration goal remain open.
+
+## Historical internal offline voice codec (ecca7af)
 
 An independently authored internal codec now encodes explicit48kHz mono Int16
 PCM into Ogg/Opus and decodes its bounded recording format. Reference writer

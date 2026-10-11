@@ -45,6 +45,10 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
     case .file:
         var mime = UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         var attributes: [TelegramMediaFileAttribute] = []
+        if let voice = file.metadata?.voice {
+            mime = "audio/ogg"
+            attributes.append(.Audio(isVoice: true, duration: Int(voice.duration), title: nil, performer: nil, waveform: voice.waveform))
+        }
         if case let .audio(audio) = file.metadata {
             attributes.append(.Audio(isVoice: false, duration: Int(audio.duration), title: audio.title, performer: audio.performer, waveform: nil))
         }
@@ -56,13 +60,13 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             mime = "image/gif"
             attributes.append(.ImageSize(size: PixelDimensions(width: gif.width, height: gif.height)))
         }
-        attributes.append(.FileName(fileName: telegramAttachmentName(file.name)))
+        if file.metadata?.voice == nil { attributes.append(.FileName(fileName: telegramAttachmentName(file.name))) }
         if case .webP = file.metadata {
             attributes.append(.Sticker(displayText: "", packReference: nil, maskData: nil))
         }
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
             partialReference: nil, resource: resource, previewRepresentations: (gifPreview ?? webPPreview).map { [$0.representation] } ?? [], videoThumbnails: [],
-            immediateThumbnailData: nil, mimeType: mime, size: file.size,
+            immediateThumbnailData: nil, mimeType: mime, size: file.metadata?.voice == nil ? file.size : nil,
             attributes: attributes, alternativeRepresentations: [])
     case .photo:
         guard let width = file.pixelWidth, let height = file.pixelHeight, width > 0, height > 0 else { return nil }

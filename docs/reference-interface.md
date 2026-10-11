@@ -569,7 +569,7 @@ Static photo admission теперь использует размер исход
 Нативная проверка в общей форме: PNG64×64@144DPI остаётся файлом354bytes;
 PNG32×32@36DPI получает JPEG795bytes и сохраняет исходный PNG267bytes. File/Media
 и подпись переживают удаление выбранного файла и restart при выключенном S3.
-GIF, ordinary music и WebP описаны ниже; recorded voice ещё не реализован. Полный source contract,
+GIF, ordinary music, WebP и explicit recorded-voice path описаны ниже. Полный source contract,
 включая order-dependent WebP options и отдельные native kinds, записан в
 `telegram-album-migration.md`; это не заявление о полном совпадении с референсом.
 Mode write меняет только Postbox metadata, сохраняет исходные local/S3 IDs и блокирует
@@ -577,7 +577,7 @@ Send до подтверждения. Native PNG regression проверяет �
 точные исходные байты MediaBox и complete receipt после восстановления.
 
 Оставшиеся различия классификации явные: WebP сохраняет исходные байты с native sticker attributes. Static-photo admission уже использует
-NSImage logical size. Полный ordered classifier, OGG/Opus и recorded voice ещё
+NSImage logical size. Полный ordered classifier, обычный OGG/Opus и recorder UI ещё
 открыты, как Archive и image edits.
 
 Сверены также `PreviewSenderController.swift:1690–1705,388–393`: mixed Media
@@ -687,7 +687,7 @@ transparency и odd-axis runtime остаются отдельными непр�
 зависимостью от `.references/`. Используется существующая форма общей оболочки Макош.
 
 
-### Recorded voice: offline codec boundary
+### Recorded voice: codec and durable native boundary
 
 Сверены pinned `AudioRecorder.swift:285–345`, iOS
 `OpusBinding/Sources/opusenc/opusenc.m:115–135,157–174,214–280` и
@@ -696,6 +696,18 @@ transparency и odd-axis runtime остаются отдельными непр�
 pre-skip. Независимый decoder/CRC regression подтверждает точный PCM trim.
 Собственные one-packet/page, vendor Makosh, отсутствие comment padding и
 600s/20MiB limits отличаются от writer референса. GPL recorder/OpusBinding/
-libogg code не скопирован. Интерфейс этой частью не менялся: кнопка/состояния
-recording, waveform, долговечная подготовка и native Voice ещё открыты.
-Файлы из picker не переопределяются как voice по имени или MIME.
+libogg code не скопирован. Отдельный explicit prepare(samples:) теперь сохраняет
+schema11 с sampleCount/SHA256/nullable waveform, восстанавливает запись через
+encrypted local/S3 и передаёт только native Audio(isVoice:true), audio/ogg,
+nil media size, без FileName/preview/cover — как SenderController:295–312.
+Schema1–10 не принимают voice; внутренний File payload не означает File-интерфейс
+записи. Нет caption/group/spoiler/above. S3 OFF запрещает и подготовительные копии,
+локальные записи не загружаются после включения. Bytes/count/digest проверяются
+повторным decode при capture/restore/MediaBox. Файлы из picker не переопределяются
+как voice по имени или MIME.
+
+Интерфейс этой частью не менялся: кнопка, recording/locked/preview-состояния и
+waveform ещё открыты. Waveform пока null, хотя референс формирует100 значений
+по5 bit в63 bytes; nullable native field сверено отдельно. Ни GPLv2 AudioWaveform helper,
+ни recorder UI не копировались. Общая оболочка/чат сохраняются. Реальный микрофон,
+live Account/server и minimum26 runtime ещё не проверены.

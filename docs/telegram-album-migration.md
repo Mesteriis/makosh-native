@@ -165,7 +165,7 @@ preparation can also have `inCollage=true`, independently of actual send groupin
 | GIF | Media: H.264 MP4, Video wire duration0/flags[], Animated only when not inCollage. File: original GIF. | Bounded frame/timing decode, independent conversion, separately retained raw and transformed digests; actual MP4 duration separate from wire duration. |
 | WebP | Original bytes, ImageSize/FileName/Sticker even in File; grouping disabled. | Verified bounded decoder and explicit first-frame dimension policy; no JPEG replacement or inferred animated sticker. |
 | Ordinary audio | Original bytes, Audio(isVoice:false) with integral duration/title/performer even in File. | Validated AVFoundation duration and bounded tags, retained through native enqueue and restart; OGG/Opus filenames never imply voice. |
-| Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed offline codec build and deterministic PCM encode/decode first; then a separate recorder workflow. |
+| Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed codec, strict schema11 and authenticated local/S3 native recovery implemented; waveform and separate recorder workflow remain open. |
 
 Ordinary music now has a verified owned pipeline for synthetic WAV, tagged M4A
 and ID3 MP3. Schema9 carries exact duration/title/performer through File/Media
@@ -173,7 +173,7 @@ projection, policy-aware storage, byte re-probe, MediaBox and complete native
 receipts. Generic legacy files never acquire music metadata from their suffix.
 When any item is typed music, File grouping requires every item to be typed music;
 a generic `.wav` cannot join it by name. The full ordered classifier above remains
-open, including ordinary OGG/Opus and explicit voice provenance.
+open, including ordinary OGG/Opus. Explicit recorded provenance now uses schema11.
 
 WebP now has a strict schema9 owned original pipeline too. Content-derived
 ImageIO inspection proves bounded frame0/canvas dimensions for static and animated
@@ -197,8 +197,10 @@ with image/gif/ImageSize independent of its suffix. An optional raw frame0 JPEG
 is regenerated only in MediaBox; complete native receipts cover its distinct ID
 and representation flags. No new S3 copy is permitted while the chat flag is off,
 including outgoing preparation; local pairs are never promoted on re-enable.
-Recorded voice remains a source
-contract without implemented type support. The prepared engine
+Recorded voice now has an explicit typed PCM entry, strict schema11 digest/count
+binding and native Voice mapping. Both storage modes and encrypted Postbox reopen
+are covered without a microphone. Nullable waveform is currently null; recording
+interaction and its waveform proof remain open. The prepared engine
 a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
 currently expose GIF conversion or Opus products. Its WebP helper is not adopted;
 Makosh uses the independently verified Apple decoder. UIKit wrappers
@@ -230,7 +232,7 @@ reorder. Do not serialize invalid Makosh state to reproduce that upstream quirk.
 
 Continue in this dependency order:
 
-1. Extend strict typed metadata/schema9–10 while preserving schema1–8 meanings.
+1. Extend strict typed metadata/schema9–11 while preserving schema1–8 meanings.
    Separate source facts, canonical payload and raw projection; reject unknown,
    missing or cross-kind metadata. Never reinterpret legacy generic files from
    suffixes. Bind source facts to stable item ID, owned raw size/digest and resource
@@ -239,7 +241,8 @@ Continue in this dependency order:
    original bytes; WebP's separate optional first-frame320px JPEG transport preview
    is now regenerated from authenticated bytes in MediaBox only. GIF now retains
    both original and validated MP4 with a separate optional raw-frame JPEG. Explicit voice
-   needs offline Opus/Ogg codec and waveform proof. Bound frames, dimensions,
+   now has a reviewed offline Opus/Ogg codec and durable native path; waveform
+   and recorder interaction remain open. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every
    typed resource. Off remains encrypted local-only; mode edits never recapture.

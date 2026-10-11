@@ -17,11 +17,12 @@ metadata and every queued reply attribute bind the complete batch to its source
 thread, canonical quote and absence of a todo item.
 
 The picker, upload controller, recovery protocol and preparation UI now carry
-ordered schema6/7/8 items. Multi-selection, stable-ID reorder/remove, grouping,
+ordered schema6/7/8/9 items. Multi-selection, stable-ID reorder/remove, grouping,
 later-item covers and whole-set restart use the existing upload state machine.
 Grouped visual previews split at10; documents remain individual preview rows.
 Existing schema1–5 preparations remain supported. Schema8 implements whole-list Media/File presentation and
-basic grouping eligibility. Full upstream classification and archive preparation
+basic grouping eligibility. Schema9 adds strict ordinary-audio metadata and its
+native attributes without reinterpreting legacy files. Full upstream classification and archive preparation
 remain open. New picker photo preparations, including single selection, retain
 both normalized JPEG and a separately encrypted raw source. File mode selects
 that source and verifies its digest during native enqueue. Existing schema1–6 photos have
@@ -164,7 +165,15 @@ preparation can also have `inCollage=true`, independently of actual send groupin
 | Ordinary audio | Original bytes, Audio(isVoice:false) with integral duration/title/performer even in File. | Validated AVFoundation duration and bounded tags, retained through native enqueue and restart; OGG/Opus filenames never imply voice. |
 | Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed offline codec build and deterministic PCM encode/decode first; then a separate recorder workflow. |
 
-These are source contracts, not implemented type support. The prepared engine
+Ordinary music now has a verified owned pipeline for synthetic WAV, tagged M4A
+and ID3 MP3. Schema9 carries exact duration/title/performer through File/Media
+projection, policy-aware storage, byte re-probe, MediaBox and complete native
+receipts. Generic legacy files never acquire music metadata from their suffix.
+When any item is typed music, File grouping requires every item to be typed music;
+a generic `.wav` cannot join it by name. The full ordered classifier above remains
+open, including ordinary OGG/Opus and explicit voice provenance.
+
+The remaining rows are source contracts, not implemented type support. The prepared engine
 a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
 currently expose GIF conversion, WebP binding or Opus products. UIKit wrappers
 and the outer GPLv2-only UI remain reference material. New codec source/build
@@ -195,12 +204,12 @@ reorder. Do not serialize invalid Makosh state to reproduce that upstream quirk.
 
 Continue in this dependency order:
 
-1. Add strict typed metadata/schema9 while preserving schema1–8 meanings.
+1. Extend the strict typed metadata/schema9 introduced for ordinary music while preserving schema1–8 meanings.
    Separate source facts, canonical payload and raw projection; reject unknown,
    missing or cross-kind metadata. Never reinterpret legacy generic files from
    suffixes. Bind source facts to stable item ID, owned raw size/digest and resource
    role, including logical image eligibility independent of JPEG pixels.
-2. Implement owned byte probes and typed transformations. Music and WebP retain
+2. Extend the owned music probe with the remaining byte probes and typed transformations. Music and WebP retain
    original bytes; GIF retains both original and validated MP4. Explicit voice
    needs offline Opus/Ogg codec and waveform proof. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.

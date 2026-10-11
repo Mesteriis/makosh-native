@@ -27,7 +27,7 @@ final class TelegramSyntheticUploadProvider: TelegramUploadBatchProvider {
     func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = SyntheticUploadLease()
-        guard target.accountID == accountID, target.hasValidReplySource, telegramFormattedCaptionCanSend(caption),
+        guard target.accountID == accountID, target.hasValidReplySource, file.metadata == nil, telegramFormattedCaptionCanSend(caption),
               (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo || file.mode == .video else {
             receive(.rejected); return lease
         }

@@ -12,6 +12,15 @@ public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
         let audio = files.map { UTType(filenameExtension: ($0.name as NSString).pathExtension)?.conforms(to: .audio) == true }
         return !audio.contains(true) || audio.allSatisfy { $0 }
     }
+
+    func allowsGrouping(_ files: [(name: String, isVisual: Bool, metadata: TelegramUploadMetadata?)]) -> Bool {
+        if files.contains(where: { $0.metadata != nil }) {
+            return self == .file && files.allSatisfy {
+                !$0.isVisual && $0.metadata?.isValid == true && ($0.name as NSString).pathExtension.lowercased() != "webp"
+            }
+        }
+        return allowsGrouping(files.map { (name: $0.name, isVisual: $0.isVisual) })
+    }
 }
 
 /// Stable preparation identity, independent of preview position or restored tmp path.
@@ -21,10 +30,37 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
     let video: TelegramUploadVideoMetadata?
     let videoCover: TelegramPendingUploadVideoCover?
     let originalFile: ArchiveFileRecord?
+    let metadata: TelegramUploadMetadata?
 
     init(id: UUID, file: ArchiveFileRecord, video: TelegramUploadVideoMetadata? = nil,
-         videoCover: TelegramPendingUploadVideoCover? = nil, originalFile: ArchiveFileRecord? = nil) {
+         videoCover: TelegramPendingUploadVideoCover? = nil, originalFile: ArchiveFileRecord? = nil,
+         metadata: TelegramUploadMetadata? = nil) {
         self.id = id; self.file = file; self.video = video; self.videoCover = videoCover; self.originalFile = originalFile
+        self.metadata = metadata
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable { case id, file, video, videoCover, originalFile, metadata }
+    private struct FieldKey: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+    }
+    init(from decoder: any Decoder) throws {
+        let fields = try decoder.container(keyedBy: FieldKey.self)
+        guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: Set(CodingKeys.allCases.map(\.rawValue))) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown preparation resource field"))
+        }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); file = try c.decode(ArchiveFileRecord.self, forKey: .file)
+        video = try c.decodeIfPresent(TelegramUploadVideoMetadata.self, forKey: .video)
+        videoCover = try c.decodeIfPresent(TelegramPendingUploadVideoCover.self, forKey: .videoCover)
+        originalFile = try c.decodeIfPresent(ArchiveFileRecord.self, forKey: .originalFile)
+        // A null discriminator cannot silently turn typed media into a generic file.
+        metadata = c.contains(.metadata) ? try c.decode(TelegramUploadMetadata.self, forKey: .metadata) : nil
+        guard metadata == nil || (!c.contains(.video) && !c.contains(.videoCover) && !c.contains(.originalFile)) else {
+            throw DecodingError.dataCorruptedError(forKey: .metadata, in: c, debugDescription: "Conflicting typed preparation resources")
+        }
     }
 
     static func attachmentID(_ id: UUID) -> String { "prepared:" + id.uuidString.lowercased() }
@@ -33,6 +69,7 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
 
     func isValid(identity: MessageArchiveIdentity, legacy: Bool) -> Bool {
         guard id != TelegramPendingUploadDraft.zeroUUID &&
+            (metadata.map { file.attachment.kind == "file" && video == nil && videoCover == nil && originalFile == nil && $0.isValid } ?? true) &&
             (file.attachment.kind == "video") == (video != nil) &&
             (video?.isValid(name: file.attachment.name, size: file.plaintextByteCount) ?? true) &&
             (videoCover == nil || video != nil) &&
@@ -48,7 +85,7 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
         switch (originalFile, staged) {
         case (nil, nil): return true
         case let (.some(record), .some(file)):
-            return file.mode == .file && file.video == nil && file.videoCover == nil &&
+            return file.mode == .file && file.video == nil && file.videoCover == nil && file.metadata == nil &&
                 record.attachment.name.utf8.elementsEqual(file.name.utf8) && record.plaintextByteCount == file.size &&
                 (try? TelegramUploadFileIO.validateOwnedStage(file)) != nil
         default: return false
@@ -95,7 +132,7 @@ public struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
             return .init(id: id, file: originalFile, originalFile: originalFile)
         }
         return .init(id: id, file: TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .file,
-            pixelWidth: nil, pixelHeight: nil, url: file.url, directory: file.directory), originalFile: originalFile)
+            pixelWidth: nil, pixelHeight: nil, url: file.url, directory: file.directory, metadata: file.metadata), originalFile: originalFile)
     }
     func discard(using discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard) throws {
         var failure: (any Error)?

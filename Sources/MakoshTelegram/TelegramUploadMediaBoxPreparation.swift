@@ -30,6 +30,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
         task = Task { [weak self] in
             do {
                 try TelegramUploadFileIO.validateOwnedStage(file)
+                try await TelegramUploadFileIO.verifyMetadata(file)
                 if let expectedPlaintextSHA256 {
                     guard TelegramPendingUploadDraft.isHash(expectedPlaintextSHA256),
                           try await uploadPlaintextMatches(file.url, size: file.size, expected: expectedPlaintextSHA256) else {

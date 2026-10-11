@@ -29,25 +29,26 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, [6, 7, 8].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, [6, 7, 8, 9].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
               resources.count == draft.items.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         let plan = try TelegramUploadBatchPlan(items: resources.map(\.item), isGrouped: draft.isGrouped,
             caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-            presentation: draft.schemaVersion == 8 ? draft.presentation : nil)
+            presentation: draft.schemaVersion >= 8 ? draft.presentation : nil)
         guard groupKeys.count == plan.groupCount, Set(groupKeys).count == groupKeys.count else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         var ids: [Int64] = []
         for (stored, resource) in zip(draft.items, resources) {
             let file = resource.item.file
-            let filePresentation = draft.schemaVersion == 8 && draft.presentation == .file
+            let filePresentation = draft.schemaVersion >= 8 && draft.presentation == .file
             guard let payload = filePresentation ? stored.payload(for: .file) : stored.file,
                   stored.id == resource.item.id, payload.attachment.name.utf8.elementsEqual(file.name.utf8),
                   (filePresentation ? "file" : payload.attachment.kind) == file.mode.rawValue, payload.plaintextByteCount == file.size,
                   payload.plaintextSHA256 == resource.plaintextSHA256, (filePresentation ? nil : stored.video) == file.video,
+                  stored.metadata == file.metadata,
                   telegramPendingUploadCoverMatches(filePresentation ? nil : stored.videoCover, file.videoCover),
                   stored.matchesOriginal(resource.item.originalFile), resource.reference != nil else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
@@ -72,7 +73,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             } else { reference = nil }
             guard let message = telegramUploadMessage(caption: entry.caption, reference: reference, target: target,
                 replySource: replySource, captionAboveMedia: entry.captionAboveMedia, mediaSpoiler: entry.mediaSpoiler,
-                presentation: draft.schemaVersion == 8 ? draft.presentation : nil) else { return nil }
+                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil) else { return nil }
             result.append(message.withUpdatedGroupingKey { _ in entry.groupIndex.map { groupKeys[$0] } })
         }
         return result

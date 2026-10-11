@@ -1,6 +1,67 @@
 # Development status — 2026-10-11
 
-## Current stage: source logical-size photo eligibility verified
+## Current stage: typed ordinary audio verified through restart and native queue
+
+Ordinary music now retains original bytes and exact integral duration/title/
+performer in strict schema9. File/Media projection, metadata-only edits,
+policy-aware capture, restart re-probe, MediaBox preparation and transaction-bound
+complete receipts retain that descriptor. Native attributes are Audio(false,
+duration,title,performer,nil) followed by FileName. Legacy generic files remain
+untyped; single-file APIs refuse typed items. Synthetic WAV, tagged M4A and ID3
+MP3 are proved. No engine recipe, dependency or license changes were introduced.
+
+The owned probe derives MIME from CoreAudio byte inspection, then validates
+AVFoundation duration, a bounded PCM fragment and tags. Opaque spool names require
+that content-derived hint; filenames are not decoding proof. Snapshot/ownership
+and cancellation guards remain. Full-stream integrity, exhaustive codecs,
+deterministic in-flight mutation/cancellation tests, OGG/Opus and recorded voice
+are not claimed. The ObjC reference's Key/Identifier comparison quirk is recorded
+separately from Makosh's verified native tag identifiers.
+
+Actual initial RED:19 tests/52 failures, including intentional probe stubs and
+separate assertion/lifetime fixture failures. First implementation attempt remains
+FAIL19/18; the content-derived MIME fix and fixture corrections produce focused
+GREEN22/0. A separate grouping RED1/1 closes filename-only admission into a typed
+music group. A later conflicting-null RED1/3 is fixed and covered by the full gate.
+Worker Swift6 setup compilation failure is not behavior RED.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**853 XCTest (777 Telegram +76 core), zero failures;32 Python regressions**.
+The final incremental test/build logs have no compile warnings;252 upstream t19
+teardown diagnostics remain without test failures. All temporary QA tests were
+removed;19 frozen source/test hashes match the independently reviewed snapshot.
+
+Actual owned UI in the common service/sidebar window prepares synthetic M4A in
+S3-off chat7, retains the11-UTF16 caption, then survives hash-verified source
+removal and SIGTERM. Restored File preparation accepts one native queue ID;
+another restart has no preparation resurrection. Mail→Telegram retains chat/off.
+Screenshots were inspected; strict signatures and raw unsigned built–QA equality
+pass. No personal account, microphone or Telegram network was used.
+
+Private real Postbox/PostgreSQL/S3 readbacks before/after acceptance pass one test
+each: same preparation/local record, exact original bytes/hash, typed metadata,
+caption, empty archive-file metadata and absent objects under both local and
+conventional S3 keys. Accepted native Audio/FileName attributes match exactly.
+The first accepted readback crashed because its private test closure inherited
+MainActor onto the Postbox queue; moving only that helper to the existing
+nonisolated test pattern fixed it. Raw failed log/crash evidence is retained;
+this was not a product-code change or a passed attempt. One initial CUA capture
+failure also remains separate from successful subsequent UI observations.
+
+Independent frozen source review reports no concrete defect; worker runtime/UI
+is SKIP, observed provider/model/usage unknown, no quorum. Root validates both
+worker contracts and all current source hashes. Initial XERJ queries failed
+exit2 with no node; after restoring the loopback node, retries exit0 and reference/
+engine source signatures are confirmed. Final project refresh/check/query and
+reference/engine freshness checks exit0:366 indexed files,335/335 classified code.
+New inspectOwned/verifyMetadata passages are confirmed against current source.
+
+Next: WebP/GIF typed resources and explicit voice/codec work, then frozen ordered
+source options, Archive and caption normalization. Full Telegram parity and
+Account/server delivery remain open. Other services, dossiers, backup/restore and
+packaging remain in sequence; the full migration goal stays active.
+
+## Historical source logical-size photo eligibility (c299b72)
 
 Photo admission now follows the selected TelegramSwift source's `NSImage.size`
 in points before JPEG generation. Pixel/byte/frame limits still bound decoding.

@@ -52,6 +52,117 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
     var refuseCapture = false
 }
 @MainActor final class TelegramPendingUploadPostboxTests: XCTestCase {
+    func testTypedAudioRestoresAndEnqueuesFromEncryptedLocalPreparationWithoutS3() async throws {
+        try await typedAudioReopenAndEnqueue(enabled: false)
+    }
+
+    func testTypedAudioRestoresAndEnqueuesFromEncryptedS3Preparation() async throws {
+        try await typedAudioReopenAndEnqueue(enabled: true)
+    }
+
+    private func typedAudioReopenAndEnqueue(enabled: Bool) async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), path = try root(), source = archiveRoot.appendingPathComponent("Synthetic.m4a")
+        try await writeUploadTaggedAudioFixture(source, title: "Synthetic 😀", performer: "Artist")
+        let bytes = try Data(contentsOf: source)
+        let expected = TelegramUploadMetadata.audio(.init(duration: 1, title: "Synthetic 😀", performer: "Artist"))
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic audio")
+        let caption = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Music 😀"))
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x68, count: 32) })
+        let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        try await archive.setConversationFileSavingEnabled(identity: identity, enabled: enabled)
+        var saved: TelegramPendingUploadDraft?
+        do {
+            let box = try await open(path); previousBox = box
+            let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                files: { TelegramPendingUploadFiles(repository: archive) })
+            let controller = TelegramUploadController()
+            controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+            controller.prepare(sources: [.init(source: source, mode: .file)], isGrouped: false, target: target, captionInput: caption)
+            for _ in 0..<1000 where !controller.canSend && controller.phase != .failed { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertTrue(controller.canSend)
+            let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
+            XCTAssertEqual(draft.schemaVersion, 9); XCTAssertEqual(draft.items[0].metadata, expected)
+            XCTAssertEqual(draft.presentation, .file); XCTAssertEqual(draft.items[0].file.state, enabled ? .stored : .local)
+            // A lost initial write acknowledgement must reuse the typed pointer and receipt.
+            try await store.prepare(preparationID: draft.id, items: controller.items, isGrouped: false, presentation: .file,
+                target: target, captionInput: caption, originalDraft: nil)
+            saved = try await store.load(chatID: 42)
+            XCTAssertEqual(saved?.items, draft.items)
+            try FileManager.default.removeItem(at: source)
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let frozen = try XCTUnwrap(saved), record = frozen.items[0].file
+        let remote = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
+        if enabled { XCTAssertNotNil(remote) } else { XCTAssertNil(remote) }
+        let resumed = try await archive.resume(); XCTAssertEqual(resumed, 0)
+        do {
+            let box = try await open(path); previousBox = box
+            let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                files: { TelegramPendingUploadFiles(repository: archive) })
+            let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
+            XCTAssertEqual(draft, frozen)
+            let restored = try await store.restoreItems(draft: draft)
+            defer { for item in restored { try? item.discard() } }
+            XCTAssertEqual(restored[0].file.metadata, expected)
+            XCTAssertEqual(try Data(contentsOf: restored[0].file.url), bytes)
+            let raw = restored[0].file
+            let altered = TelegramUploadFile(id: raw.id, name: raw.name, size: raw.size, mode: .file,
+                pixelWidth: nil, pixelHeight: nil, url: raw.url, directory: raw.directory,
+                metadata: .audio(.init(duration: 1, title: "Changed after capture", performer: "Artist")))
+            let denied = expectation(description: "Native copy re-probes frozen audio")
+            var deniedResult: Result<TelegramPreparedUploadMedia, TelegramUploadFileError>?
+            let deniedCopy = TelegramUploadMediaBoxPreparation(mediaBox: box.mediaBox, file: altered,
+                expectedPlaintextSHA256: record.plaintextSHA256) { deniedResult = $0; denied.fulfill() }
+            defer { deniedCopy.stop() }; await fulfillment(of: [denied], timeout: 20)
+            if case .failure(.invalidAudio) = deniedResult {} else { XCTFail("A legitimate byte digest cannot authenticate replaced audio tags") }
+            let controller = TelegramUploadController()
+            controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+            defer { controller.clear() }
+            guard controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch) else {
+                return XCTFail("Typed audio must restore through the same native batch route")
+            }
+            let seeded = expectation(description: "Audio synthetic peers")
+            let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+            defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
+            let queued = expectation(description: "Typed audio native queue")
+            controller.didQueue = { _, _ in queued.fulfill() }; controller.send(contextID: draft.id)
+            await fulfillment(of: [queued], timeout: 20)
+            let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
+            guard case let .acceptedBatch(ids) = accepted.disposition, ids.count == 1 else { return XCTFail("Complete audio receipt required") }
+            XCTAssertEqual(accepted.items, draft.items)
+            let readDone = expectation(description: "Audio native attributes"), cacheDone = expectation(description: "Audio native bytes")
+            var message: Message?, cache: MediaResourceData?
+            let read = (pendingControllerMessage(box, id: ids[0].nativeID) |> deliverOnMainQueue).start(next: { message = $0; readDone.fulfill() })
+            defer { read.dispose() }; await fulfillment(of: [readDone], timeout: 20)
+            let native = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
+            XCTAssertEqual(native.attributes, [.Audio(isVoice: false, duration: 1, title: "Synthetic 😀", performer: "Artist", waveform: nil), .FileName(fileName: "Synthetic.m4a")])
+            XCTAssertEqual(message?.text, "Music 😀")
+            let data = (box.mediaBox.resourceData(native.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
+                |> take(1) |> deliverOnMainQueue).start(next: { cache = $0; cacheDone.fulfill() })
+            defer { data.dispose() }; await fulfillment(of: [cacheDone], timeout: 20)
+            XCTAssertTrue(try XCTUnwrap(cache).complete)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: XCTUnwrap(cache).path)), bytes)
+            saved = accepted
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let reopened = try await open(path), repository = TelegramPostboxPendingUploadRepository(postbox: reopened, accountID: 1)
+        let final = await load(42, repository: repository)
+        XCTAssertEqual(try final.get(), saved, "Acceptance must survive restart without another send")
+        if !enabled {
+            XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
+            try await archive.setConversationFileSavingEnabled(identity: identity, enabled: true)
+            let promoted = try await archive.resume(); XCTAssertEqual(promoted, 0)
+            let absent = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey); XCTAssertNil(absent)
+        }
+    }
+
     func testRemovingLastVisualNormalizesPersistedModeWithoutRecapture() async throws {
         let database = try PendingFilesTestDatabase()
         addTeardownBlock { try database.cleanup() }

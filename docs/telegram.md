@@ -1830,8 +1830,9 @@ An exact committed retry reuses the current pointer. No S3 recapture occurs.
 Reorder/remove, cover changes, caption writes, cancellation and native complete
 receipts retain the mode. Send stays disabled until mode persistence succeeds.
 Switching to media clears grouping for a mixed media/document set; returning to
-files retains that cleared choice. File grouping rejects WebP and mixed audio/
-non-audio filenames. Full native music/voice classification remains unfinished.
+files retains that cleared choice. File grouping rejects WebP. For legacy generic
+sets its basic filename rule remains; if any item has typed music metadata, every
+item must be typed music. Full ordered music/voice classification remains unfinished.
 
 Caption placement/spoiler and video cover remain stored across switches. File
 submission forces caption below while retaining the chosen spoiler, matching
@@ -1847,7 +1848,7 @@ For example64×64 pixels at144DPI remain an original file (32×32 points), while
 32×32 pixels at36DPI can become a photo (64×64 points). Both paths retain exact
 raw bytes after source removal; normalized JPEG pixels do not reclassify the source.
 GIF/WebP/multiframe inputs are never flattened into static photos. Their native
-media conversion, ordered whole-list options and music/voice attributes remain
+media conversion, ordered whole-list options and recorded-voice attributes remain
 open; the verified dependency order is in `telegram-album-migration.md`.
 
 Media option eligibility is separate from all-visual grouping/layout: a mixed
@@ -1868,3 +1869,33 @@ preparation cannot be overwritten. Legacy schema6/7 writes remain compatible.
 Local-only preparations retain every authenticated receipt and encrypted envelope
 byte across mode changes, restart and later policy re-enable/resume. These writes
 never create S3 copies; the per-chat prohibition also covers every initial resource.
+
+### Typed ordinary music preparation
+
+Schema9 adds a strict `{kind:"audio",payload:{duration,title,performer}}` descriptor
+on ordered file items. Required keys, exact types, bounded UTF8 tags/no NUL and
+integral native seconds0…604800 are enforced. Unknown/extra fields, explicit null,
+cross-kind data and any video/cover/original field on typed music are refused.
+Schema1–8 reject typed metadata; schema9 requires at least one typed item and an
+explicit File/Media choice. Legacy generic files never infer metadata on restore.
+
+Picker preparation probes an owned no-follow file with exact uid/0600/size.
+CoreAudio reads its held descriptor with a16MiB cumulative sniff budget and
+derives container MIME from bytes. Restricted AVFoundation loads validate finite
+positive duration/audio tracks, a bounded initial PCM fragment per track and
+bounded title/performer tags. Seconds truncate to the native integer, including0
+for subsecond audio. Cancellation and final inode/time snapshots refuse changed
+resources. The original bytes remain unchanged. Synthetic WAV, tagged AAC/M4A
+and actual ID3 MP3 have regression coverage; whole-stream integrity and exhaustive
+codec support are not claimed. Unsupported inputs remain generic files; names
+never imply recorded voice. No microphone or Opus encoder is enabled.
+
+File projection, capture, restart and native submission retain the exact typed
+descriptor. Capture/restore/MediaBox independently re-probe bytes, and complete
+receipts compare frozen metadata before admission. Native ordinary music has
+`Audio(isVoice:false,duration,title,performer,waveform:nil)` followed by `FileName`;
+legacy single-file APIs refuse typed items instead of silently dropping it.
+Local-only and S3 preparations share the same strict pointer and byte checks.
+The S3-off policy still prohibits all new remote copies, including preparation;
+later re-enable does not promote local resources. Actual owned M4A UI and private
+Postbox/PostgreSQL/S3 evidence are recorded in development-status.md.

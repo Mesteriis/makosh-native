@@ -15,25 +15,29 @@ public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
     public let pixelHeight: Int32?
     public let video: TelegramUploadVideoMetadata?
     public let videoCover: TelegramUploadVideoCover?
+    public let metadata: TelegramUploadMetadata?
     let url: URL
     let directory: URL
     init(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, pixelWidth: Int32?, pixelHeight: Int32?,
-         url: URL, directory: URL, video: TelegramUploadVideoMetadata? = nil, videoCover: TelegramUploadVideoCover? = nil) {
+         url: URL, directory: URL, video: TelegramUploadVideoMetadata? = nil, videoCover: TelegramUploadVideoCover? = nil,
+         metadata: TelegramUploadMetadata? = nil) {
         self.id = id; self.name = name; self.size = size; self.mode = mode
         self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight
         self.url = url; self.directory = directory; self.video = video
         self.videoCover = videoCover
+        self.metadata = metadata
     }
 }
 
 public enum TelegramUploadFileError: LocalizedError, Equatable {
-    case unavailable, tooLarge, invalidImage, invalidVideo, stagingFailed
+    case unavailable, tooLarge, invalidImage, invalidVideo, invalidAudio, stagingFailed
     public var errorDescription: String? {
         switch self {
         case .unavailable: "Выбранный файл недоступен или изменён. Выберите его снова."
         case .tooLarge: "Файл превышает ограничения подготовки вложения."
         case .invalidImage: "Не удалось подготовить фотографию. Можно отправить оригинал как файл."
         case .invalidVideo: "Не удалось подготовить видео. Можно отправить оригинал как файл."
+        case .invalidAudio: "Не удалось проверить аудиофайл. Можно отправить оригинал как файл."
         case .stagingFailed: "Не удалось подготовить временную копию вложения. Проверьте свободное место и доступ."
         }
     }
@@ -119,10 +123,13 @@ public enum TelegramUploadFileIO {
               file.size <= (file.mode == .photo ? 20 * 1024 * 1024 : 4 * 1024 * 1024 * 1024) else { throw TelegramUploadFileError.unavailable }
     }
 
-    static func restoredStage(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, url: URL, directory: URL, video: TelegramUploadVideoMetadata? = nil) async throws -> TelegramUploadFile {
+    static func restoredStage(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, url: URL, directory: URL,
+                              video: TelegramUploadVideoMetadata? = nil, metadata: TelegramUploadMetadata? = nil) async throws -> TelegramUploadFile {
         guard mode == .video || video == nil else { throw TelegramUploadFileError.unavailable }
-        let provisional = TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: nil, pixelHeight: nil, url: url, directory: directory)
+        let provisional = TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: nil, pixelHeight: nil,
+            url: url, directory: directory, metadata: metadata)
         try validateOwnedStage(provisional)
+        try await verifyMetadata(provisional)
         if mode == .file { return provisional }
         if mode == .video {
             guard let video, video.isValid(name: name, size: size) else { throw TelegramUploadFileError.invalidVideo }
@@ -142,6 +149,23 @@ public enum TelegramUploadFileIO {
               let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int32Value,
               width > 0, height > 0, width <= 2560, height <= 2560 else { throw TelegramUploadFileError.invalidImage }
         return TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: width, pixelHeight: height, url: url, directory: directory)
+    }
+
+    static func validateMetadata(_ file: TelegramUploadFile) throws {
+        guard let metadata = file.metadata else { return }
+        guard file.mode == .file, file.video == nil, file.videoCover == nil,
+              file.pixelWidth == nil, file.pixelHeight == nil, metadata.isValid else { throw TelegramUploadFileError.invalidAudio }
+    }
+
+    static func verifyMetadata(_ file: TelegramUploadFile) async throws {
+        try Task.checkCancellation()
+        try validateMetadata(file)
+        guard let metadata = file.metadata else { return }
+        switch metadata {
+        case let .audio(frozen):
+            guard try await TelegramUploadAudioIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidAudio }
+        }
+        try Task.checkCancellation()
     }
 
     static func discard(_ file: TelegramUploadFile) throws {

@@ -51,7 +51,7 @@ enum TelegramUploadEvent {
             items.allSatisfy { $0.file.mode != .photo || $0.originalFile != nil }
     }
     public var canGroupItems: Bool {
-        presentation.allowsGrouping(items.map { (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file) })
+        presentation.allowsGrouping(items.map { (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata) })
     }
     public var presentedItems: [TelegramUploadBatchItem] { items.compactMap { $0.presented(as: presentation) } }
     @discardableResult public func updatePresentation(_ presentation: TelegramUploadPresentation, contextID: UUID, revision: UUID) -> Bool {
@@ -205,6 +205,16 @@ enum TelegramUploadEvent {
                             } catch TelegramUploadFileError.invalidVideo {
                                 // An ordinary file choice remains usable when its video suffix is misleading.
                             }
+                        } else if type?.conforms(to: .audio) == true || type?.preferredMIMEType?.hasPrefix("audio/") == true {
+                            do {
+                                let audio = try await TelegramUploadAudioIO.inspect(original)
+                                let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
+                                    mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
+                                    directory: original.directory, metadata: .audio(audio))
+                                staged[staged.count - 1] = .init(id: original.id, file: file)
+                            } catch TelegramUploadFileError.invalidAudio {
+                                // Unsupported or misleading containers retain their unchanged generic file.
+                            }
                         }
                     }
                     try Task.checkCancellation()
@@ -214,7 +224,7 @@ enum TelegramUploadEvent {
                 let presentation: TelegramUploadPresentation = selected.allSatisfy { $0.mode == .file }
                     || !staged.allSatisfy { $0.file.mode != .file } ? .file : .media
                 let grouped = isGrouped && presentation.allowsGrouping(staged.map {
-                    (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file)
+                    (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata)
                 })
                 self.preparation = nil; self.items = staged; self.selectedItemID = staged[0].id
                 self.presentation = presentation; self.isGrouped = grouped
@@ -313,7 +323,7 @@ enum TelegramUploadEvent {
         videoCoverEditingID = nil; videoCoverRevision = UUID(); videoPlayback.stop(); error = nil
         file = TelegramUploadFile(id: original.id, name: original.name, size: original.size, mode: original.mode,
             pixelWidth: original.pixelWidth, pixelHeight: original.pixelHeight, url: original.url, directory: original.directory,
-            video: original.video, videoCover: cover)
+            video: original.video, videoCover: cover, metadata: original.metadata)
         if let old = original.videoCover, old.id != cover?.id {
             do { try discard(old.imageFile) }
             catch { self.error = "Не удалось удалить временную копию предыдущей обложки." }
@@ -576,7 +586,7 @@ enum TelegramUploadEvent {
                     try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, mediaSpoiler: frozenSpoiler, disposition: .submissionStarted)
                     if let batchItems {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
-                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8].contains(draft.schemaVersion),
+                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9].contains(draft.schemaVersion),
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == batchItems.map(\.id), draft.isGrouped == grouped, draft.presentation == presentation,
                               draft.captionInput == frozen, draft.captionAboveMedia == frozenAbove, draft.mediaSpoiler == frozenSpoiler else {
@@ -934,7 +944,7 @@ enum TelegramUploadEvent {
             guard items.count == 1, items[0].id == draft.items[0].id else { return false }
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8].contains(draft.schemaVersion),
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9].contains(draft.schemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,
@@ -943,6 +953,7 @@ enum TelegramUploadEvent {
                   staged.id == saved.id && staged.file.name.utf8.elementsEqual(saved.file.attachment.name.utf8) &&
                   staged.file.size == saved.file.plaintextByteCount && staged.file.mode.rawValue == saved.file.attachment.kind &&
                   staged.file.video == saved.video && telegramPendingUploadCoverMatches(saved.videoCover, staged.file.videoCover) &&
+                  staged.file.metadata == saved.metadata &&
                   saved.matchesOriginal(staged.originalFile) &&
                   (try? TelegramUploadFileIO.validateOwnedStage(staged.file)) != nil &&
                   (staged.file.videoCover == nil || (try? TelegramUploadVideoCoverIO.validatedBytes(staged.file.videoCover!)) != nil)
@@ -968,7 +979,7 @@ enum TelegramUploadEvent {
     func restore(draft: TelegramPendingUploadDraft, file: TelegramUploadFile, target: TelegramUploadTarget, restorationEpoch: UUID) -> Bool {
         // A load/file export may finish after a detached write has cleared its
         // pending marker. Only a snapshot begun in the current epoch can apply.
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, draft.schemaVersion < 6,
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, draft.schemaVersion < 6, file.metadata == nil,
               provider?.accountID == draft.accountID,
               detachedInitialContents[draft.id] == nil, !detachedRecoveryWrites.contains(draft.id), detachedRecoveryRetries[draft.id] == nil,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID,

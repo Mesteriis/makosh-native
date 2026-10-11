@@ -9,6 +9,7 @@ import SwiftSignalKit
 func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil,
                          videoCover: TelegramUploadVideoThumbnailResource? = nil,
                          resourceID requestedResourceID: Int64? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
+    guard (try? TelegramUploadFileIO.validateMetadata(file)) != nil else { return nil }
     guard file.mode == .video || (file.video == nil && file.videoCover == nil),
           (file.videoCover == nil) == (videoCover == nil) else { return nil }
     if let staged = file.videoCover {
@@ -33,10 +34,15 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             attributes: attributes, alternativeRepresentations: [])
     case .file:
         let mime = UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        var attributes: [TelegramMediaFileAttribute] = []
+        if case let .audio(audio) = file.metadata {
+            attributes.append(.Audio(isVoice: false, duration: Int(audio.duration), title: audio.title, performer: audio.performer, waveform: nil))
+        }
+        attributes.append(.FileName(fileName: telegramAttachmentName(file.name)))
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
             partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [],
             immediateThumbnailData: nil, mimeType: mime, size: file.size,
-            attributes: [.FileName(fileName: telegramAttachmentName(file.name))], alternativeRepresentations: [])
+            attributes: attributes, alternativeRepresentations: [])
     case .photo:
         guard let width = file.pixelWidth, let height = file.pixelHeight, width > 0, height > 0 else { return nil }
         let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: width, height: height),
@@ -81,7 +87,7 @@ final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = EngineUploadLease(receive: receive)
         let peerID = PeerId(target.chatID)
-        guard target.accountID == accountID, target.hasValidReplySource,
+        guard target.accountID == accountID, target.hasValidReplySource, file.metadata == nil,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(peerID.namespace),
               telegramFormattedCaptionCanSend(caption), (!captionAboveMedia && !mediaSpoiler) || file.mode != .file else {
             receive(.rejected); return lease

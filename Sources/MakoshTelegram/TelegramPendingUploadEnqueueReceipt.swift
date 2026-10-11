@@ -23,7 +23,7 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
     }
     nonisolated func validate(transaction: Transaction) -> Bool { current(transaction: transaction) != nil }
     private nonisolated func current(transaction: Transaction) -> TelegramPendingUploadDraft? {
-        guard target.hasValidReplySource,
+        guard target.hasValidReplySource, file.metadata == nil,
               (file.videoCover == nil) == (videoCover == nil),
               file.mode == .video || (file.videoCover == nil && videoCover == nil),
               file.mode == .video ? localResourceID != nil && telegramUploadVideoAttributes(file) != nil &&

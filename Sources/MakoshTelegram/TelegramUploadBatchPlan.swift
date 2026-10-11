@@ -31,7 +31,7 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
               presentation != nil || items.allSatisfy({ $0.file.mode == .file }) || items.allSatisfy({ $0.file.mode != .file }),
               presentation != nil || (!captionAboveMedia && !mediaSpoiler) || items.allSatisfy({ $0.file.mode != .file }),
               presentation == nil || !isGrouped || presentation!.allowsGrouping(items.map {
-                  (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file)
+                  (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata)
               }) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }

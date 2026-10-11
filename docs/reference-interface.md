@@ -569,17 +569,17 @@ Static photo admission теперь использует размер исход
 Нативная проверка в общей форме: PNG64×64@144DPI остаётся файлом354bytes;
 PNG32×32@36DPI получает JPEG795bytes и сохраняет исходный PNG267bytes. File/Media
 и подпись переживают удаление выбранного файла и restart при выключенном S3.
-Новые GIF/WebP/music/voice mappings ещё не реализованы. Полный source contract,
+GIF/WebP/voice mappings ещё не реализованы; ordinary music описано ниже. Полный source contract,
 включая order-dependent WebP options и отдельные native kinds, записан в
 `telegram-album-migration.md`; это не заявление о полном совпадении с референсом.
 Mode write меняет только Postbox metadata, сохраняет исходные local/S3 IDs и блокирует
 Send до подтверждения. Native PNG regression проверяет настоящий FileName,
 точные исходные байты MediaBox и complete receipt после восстановления.
 
-Оставшиеся различия классификации явные: static-photo admission использует
-pixel dimensions, upstream — NSImage logical size; GIF/WebP/multiframe media
-conversion не перенесена и исходники остаются файлами. Filename audio eligibility
-не заменяет upstream native music/voice attributes. Archive и image edits открыты.
+Оставшиеся различия классификации явные: GIF/WebP/multiframe media conversion
+не перенесена и исходники остаются файлами. Static-photo admission уже использует
+NSImage logical size. Полный ordered classifier, OGG/Opus и recorded voice ещё
+открыты, как Archive и image edits.
 
 Сверены также `PreviewSenderController.swift:1690–1705,388–393`: mixed Media
 допускает spoiler/placement, а grouping требует all-visual eligibility. Макош
@@ -594,3 +594,21 @@ Strict schema8 decoding still rejects document-only Media. Frozen original-store
 list/mode writes preserve retry and the latest caption/options after rebind,
 including removal of the final visual item; a caption-only save cannot hide an
 unconfirmed list change.
+
+Обычная музыка сверена с `SenderController.swift:404–424` и
+`packages/ObjcUtils/Sources/ObjcUtils/ObjcUtils.m:1260–1306` на том же pin.
+Собственная реализация сохраняет исходные байты, целую длительность и оба тега,
+включая пустые строки, и передаёт `Audio(isVoice:false)` перед `FileName` даже в
+File. Schema9 строго хранит эти данные; неизвестные kind/fields, явные null и
+конфликтующие video/cover/original поля отвергаются. Legacy generic files остаются
+без аудиоатрибутов. Переключение presentation не теряет тип; смешанная группировка
+проверяет frozen typed metadata. Обычное audio-only вложение использует имеющийся
+экран File; новый экран или внешняя Telegram-форма не добавлены.
+
+CoreAudio определяет container MIME по owned bytes; AVFoundation проверяет
+длительность, короткий PCM-фрагмент и теги. MIME hint необходим для непрозрачного
+локального имени и не берётся из расширения. Synthetic WAV/M4A/MP3 доказаны
+тестами; полный decode и все кодеки не заявлены. В ObjC helper некоторые
+iTunes/QuickTime Identifier сравниваются с Key constants; их runtime equality
+не доказана. Макош использует native Identifier и проверенные теги M4A, поэтому
+буквальное runtime совпадение с этой особенностью upstream не заявлено.

@@ -121,27 +121,30 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
 
     // A rejected caption must leave no new S3 copy, including transient preparation.
     func testInvalidRoundOptionsRefuseBeforeArchiveCapture() async throws {
-        let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
-        let configuration = try config(), archiveRoot = try root(), box = try await open(root())
-        let archive = try archive(database, configuration, archiveRoot)
-        try await archive.setConversationFileSavingEnabled(identity: .init(service: "telegram", accountID: "1",
-            conversationID: "42", messageID: "synthetic-policy"), enabled: true)
-        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic round")
-        let store = session(box, archive)
-        let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
-        let file = try await TelegramRecordedRoundVideoIO.prepare(bytes: bytes)
-        defer { try? TelegramUploadFileIO.discard(file) }
-        let item = TelegramUploadBatchItem(id: file.id, file: file)
-        for (caption, grouped, spoiler) in [("Caption",false,false),("",true,false),("",false,true)] {
-            do {
-                try await store.prepare(preparationID: UUID(), items: [item], isGrouped: grouped, presentation: .media,
-                    target: target, captionInput: TelegramComposerInput(formattedText: .init(text: caption)),
-                    mediaSpoiler: spoiler, originalDraft: nil)
-                XCTFail("Invalid recorded options admitted")
-            } catch is TelegramPendingUploadPersistenceError {}
+        for enabled in [false, true] {
+            let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
+            let configuration = try config(), archiveRoot = try root(), box = try await open(root())
+            let archive = try archive(database, configuration, archiveRoot)
+            try await archive.setConversationFileSavingEnabled(identity: .init(service: "telegram", accountID: "1",
+                conversationID: "42", messageID: "synthetic-policy"), enabled: enabled)
+            let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic round")
+            let store = session(box, archive)
+            let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
+            let file = try await TelegramRecordedRoundVideoIO.prepare(bytes: bytes)
+            defer { try? TelegramUploadFileIO.discard(file) }
+            let item = TelegramUploadBatchItem(id: file.id, file: file)
+            for (caption, grouped, spoiler) in [("Caption",false,false),(" \n",false,false),("\u{fffc}",false,false),("",true,false),("",false,true)] {
+                do {
+                    try await store.prepare(preparationID: UUID(), items: [item], isGrouped: grouped, presentation: .media,
+                        target: target, captionInput: TelegramComposerInput(formattedText: .init(text: caption)),
+                        mediaSpoiler: spoiler, originalDraft: nil)
+                    XCTFail("Invalid recorded options admitted")
+                } catch is TelegramPendingUploadPersistenceError {}
+            }
+            XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
+            let pointer = try await store.load(chatID: 42); XCTAssertNil(pointer)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: archiveRoot.appendingPathComponent("queue").path))
         }
-        XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
-        let pointer = try await store.load(chatID: 42); XCTAssertNil(pointer)
     }
 
     // A cover editor cannot create an archived cover for a round preparation,

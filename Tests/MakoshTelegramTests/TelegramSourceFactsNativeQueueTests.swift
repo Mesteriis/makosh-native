@@ -83,7 +83,7 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
         defer { items.forEach { try? $0.discard() } }
         guard let (saved, messages) = try await submit(fixture, box: box, items: items, presentation: .media,
             grouped: true, caption: "Caption 😀") else { return }
-        XCTAssertEqual(saved.schemaVersion, 14); XCTAssertEqual(saved.items.map(\.sourceFacts), items.map(\.sourceFacts))
+        XCTAssertEqual(saved.schemaVersion, 15); XCTAssertEqual(saved.items.map(\.sourceFacts), items.map(\.sourceFacts))
         XCTAssertEqual(messages.count, 3)
         guard messages.count == 3 else { return }
         XCTAssertEqual(messages.map(\.text), ["", "Caption 😀", ""])

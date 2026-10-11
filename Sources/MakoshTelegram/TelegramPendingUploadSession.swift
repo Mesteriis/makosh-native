@@ -233,7 +233,7 @@ import SwiftSignalKit
               Set(orderedIDs).count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(current.schemaVersion), current.disposition == .prepared,
                   current.items.map(\.id) == orderedIDs,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -248,7 +248,7 @@ import SwiftSignalKit
             let updated = try TelegramPendingUploadDraft(id: current.id, accountID: current.accountID, chatID: current.chatID,
                 title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
                 mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
-                items: current.items, isGrouped: isGrouped, presentation: presentation)
+                items: current.items, isGrouped: isGrouped, presentation: presentation, captionRules: current.captionRules)
             try await write(updated, expectedRevision: current.revision)
         }
     }
@@ -293,7 +293,7 @@ import SwiftSignalKit
               Set(orderedIDs).isSubset(of: Set(previousIDs)) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
@@ -314,7 +314,7 @@ import SwiftSignalKit
             let updated = try TelegramPendingUploadDraft(id: current.id, accountID: current.accountID, chatID: current.chatID,
                 title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
                 mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
-                items: ordered, isGrouped: isGrouped, presentation: current.schemaVersion >= 8 ? normalized : nil)
+                items: ordered, isGrouped: isGrouped, presentation: current.schemaVersion >= 8 ? normalized : nil, captionRules: current.captionRules)
             try await write(updated, expectedRevision: current.revision)
         }
     }
@@ -329,7 +329,7 @@ import SwiftSignalKit
         let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
                   let index = current.items.firstIndex(where: { $0.id == itemID }) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -357,7 +357,7 @@ import SwiftSignalKit
             let updated = try TelegramPendingUploadDraft(id: current.id, accountID: current.accountID, chatID: current.chatID,
                 title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
                 mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
-                items: items, isGrouped: current.isGrouped, presentation: current.schemaVersion >= 8 ? current.presentation : nil)
+                items: items, isGrouped: current.isGrouped, presentation: current.schemaVersion >= 8 ? current.presentation : nil, captionRules: current.captionRules)
             try await write(updated, expectedRevision: current.revision)
         }
     }

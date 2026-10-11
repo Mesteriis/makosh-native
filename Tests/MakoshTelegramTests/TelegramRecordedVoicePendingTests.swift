@@ -396,31 +396,34 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
 
     // Validation after archive capture would leave forbidden preparations in S3.
     func testInvalidVoiceCaptionAndEncodedFactsRefuseBeforeArchiveCapture() async throws {
-        let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
-        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
-        let archiveRoot = try root(), box = try await open(root())
-        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
-            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
-            keyProvider: { _, _ in Data(repeating: 0x68, count: 32) })
-        let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
-        try await archive.setConversationFileSavingEnabled(identity: identity, enabled: true)
-        let store = session(box, archive: archive), target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic voice")
-        let file = try await TelegramRecordedVoiceIO.prepare(samples: [Int16](repeating: 0, count: 1_000))
-        defer { try? TelegramUploadFileIO.discard(file) }
-        let metadata = try XCTUnwrap(file.metadata?.voice)
-        let forged = TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .file,
-            pixelWidth: nil, pixelHeight: nil, url: file.url, directory: file.directory,
-            metadata: .voice(.init(sampleCount: 999, plaintextSHA256: metadata.plaintextSHA256)))
-        for (candidate, caption) in [(file, "Forbidden caption"), (forged, "")] {
-            do {
-                try await store.prepare(preparationID: UUID(), items: [.init(id: candidate.id, file: candidate)], isGrouped: false,
-                    presentation: .file, target: target, captionInput: TelegramComposerInput(formattedText: .init(text: caption)), originalDraft: nil)
-                XCTFail("Invalid voice preparation was captured")
-            } catch {}
+        for enabled in [false, true] {
+            let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
+            let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+            let archiveRoot = try root(), box = try await open(root())
+            let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+                configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+                keyProvider: { _, _ in Data(repeating: 0x68, count: 32) })
+            let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+            try await archive.setConversationFileSavingEnabled(identity: identity, enabled: enabled)
+            let store = session(box, archive: archive), target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic voice")
+            let file = try await TelegramRecordedVoiceIO.prepare(samples: [Int16](repeating: 0, count: 1_000))
+            defer { try? TelegramUploadFileIO.discard(file) }
+            let metadata = try XCTUnwrap(file.metadata?.voice)
+            let forged = TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .file,
+                pixelWidth: nil, pixelHeight: nil, url: file.url, directory: file.directory,
+                metadata: .voice(.init(sampleCount: 999, plaintextSHA256: metadata.plaintextSHA256)))
+            for (candidate, caption) in [(file, "Forbidden caption"), (file, " \n"), (file, "\u{fffc}"), (forged, "")] {
+                do {
+                    try await store.prepare(preparationID: UUID(), items: [.init(id: candidate.id, file: candidate)], isGrouped: false,
+                        presentation: .file, target: target, captionInput: TelegramComposerInput(formattedText: .init(text: caption)), originalDraft: nil)
+                    XCTFail("Invalid voice preparation was captured")
+                } catch {}
+            }
+            let pending = try await store.load(chatID: 42); XCTAssertNil(pending)
+            XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
+            XCTAssertFalse(FileManager.default.fileExists(atPath: archiveRoot.appendingPathComponent("queue").path))
+            let resumed = try await archive.resume(); XCTAssertEqual(resumed, 0)
         }
-        let pending = try await store.load(chatID: 42); XCTAssertNil(pending)
-        XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
-        let resumed = try await archive.resume(); XCTAssertEqual(resumed, 0)
     }
 
     // Catches losing explicit voice provenance, policy bypass, changed native bytes and stale retry admission.

@@ -6,6 +6,10 @@ this is a workflow migration, with independently authored native views.
 
 ## Current boundary
 
+New picker preparations now use schema15 source facts plus versioned caption
+projection; legacy1–14 keep their send semantics. See the caption/Archive
+continuation at the end for verified behavior and remaining work.
+
 Ordered schema6 Postbox/S3 storage and all-or-cleanup restoration are implemented.
 The native batch provider now prepares every resource, verifies original payload
 SHA256 before and after the MediaBox copy, derives the complete ordered send plan,
@@ -343,3 +347,34 @@ server/recipient and minimum26 proof remain open. Ordered classification and the
 finished-file round player are connected; next are remaining preview/classifier
 parity and Archive/caption normalization. See
 telegram.md and reference-interface.md for the strict profile and differences.
+
+## Caption and Archive continuation — 2026-10-12
+
+New ordinary picker preparations use strict schema15;14 remains the prior source
+facts/raw-caption contract. Raw rich editor input and selection remain durable.
+Only outgoing projection replaces U+2028/U+FFFC, trims platform whitespace and
+clips/shifts explicit UTF16 entities. Distinct reference preflight excludes the
+U+FFFC substitution. Whitespace-only input sends no leading text. Single File
+WebP/generic image/webp sends leading text plus captionless media; grouped chunks
+retain first-visual/last-file placement. Complete receipts/counts share the same
+rules. Old preparations retain their exact projection after reorder/mode/cover;
+recorder11–13 reject raw nonempty caption before archive capture. Markdown,
+detected/resolved entities, premium limits and precise placeholder UI remain open.
+Original WebP-named typed GIF/music can get conservative extra-leading text.
+Actual local/S3 reopen/native tests and existing-window AX/screenshots are recorded
+in development-status.md. This supersedes the earlier whitespace-leading rejection
+and deferred trimming notes; it does not establish full caption parity.
+
+Pinned Archive research confirms one `Telegram Archive.zip`, application/zip,
+more than one selected source, no grouping/spoiler. The reference flattens names
+with ignored copy failures and enumerates unsorted/skipsHiddenFiles; do not
+reproduce content omission, duplicate-basename loss or unstable member order.
+Its Zip→MiniZip local package license/provenance and error/cancellation handling
+are not sufficiently established for adoption. No library or ZIP writer has been
+added. Next implementation must review an exact ZIP format/platform API boundary,
+retain N ordered immutable originals plus one ZIP record under a new explicit
+schema, send only one ZIP with one complete native receipt, and fail atomically
+on cancellation/I/O/collision/bounds. S3 OFF forbids ZIP and member uploads,
+including preparation; local encrypted records never promote after enable.
+A photo/GIF `originalFile` pair is not an Archive representation. Restart, stale
+CAS, native resource integrity and no automatic resend need real regressions.

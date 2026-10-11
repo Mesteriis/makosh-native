@@ -24,7 +24,8 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
     let messages: [Message]
     let groupCount: Int
     init(items: [TelegramUploadBatchItem], isGrouped: Bool, caption: TelegramFormattedText,
-         captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil) throws {
+         captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil,
+         captionRules: TelegramUploadCaptionRules = .reference) throws {
         if items.contains(where: { $0.file.metadata?.roundVideo != nil }) {
             guard items.count == 1, !isGrouped, caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
                 presentation == .media, items[0].file.mode == .video, items[0].originalFile == nil else {
@@ -37,6 +38,8 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
         }
+        guard captionRules.canSend(caption) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        let caption = try captionRules.projection(caption)
         guard !items.isEmpty, Set(items.map(\.id)).count == items.count,
               items.allSatisfy({ $0.id != TelegramPendingUploadDraft.zeroUUID }),
               telegramFormattedCaptionCanSend(caption),
@@ -49,7 +52,9 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
         let grouped = isGrouped && items.count > 1
         groupCount = grouped ? (items.count + 9) / 10 : 0
         var result: [Message] = []
-        let leadingText = !isGrouped && items.count > 1 && !caption.text.isEmpty
+        let leadingText = captionRules.hasLeadingText(itemCount: items.count, isGrouped: isGrouped,
+            singleItemCanHaveCaption: TelegramUploadCaptionRules.canHaveCaption(kind: items.first?.file.mode.rawValue,
+                metadata: items.first?.file.metadata, selectionMIME: items.first?.sourceFacts?.selectionMIME), projectedCaption: caption)
         if leadingText {
             result.append(.init(itemID: nil, caption: caption, groupIndex: nil, captionAboveMedia: false, mediaSpoiler: false))
         }

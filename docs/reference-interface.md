@@ -611,8 +611,8 @@ initial reverse-picker sequence отдельно не проверены; про
 
 Остаются различия: bounded ImageIO admission вместо unbounded reference,
 неполная MIME table (UTType fallback и явный local Opus alias), отдельное правило
-static payload geometry, точная mosaic/gesture геометрия, Archive и caption
-normalization. Полное визуальное совпадение с референсом не заявлено.
+static payload geometry, точная mosaic/gesture геометрия, Archive и оставшиеся
+caption gaps ниже. Полное визуальное совпадение с референсом не заявлено.
 
 Сверены также `PreviewSenderController.swift:1690–1705,388–393`: mixed Media
 допускает spoiler/placement; legacy schema8 grouping требует all-visual eligibility. Макош
@@ -944,3 +944,33 @@ Modal, placeholder/shadow assets, переходы/fade и полная visual/g
 остаются открыты. Cap60s по-прежнему готовит запись с явным Send. Actual UI
 результаты и ограничения записаны в development-status.md; это не доказательство
 реальной камеры, Account/server/recipient или minimum26 runtime.
+
+## Caption projection continuation — 2026-10-12
+
+Сверены pinned `PreviewSenderController.swift:1214,1824`, `UIInputView.swift:87–88`,
+`ChatInterfaceState.swift:380–383,596–793`, TGUIKit `Extensions.swift:70–99,214–225`
+и `CoreExtension.swift:323–337,1599–1605`. Attributed helper вызывается всегда:
+он заменяет U+2028/U+FFFC и обрезает whitespace; отдельный String preflight не
+заменяет U+FFFC. Это исправляет прежнее предположение о сохранении formatted
+padding при отправке. Raw editor input сохраняется независимо от send projection.
+
+Собственная schema15 projection сохраняет explicit entities с UTF16 clipping/
+shift, отбрасывает пустые пересечения и не допускает laundering unsupported
+entities. Whitespace-only не создаёт отдельного текста. Single File WebP, включая
+нетипизированный image/webp, получает leading text и пустую media caption.
+Legacy1–14 не меняются после reorder/mode/cover. Recorded raw caption проверяется
+до любых копий. Полная MIME parity не заявлена: typed GIF/music с WebP selection
+может получить лишний leading text при последующем native MIME override.
+
+Actual AX/screenshots существующей File sheet проверяют два ordered файла,
+padded caption/counter12, whitespace/counter0 и native bold. После rename source
+folder/restart восстановлены padding/formatting/selection и два прежних UUID с
+S3 OFF; восстановленный screenshot действителен. Send только synthetic queue,
+Mail→Telegram сохраняет chat11/OFF и no-auto-resend uncertainty. Три synthetic
+fixtures восстановлены/hash-checked. Emoji selectText не сработал; select-all/bold
+проверен. Full Account/server/hardware/minimum26 не выполнялись.
+
+Открыты markdown/detected entities, resolved custom emoji, premium2048 limit,
+placeholder/comment переключение и полная visual/gesture parity. Conservative
+1024 limit и generic caption UI остаются явными адаптациями. Архивная отправка
+ещё не реализована; совпадение с upstream ZIP wrapper не заявляется.

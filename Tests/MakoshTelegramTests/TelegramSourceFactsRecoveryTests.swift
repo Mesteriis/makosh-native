@@ -144,7 +144,7 @@ struct SourceFactsTestArchive {
                     target: fixture.target, captionInput: .empty, originalDraft: nil)
             } catch { return XCTFail("Complete source facts must prepare as schema14: \(error)") }
             let original = try await sourceFactsLoad(store)
-            XCTAssertEqual(original.schemaVersion, 14); XCTAssertEqual(original.items.map(\.sourceFacts), expectedFacts)
+            XCTAssertEqual(original.schemaVersion, 15); XCTAssertEqual(original.items.map(\.sourceFacts), expectedFacts)
             XCTAssertTrue(original.items.allSatisfy { $0.file.state == .local })
             XCTAssertEqual(original.items[1].originalFile?.state, .local)
             // Exact lost-ACK retry retains all resource identities instead of storing another copy.
@@ -237,7 +237,7 @@ struct SourceFactsTestArchive {
         try await store.prepare(preparationID: id, items: items, isGrouped: false, presentation: .media,
             target: fixture.target, captionInput: .empty, originalDraft: nil)
         let initial = try await sourceFactsLoad(store), copies = try fixture.localRecords()
-        XCTAssertEqual(initial.schemaVersion, 14); XCTAssertEqual(initial.items.map(\.sourceFacts), items.map(\.sourceFacts))
+        XCTAssertEqual(initial.schemaVersion, 15); XCTAssertEqual(initial.items.map(\.sourceFacts), items.map(\.sourceFacts))
         XCTAssertEqual(initial.presentation, .media); XCTAssertFalse(initial.isGrouped)
         let reversedIDs = items.reversed().map(\.id)
         do {

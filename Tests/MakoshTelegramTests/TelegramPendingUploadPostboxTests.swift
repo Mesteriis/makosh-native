@@ -117,7 +117,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
                 try written.get()
             }
             let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
-            XCTAssertEqual(first.schemaVersion, legacy ? 10 : 14); XCTAssertEqual(first.presentation, .file)
+            XCTAssertEqual(first.schemaVersion, legacy ? 10 : 15); XCTAssertEqual(first.presentation, .file)
             XCTAssertEqual(first.items[0].sourceFacts?.name, legacy ? nil : source.lastPathComponent)
             mp4 = try Data(contentsOf: controller.items[0].file.url)
             // Retry must reuse both resources; selecting Media never creates another archive copy.
@@ -136,6 +136,10 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             let changedLoad = try await store.load(chatID: 42), changed = try XCTUnwrap(changedLoad)
             XCTAssertEqual(changed.items, first.items); XCTAssertEqual(changed.presentation, presentation)
             saved = changed; try FileManager.default.removeItem(at: source)
+            // Deterministically model a caption-save acknowledgement after the snapshot:
+            // its revision rotates even though every prepared content field is identical.
+            try await store.save(preparationID: changed.id, chatID: 42, captionInput: changed.captionInput,
+                captionAboveMedia: changed.captionAboveMedia, mediaSpoiler: changed.mediaSpoiler, disposition: .prepared)
         }
         for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertNil(previousBox)
@@ -152,7 +156,15 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
                 files: { TelegramPendingUploadFiles(repository: archive) })
             let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
-            XCTAssertEqual(draft, frozen)
+            // A pending caption write may rotate only the revision after the captured snapshot.
+            // Compare every encoded content field, retaining exact text, facts and resource IDs.
+            func content(_ value: TelegramPendingUploadDraft) throws -> Data {
+                var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any])
+                json.removeValue(forKey: "revision")
+                return try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+            }
+            XCTAssertEqual(try content(draft), try content(frozen))
+            XCTAssertNotEqual(draft.revision, frozen.revision, "The deliberately delayed no-op save must rotate its CAS revision")
             let restored = try await store.restoreItems(draft: draft)
             defer { for item in restored { try? item.discard() } }
             XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored[0].originalFile).url), bytes)
@@ -261,7 +273,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             for _ in 0..<1000 where !controller.canSend && controller.phase != .failed { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertTrue(controller.canSend)
             let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
-            XCTAssertEqual(draft.schemaVersion, 14); XCTAssertEqual(draft.items[0].metadata, expected)
+            XCTAssertEqual(draft.schemaVersion, 15); XCTAssertEqual(draft.items[0].metadata, expected)
             XCTAssertEqual(draft.presentation, .file); XCTAssertEqual(draft.items[0].file.state, enabled ? .stored : .local)
             // A lost initial write acknowledgement must reuse the typed pointer and receipt.
             try await store.prepare(preparationID: draft.id, items: controller.items, isGrouped: false, presentation: .file,
@@ -312,11 +324,11 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             controller.didQueue = { _, _ in queued.fulfill() }; controller.send(contextID: draft.id)
             await fulfillment(of: [queued], timeout: 20)
             let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
-            guard case let .acceptedBatch(ids) = accepted.disposition, ids.count == 1 else { return XCTFail("Complete audio receipt required") }
+            guard case let .acceptedBatch(ids) = accepted.disposition, ids.count == (webP ? 2 : 1) else { return XCTFail("Complete typed receipt required") }
             XCTAssertEqual(accepted.items, draft.items)
             let readDone = expectation(description: "Audio native attributes"), cacheDone = expectation(description: "Audio native bytes")
             var message: Message?, cache: MediaResourceData?
-            let read = (pendingControllerMessage(box, id: ids[0].nativeID) |> deliverOnMainQueue).start(next: { message = $0; readDone.fulfill() })
+            let read = (pendingControllerMessage(box, id: ids[webP ? 1 : 0].nativeID) |> deliverOnMainQueue).start(next: { message = $0; readDone.fulfill() })
             defer { read.dispose() }; await fulfillment(of: [readDone], timeout: 20)
             let native = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
             if webP {
@@ -349,7 +361,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
                     title: opus ? " Synthetic Opus " : "Synthetic 😀", performer: opus ? "Synthetic Artist" : "Artist", waveform: nil),
                     .FileName(fileName: opus ? "Synthetic.bin" : "Synthetic.m4a")])
             }
-            XCTAssertEqual(message?.text, "Music 😀")
+            XCTAssertEqual(message?.text, webP ? "" : "Music 😀")
             let data = (box.mediaBox.resourceData(native.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
                 |> take(1) |> deliverOnMainQueue).start(next: { cache = $0; cacheDone.fulfill() })
             defer { data.dispose() }; await fulfillment(of: [cacheDone], timeout: 20)
@@ -462,7 +474,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         XCTAssertTrue(controller.moveItem(id: initial.items[1].id, to: 0, contextID: id, revision: controller.itemsRevision))
         for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
         let reorderedLoad = try await store.load(chatID: 42), reordered = try XCTUnwrap(reorderedLoad)
-        XCTAssertEqual(reordered.schemaVersion, 14); XCTAssertEqual(reordered.presentation, .file)
+        XCTAssertEqual(reordered.schemaVersion, 15); XCTAssertEqual(reordered.presentation, .file)
         XCTAssertTrue(reordered.isGrouped); XCTAssertEqual(reordered.items, initial.items.reversed())
     }
 
@@ -659,7 +671,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(controller.canSend)
         let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
-        XCTAssertEqual(draft.schemaVersion, 14, "The explicit presentation, source facts and raw originals must survive together")
+        XCTAssertEqual(draft.schemaVersion, 15, "The explicit presentation, source facts and raw originals must survive together")
         let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
         let items = try XCTUnwrap(encoded["items"] as? [[String: Any]])
         let original = try XCTUnwrap(items.first?["originalFile"] as? [String: Any], "A normalized JPEG cannot stand in for its original")
@@ -723,7 +735,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
         guard case let .acceptedBatch(ids) = accepted.disposition else { return XCTFail("Raw originals must survive complete native queue acceptance") }
         XCTAssertEqual(ids.count, 2); XCTAssertEqual(accepted.items, reordered.items)
-        XCTAssertEqual(accepted.schemaVersion, 14)
+        XCTAssertEqual(accepted.schemaVersion, 15)
         for item in initial + restored {
             XCTAssertFalse(FileManager.default.fileExists(atPath: item.file.directory.path))
             XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(item.originalFile).directory.path))
@@ -773,7 +785,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         controller.bind(provider: nil)
         let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
         XCTAssertEqual(draft.items.map(\.id), [initial[2].id, initial[0].id]); XCTAssertFalse(draft.isGrouped)
-        XCTAssertEqual(draft.captionInput, input); XCTAssertEqual(draft.schemaVersion, 14)
+        XCTAssertEqual(draft.captionInput, input); XCTAssertEqual(draft.schemaVersion, 15)
         let retained = try await archive.files(identity: before.items[1].file.identity, attachmentID: before.items[1].file.attachment.id)
         XCTAssertEqual(retained, [before.items[1].file], "Removing a preparation item preserves its archived original")
         let restored = try await store.restoreItems(draft: draft)
@@ -1154,6 +1166,132 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         let tombstone = try await session.load(chatID: 42)
         XCTAssertEqual(tombstone?.disposition, .cancelled); XCTAssertEqual(tombstone?.video, file.video)
     }
+    func testPlainWhitespaceCaptionReopensWithoutExtraMessageUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] { try await captionRulesReopenAndEnqueue(enabled: enabled, kind: "plain") }
+    }
+    func testFormattedCaptionReopensWithExactUTF16EntitiesUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] { try await captionRulesReopenAndEnqueue(enabled: enabled, kind: "formatted") }
+    }
+    func testSingleWebPReopensWithSeparateTextUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] { try await captionRulesReopenAndEnqueue(enabled: enabled, kind: "webp") }
+    }
+    func testGenericWebPReopensWithSeparateTextUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] { try await captionRulesReopenAndEnqueue(enabled: enabled, kind: "generic-webp") }
+    }
+    func testLegacy14ReorderRetainsUntrimmedNativeCaptionUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] { try await captionRulesReopenAndEnqueue(enabled: enabled, kind: "legacy") }
+    }
+
+    // Reopens real encrypted Postbox without source files, then checks native messages/receipt and S3 state.
+    private func captionRulesReopenAndEnqueue(enabled: Bool, kind: String) async throws {
+        let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), path = try root()
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x39, count: 32) })
+        let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-caption-policy")
+        try await archive.setConversationFileSavingEnabled(identity: identity, enabled: enabled)
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic caption rules")
+        let raw: TelegramComposerInput
+        switch kind {
+        case "plain": raw = try .init(formattedText: .init(text: " \t\n\u{00a0}"))
+        case "formatted": raw = try .init(formattedText: .init(text: " \n😀 x \t", entities: [.init(offset: 2, length: 2, kind: .bold)]))
+        default: raw = try .init(formattedText: .init(text: " Caption 😀 \n"))
+        }
+        let captionless = kind == "webp" || kind == "generic-webp"
+        let sources = (0..<(captionless ? 1 : 2)).map { archiveRoot.appendingPathComponent(captionless ? "Synthetic.webp" : "\($0).txt") }
+        for source in sources {
+            if kind == "webp" { try writeUploadWebPFixture(source) }
+            else { try Data("Synthetic caption payload \(source.lastPathComponent)".utf8).write(to: source) }
+        }
+        var frozen: TelegramPendingUploadDraft?
+        do {
+            let box = try await open(path); previousBox = box
+            let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            let store = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: archive) })
+            let controller = TelegramUploadController()
+            controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+            controller.prepare(sources: sources.map { .init(source: $0, mode: .file) }, isGrouped: false, target: target, captionInput: raw)
+            for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.captionInput, raw)
+            let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
+            XCTAssertEqual(first.schemaVersion, 15)
+            if kind == "legacy" {
+                var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(first)) as? [String: Any])
+                json["schemaVersion"] = 14; json["revision"] = UUID().uuidString
+                let legacy = try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: json))
+                let saved = await save(legacy, expected: first.revision, repository: repository); try saved.get()
+                try await store.updateItems(preparationID: first.id, previousIDs: first.items.map(\.id), previousGrouping: false, previousPresentation: .file,
+                    orderedIDs: first.items.reversed().map(\.id), isGrouped: false, presentation: .file, target: target)
+            }
+            frozen = try await store.load(chatID: 42)
+            XCTAssertEqual(frozen?.schemaVersion, kind == "legacy" ? 14 : 15)
+            XCTAssertEqual(frozen?.captionInput, raw)
+            for source in sources { try FileManager.default.removeItem(at: source) }
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let saved = try XCTUnwrap(frozen), records = saved.items.map(\.file)
+        for record in records {
+            XCTAssertEqual(record.state, enabled ? .stored : .local)
+            let remote = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
+            if enabled { XCTAssertNotNil(remote) } else { XCTAssertNil(remote) }
+        }
+        do {
+            let box = try await open(path); previousBox = box
+            let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                files: { TelegramPendingUploadFiles(repository: archive) })
+            let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
+            XCTAssertEqual(draft, saved)
+            let restored = try await store.restoreItems(draft: draft)
+            defer { for item in restored { try? item.discard() } }
+            let controller = TelegramUploadController(); defer { controller.clear() }
+            controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+            XCTAssertTrue(controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            XCTAssertEqual(controller.captionInput, raw); XCTAssertTrue(controller.canSend)
+            let seeded = expectation(description: "Caption synthetic peers")
+            let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+            defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
+            let queued = expectation(description: "Caption native queue")
+            controller.didQueue = { _, caption in XCTAssertEqual(caption, raw.formattedText); queued.fulfill() }
+            controller.send(contextID: draft.id); await fulfillment(of: [queued], timeout: 20)
+            let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
+            guard case let .acceptedBatch(ids) = accepted.disposition else { return XCTFail("Complete caption receipt required") }
+            XCTAssertEqual(ids.count, kind == "plain" || captionless ? 2 : 3)
+            XCTAssertEqual(accepted.captionInput, raw); XCTAssertEqual(accepted.items, draft.items)
+            for (index, id) in ids.enumerated() {
+                let readDone = expectation(description: "Caption native message")
+                var message: Message?
+                let read = (pendingControllerMessage(box, id: id.nativeID) |> deliverOnMainQueue).start(next: { message = $0; readDone.fulfill() })
+                defer { read.dispose() }; await fulfillment(of: [readDone], timeout: 20)
+                let native = try XCTUnwrap(message)
+                let expected = kind == "plain" || index > 0 ? "" : captionless ? "Caption 😀" : kind == "formatted" ? "😀 x" : raw.formattedText.text
+                XCTAssertEqual(native.text, expected)
+                let entities = native.attributes.compactMap { ($0 as? TextEntitiesMessageAttribute)?.entities }.flatMap { $0 }
+                XCTAssertEqual(entities, kind == "formatted" && index == 0 ? [MessageTextEntity(range: 0..<2, type: .Bold)] : [])
+                XCTAssertEqual(native.media.count, (kind == "plain" || index > 0) ? 1 : 0)
+                if kind == "generic-webp", index == 1 {
+                    XCTAssertEqual((native.media.first as? TelegramMediaFile)?.mimeType, "image/webp")
+                    XCTAssertEqual((native.media.first as? TelegramMediaFile)?.attributes, [.FileName(fileName: "Synthetic.webp")])
+                }
+            }
+        }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let reopened = try await open(path), repository = TelegramPostboxPendingUploadRepository(postbox: reopened, accountID: 1)
+        let terminal = await load(42, repository: repository)
+        guard case .acceptedBatch = try XCTUnwrap(try terminal.get()).disposition else { return XCTFail("Accepted receipt must reopen without resending") }
+        if !enabled {
+            XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
+            try await archive.setConversationFileSavingEnabled(identity: identity, enabled: true)
+            let promoted = try await archive.resume(); XCTAssertEqual(promoted, 0)
+            for record in records {
+                let absent = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey); XCTAssertNil(absent)
+            }
+        }
+    }
+
     private weak var previousBox: Postbox?
     private func open(_ root: URL) async throws -> Postbox {
         initializeAccountManagement()

@@ -34,14 +34,14 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
               resources.count == draft.items.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         let plan = try TelegramUploadBatchPlan(items: resources.map(\.item), isGrouped: draft.isGrouped,
             caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-            presentation: draft.schemaVersion >= 8 ? draft.presentation : nil)
+            presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules)
         guard groupKeys.count == plan.groupCount, Set(groupKeys).count == groupKeys.count else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }

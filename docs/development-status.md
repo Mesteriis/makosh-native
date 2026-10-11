@@ -1,6 +1,71 @@
 # Development status — 2026-10-12
 
-## Current stage: ordered original sources in the existing Telegram preparation
+## Current stage: versioned reference caption projection
+
+New ordinary picker preparations use strict schema15: the raw rich editor input,
+selection and source facts remain durable; only the send plan normalizes text.
+Schemas1–14 keep their previous projection/cardinality, including after reorder,
+mode or cover changes. Explicit Voice/round retain schemas11–13 and reject any
+raw nonempty caption before archive capture. Older binaries refuse15; preserve
+pointers, encrypted resources, receipts and keys on rollback.
+
+Source-confirmed reference helpers always trim attributed input, replace U+2028
+and U+FFFC with newline, and shift/clip UTF16 entity ranges. Length preflight uses
+the distinct String.trimmed behavior without U+FFFC substitution. Own code
+implements those rules with the platform whitespace set; unsupported/customEmoji
+provenance remains a veto. The conservative limit stays1024 UTF16. Whitespace-only
+input produces no leading message. Single File WebP, including generic native
+image/webp MIME, sends nonempty normalized text first, then empty media caption.
+Plans, complete receipts and accepted-pointer counts share this projection.
+Composer ACK callbacks retain the raw input. No GPLv2 helper/UI code was copied.
+
+Compiled behavioral RED precedes changes; review found raw recorded-caption
+validation after normalization and missed generic WebP MIME. Separate real
+local/S3 regressions fail before their fixes. Final focused15/0 passes. One
+test-only queue-directory assertion was moved before resume, which legitimately
+creates an empty spool; its original two failures remain recorded. The previous
+hosted e82 runs completed one PASS/one FAIL: the sole failure compared a captured
+pointer revision before a redundant pending write. A deterministic extra write
+reproduces it; the test now compares every encoded content field, excluding only
+revision, and separately proves revision changed. Production CAS is unchanged.
+
+`scripts/dev-db.sh up`, final `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,205 XCTest (1,129 Telegram +76 core),1 skipped,0 failures;45 Python tests**.
+All438 executable/source/test/dependency/script/license/reference-lock files
+remain frozen through final gates/UI. Warm gates emit no compile warnings;
+437 existing upstream t19 teardown diagnostics remain without test failures.
+The microphone-authorization skip is separate. Strict built/owned-QA signatures
+and raw unsigned executable equality pass; dependency/license pins are unchanged.
+
+Actual owned synthetic AX/screenshots verify the existing File sheet with two
+ordered text files, raw padded caption and counter12, then whitespace counter0.
+Native bold input, selection, padding and the same two item UUIDs restore after
+source-folder rename/restart with S3 OFF; the restored screenshot is valid.
+Explicit Send reaches only synthetic queue. Closing observation and Mail→Telegram
+retain chat11/OFF and uncertainty without auto-resend. Modal Quit needed verified
+owned SIGTERM; the initial emoji selectText action failed, then native select-all/
+bold worked. All three own fixtures are restored and hash-checked. No personal
+Account, network Telegram, hardware input or OS permission grant was used.
+
+Root verifies1,213 artifact/source integrity checks,188 original worker commands
+(175 exit0,13 nonzero), and the final438-file/14-copy snapshot. Both review
+findings are fixed; final bounded recheck has no new actionable findings. Earlier
+setup failures, the parent's wrong-copy-directory verification attempt and
+unavailable historical raw evidence stay separate. Observed provider/model/usage
+and internal transfer remain unknown; no quorum. Final active XERJ own/reference
+queries are source-confirmed. Project v6 refresh/check exit0:453 files,416/416
+classified code; unchanged reference579cebbf/engine a24bbe45 checks pass.
+
+Remaining caption gaps: markdown/entity detection, resolved custom emoji, premium
+limit and placeholder/comment UI parity. Typed GIF/music with original WebP MIME
+may conservatively get extra leading text despite a native MIME override; no text
+is dropped. Archive research is complete, implementation is next: retain ordered
+N originals plus one ZIP, preserve basename collisions/hidden files, obey S3 OFF,
+and use one native message/receipt. No ZIP dependency is adopted until its exact
+license/provenance is reviewed. Full Telegram and subsequent services remain open;
+physical routes, prompts, Account/server/recipient and minimum26 remain unproved.
+
+## Historical ordered original sources (e82d4c9)
 
 New ordinary picker preparations use strict schema14 source facts, independently
 of canonical payload kind: item UUID, raw role/name/size/SHA256, original-name

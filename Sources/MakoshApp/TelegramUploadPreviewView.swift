@@ -82,7 +82,7 @@ struct TelegramUploadPreviewView: View {
                         _ = upload.updateCaptionInput(input, contextID: captionContext)
                     }, submit: send)
                     .id(captionContext).disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving)
-                Text("Подпись: \(upload.caption.utf16.count)/1024").font(.caption).foregroundStyle(.secondary)
+                Text("Подпись: \(upload.captionValidationUTF16Count)/1024").font(.caption).foregroundStyle(.secondary)
             }
             if let error = upload.error {
                 Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.error")

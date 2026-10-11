@@ -39,6 +39,7 @@ enum TelegramUploadEvent {
     @Published public private(set) var presentation: TelegramUploadPresentation = .media
     @Published public private(set) var messageIDs: [String] = []
     private var usesBatchRecovery = false
+    private var captionRules: TelegramUploadCaptionRules = .legacy
     private var preparingRecordedVoice = false
     private var preparingRecordedRoundVideo = false
     private var containsRecordedVoice: Bool {
@@ -176,7 +177,7 @@ enum TelegramUploadEvent {
         guard !selected.isEmpty else { return }
         clear(); resetCancellationPresentation()
         guard items.isEmpty else { phase = .failed; return }
-        usesBatchRecovery = true
+        usesBatchRecovery = true; captionRules = .reference
         self.target = target; self.captionInput = captionInput; phase = .preparing
         let request = token, bound = bindingID, stage = self.stage, discard = self.discard, store = recoveryStore
         preparationID = request; didPrepare?(target, captionInput, request)
@@ -619,7 +620,8 @@ enum TelegramUploadEvent {
         }
         return true
     }
-    public var canSend: Bool { phase == .ready && videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy && ((!usesBatchRecovery && !requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && telegramFormattedCaptionCanSend(captionInput.formattedText) }
+    public var captionValidationUTF16Count: Int { captionRules.validationUTF16Count(captionInput.formattedText) }
+    public var canSend: Bool { phase == .ready && videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy && ((!usesBatchRecovery && !requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && captionRules.canSend(captionInput.formattedText) }
     public var canCancel: Bool { phase == .preparing || phase == .ready || phase == .storing }
     public var captionContextID: UUID { token }
     public var preparationContextID: UUID? { preparationID }
@@ -716,7 +718,7 @@ enum TelegramUploadEvent {
     public func send() { send(spoilerOverride: nil) }
 
     private func send(spoilerOverride: Bool?) {
-        guard telegramFormattedCaptionCanSend(captionInput.formattedText) else {
+        guard captionRules.canSend(captionInput.formattedText) else {
             error = "Подпись или её форматирование не поддерживаются. Максимум — 1024 знака UTF16."; return
         }
         guard canSend, let provider, let file, let target else { return }
@@ -733,7 +735,7 @@ enum TelegramUploadEvent {
                     try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, mediaSpoiler: frozenSpoiler, disposition: .submissionStarted)
                     if let batchItems {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
-                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(draft.schemaVersion),
+                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(draft.schemaVersion),
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == batchItems.map(\.id), draft.isGrouped == grouped, draft.presentation == presentation,
                               draft.items.map(\.sourceFacts) == batchItems.map(\.sourceFacts),
@@ -877,7 +879,7 @@ enum TelegramUploadEvent {
         token = UUID(); preparation?.cancel(); deadline?.cancel(); deadline = nil
         let old = lease; lease = nil; old?.stop()
         let cleaned = releaseStage(); target = nil; captionInput = .empty; messageID = nil; messageIDs = []; committed = false
-        usesBatchRecovery = false; preparingRecordedVoice = false; preparingRecordedRoundVideo = false
+        usesBatchRecovery = false; captionRules = .legacy; preparingRecordedVoice = false; preparingRecordedRoundVideo = false
         isGrouped = false; presentation = .media; itemsRevision = UUID()
         captionAboveMedia = false; mediaSpoiler = false; captionRevision = UUID()
         phase = .idle; acceptancePending = false; recoveryPrepared = false
@@ -1094,7 +1096,7 @@ enum TelegramUploadEvent {
             guard items.count == 1, items[0].id == draft.items[0].id else { return false }
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14].contains(draft.schemaVersion),
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(draft.schemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,
@@ -1115,7 +1117,7 @@ enum TelegramUploadEvent {
         case .accepted, .acceptedBatch, .cancelled: return false
         }
         token = UUID(); preparationID = draft.id; self.items = items; selectedItemID = items[0].id
-        usesBatchRecovery = true; isGrouped = draft.isGrouped; presentation = draft.presentation; itemsRevision = UUID()
+        usesBatchRecovery = true; captionRules = draft.captionRules; isGrouped = draft.isGrouped; presentation = draft.presentation; itemsRevision = UUID()
         self.target = target; captionInput = draft.captionInput; captionAboveMedia = draft.captionAboveMedia
         mediaSpoiler = draft.mediaSpoiler; captionRevision = UUID()
         sentInput = draft.captionInput; sentCaption = draft.captionInput.formattedText

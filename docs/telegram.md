@@ -1876,8 +1876,9 @@ never create S3 copies; the per-chat prohibition also covers every initial resou
 
 ### Ordered original sources
 
-New ordinary picker preparations use strict schema14, preserving schema1–13
-payload meanings. Every item requires its UUID, raw resource role/name/size/
+New ordinary picker preparations use strict schema15, preserving schema1–14
+payload meanings. Schema14 introduced source facts;15 adds the versioned caption
+projection described below. Every item requires its UUID, raw resource role/name/size/
 SHA256, original-name selection MIME, bounded logical-image result and grouping
 result. Photo/GIF facts bind the retained raw resource. Partial/unknown/null or
 cross-resource facts are refused and independently re-probed before persistence,
@@ -1891,7 +1892,35 @@ Native ordinary File images use logical ImageSize; mixed grouped Media captions
 the first actual visual in each ten-item chunk, otherwise the last file.
 Bounded decoders and incomplete MIME aliases remain explicit compatibility gaps
 in `reference-interface.md` and `telegram-album-migration.md`. Older binaries
-refuse schema14; retain pointers, encrypted resources and keys when rolling back.
+refuse newer schemas; retain pointers, encrypted resources and keys when rolling back.
+
+### Versioned caption projection
+
+Schema15 retains the exact raw rich input and selection. The native send plan
+independently replaces U+2028/U+FFFC with newline, trims platform whitespace and
+clips/shifts explicit UTF16 entities. Unsupported/customEmoji provenance cannot
+be removed by trimming. The1024 UTF16 preflight follows reference String.trimmed
+without replacing U+FFFC. Editor/callback input stays raw; its visible counter
+uses preflight count. Schemas1–14 retain raw send behavior across metadata edits;
+no implicit schema upgrade occurs. Recorded voice/round validate raw empty input
+before any archive copy, independently of ordinary caption projection.
+
+Ungrouped multi-file nonempty projected captions lead once; whitespace-only input
+does not manufacture an empty text message. A single File WebP or generic file
+with image/webp selection MIME gets a leading text message and empty media caption.
+Grouped placement remains first actual visual or last file per ten-item chunk.
+Plan, complete native receipt and accepted-pointer cardinality use the same
+versioned rules. Typed GIF/music whose original MIME is WebP can conservatively
+get extra leading text because the transport later overrides MIME; exhaustive
+MIME parity is not claimed. Markdown/detected entities, resolved custom emoji,
+premium limit and reference placeholder/comment behavior remain open.
+
+Real Postbox/PostgreSQL/S3 tests reopen raw padded/formatted/whitespace captions
+after removing source paths, check exact projected native entities/IDs/receipts,
+terminal reopen without resend and legacy14 reorder compatibility. OFF asserts
+no new S3 object/events and no promotion after enable/resume. Actual existing
+File sheet restores raw bold input/selection/item UUIDs with OFF; see current
+development-status.md for exact gates and limits.
 
 ### Typed ordinary music preparation
 

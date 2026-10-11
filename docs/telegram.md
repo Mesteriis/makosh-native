@@ -2278,9 +2278,26 @@ never promote after enable; PostgreSQL stores metadata, not attachment bytes.
 Recipient expiration/cancellation does not purge immutable archive resources.
 No new dependency, engine recipe or third-party source/assets are introduced.
 
-This is an encoded foundation. It is not yet connected to the common-window
-recording controller or its schema13 UI restoration path. Short-click voice/video,
-camera/audio permissions, round-specific banSendInstantVideos checks, actual
-capture/crop/mirror/preview and final ordinary round ACL admission remain the next
-dependency. No camera, microphone, personal Account or Telegram server execution
-is established by these offline/native-queue tests.
+`TelegramUploadController.prepareRecordedRoundVideo` now transfers explicit bytes
+into one durable batch and admits schema13 restore/send. Missing recovery blocks
+Send even when general uploads do not require recovery. Caption/options, cover,
+item editing, File conversion and generic video preview remain unavailable for
+this typed preparation. Synchronous cancellation/rebind cannot publish the probe;
+prepared recovery needs explicit Send, and accepted records cannot resend.
+
+`TelegramRecordingKind` keeps Voice as the default. Round selects native
+banSendInstantVideos independently of banSendVoice/banSendVideos. Both kinds share
+the existing privacy/cache/access/membership/boost/fee/slow-mode policy; once round
+also requires another human CloudUser with no paid context. The native enqueue
+wrapper checks fresh round rights before insertion in the same Postbox transaction
+as receipt persistence, using current wall clock plus the Account network time
+offset. Nonfinite/out-of-range clocks refuse. ACK does not repeat the pending-message
+scan, which would count this transaction's own new message; it still validates the
+frozen draft/media/once/reply receipt. Real local queue regressions cover distinct
+bans, privacy/fees, exact slow deadline, prior pending messages and invalid clock.
+
+The hardware/common round recorder, model handoff and retained schema13 UI remain
+open. Short-click voice/video, camera+audio permissions/readiness and actual
+capture/crop/mirror/preview/timing are the next dependency. No camera, microphone,
+personal Account or Telegram server execution is established by these
+offline/native-queue/controller tests.

@@ -87,15 +87,27 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
         return result
     }
 
+    /// Called before native insertion in the same transaction as the receipt.
+    /// Acknowledge validates the frozen data separately: scanning slow-mode
+    /// pending messages again would count the message this transaction just added.
+    nonisolated func validateAdmission(transaction: Transaction, timestamp: TimeInterval) -> Bool {
+        guard validate(transaction: transaction) else { return false }
+        guard draft.items.first?.metadata?.roundVideo != nil else { return true }
+        guard timestamp.isFinite, timestamp >= Double(Int32.min), timestamp < Double(Int32.max) else { return false }
+        return telegramVoiceEligibilitySnapshot(transaction: transaction, peerID: PeerId(target.chatID),
+            now: Int32(timestamp), kind: .roundVideo) == .allowed
+    }
+
     nonisolated func validate(transaction: Transaction) -> Bool {
         guard case let .success(current) = telegramPendingUploadRead(transaction: transaction,
             accountID: target.accountID, chatID: target.chatID), let current,
               (try? Self.encode(current)) == encodedDraft else { return false }
         if draft.items.first?.metadata?.voice?.isOneTime == true || draft.items.first?.metadata?.roundVideo?.isOneTime == true {
             let peerID = PeerId(target.chatID)
+            let kind: TelegramRecordingKind = draft.items.first?.metadata?.roundVideo != nil ? .roundVideo : .voice
             guard telegramVoiceOnceEligibility(peer: transaction.getPeer(peerID),
                 cachedData: transaction.getPeerCachedData(peerId: peerID), accountID: target.accountID,
-                now: 0) == .allowed else { return false }
+                now: 0, kind: kind) == .allowed else { return false }
         }
         for entry in plan.messages {
             if entry.itemID == nil {

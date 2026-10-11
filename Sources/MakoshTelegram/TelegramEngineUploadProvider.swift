@@ -190,7 +190,8 @@ final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
 
 private nonisolated func enqueueBatchUploadWithReceipt(account: Account, receipt: TelegramUploadBatchEnqueueReceipt,
                                                       messages: [EnqueueMessage]) -> Signal<TelegramUploadBatchAdmission, NoError> {
-    telegramUploadBatchEnqueue(receipt: receipt, messages: messages) { messages, admission, commit in
+    telegramUploadBatchEnqueue(receipt: receipt, messages: messages,
+        now: { Date().timeIntervalSince1970 + account.network.globalTimeDifference }) { messages, admission, commit in
         enqueueMessages(account: account, peerId: PeerId(receipt.target.chatID), messages: messages,
             transactionAdmission: admission, transactionCommit: commit)
     }

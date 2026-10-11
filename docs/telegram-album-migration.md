@@ -166,7 +166,7 @@ preparation can also have `inCollage=true`, independently of actual send groupin
 | WebP | Original bytes, ImageSize/FileName/Sticker even in File; grouping disabled. | Verified bounded decoder and explicit first-frame dimension policy; no JPEG replacement or inferred animated sticker. |
 | Ordinary audio | Original bytes, Audio(isVoice:false) with integral duration/title/performer even in File. | Validated AVFoundation duration and bounded tags, retained through native enqueue and restart; OGG/Opus filenames never imply voice. |
 | Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed codec, original-PCM waveform, ordinary schema11/one-time schema12, native capture and authenticated local/S3 recovery implemented; exact overlay parity remains open. |
-| Recorded round video | Explicit recorder intent, original MP4 and Video(ceil duration,200x200,instantRoundVideo). | Encoded H264/AAC entry, strict schema13, authenticated local/S3 restore and native queue/reopen implemented. Camera/controller/UI and ordinary round ACL flow remain open; full-asset timing is an explicit local policy. |
+| Recorded round video | Explicit recorder intent, original MP4 and Video(ceil duration,200x200,instantRoundVideo). | Encoded H264/AAC entry, strict schema13 controller prepare/restore/explicit Send, authenticated local/S3 recovery and atomic native round ACL/queue/reopen implemented. Camera/common recorder/model/UI remain open; full-asset timing is an explicit local policy. |
 
 Ordinary music now has a verified owned pipeline for synthetic WAV, tagged M4A
 and ID3 MP3. Schema9 carries exact duration/title/performer through File/Media
@@ -280,10 +280,12 @@ compatibility, raw RED/GREEN checks and current UI/server limitations. Round vid
 remaining classifier order, Archive/caption normalization and sequential migration
 remain open; this is not completion of the full Telegram migration.
 
-Explicit encoded round-video now uses schema13 and a separate round native mapper.
-It does not add picker inference or a camera control. Before connecting the common
-recorder, implement fresh mode-specific banSendInstantVideos admission, camera+
-audio permission/cancellation ownership, reference capture geometry/timing and
-schema13 controller/UI restoration with actual isolated UI evidence. Keep the
-existing OFF/no-promotion and immutable retention rules. See telegram.md and
-reference-interface.md for the strict encoded profile and remaining differences.
+Explicit encoded round-video now uses schema13, its own native mapper and durable
+controller preparation/restoration/explicit Send. Fresh native admission selects
+banSendInstantVideos independently of voice/ordinary-video bans and checks current
+privacy/fees/slow mode before insertion in the receipt transaction. ACK excludes
+the pending scan of its own insertion. It adds no picker inference or camera UI.
+Next implement async camera+audio readiness/permission/cancellation ownership,
+reference capture geometry/timing and common recorder/model/retained UI with actual
+isolated visual evidence. Keep OFF/no-promotion and immutable retention rules. See
+telegram.md and reference-interface.md for strict profile and remaining differences.

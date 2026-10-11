@@ -1,6 +1,66 @@
 # Development status — 2026-10-11
 
-## Current stage: explicit encoded round-video foundation
+## Current stage: round-video controller recovery and atomic native rights
+
+The explicit authored-MP4 entry now connects to TelegramUploadController, strict
+schema13 restoration and explicit Send. Preparation requires a complete durable
+batch record even without a configured recovery store. Cancellation/rebinding
+cannot publish an old probe result. Round preparations reject caption, grouping,
+spoiler, above-media text, cover, File conversion, item editing and generic video
+preview. Prepared recovery waits for Send; accepted/uncertain state never resumes
+sending. Ordinary and once mode survive the controller and encrypted reopen.
+
+TelegramRecordingKind defaults to Voice for compatibility. Round uses native
+banSendInstantVideos independently of voice/ordinary-video bans, sharing verified
+privacy/cache/access/membership/boost/fee/slow-mode gates. Once keeps its strict
+other-human/no-paid-context rule. Final round admission reads the current native
+snapshot before insertion in the same Postbox transaction as the receipt.
+Production time includes account.network.globalTimeDifference and invalid clocks
+fail closed. ACK validates frozen data without rescanning pending slow-mode
+messages: this transaction's own new message cannot block its acknowledgement.
+
+Compiled root RED6 cases/5 failures, then combined controller/recovery RED10/9;
+after connecting preparation,4 real ON/OFF recovery cases specifically refuse
+schema13 restore. Controller GREEN10/0 follows both allowlist corrections.
+Native-admission RED1/10 becomes integrated Voice/round/eligibility GREEN97/0;
+the final full run also covers an unusable-clock variant. Eligibility leaf
+RED23/14(0 unexpected) becomes GREEN23/0. Original logs/exits and separate
+discovery/setup failures remain private, including a stale check made while the
+project refresh was still running. No failure is relabelled as a pass.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,088 XCTest cases (1,012 Telegram +76 core),1 skipped,0 failures;38 Python
+regressions**. No compile warnings in the full run; focused rebuilds retain3
+existing unrelated warnings.382 existing upstream t19 teardown diagnostics remain
+without test failures. One permission-dependent capture test is skipped;
+deterministic permission gates use no hardware. Strict signatures and raw unsigned
+built/owned-QA payload equality pass. Actual isolated common-window AX/screenshot
+smoke verifies chat7 S3 OFF and Mail→Telegram preserving selection/OFF. No screen
+changed in this slice and no round-recorder/prepared-round UI proof is claimed.
+
+Root verifies all10 frozen source/test hashes and4 leaf output hashes. A bounded
+read-only review finds no additional actionable issues; research and original raw
+checks remain private. Initial transferred snapshot, observed provider/model/usage
+remain unknown; no quorum. Historical raw-output gaps are recorded privately
+rather than reconstructed. Final current project/reference/
+engine fingerprint checks and active XERJ queries are source-confirmed; project
+coverage is423 files,389/389 classified code. Hosted CI remains separate.
+
+S3 OFF still forbids every new copy, including preparation; local records never
+promote after re-enable. PostgreSQL keeps metadata, not payload bytes. Immutable
+retention survives Telegram removal/recipient expiration/cancellation. No new
+dependency, engine recipe, third-party code/assets or private account access.
+
+Next: implement asynchronous camera+audio capture/readiness, independent central
+square/mirror/white circular mask and capture-time bounds; then connect the common
+recorder/model, permission/context cancellation, short-click kind switch and
+round preview/retained UI. Reference capture timing differs from the existing
+full-asset schema13 policy and must not silently redefine it. Actual hardware,
+Account/server/recipient and minimum26 runtime remain unproved. Playback, ordered
+classifier, Archive/caption normalization and subsequent services remain open.
+Full Telegram migration and the overall goal remain open.
+
+## Historical explicit encoded round-video foundation (445c420)
 
 Explicit authored MP4 now has a separate round-video entry and strict schema13.
 It preserves exact input bytes and rederives container/codec/decoded sample,

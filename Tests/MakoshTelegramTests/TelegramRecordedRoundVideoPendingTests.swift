@@ -6,10 +6,16 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 private enum RoundQueueForge: CaseIterable, Sendable { case flags, missing, wrong, duplicate, started, unexpected }
+private enum RoundQueueAccess: CaseIterable, Sendable {
+    case instantBanned, voiceAndVideoBanned, slowDeadline, slowFuture, slowPending, privacy, paid, invalidClock
+    var isChannel: Bool { self != .privacy && self != .paid && self != .invalidClock }
+    var allowed: Bool { self == .voiceAndVideoBanned || self == .slowDeadline }
+}
 private func roundQueuedMessage(_ box: Postbox, id: MessageId) -> Signal<Message?, NoError> {
     box.transaction { $0.getMessage(id) }
 }
-private func roundQueuePeers(_ box: Postbox, chatTTL: Bool) -> Signal<Void, NoError> {
+private func roundQueuePeers(_ box: Postbox, chatTTL: Bool, chatID: Int64 = 42,
+    access: RoundQueueAccess? = nil) -> Signal<Void, NoError> {
     box.transaction { transaction in
         let peers = [Int64(1),42].map { id in
             TelegramUser(id: PeerId(id), accessHash: nil, firstName: "Synthetic round", lastName: nil,
@@ -21,13 +27,43 @@ private func roundQueuePeers(_ box: Postbox, chatTTL: Bool) -> Signal<Void, NoEr
         transaction.updatePeerCachedData(peerIds: Set(peers.map(\.id)), update: { _,_ in
             chatTTL ? CachedUserData().withUpdatedAutoremoveTimeout(.known(.init(peerValue: 30))) : CachedUserData()
         })
+        if let access, access.isChannel {
+            let id = PeerId(chatID)
+            let slow = access == .slowDeadline || access == .slowFuture || access == .slowPending
+            let ban: TelegramChatBannedRightsFlags = access == .instantBanned ? [.banSendInstantVideos] :
+                access == .voiceAndVideoBanned ? [.banSendVoice, .banSendVideos] : []
+            let channel = TelegramChannel(id: id, accessHash: nil, title: "Synthetic round permissions", username: nil,
+                photo: [], creationDate: 0, version: 1, participationStatus: .member,
+                info: .group(TelegramChannelGroupInfo(flags: slow ? [.slowModeEnabled] : [])), flags: [], restrictionInfo: nil,
+                adminRights: nil, bannedRights: nil,
+                defaultBannedRights: TelegramChatBannedRights(flags: ban, untilDate: Int32.max), usernames: [], storiesHidden: nil,
+                nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
+                emojiStatus: nil, approximateBoostLevel: nil, subscriptionUntilDate: nil,
+                verificationIconFileId: nil, sendPaidMessageStars: nil, linkedMonoforumId: nil)
+            transaction.updatePeersInternal([channel], update: { _,new in new })
+            transaction.updatePeerCachedData(peerIds: [id], update: { _,_ in
+                slow ? CachedChannelData().withUpdatedSlowModeTimeout(30)
+                    .withUpdatedSlowModeValidUntilTimestamp(access == .slowFuture ? 101 : 100) : CachedChannelData()
+            })
+            if access == .slowPending {
+                _ = transaction.addMessages([StoreMessage(id: MessageId(peerId: id, namespace: Namespaces.Message.Local, id: 1),
+                    globallyUniqueId: nil, groupingKey: nil, threadId: nil, timestamp: 99, flags: [.Unsent], tags: [], globalTags: [],
+                    localTags: [], forwardInfo: nil, authorId: PeerId(1), text: "Synthetic previous pending",
+                    attributes: [], media: [])], location: .Random)
+            }
+        } else if let access, access == .privacy || access == .paid {
+            transaction.updatePeerCachedData(peerIds: [PeerId(chatID)], update: { _,_ in
+                access == .privacy ? CachedUserData().withUpdatedVoiceMessagesAvailable(false) :
+                    CachedUserData().withUpdatedSendPaidMessageStars(.init(value: 1, nanos: 0))
+            })
+        }
     }
 }
 private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnqueueReceipt,
-    messages: [EnqueueMessage], forge: RoundQueueForge?) -> Signal<TelegramUploadBatchAdmission, NoError> {
-    telegramUploadBatchEnqueue(receipt: receipt, messages: messages) { messages, admission, commit in
+    messages: [EnqueueMessage], forge: RoundQueueForge?, timestamp: TimeInterval = 100) -> Signal<TelegramUploadBatchAdmission, NoError> {
+    telegramUploadBatchEnqueue(receipt: receipt, messages: messages, now: { timestamp }) { messages, admission, commit in
         enqueueMessagesLocally(postbox: box, accountPeerId: PeerId(1), isSupportUser: false, timestamp: 100,
-            peerId: PeerId(42), messages: messages, transactionAdmission: admission, transactionCommit: { transaction, ids in
+            peerId: PeerId(receipt.target.chatID), messages: messages, transactionAdmission: admission, transactionCommit: { transaction, ids in
                 if let forge, let first = ids.first, let id = first, let message = transaction.getMessage(id) {
                     var attributes = message.attributes
                     var media = message.media
@@ -57,6 +93,10 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
 }
 
 @MainActor final class TelegramRecordedRoundVideoPendingTests: XCTestCase {
+    func testLocalControllerRoundRestoresAndSendsOnlyExplicitly() async throws { try await controllerQueue(s3: false, once: false) }
+    func testS3ControllerRoundRestoresAndSendsOnlyExplicitly() async throws { try await controllerQueue(s3: true, once: false) }
+    func testLocalControllerOnceRoundRestoresAndSendsOnlyExplicitly() async throws { try await controllerQueue(s3: false, once: true) }
+    func testS3ControllerOnceRoundRestoresAndSendsOnlyExplicitly() async throws { try await controllerQueue(s3: true, once: true) }
     func testLocalRoundRestoresAndQueuesAfterEncryptedPostboxReopen() async throws { try await reopen(s3: false, once: false) }
     func testS3RoundRestoresAndQueuesAfterEncryptedPostboxReopen() async throws { try await reopen(s3: true, once: false) }
     func testLocalOnceRoundRestoresAndQueuesAfterEncryptedPostboxReopen() async throws { try await reopen(s3: false, once: true) }
@@ -65,6 +105,12 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
         for forge in RoundQueueForge.allCases { try await reopen(s3: false, once: forge != .unexpected && forge != .flags, forge: forge) }
     }
     func testRoundOneTimeAndChatWideAutoDeleteRemainIndependent() async throws { try await reopen(s3: false, once: true, chatTTL: true) }
+    // Catches skipping a fresh native admission check, confusing video/voice
+    // bans with instant-video rights, and counting this same queue insertion as
+    // an earlier pending message during slow-mode acknowledgement.
+    func testRoundNativeAdmissionUsesFreshRightsPrivacyFeeAndSlowMode() async throws {
+        for access in RoundQueueAccess.allCases { try await reopen(s3: false, once: false, access: access) }
+    }
 
     // A rejected caption must leave no new S3 copy, including transient preparation.
     func testInvalidRoundOptionsRefuseBeforeArchiveCapture() async throws {
@@ -124,13 +170,15 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
     }
 
     // Real encrypted recovery, S3 policy and native enqueue; only server I/O is absent.
-    private func reopen(s3: Bool, once: Bool, forge: RoundQueueForge? = nil, chatTTL: Bool = false) async throws {
+    private func reopen(s3: Bool, once: Bool, forge: RoundQueueForge? = nil, chatTTL: Bool = false,
+        access: RoundQueueAccess? = nil) async throws {
         let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
         let configuration = try config(), archiveRoot = try root(), postboxRoot = try root()
         let archive = try archive(database, configuration, archiveRoot)
-        let policy = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        let chatID = access?.isChannel == true ? PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(92)).toInt64() : 42
+        let policy = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: String(chatID), messageID: "synthetic-policy")
         try await archive.setConversationFileSavingEnabled(identity: policy, enabled: s3)
-        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic round")
+        let target = TelegramUploadTarget(accountID: 1, chatID: chatID, title: "Synthetic round")
         let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
         var saved: TelegramPendingUploadDraft?
         do {
@@ -141,15 +189,15 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             let item = TelegramUploadBatchItem(id: file.id, file: file), id = UUID()
             try await store.prepare(preparationID: id, items: [item], isGrouped: false, presentation: .media,
                 target: target, captionInput: .empty, originalDraft: nil)
-            let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
+            let firstLoad = try await store.load(chatID: chatID), first = try XCTUnwrap(firstLoad)
             XCTAssertEqual(first.schemaVersion, 13); XCTAssertEqual(first.items[0].metadata?.roundVideo?.isOneTime, once)
             XCTAssertEqual(first.items[0].metadata?.roundVideo?.nativeDuration, 2)
             XCTAssertEqual(first.items[0].file.state, s3 ? .stored : .local)
             let ready = try await store.restoreItems(draft: first)
             defer { for item in ready { try? item.discard() } }
             XCTAssertEqual(ready.count, 1); XCTAssertEqual(try Data(contentsOf: ready[0].file.url), bytes)
-            try await store.save(preparationID: id, chatID: 42, captionInput: .empty, disposition: .submissionStarted)
-            saved = try await store.load(chatID: 42)
+            try await store.save(preparationID: id, chatID: chatID, captionInput: .empty, disposition: .submissionStarted)
+            saved = try await store.load(chatID: chatID)
         }
         try await released()
         let frozen = try XCTUnwrap(saved), record = frozen.items[0].file
@@ -157,25 +205,33 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
         if s3 { XCTAssertNotNil(remote) } else { XCTAssertNil(remote) }
         do {
             let box = try await open(postboxRoot); previousBox = box
-            let store = session(box, archive), loaded = try await store.load(chatID: 42)
+            let store = session(box, archive), loaded = try await store.load(chatID: chatID)
             XCTAssertEqual(loaded, frozen)
             let restored = try await store.restoreItems(draft: frozen)
             defer { for item in restored { try? item.discard() } }
             XCTAssertEqual(try Data(contentsOf: restored[0].file.url), bytes)
             XCTAssertEqual(restored[0].file.metadata, frozen.items[0].metadata)
             let peers = expectation(description: "Synthetic round peers")
-            let seed = (roundQueuePeers(box, chatTTL: chatTTL) |> deliverOnMainQueue).start(next: { peers.fulfill() })
+            let seed = (roundQueuePeers(box, chatTTL: chatTTL, chatID: chatID, access: access) |> deliverOnMainQueue).start(next: { peers.fulfill() })
             defer { seed.dispose() }; await fulfillment(of: [peers], timeout: 20)
             let done = expectation(description: "Native round admission")
             var result: TelegramUploadBatchEvent?
             let submission = TelegramUploadBatchSubmission(postbox: box, accountID: 1, items: restored, draft: frozen,
-                target: target, enqueue: { receipt, messages in roundQueueEnqueue(box, receipt: receipt, messages: messages, forge: forge) }) {
+                target: target, enqueue: { receipt, messages in
+                    roundQueueEnqueue(box, receipt: receipt, messages: messages, forge: forge,
+                        timestamp: access == .invalidClock ? .nan : 100)
+                }) {
                     switch $0 { case .accepted, .rejected, .uncertain: result = $0; done.fulfill(); default: break }
                 }
             defer { submission.stop() }; await fulfillment(of: [done], timeout: 20)
+            if let access, !access.allowed {
+                XCTAssertEqual(result, .rejected, "Unexpected admission for \(access)")
+                let pointer = try await store.load(chatID: chatID); XCTAssertEqual(pointer, frozen)
+                return
+            }
             if forge != nil {
                 XCTAssertEqual(result, .uncertain)
-                let pointer = try await store.load(chatID: 42); XCTAssertEqual(pointer, frozen)
+                let pointer = try await store.load(chatID: chatID); XCTAssertEqual(pointer, frozen)
                 XCTAssertEqual(try Data(contentsOf: restored[0].file.url), bytes)
                 return
             }
@@ -203,7 +259,7 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             defer { cache.dispose() }; await fulfillment(of: [cacheDone], timeout: 20)
             let payload = try XCTUnwrap(data); XCTAssertTrue(payload.complete)
             XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: payload.path)), bytes)
-            let accepted = try await store.load(chatID: 42)
+            let accepted = try await store.load(chatID: chatID)
             XCTAssertEqual(accepted?.disposition, .acceptedBatch(messageIDs: ids)); XCTAssertEqual(accepted?.items, frozen.items)
             saved = accepted
             let staleDone = expectation(description: "Accepted round cannot resend")
@@ -214,13 +270,109 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             defer { stale.stop() }; await fulfillment(of: [staleDone], timeout: 20)
         }
         try await released()
-        let box = try await open(postboxRoot), reopened = try await session(box, archive).load(chatID: 42)
+        let box = try await open(postboxRoot), reopened = try await session(box, archive).load(chatID: chatID)
         XCTAssertEqual(reopened, saved)
         if !s3 {
             XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
             try await archive.setConversationFileSavingEnabled(identity: policy, enabled: true)
             let count = try await archive.resume(); XCTAssertEqual(count, 0)
             let absent = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey); XCTAssertNil(absent)
+        }
+    }
+    // Catches schema13 restore/send allowlists, accidental resume-send and S3
+    // policy regressions at the actual controller→durable→native queue boundary.
+    private func controllerQueue(s3: Bool, once: Bool) async throws {
+        let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
+        let configuration = try config(), archiveRoot = try root(), postboxRoot = try root()
+        let archive = try archive(database, configuration, archiveRoot)
+        let policy = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        try await archive.setConversationFileSavingEnabled(identity: policy, enabled: s3)
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic round")
+        let bytes = try await recordedRoundVideoFixtureBytes(duration: 1.25)
+        var accepted: TelegramPendingUploadDraft?
+        do {
+            let box = try await open(postboxRoot); previousBox = box
+            let seeded = expectation(description: "Controller synthetic round peers")
+            let seed = (roundQueuePeers(box, chatTTL: false) |> deliverOnMainQueue).start(next: { seeded.fulfill() })
+            defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
+            let store = session(box, archive), provider = RoundLocalQueueProvider(box)
+            var controller = TelegramUploadController()
+            controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+            defer { controller.bind(provider: nil) }
+            guard controller.prepareRecordedRoundVideo(bytes: bytes, target: target, isOneTime: once) else {
+                return XCTFail("Controller refused explicit round recording")
+            }
+            for _ in 0..<1_000 where !controller.canSend && controller.phase != .failed {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.phase, .ready)
+            let stage = try XCTUnwrap(controller.file), loaded = try await store.load(chatID: 42)
+            let prepared = try XCTUnwrap(loaded)
+            XCTAssertEqual(prepared.schemaVersion, 13); XCTAssertEqual(prepared.disposition, .prepared)
+            XCTAssertEqual(prepared.items.first?.metadata?.roundVideo?.isOneTime, once)
+            XCTAssertEqual(prepared.items.first?.file.state, s3 ? .stored : .local)
+            controller.bind(provider: nil)
+            let recovered = try await store.restoreItems(draft: prepared)
+            controller = TelegramUploadController()
+            controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+            guard controller.restore(draft: prepared, items: recovered, target: target,
+                restorationEpoch: controller.recoveryRestoreEpoch) else {
+                for item in recovered { try? item.discard() }
+                return XCTFail("Controller refused schema13 recovery")
+            }
+            XCTAssertEqual(controller.phase, .ready); XCTAssertTrue(controller.isRecordedRoundVideo)
+            XCTAssertEqual(controller.isOneTimeRoundVideo, once); XCTAssertFalse(controller.canEditVideoCover)
+            XCTAssertFalse(controller.canUseMediaOptions); XCTAssertFalse(controller.showsPreparationPreview)
+            XCTAssertEqual(provider.submissions, 0); XCTAssertTrue(controller.canSend)
+            controller.send(contextID: UUID()); XCTAssertEqual(provider.submissions, 0)
+            controller.send(contextID: prepared.id)
+            for _ in 0..<1_000 where controller.phase == .storing || controller.phase == .enqueuing {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertEqual(controller.phase, .queued(nil)); XCTAssertEqual(provider.submissions, 1)
+            let saved = try await store.load(chatID: 42), value = try XCTUnwrap(saved)
+            guard case let .acceptedBatch(ids) = value.disposition, let id = ids.first else {
+                return XCTFail("Controller did not retain native round admission")
+            }
+            XCTAssertEqual(value.items, prepared.items); XCTAssertEqual(controller.messageIDs, ids.map(\.description))
+            let read = expectation(description: "Controller round native result"); var message: Message?
+            let reading = (roundQueuedMessage(box, id: id.nativeID) |> deliverOnMainQueue).start(next: { message = $0; read.fulfill() })
+            defer { reading.dispose() }; await fulfillment(of: [read], timeout: 20)
+            let media = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
+            XCTAssertEqual(media.attributes, [.Video(duration: 2, size: PixelDimensions(width: 200, height: 200),
+                flags: [.instantRoundVideo], preloadSize: nil, coverTime: nil, videoCodec: nil)])
+            let ttl = message?.attributes.compactMap { $0 as? AutoclearTimeoutMessageAttribute } ?? []
+            XCTAssertEqual(ttl.count, once ? 1 : 0)
+            if once { XCTAssertEqual(ttl.first?.timeout, 2_147_483_647); XCTAssertNil(ttl.first?.countdownBeginTime) }
+            let complete = expectation(description: "Controller round native bytes"); var payload: MediaResourceData?
+            let cache = (box.mediaBox.resourceData(media.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
+                |> take(1) |> deliverOnMainQueue).start(next: { payload = $0; complete.fulfill() })
+            defer { cache.dispose() }; await fulfillment(of: [complete], timeout: 20)
+            let data = try XCTUnwrap(payload); XCTAssertTrue(data.complete)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: data.path)), bytes)
+            controller.send(); controller.send(contextID: prepared.id); XCTAssertEqual(provider.submissions, 1)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: stage.directory.path))
+            accepted = value
+        }
+        try await released()
+        let frozen = try XCTUnwrap(accepted), box = try await open(postboxRoot), store = session(box, archive)
+        let loaded = try await store.load(chatID: 42); XCTAssertEqual(loaded, frozen)
+        let restored = try await store.restoreItems(draft: frozen)
+        defer { for item in restored { try? item.discard() } }
+        let controller = TelegramUploadController(), provider = RoundLocalQueueProvider(box)
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        XCTAssertFalse(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        controller.send(); XCTAssertEqual(provider.submissions, 0)
+        let record = frozen.items[0].file
+        let remote = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
+        if s3 { XCTAssertNotNil(remote) }
+        else {
+            XCTAssertNil(remote)
+            XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
+            try await archive.setConversationFileSavingEnabled(identity: policy, enabled: true)
+            let resumed = try await archive.resume(); XCTAssertEqual(resumed, 0)
+            let stillAbsent = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
+            XCTAssertNil(stillAbsent)
         }
     }
     private func config() throws -> S3ObjectStoreConfiguration {
@@ -264,3 +416,25 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
         return result
     }
 }
+
+@MainActor private final class RoundLocalQueueProvider: TelegramUploadBatchProvider {
+    let accountID: Int64 = 1
+    private let box: Postbox
+    private(set) var submissions = 0
+    init(_ box: Postbox) { self.box = box }
+    func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
+        receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
+        submissions += 1
+        return TelegramUploadBatchSubmission(postbox: box, accountID: 1, items: items, draft: draft, target: target,
+            enqueue: { [box] receipt, messages in
+                roundQueueEnqueue(box, receipt: receipt, messages: messages, forge: nil)
+            }, receive: receive)
+    }
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID,
+        caption: TelegramFormattedText, captionAboveMedia: Bool, mediaSpoiler: Bool,
+        receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
+        XCTFail("Round recording must use complete typed batch receipt")
+        receive(.rejected); return RoundUnusedLease()
+    }
+}
+@MainActor private final class RoundUnusedLease: TelegramUploadLease { func stop() {} }

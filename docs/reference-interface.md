@@ -840,9 +840,21 @@ raw full-asset duration: точное совпадение с capture-clock refe
 описаны в telegram.md; это не утверждение о лимитах сервера. Durable path требует
 успешный ordinary320px JPEG probe, хотя mapper и reference допускают отсутствие.
 
-Экран на этом этапе не меняется. Нет подключённого round recorder/controller,
-schema13 UI восстановления, короткого переключения, camera preview/ring,
-проверенного crop/mirror/shader parity, camera+audio permission flow и fresh
-ordinary round ACL gates. Native once receipt уже сохраняет точный режим, OFF
-не допускает новые S3 копии. Синтетический enqueue/reopen не доказывает server
-acceptance, recipient playback, реальную камеру или minimum26 runtime.
+Explicit MP4 теперь подключён к upload controller: durable schema13 prepare,
+restore и явный Send. Подпись, группировка, spoiler/above, cover, File conversion,
+редактирование набора и generic video preview для round закрыты. Восстановленный
+prepared record ждёт Send; accepted/uncertain не запускают повторную отправку.
+Отдельный recording kind применяет banSendInstantVideos независимо от voice/video
+ban, сохраняя privacy/cache/access/fee/slow-mode и once ограничения. Native admission
+проверяет свежий snapshot до вставки в той же Postbox transaction, с network time
+offset. ACK не сканирует pending повторно, чтобы не учитывать собственную вставку.
+
+Экран на этом этапе не меняется. Общая синтетическая панель проверена фактически:
+chat7 S3 OFF и переход Почта→Telegram сохраняют выбор/OFF. Это не доказательство
+round recorder или retained schema13 UI. Ещё нет подключённого camera/common
+recorder/model handoff, короткого переключения, camera preview/ring, проверенного
+crop/mirror/white circular edge, capture timing и camera+audio permission/readiness.
+Reference start асинхронно ждёт оба формата; будущая граница не должна принимать
+warmup за завершение. Native once receipt сохраняет точный режим, OFF не допускает
+новые S3 копии. Синтетический enqueue/reopen не доказывает server acceptance,
+recipient playback, реальную камеру или minimum26 runtime.

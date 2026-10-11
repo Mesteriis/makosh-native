@@ -3,7 +3,8 @@ import TelegramCore
 import Postbox
 import SwiftSignalKit
 
-func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, now: Int32) -> TelegramVoiceEligibility {
+func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, now: Int32,
+    kind: TelegramRecordingKind = .voice) -> TelegramVoiceEligibility {
     let peer = transaction.getPeer(peerID), cache = transaction.getPeerCachedData(peerId: peerID)
     var pending = false
     if let channel = peer as? TelegramChannel, channel.isRestrictedBySlowmode {
@@ -12,7 +13,7 @@ func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, 
             return true
         }
     }
-    return telegramVoiceEligibility(peer: peer, cachedData: cache, now: now, hasPendingMessages: pending)
+    return telegramVoiceEligibility(peer: peer, cachedData: cache, now: now, hasPendingMessages: pending, kind: kind)
 }
 
 @MainActor final class TelegramVoiceEligibilityRequest {
@@ -21,9 +22,11 @@ func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, 
     private var continuation: CheckedContinuation<TelegramVoiceEligibility, Never>?
     private var deadline: Task<Void, Never>?
     isolated deinit { subscription.dispose(); deadline?.cancel(); continuation?.resume(returning: .unavailable) }
-    func check(account: Account, target: TelegramUploadTarget, isOneTime: Bool = false) async -> TelegramVoiceEligibility {
+    func check(account: Account, target: TelegramUploadTarget, isOneTime: Bool = false,
+        kind: TelegramRecordingKind = .voice) async -> TelegramVoiceEligibility {
         guard account.peerId.toInt64() == target.accountID else { return .unavailable }
-        return await check(signal: telegramVoiceEligibilitySignal(account: account, peerID: PeerId(target.chatID), isOneTime: isOneTime))
+        return await check(signal: telegramVoiceEligibilitySignal(account: account, peerID: PeerId(target.chatID),
+            isOneTime: isOneTime, kind: kind))
     }
     func check(signal: Signal<TelegramVoiceEligibility, NoError>) async -> TelegramVoiceEligibility {
         cancel()
@@ -54,14 +57,15 @@ func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, 
     }
 }
 
-private func telegramVoiceEligibilitySignal(account: Account, peerID: PeerId, isOneTime: Bool) -> Signal<TelegramVoiceEligibility, NoError> {
+private func telegramVoiceEligibilitySignal(account: Account, peerID: PeerId, isOneTime: Bool,
+    kind: TelegramRecordingKind) -> Signal<TelegramVoiceEligibility, NoError> {
     account.postbox.transaction { transaction in
         let timestamp = Date().timeIntervalSince1970 + account.network.globalTimeDifference
         guard timestamp.isFinite, timestamp >= Double(Int32.min), timestamp < Double(Int32.max) else { return .unavailable }
         if isOneTime {
             return telegramVoiceOnceEligibility(peer: transaction.getPeer(peerID), cachedData: transaction.getPeerCachedData(peerId: peerID),
-                accountID: account.peerId.toInt64(), now: Int32(timestamp))
+                accountID: account.peerId.toInt64(), now: Int32(timestamp), kind: kind)
         }
-        return telegramVoiceEligibilitySnapshot(transaction: transaction, peerID: peerID, now: Int32(timestamp))
+        return telegramVoiceEligibilitySnapshot(transaction: transaction, peerID: peerID, now: Int32(timestamp), kind: kind)
     }
 }

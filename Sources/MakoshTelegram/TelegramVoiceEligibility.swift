@@ -1,10 +1,16 @@
 import Postbox
 import TelegramCore
 
-func telegramVoiceOnceEligibility(peer: Peer?, cachedData: CachedPeerData?, accountID: Int64, now: Int32) -> TelegramVoiceEligibility {
+public enum TelegramRecordingKind: Equatable, Sendable {
+    case voice
+    case roundVideo
+}
+
+func telegramVoiceOnceEligibility(peer: Peer?, cachedData: CachedPeerData?, accountID: Int64, now: Int32,
+    kind: TelegramRecordingKind = .voice) -> TelegramVoiceEligibility {
     guard let user = peer as? TelegramUser, user.id.namespace == Namespaces.Peer.CloudUser,
         user.id.toInt64() != accountID, user.botInfo == nil else { return .restricted }
-    let ordinary = telegramVoiceEligibility(peer: peer, cachedData: cachedData, now: now, hasPendingMessages: false)
+    let ordinary = telegramVoiceEligibility(peer: peer, cachedData: cachedData, now: now, hasPendingMessages: false, kind: kind)
     guard ordinary == .allowed else { return ordinary }
     // The pinned native recorder excludes even an explicit zero-price context.
     guard let cache = cachedData as? CachedUserData else { return .unavailable }
@@ -29,12 +35,23 @@ public enum TelegramVoiceEligibility: Equatable, Sendable {
         case .paid: return "Для отправки в этот чат требуется подтверждение оплаты звёздами."
         }
     }
+
+    public func explanation(for kind: TelegramRecordingKind) -> String? {
+        guard kind == .roundVideo else { return explanation }
+        switch self {
+        case .unavailable: return "Не удалось проверить возможность отправки видеосообщения."
+        case .restricted: return "В этом чате запрещена отправка видеосообщений."
+        case .voicePrivacy: return "Собеседник запретил отправку видеосообщений."
+        case .allowed, .slowMode, .paid: return explanation
+        }
+    }
 }
 
 /// Evaluate a fresh, same-peer Postbox snapshot before capture and again before
-/// handing recorded PCM to the upload controller. This does not authorize a fee.
+/// handing recorded media to the upload controller. This does not authorize a fee.
 func telegramVoiceEligibility(peer: Peer?, cachedData: CachedPeerData?, now: Int32,
-    hasPendingMessages: Bool) -> TelegramVoiceEligibility {
+    hasPendingMessages: Bool, kind: TelegramRecordingKind = .voice) -> TelegramVoiceEligibility {
+    let recordingBan: TelegramChatBannedRightsFlags = kind == .roundVideo ? .banSendInstantVideos : .banSendVoice
     if let user = peer as? TelegramUser, user.id.namespace == Namespaces.Peer.CloudUser {
         guard let cache = cachedData as? CachedUserData else { return .unavailable }
         guard !cache.isBlocked else { return .restricted }
@@ -51,7 +68,7 @@ func telegramVoiceEligibility(peer: Peer?, cachedData: CachedPeerData?, now: Int
         guard group.migrationReference == nil else { return .unavailable }
         guard group.membership == .Member, !group.flags.contains(.deactivated),
             group.defaultBannedRights?.flags.contains(.banReadMessages) != true else { return .restricted }
-        guard group.hasPermission(.sendSomething), !group.hasBannedPermission(.banSendVoice),
+        guard group.hasPermission(.sendSomething), !group.hasBannedPermission(recordingBan),
             !group.hasBannedPermission(.banSendMedia) else { return .restricted }
         return .allowed
     }
@@ -77,7 +94,7 @@ func telegramVoiceEligibility(peer: Peer?, cachedData: CachedPeerData?, now: Int
         boosted = false
     }
     guard channel.hasPermission(.sendSomething) || boosted else { return .restricted }
-    if !boosted, channel.hasBannedPermission(.banSendVoice) != nil
+    if !boosted, channel.hasBannedPermission(recordingBan) != nil
         || channel.hasBannedPermission(.banSendMedia) != nil {
         return .restricted
     }

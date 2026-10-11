@@ -59,8 +59,8 @@ final class TelegramVoiceEligibilityTests: XCTestCase {
     }
 
     private func check(_ peer: Peer?, _ cache: CachedPeerData? = nil, now: Int32 = 2_000,
-        pending: Bool = false) -> TelegramVoiceEligibility {
-        telegramVoiceEligibility(peer: peer, cachedData: cache, now: now, hasPendingMessages: pending)
+        pending: Bool = false, kind: TelegramRecordingKind = .voice) -> TelegramVoiceEligibility {
+        telegramVoiceEligibility(peer: peer, cachedData: cache, now: now, hasPendingMessages: pending, kind: kind)
     }
 
     func testMissingAndWrongCacheNeverGrantUserOrChannelPermission() {
@@ -183,5 +183,115 @@ final class TelegramVoiceEligibilityTests: XCTestCase {
         XCTAssertEqual(check(channel(groupFlags: [.slowModeEnabled]),
             boosted.withUpdatedSlowModeTimeout(30), pending: true), .slowMode(until: nil))
         XCTAssertEqual(check(channel(fee: StarsAmount(value: 1, nanos: 0)), boosted), .paid)
+    }
+
+    // Selecting ordinary video or voice rights for a round recording would
+    // either bypass the instant-video ban or deny unrelated permissions.
+    func testBasicGroupRoundVideoUsesItsOwnBan() {
+        XCTAssertEqual(check(group(bans: [.banSendInstantVideos]), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(group(bans: [.banSendInstantVideos])), .allowed)
+        XCTAssertEqual(check(group(bans: [.banSendVoice, .banSendVideos]), kind: .roundVideo), .allowed)
+        for ban: TelegramChatBannedRightsFlags in [.banSendMedia, .banReadMessages] {
+            XCTAssertEqual(check(group(bans: ban), kind: .roundVideo), .restricted)
+        }
+        XCTAssertEqual(check(group(role: .admin(TelegramChatAdminRights(rights: [.canDeleteMessages]), rank: nil),
+            bans: [.banSendInstantVideos, .banSendMedia]), kind: .roundVideo), .allowed)
+        XCTAssertEqual(check(group(role: .creator(rank: nil), bans: [.banSendInstantVideos]), kind: .roundVideo), .allowed)
+        XCTAssertEqual(check(group(membership: .Left), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(group(flags: [.deactivated]), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(group(migrated: true), kind: .roundVideo), .unavailable)
+    }
+
+    func testSupergroupRoundVideoUsesPersonalAndDefaultInstantVideoBan() {
+        let cache = CachedChannelData()
+        XCTAssertEqual(check(channel(bans: [.banSendInstantVideos]), cache, kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(defaultBans: [.banSendInstantVideos]), cache, kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(bans: [.banSendInstantVideos]), cache), .allowed)
+        XCTAssertEqual(check(channel(defaultBans: [.banSendVoice, .banSendVideos]), cache, kind: .roundVideo), .allowed)
+        for ban: TelegramChatBannedRightsFlags in [.banSendMedia, .banReadMessages] {
+            XCTAssertEqual(check(channel(bans: ban), cache, kind: .roundVideo), .restricted)
+            XCTAssertEqual(check(channel(defaultBans: ban), cache, kind: .roundVideo), .restricted)
+        }
+        XCTAssertEqual(check(channel(admin: [.canDeleteMessages], bans: [.banSendInstantVideos]), cache, kind: .roundVideo), .allowed)
+        XCTAssertEqual(check(channel(flags: [.isCreator], defaultBans: [.banSendInstantVideos]), cache, kind: .roundVideo), .allowed)
+    }
+
+    // A new media kind cannot bypass the existing common access/privacy/cache
+    // or posting gates, including a bot's ordinary-recording privacy setting.
+    func testRoundVideoKeepsSharedPrivacyCacheAccessAndBroadcastChecks() {
+        XCTAssertEqual(check(nil, kind: .roundVideo), .unavailable)
+        for peer in [user(), user(bot: true)] {
+            XCTAssertEqual(check(peer, CachedUserData(), kind: .roundVideo), .allowed)
+            XCTAssertEqual(check(peer, kind: .roundVideo), .unavailable)
+            XCTAssertEqual(check(peer, CachedGroupData(), kind: .roundVideo), .unavailable)
+            XCTAssertEqual(check(peer, CachedUserData().withUpdatedVoiceMessagesAvailable(false), kind: .roundVideo), .voicePrivacy)
+            XCTAssertEqual(check(peer, CachedUserData().withUpdatedIsBlocked(true), kind: .roundVideo), .restricted)
+        }
+        XCTAssertEqual(check(user(namespace: Namespaces.Peer.SecretChat), CachedUserData(), kind: .roundVideo), .unavailable)
+        XCTAssertEqual(check(group(), CachedUserData(), kind: .roundVideo), .unavailable)
+        XCTAssertEqual(check(channel(), kind: .roundVideo), .unavailable)
+        XCTAssertEqual(check(channel(), CachedUserData(), kind: .roundVideo), .unavailable)
+        XCTAssertEqual(check(channel(participation: .left), CachedChannelData(), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(participation: .kicked, flags: [.isCreator]), CachedChannelData(), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(), CachedChannelData().withUpdatedIsNotAccessible(true), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(flags: [.isMonoforum]), CachedChannelData(), kind: .roundVideo), .unavailable)
+        XCTAssertEqual(check(channel(broadcast: true, admin: [.canDeleteMessages]), CachedChannelData(), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(broadcast: true, admin: [.canPostMessages]), CachedChannelData(), kind: .roundVideo), .allowed)
+    }
+
+    func testRoundVideoRetainsFeeSlowModeBoundaryAndNarrowBoostExemption() {
+        let fee = StarsAmount(value: 1, nanos: 0)
+        XCTAssertEqual(check(user(), CachedUserData().withUpdatedSendPaidMessageStars(fee), kind: .roundVideo), .paid)
+        XCTAssertEqual(check(user(flags: [.requireStars]), CachedUserData(), kind: .roundVideo), .paid)
+        XCTAssertEqual(check(user(flags: [.requireStars]), CachedUserData().withUpdatedSendPaidMessageStars(.zero), kind: .roundVideo), .allowed)
+        let peer = channel(groupFlags: [.slowModeEnabled])
+        let cache = CachedChannelData().withUpdatedSlowModeTimeout(30).withUpdatedSlowModeValidUntilTimestamp(2_030)
+        XCTAssertEqual(check(peer, cache, now: 2_029, kind: .roundVideo), .slowMode(until: 2_030))
+        XCTAssertEqual(check(peer, cache, now: 2_030, kind: .roundVideo), .allowed)
+        XCTAssertEqual(check(peer, cache, now: 2_030, pending: true, kind: .roundVideo), .slowMode(until: nil))
+        XCTAssertEqual(check(peer, CachedChannelData(), kind: .roundVideo), .unavailable)
+        let boosted = CachedChannelData().withUpdatedBoostsToUnrestrict(2).withUpdatedAppliedBoosts(2)
+        XCTAssertEqual(check(channel(defaultBans: [.banSendInstantVideos, .banSendMedia]), boosted, kind: .roundVideo), .allowed)
+        XCTAssertEqual(check(channel(defaultBans: [.banSendInstantVideos]), boosted.withUpdatedAppliedBoosts(1), kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(bans: [.banReadMessages]), boosted, kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(participation: .left), boosted, kind: .roundVideo), .restricted)
+        XCTAssertEqual(check(channel(fee: fee), boosted, kind: .roundVideo), .paid)
+        XCTAssertEqual(check(peer, boosted.withUpdatedSlowModeTimeout(30), pending: true, kind: .roundVideo), .slowMode(until: nil))
+        XCTAssertEqual(check(channel(fee: fee), CachedChannelData().withUpdatedSendPaidMessageStars(.zero), kind: .roundVideo), .allowed)
+        XCTAssertEqual(check(channel(admin: [.canDeleteMessages], fee: fee), CachedChannelData(), kind: .roundVideo), .allowed)
+    }
+
+    func testOneTimeRoundVideoRequiresAnotherHumanAndNoPaidContext() {
+        let once: (Peer?, CachedPeerData?, Int64) -> TelegramVoiceEligibility = { peer, cache, accountID in
+            telegramVoiceOnceEligibility(peer: peer, cachedData: cache, accountID: accountID, now: 2_000, kind: .roundVideo)
+        }
+        XCTAssertEqual(once(user(), CachedUserData(), 1), .allowed)
+        XCTAssertEqual(once(user(), CachedUserData(), 42), .restricted)
+        XCTAssertEqual(once(user(bot: true), CachedUserData(), 1), .restricted)
+        XCTAssertEqual(once(group(), CachedGroupData(), 1), .restricted)
+        XCTAssertEqual(once(channel(), CachedChannelData(), 1), .restricted)
+        XCTAssertEqual(once(user(namespace: Namespaces.Peer.SecretChat), CachedUserData(), 1), .restricted)
+        XCTAssertEqual(once(user(), nil, 1), .unavailable)
+        XCTAssertEqual(once(user(), CachedChannelData(), 1), .unavailable)
+        XCTAssertEqual(once(user(), CachedUserData().withUpdatedSendPaidMessageStars(.zero), 1), .paid)
+        XCTAssertEqual(once(user(flags: [.requireStars]), CachedUserData(), 1), .paid)
+        XCTAssertEqual(once(user(), CachedUserData().withUpdatedVoiceMessagesAvailable(false), 1), .voicePrivacy)
+        XCTAssertEqual(once(user(), CachedUserData().withUpdatedIsBlocked(true), 1), .restricted)
+    }
+
+    // A round permission failure must describe the recorded media kind while
+    // the existing voice-facing explanation remains backward compatible.
+    func testRoundVideoFailureExplainsTheSelectedRecordingKind() {
+        for value: TelegramVoiceEligibility in [.unavailable, .restricted, .voicePrivacy] {
+            XCTAssertTrue(value.explanation(for: .roundVideo)?.contains("видео") == true)
+            XCTAssertFalse(value.explanation(for: .roundVideo)?.contains("голос") == true)
+        }
+        XCTAssertNil(TelegramVoiceEligibility.allowed.explanation(for: .roundVideo))
+        XCTAssertEqual(TelegramVoiceEligibility.unavailable.explanation, "Не удалось проверить возможность отправки голосового сообщения.")
+        XCTAssertEqual(TelegramVoiceEligibility.restricted.explanation, "В этом чате запрещена отправка голосовых сообщений.")
+        XCTAssertEqual(TelegramVoiceEligibility.voicePrivacy.explanation, "Собеседник запретил отправку голосовых сообщений.")
+        for value: TelegramVoiceEligibility in [.allowed, .unavailable, .restricted, .voicePrivacy, .paid, .slowMode(until: nil)] {
+            XCTAssertEqual(value.explanation(for: .voice), value.explanation)
+        }
     }
 }

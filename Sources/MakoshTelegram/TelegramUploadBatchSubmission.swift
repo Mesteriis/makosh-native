@@ -124,10 +124,11 @@ enum TelegramUploadBatchAdmission {
 /// Keep the exact same receipt hooks for Account enqueue and local native QA.
 nonisolated func telegramUploadBatchEnqueue(
     receipt: TelegramUploadBatchEnqueueReceipt, messages: [EnqueueMessage],
+    now: @escaping () -> TimeInterval = { Date().timeIntervalSince1970 },
     enqueue: ([EnqueueMessage], @escaping (Transaction) -> Bool, @escaping (Transaction, [MessageId?]) -> Void) -> Signal<[MessageId?], NoError>
 ) -> Signal<TelegramUploadBatchAdmission, NoError> {
     let saved = Atomic<Bool>(value: false)
-    return enqueue(messages, { receipt.validate(transaction: $0) }, { transaction, ids in
+    return enqueue(messages, { receipt.validateAdmission(transaction: $0, timestamp: now()) }, { transaction, ids in
         _ = saved.swap(receipt.acknowledge(transaction: transaction, messageIDs: ids))
     }) |> map { ids in
         guard !ids.isEmpty else { return .rejected }

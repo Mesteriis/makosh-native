@@ -34,7 +34,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
@@ -81,7 +81,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             guard let message = telegramUploadMessage(caption: entry.caption, reference: reference, target: target,
                 replySource: replySource, captionAboveMedia: entry.captionAboveMedia, mediaSpoiler: entry.mediaSpoiler,
                 presentation: draft.schemaVersion >= 8 ? draft.presentation : nil,
-                isOneTime: entry.itemID.flatMap { byID[$0]?.item.file.metadata?.voice?.isOneTime } ?? false) else { return nil }
+                isOneTime: entry.itemID.flatMap { byID[$0]?.item.file.metadata?.voice?.isOneTime ?? byID[$0]?.item.file.metadata?.roundVideo?.isOneTime } ?? false) else { return nil }
             result.append(message.withUpdatedGroupingKey { _ in entry.groupIndex.map { groupKeys[$0] } })
         }
         return result
@@ -91,7 +91,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
         guard case let .success(current) = telegramPendingUploadRead(transaction: transaction,
             accountID: target.accountID, chatID: target.chatID), let current,
               (try? Self.encode(current)) == encodedDraft else { return false }
-        if draft.items.first?.metadata?.voice?.isOneTime == true {
+        if draft.items.first?.metadata?.voice?.isOneTime == true || draft.items.first?.metadata?.roundVideo?.isOneTime == true {
             let peerID = PeerId(target.chatID)
             guard telegramVoiceOnceEligibility(peer: transaction.getPeer(peerID),
                 cachedData: transaction.getPeerCachedData(peerId: peerID), accountID: target.accountID,
@@ -138,12 +138,12 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             if let itemID = entry.itemID {
                 guard queued.media.count == 1, let resource = byID[itemID], let expected = resource.reference?.media,
                       expected.isEqual(to: queued.media[0]) else { return false }
-                if let voice = resource.item.file.metadata?.voice {
+                if let once = resource.item.file.metadata?.voice?.isOneTime ?? resource.item.file.metadata?.roundVideo?.isOneTime {
                     // Ordinary chat auto-delete is a separate Autoremove
                     // attribute. Native enqueue normalizes explicit media TTL
                     // to Autoclear and must not lose or add one-time intent.
                     let values = queued.attributes.compactMap { $0 as? AutoclearTimeoutMessageAttribute }
-                    if voice.isOneTime {
+                    if once {
                         guard values.count == 1, values[0].timeout == viewOnceTimeout,
                             values[0].countdownBeginTime == nil else { return false }
                     } else if !values.isEmpty { return false }

@@ -50,6 +50,12 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
     case webP(TelegramUploadWebPMetadata)
     case gif(TelegramUploadGIFMetadata)
     case voice(TelegramUploadVoiceMetadata)
+    case roundVideo(TelegramUploadRoundVideoMetadata)
+
+    var roundVideo: TelegramUploadRoundVideoMetadata? {
+        guard case let .roundVideo(value) = self else { return nil }
+        return value
+    }
 
     var voice: TelegramUploadVoiceMetadata? {
         guard case let .voice(value) = self else { return nil }
@@ -67,6 +73,7 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
         case let .webP(value): value.isValid
         case let .gif(value): value.isValid
         case let .voice(value): value.isValid
+        case let .roundVideo(value): value.isValid
         }
     }
 
@@ -80,6 +87,7 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
         case "webp": self = .webP(try values.decode(TelegramUploadWebPMetadata.self, forKey: .payload))
         case "gif": self = .gif(try values.decode(TelegramUploadGIFMetadata.self, forKey: .payload))
         case "voice": self = .voice(try values.decode(TelegramUploadVoiceMetadata.self, forKey: .payload))
+        case "roundVideo": self = .roundVideo(try values.decode(TelegramUploadRoundVideoMetadata.self, forKey: .payload))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: values,
                 debugDescription: "Unknown upload metadata kind")
@@ -100,6 +108,9 @@ public enum TelegramUploadMetadata: Codable, Equatable, Sendable {
             try values.encode(value, forKey: .payload)
         case let .voice(value):
             try values.encode("voice", forKey: .kind)
+            try values.encode(value, forKey: .payload)
+        case let .roundVideo(value):
+            try values.encode("roundVideo", forKey: .kind)
             try values.encode(value, forKey: .payload)
         }
     }

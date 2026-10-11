@@ -143,7 +143,7 @@ import SwiftSignalKit
                           (name: $0.originalFile?.name ?? $0.file.name, isVisual: $0.file.mode != .file, metadata: $0.file.metadata)
                       }) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
             }
-            if items.contains(where: { $0.file.metadata?.voice != nil }) {
+            if items.contains(where: { $0.file.metadata?.voice != nil || $0.file.metadata?.roundVideo != nil }) {
                 _ = try TelegramUploadBatchPlan(items: items, isGrouped: isGrouped, caption: captionInput.formattedText,
                     captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler, presentation: presentation)
             }
@@ -221,7 +221,7 @@ import SwiftSignalKit
               Set(orderedIDs).count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13].contains(current.schemaVersion), current.disposition == .prepared,
                   current.items.map(\.id) == orderedIDs,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -281,7 +281,7 @@ import SwiftSignalKit
               Set(orderedIDs).isSubset(of: Set(previousIDs)) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
@@ -310,18 +310,22 @@ import SwiftSignalKit
     func replaceVideoCover(preparationID: UUID, itemID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                            cover: TelegramUploadVideoCover?) async throws {
         guard target.accountID == accountID, target.hasValidReplySource, file.mode == .video,
+              file.metadata?.roundVideo == nil,
               file.video?.isValid(name: file.name, size: file.size) == true else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11, 12].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12, 13].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
                   let index = current.items.firstIndex(where: { $0.id == itemID }) else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
             let item = current.items[index]
+            guard item.metadata?.roundVideo == nil else {
+                throw TelegramPendingUploadPersistenceError.incompatibleData
+            }
             guard item.file.attachment.kind == "video", item.file.attachment.name.utf8.elementsEqual(file.name.utf8),
                   item.file.plaintextByteCount == file.size, item.video == file.video else {
                 throw TelegramPendingUploadPersistenceError.conflict

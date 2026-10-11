@@ -160,6 +160,11 @@ public enum TelegramUploadFileIO {
         switch metadata {
         case .audio: invalid = .invalidAudio
         case .webP: invalid = .invalidWebP
+        case let .roundVideo(round):
+            guard file.mode == .video, file.videoCover == nil,
+                round.isValid(video: file.video, name: file.name, size: file.size),
+                file.pixelWidth == file.video?.width, file.pixelHeight == file.video?.height else { throw TelegramUploadFileError.invalidVideo }
+            return
         case .voice:
             invalid = .invalidVoice
             guard file.size > 0, file.size <= 20 * 1024 * 1024 else { throw invalid }
@@ -190,6 +195,9 @@ public enum TelegramUploadFileIO {
             guard try await TelegramUploadAudioIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidAudio }
         case let .webP(frozen):
             guard try await TelegramUploadWebPIO.inspect(file) == frozen else { throw TelegramUploadFileError.invalidWebP }
+        case let .roundVideo(frozen):
+            let facts = try await TelegramRecordedRoundVideoIO.inspect(file)
+            guard facts.plaintextSHA256 == frozen.plaintextSHA256, facts.nativeDuration == frozen.nativeDuration else { throw TelegramUploadFileError.invalidVideo }
         case let .voice(frozen):
             let facts = try await TelegramRecordedVoiceIO.inspect(file)
             guard facts.sampleCount == frozen.sampleCount, facts.plaintextSHA256 == frozen.plaintextSHA256 else {

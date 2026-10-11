@@ -1,6 +1,74 @@
 # Development status — 2026-10-11
 
-## Current stage: one-time recorded voice in the common Telegram window
+## Current stage: explicit encoded round-video foundation
+
+Explicit authored MP4 now has a separate round-video entry and strict schema13.
+It preserves exact input bytes and rederives container/codec/decoded sample,
+physical geometry, duration and SHA256 facts before durable capture and restore.
+One H264 square track and mono AAC44.1kHz are required under documented own bounds
+(side<=1024,128MiB,0.5...60s and bounded complete decoding). Native integer ceil is
+computed from raw full-asset duration before Float32 freezing. The reference uses
+audio-end capture timing; finished-file timing is an explicit local policy.
+
+One round item has Media presentation, empty caption and no grouping/spoiler/
+above-media text/cover/original pair. Schema1–12 refuse round metadata. The native
+file has only Video(integer duration,200x200,instantRoundVideo), size:nil and
+video/mp4. Mapper preview is optional; durable MediaBox currently requires its
+ordinary transformed320px JPEG probe, stricter than the reference's optional
+preview. Frozen once mode survives local/S3 recovery and canonical native receipt;
+exact media TTL stays separate from chat-wide Autoremove. Native flag/lifetime
+tampering cannot confirm acceptance; accepted state cannot resend after reopen.
+OFF forbids all new S3 copies and local preparation never promotes after enable.
+PostgreSQL stores metadata, not attachment payload bytes. No new dependency,
+engine recipe or outer GPLv2 UI/helper/shader/assets introduced.
+
+Compiled behavioral RED: corrected schema4 cases/2 failures; native/schema8/19;
+real pending7/7(6 unexpected); cover edit1/2. Focused final pending7/0 and cover1/0
+precede full GREEN. Leaf compiled RED8/7(6 unexpected), initial GREEN8/0 and final
+GREEN10/0 are retained. Separate setup failures include missing try/type helpers,
+test-only MainActor inference on a Postbox transaction (SIGTRAP), lazy fixture
+schema initialization and a synthetic AVAssetWriter timescale regression. These
+are not represented as production behavioral RED. The final cover regression
+checks both typed and caller-stripped metadata: no new archive events/copies
+before refusal. Both supplied and stored round guards close the review finding.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,069 XCTest cases (993 Telegram +76 core),1 skipped,0 failures;38 Python
+regressions**. No compile warnings.356 existing upstream t19 teardown diagnostics
+remain without test failures. The permission-dependent capture test skips on this
+already-authorized host; deterministic status gates run without a device.
+Strict signatures and raw unsigned built/owned-QA payload equality pass.
+
+Actual isolated common-window AX/screenshot smoke verifies chat7 S3 OFF and
+Mail→Telegram preserving the selected chat/OFF state. No screen changed in this
+encoded slice; this is not round-recorder UI evidence. Real encrypted Postbox,
+PostgreSQL and S3 tests cover ordinary/once ON/OFF prepare, restore, native
+MediaBox bytes/attributes, uncertain receipt, accepted reopen/no-resend and
+OFF/no-promotion. No personal Account, Telegram network, microphone, camera or
+permission grant used. In-flight native-pull cancellation, deterministic mutation
+race injection and exact decode work-counter boundaries remain unproved.
+
+Two bounded inherited-model workers authored the two-file I/O leaf and researched/
+reviewed the source contract read-only. Original reports/raw failures stay private;
+observed provider/model/usage and initial transferred snapshot hashes are unknown.
+No quorum is claimed. Root owns integration, docs, final gates and publication.
+Root independently verifies all16 final source/test hashes, both leaf hashes and
+12 original leaf check/exit pairs. Final frozen review has no additional actionable
+findings. An intermediate review freshness check correctly returned STALE/exit1
+and was not queried. Final project XERJ refresh, all three scope checks and active
+queries exit0:422 files,388/388 classified code; recorded-round entry/metadata,
+desktop sender container and native round flag hits are source-confirmed.
+Both hosted jobs for549013c succeed; the new head's checks are separate.
+
+Next: connect schema13 to common-window recording/controller restoration, fresh
+banSendInstantVideos and once eligibility, short-click voice/video, camera+audio
+permission/cancellation and reference crop/mirror/preview/timing. Exact overlay/
+gesture UI, waveform/playback, ordered classifier, Archive/caption normalization
+and subsequent services remain open. This foundation does not establish round
+capture UI, ordinary round-chat ACL, hardware/server/recipient acceptance or
+minimum26 runtime. Full Telegram migration and the overall goal remain open.
+
+## Historical one-time recorded voice in the common Telegram window (549013c)
 
 Locked recording now exposes an optional36-point one-time control. Its false
 initial value can change only while locked and eligible; it freezes before async

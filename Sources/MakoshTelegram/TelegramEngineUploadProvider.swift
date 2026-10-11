@@ -17,7 +17,11 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
     if let staged = file.videoCover {
         guard videoCover?.width == staged.width, videoCover?.height == staged.height, videoCover?.size == staged.size else { return nil }
     }
-    guard file.mode == .video && file.metadata?.gif == nil ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
+    if file.metadata?.roundVideo != nil {
+        guard videoThumbnail?.isValid ?? true else { return nil }
+    } else {
+        guard file.mode == .video && file.metadata?.gif == nil ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
+    }
     guard file.mode == .video ? videoCover?.isValid ?? true : videoCover == nil,
           videoCover == nil || videoCover?.id != videoThumbnail?.id else { return nil }
     if let webPPreview {
@@ -40,7 +44,7 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             partialReference: nil, resource: resource, previewRepresentations: (gifPreview ?? videoThumbnail).map { [$0.representation] } ?? [], videoThumbnails: [],
             videoCover: videoCover.map { TelegramMediaImage(imageId: MediaId(namespace: 0, id: 0),
                 representations: [$0.representation], immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: []) },
-            immediateThumbnailData: nil, mimeType: "video/mp4", size: file.size,
+            immediateThumbnailData: nil, mimeType: "video/mp4", size: file.metadata?.roundVideo == nil ? file.size : nil,
             attributes: attributes, alternativeRepresentations: [])
     case .file:
         var mime = UTType(filenameExtension: URL(fileURLWithPath: file.name).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
@@ -82,6 +86,10 @@ func telegramUploadVideoAttributes(_ file: TelegramUploadFile) -> [TelegramMedia
     guard file.mode == .video, let video = file.video,
           video.isValid(name: file.name, size: file.size), file.pixelWidth == video.width,
           file.pixelHeight == video.height else { return nil }
+    if let round = file.metadata?.roundVideo {
+        return [.Video(duration: Double(round.nativeDuration), size: PixelDimensions(width: 200, height: 200),
+            flags: [.instantRoundVideo], preloadSize: nil, coverTime: nil, videoCodec: nil)]
+    }
     if file.metadata?.gif != nil {
         var attributes: [TelegramMediaFileAttribute] = [.Video(duration: 0,
             size: PixelDimensions(width: video.width, height: video.height), flags: [], preloadSize: nil, coverTime: nil, videoCodec: nil)]
@@ -234,9 +242,12 @@ func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaRe
           reference != nil || telegramFormattedTextCanSend(caption),
           (presentation != nil && reference != nil) || (!captionAboveMedia && !mediaSpoiler) || reference?.media is TelegramMediaImage ||
               (reference?.media as? TelegramMediaFile)?.isVideo == true else { return nil }
+    if (reference?.media as? TelegramMediaFile)?.isInstantVideo == true {
+        guard caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler else { return nil }
+    }
     if isOneTime {
         guard caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
-              (reference?.media as? TelegramMediaFile)?.isVoice == true,
+              ((reference?.media as? TelegramMediaFile)?.isVoice == true || (reference?.media as? TelegramMediaFile)?.isInstantVideo == true),
               PeerId(target.chatID).namespace == Namespaces.Peer.CloudUser,
               target.chatID != target.accountID else { return nil }
     }

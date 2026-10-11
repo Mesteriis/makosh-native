@@ -811,3 +811,38 @@ desktop preview. Текущий контроль расположен в общ�
 системный SF Symbol вместо reference assets. Нет входящего once playback,
 реального microphone/route, live Account/server/recipient или minimum26 runtime
 доказательства. Это не полное визуальное совпадение с reference.
+
+### Основа отправки круглого видео: encoded MP4
+
+Desktop pin579cebbf0c01fd41b712eff3647fa7f69db9665d сверён через свежие
+XERJ hits и исходники: ChatInputActionsView.swift:126–142 переключает voice/video
+коротким нажатием, ChatController.swift:3536–3684 отдельно применяет
+banSendInstantVideos и запрашивает camera+audio. ChatPresentationInterfaceState.swift:235–247
+фиксирует once перед finish; SenderController.swift:312–325 передаёт только
+Video(ceil duration,200x200,instantRoundVideo), size:nil, без FileName/streaming.
+Нативный pin a24bbe45f9861f736a79916a50898512f751e0dc отдельно подтверждает
+protocol round bit0 и независимый streaming bit1 в PendingMessageUploadedContent.
+
+VideoRecorderPipeline.swift и TGVideoCameraMovieRecorder.m используют MP4/H264 и
+mono AAC44.1kHz. Фактический fallback vmSide равен300 и допускает UserDefaults
+override; parsed config384/12MiB здесь не применяются. Machine override не читался.
+Renderer делает центральный квадрат, mirror/portrait и белый круговой край через
+shader. GPLv2-only helper/renderer/shader/assets не копируются.
+Reference videoDuration — audio-end timestamp минус writer session start;
+это не обязательно duration готового AVAsset. previewForFile:100–127 делает
+transformed first-frame JPEG<=320px quality0.3 и допускает отсутствие preview.
+
+Независимый encoded entry Макош теперь проверяет полный MP4/H264/AAC payload,
+сохраняет исходные байты и отдельные physical/native facts в strict schema13.
+Native200x200 не подменяет физический размер. Ceil вычисляется до Float32, но по
+raw full-asset duration: точное совпадение с capture-clock reference пока не
+установлено. Собственные bounds side<=1024,128MiB,0.5...60s и decode work limits
+описаны в telegram.md; это не утверждение о лимитах сервера. Durable path требует
+успешный ordinary320px JPEG probe, хотя mapper и reference допускают отсутствие.
+
+Экран на этом этапе не меняется. Нет подключённого round recorder/controller,
+schema13 UI восстановления, короткого переключения, camera preview/ring,
+проверенного crop/mirror/shader parity, camera+audio permission flow и fresh
+ordinary round ACL gates. Native once receipt уже сохраняет точный режим, OFF
+не допускает новые S3 копии. Синтетический enqueue/reopen не доказывает server
+acceptance, recipient playback, реальную камеру или minimum26 runtime.

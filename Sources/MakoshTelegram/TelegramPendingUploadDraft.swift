@@ -47,7 +47,9 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
          items: [TelegramPendingUploadItem], isGrouped: Bool, presentation: TelegramUploadPresentation? = nil,
          disposition: TelegramPendingUploadDisposition = .prepared) throws {
         guard !items.isEmpty else { throw TelegramPendingUploadPersistenceError.incompatibleData }
-        if let voice = items.first(where: { $0.metadata?.voice != nil })?.metadata?.voice {
+        if items.contains(where: { $0.metadata?.roundVideo != nil }) {
+            schemaVersion = 13
+        } else if let voice = items.first(where: { $0.metadata?.voice != nil })?.metadata?.voice {
             schemaVersion = voice.isOneTime ? 12 : 11
         } else {
             schemaVersion = items.contains(where: { $0.metadata?.gif != nil }) ? 10 : items.contains(where: { $0.metadata != nil }) ? 9 : presentation != nil ? 8 : items.contains(where: { $0.originalFile != nil }) ? 7 : 6
@@ -89,7 +91,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         guard schemaVersion >= 8 || !c.contains(.presentation) else {
             throw DecodingError.dataCorruptedError(forKey: .presentation, in: c, debugDescription: "Presentation in an older preparation")
         }
-        if [6, 7, 8, 9, 10, 11, 12].contains(schemaVersion) {
+        if [6, 7, 8, 9, 10, 11, 12, 13].contains(schemaVersion) {
             guard !c.contains(.file), !c.contains(.video), !c.contains(.videoCover) else {
                 throw DecodingError.dataCorruptedError(forKey: .items, in: c, debugDescription: "Ambiguous preparation resources")
             }
@@ -118,7 +120,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         try c.encode(captionInput, forKey: .captionInput); try c.encode(captionAboveMedia, forKey: .captionAboveMedia)
         try c.encode(mediaSpoiler, forKey: .mediaSpoiler); try c.encodeIfPresent(originalDraft, forKey: .originalDraft)
         try c.encodeIfPresent(replyTarget, forKey: .replyTarget); try c.encode(disposition, forKey: .disposition)
-        if [6, 7, 8, 9, 10, 11, 12].contains(schemaVersion) {
+        if [6, 7, 8, 9, 10, 11, 12, 13].contains(schemaVersion) {
             try c.encode(items, forKey: .items); try c.encode(isGrouped, forKey: .isGrouped)
             if schemaVersion >= 8 { try c.encode(presentation, forKey: .presentation) }
         } else {
@@ -130,12 +132,14 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               messageID: "pending-upload:" + preparationID.uuidString.lowercased())
     }
     var isValid: Bool {
-        guard [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+        guard [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+              schemaVersion == 13 || items.allSatisfy({ $0.metadata?.roundVideo == nil }),
               schemaVersion >= 6 || (items.count == 1 && (schemaVersion >= 4) == (video != nil) && (schemaVersion == 5) == (videoCover != nil)),
               (schemaVersion >= 7
                 ? (schemaVersion >= 8 || items.contains(where: { $0.originalFile != nil })) && items.allSatisfy({ $0.file.attachment.kind != "photo" || $0.originalFile != nil })
                 : items.allSatisfy({ $0.originalFile == nil })),
-              ([11, 12].contains(schemaVersion) ? items.count == 1 && items[0].metadata?.voice?.isOneTime == (schemaVersion == 12) && !isGrouped && presentation == .file && captionInput.formattedText.text.isEmpty && !captionAboveMedia && !mediaSpoiler
+              (schemaVersion == 13 ? items.count == 1 && items[0].metadata?.roundVideo != nil && !isGrouped && presentation == .media && captionInput.formattedText.text.isEmpty && !captionAboveMedia && !mediaSpoiler
+                : [11, 12].contains(schemaVersion) ? items.count == 1 && items[0].metadata?.voice?.isOneTime == (schemaVersion == 12) && !isGrouped && presentation == .file && captionInput.formattedText.text.isEmpty && !captionAboveMedia && !mediaSpoiler
                 : items.allSatisfy({ $0.metadata?.voice == nil }) && (schemaVersion == 10 ? items.contains(where: { $0.metadata?.gif != nil })
                 : schemaVersion == 9 ? items.contains(where: { $0.metadata != nil }) && items.allSatisfy({ $0.metadata?.gif == nil })
                 : items.allSatisfy({ $0.metadata == nil }))),

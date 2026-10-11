@@ -25,6 +25,12 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
     let groupCount: Int
     init(items: [TelegramUploadBatchItem], isGrouped: Bool, caption: TelegramFormattedText,
          captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil) throws {
+        if items.contains(where: { $0.file.metadata?.roundVideo != nil }) {
+            guard items.count == 1, !isGrouped, caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
+                presentation == .media, items[0].file.mode == .video, items[0].originalFile == nil else {
+                throw TelegramPendingUploadPersistenceError.incompatibleData
+            }
+        }
         if items.contains(where: { $0.file.metadata?.voice != nil }) {
             guard items.count == 1, !isGrouped, caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
                   presentation == .file, items[0].file.mode == .file, items[0].originalFile == nil else {

@@ -2232,3 +2232,55 @@ Primary protocol/interaction references: [Telegram's once recording flow](https:
 [uploaded document TTL](https://core.telegram.org/constructor/inputMediaUploadedDocument).
 The exact pinned source trace, tests and actual UI limits are recorded in
 reference-interface.md and development-status.md.
+
+### Explicit encoded round-video preparation
+
+`TelegramRecordedRoundVideoIO.prepare(bytes:isOneTime:)` admits explicitly authored
+MP4 data; a picked square video never becomes a round message through its name or
+dimensions. The entry stages exact input bytes in an owned0700 directory/0600
+file. A held no-follow descriptor, finite MP4 extents, disabled external/alias
+references, complete AVAssetReader decoding and post-read inode/hash checks bind
+the returned facts to those bytes. Restore repeats the probe on authenticated
+local/S3 bytes. Cancellation removes owned staging; an in-flight native sample
+pull is not forcibly interrupted. Decoder cancellation and reads share one actor.
+
+This narrow local admission accepts one square H264 track (side<=1024), one mono
+AAC44.1kHz track, raw finished-asset duration0.5...60s and at most128MiB. Decoding
+refuses more than7,200 frames or2,647,024 audio samples without truncating. These
+are Makosh bounds, not established Telegram server limits. It preserves physical
+dimensions and Float32 duration separately from integer native duration, computed
+with ceil on the raw full-asset duration. In particular1.00000001s can freeze as
+physical1.0s while retaining native2. The desktop recorder instead measures its
+audio-end capture timestamp minus writer session start; exact capture-clock
+equivalence cannot be recovered from arbitrary finished MP4 data.
+
+Strict schema13 contains one typed round `.video` item, Media presentation,
+explicit `isOneTime:false` or `true`, native duration and plaintext SHA256. Caption,
+grouping, spoiler, above-media text, cover and original-file pair refuse before
+archive capture. Schema1–12 reject round metadata; their previous meanings remain.
+Round items cannot project into generic File presentation. Older binaries refuse
+schema13, so preserve pending state/resources/keys through rollback.
+
+The canonical native file has only Video(integer duration,200x200,
+instantRoundVideo), MIME video/mp4 and size:nil. Local resource size still describes
+the exact payload. It has no FileName, Audio, Animated, supportsStreaming, cover or
+alternative representation. The mapper permits a valid optional thumbnail; the
+durable MediaBox path currently requires its ordinary transformed320px JPEG probe
+to succeed. That stricter requirement differs from the reference's optional preview.
+One-time round messages reuse frozen max Autoremove→Autoclear(max,nil) intent,
+human/cache eligibility and exact native receipt checks; chat-wide Autoremove is
+independent. Changed media or missing/changed/duplicate/started media TTL cannot
+confirm acceptance. Prepared restore needs explicit Send, started submission
+remains uncertain and accepted state cannot resend after encrypted Postbox reopen.
+
+S3 OFF forbids every new copy, including this preparation. Encrypted local payloads
+never promote after enable; PostgreSQL stores metadata, not attachment bytes.
+Recipient expiration/cancellation does not purge immutable archive resources.
+No new dependency, engine recipe or third-party source/assets are introduced.
+
+This is an encoded foundation. It is not yet connected to the common-window
+recording controller or its schema13 UI restoration path. Short-click voice/video,
+camera/audio permissions, round-specific banSendInstantVideos checks, actual
+capture/crop/mirror/preview and final ordinary round ACL admission remain the next
+dependency. No camera, microphone, personal Account or Telegram server execution
+is established by these offline/native-queue tests.

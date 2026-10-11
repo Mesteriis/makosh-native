@@ -7,6 +7,36 @@ actor TelegramPendingUploadFiles {
     private let repository: ArchiveFileRepository
     init(repository: ArchiveFileRepository) { self.repository = repository }
 
+    func saveCover(_ cover: TelegramUploadVideoCover, accountID: Int64, chatID: Int64, preparationID: UUID) async throws -> TelegramPendingUploadVideoCover {
+        _ = try TelegramUploadVideoCoverIO.validatedBytes(cover)
+        let capture = try ArchiveFileCapture(file: cover.url, byteCount: cover.size)
+        guard cover.name == telegramAttachmentName(cover.name) else { throw TelegramUploadFileError.unavailable }
+        let record = try await repository.capture(capture,
+            identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
+            attachment: MessageArchiveAttachment(id: "video-cover", kind: "photo", name: cover.name, size: cover.size))
+        guard record.plaintextSHA256 == cover.sha256, record.plaintextByteCount == cover.size else {
+            throw TelegramUploadFileError.unavailable
+        }
+        return TelegramPendingUploadVideoCover(file: record, width: cover.width, height: cover.height)
+    }
+
+    func restoreCover(_ cover: TelegramPendingUploadVideoCover, accountID: Int64, chatID: Int64, preparationID: UUID) async throws -> TelegramUploadVideoCover {
+        guard cover.isValid(identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)) else {
+            throw TelegramUploadFileError.unavailable
+        }
+        let file = try await restorePayload(record: cover.file, accountID: accountID, chatID: chatID,
+            preparationID: preparationID, video: nil, attachmentID: "video-cover")
+        do {
+            let restored = TelegramUploadVideoCover(id: file.id, width: cover.width, height: cover.height, size: file.size,
+                name: file.name, url: file.url, directory: file.directory, sha256: cover.file.plaintextSHA256)
+            _ = try TelegramUploadVideoCoverIO.validatedBytes(restored)
+            return restored
+        } catch {
+            try? TelegramUploadFileIO.discard(file)
+            throw error
+        }
+    }
+
     func save(file: TelegramUploadFile, accountID: Int64, chatID: Int64, preparationID: UUID) async throws -> ArchiveFileRecord {
         try Task.checkCancellation()
         try TelegramUploadFileIO.validateOwnedStage(file)
@@ -29,10 +59,17 @@ actor TelegramPendingUploadFiles {
     }
 
     func restore(record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID, video: TelegramUploadVideoMetadata? = nil) async throws -> TelegramUploadFile {
+        try await restorePayload(record: record, accountID: accountID, chatID: chatID,
+            preparationID: preparationID, video: video, attachmentID: "prepared")
+    }
+
+    private func restorePayload(record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID,
+                                video: TelegramUploadVideoMetadata?, attachmentID: String) async throws -> TelegramUploadFile {
         try Task.checkCancellation()
         guard record.identity == TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
-              record.state == .stored, record.attachment.id == "prepared",
+              record.state == .stored, record.attachment.id == attachmentID,
               let mode = TelegramUploadMode(rawValue: record.attachment.kind),
+              attachmentID != "video-cover" || mode == .photo,
               (mode == .video) == (video != nil),
               record.attachment.size == record.plaintextByteCount,
               record.attachment.name == telegramAttachmentName(record.attachment.name) else { throw TelegramUploadFileError.unavailable }

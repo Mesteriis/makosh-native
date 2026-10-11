@@ -6,11 +6,18 @@ import Postbox
 import SwiftSignalKit
 
 /// New local media has no remote message provenance or invented cloud credentials.
-func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
-    guard file.mode == .video || file.video == nil else { return nil }
+func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil,
+                         videoCover: TelegramUploadVideoThumbnailResource? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
+    guard file.mode == .video || (file.video == nil && file.videoCover == nil),
+          (file.videoCover == nil) == (videoCover == nil) else { return nil }
+    if let staged = file.videoCover {
+        guard videoCover?.width == staged.width, videoCover?.height == staged.height, videoCover?.size == staged.size else { return nil }
+    }
     guard file.mode == .video ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
+    guard file.mode == .video ? videoCover?.isValid ?? true : videoCover == nil,
+          videoCover == nil || videoCover?.id != videoThumbnail?.id else { return nil }
     var resourceID = Int64.random(in: Int64.min...Int64.max)
-    while resourceID == videoThumbnail?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
+    while resourceID == videoThumbnail?.id || resourceID == videoCover?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
     let resource = LocalFileMediaResource(fileId: resourceID, size: file.size)
     let media: Media
     switch file.mode {
@@ -18,6 +25,8 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
         guard let attributes = telegramUploadVideoAttributes(file), let videoThumbnail else { return nil }
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
             partialReference: nil, resource: resource, previewRepresentations: [videoThumbnail.representation], videoThumbnails: [],
+            videoCover: videoCover.map { TelegramMediaImage(imageId: MediaId(namespace: 0, id: 0),
+                representations: [$0.representation], immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: []) },
             immediateThumbnailData: nil, mimeType: "video/mp4", size: file.size,
             attributes: attributes, alternativeRepresentations: [])
     case .file:
@@ -83,7 +92,7 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
                 guard !lease.stopped else { return }
                 let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
                     target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
-                    localResourceID: resource.fileId, videoThumbnail: prepared.videoThumbnail)
+                    localResourceID: resource.fileId, videoThumbnail: prepared.videoThumbnail, videoCover: prepared.videoCover)
                 lease.enqueue.set((enqueueUploadWithReceipt(account: account, peerID: peerID,
                     message: message, receipt: receipt)
                 |> deliverOnMainQueue).start(next: { [weak lease, account] admission in

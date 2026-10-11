@@ -51,12 +51,22 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
     // Missing shared native construction, dropped media/options or an admission
     // bypass would break this real encrypted Postbox/MediaBox/reopen regression.
     func testOriginalVideosPassSharedNativeEnqueueAndAtomicReceiptWithoutAccountOrNetwork() async throws {
-        for name in ["portrait.mp4", "portrait.mov"] {
+        for (name, covered) in [("portrait.mp4", false), ("portrait.mov", false), ("portrait.mp4", true), ("portrait.mov", true)] {
             let root = try root()
             let source = root.appendingPathComponent(name)
             try await writeUploadVideoFixture(source, rotated: true, timescale: 30)
             let original = try Data(contentsOf: source)
-            let file = try await TelegramUploadFileIO.stage(source, mode: .video)
+            let staged = try await TelegramUploadFileIO.stage(source, mode: .video)
+            var cover: TelegramUploadVideoCover?
+            if covered {
+                let coverURL = root.appendingPathComponent("cover.jpg")
+                try writeUploadVideoCoverFixture(coverURL)
+                cover = try await TelegramUploadVideoCoverIO.stage(coverURL, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
+            }
+            defer { if let cover { try? TelegramUploadFileIO.discard(cover.imageFile) } }
+            let file = TelegramUploadFile(id: staged.id, name: staged.name, size: staged.size, mode: .video,
+                pixelWidth: staged.pixelWidth, pixelHeight: staged.pixelHeight, url: staged.url, directory: staged.directory,
+                video: staged.video, videoCover: cover)
             defer { try? TelegramUploadFileIO.discard(file) }
             let preparationID = UUID(), objectID = UUID()
             let capture = try ArchiveFileCapture(file: file.url, byteCount: file.size)
@@ -66,14 +76,25 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
                 attachment: .init(id: "prepared", kind: "video", name: file.name, size: file.size),
                 objectKey: "vaults/synthetic/files/" + objectID.uuidString.lowercased(), storageID: String(repeating: "a", count: 64),
                 receipt: envelope, capturedAt: Date(timeIntervalSince1970: 100), state: .stored)
+            var archivedCover: TelegramPendingUploadVideoCover?
+            if let cover {
+                let coverID = UUID()
+                let sealed = try ArchiveFileCapture(file: cover.url, byteCount: cover.size).seal(to: root.appendingPathComponent("sealed-cover"),
+                    key: Data(repeating: 7, count: 32), objectID: coverID)
+                archivedCover = .init(file: ArchiveFileRecord(id: coverID, identity: record.identity,
+                    attachment: .init(id: "video-cover", kind: "photo", name: cover.name, size: cover.size),
+                    objectKey: "vaults/synthetic/files/" + coverID.uuidString.lowercased(), storageID: String(repeating: "a", count: 64),
+                    receipt: sealed, capturedAt: Date(timeIntervalSince1970: 100), state: .stored), width: cover.width, height: cover.height)
+            }
             let input = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Video 😀",
                 entities: [.init(offset: 0, length: 5, kind: .bold)]), selection: .init(location: 8, length: 0))
             let draft = TelegramPendingUploadDraft(id: preparationID, accountID: 1, chatID: 42, title: "Synthetic",
                 captionInput: input, captionAboveMedia: true, mediaSpoiler: true, originalDraft: nil, replyTarget: nil,
-                file: record, video: file.video, disposition: .submissionStarted)
+                file: record, video: file.video, videoCover: archivedCover, disposition: .submissionStarted)
             XCTAssertTrue(draft.isValid)
             var queuedID: MessageId?
             var queuedThumbnail: TelegramUploadVideoThumbnailResource?
+            var queuedCover: TelegramUploadVideoThumbnailResource?
             let jpeg = try await TelegramUploadVideoIO.thumbnail(file)
             do {
                 let box = try await open(root.appendingPathComponent("postbox")); previousBox = box
@@ -82,6 +103,14 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
                 defer { preparation.stop() }
                 let resource = prepared.resource, reference = prepared.reference
                 let thumbnail = try XCTUnwrap(prepared.videoThumbnail); queuedThumbnail = thumbnail
+                if let cover {
+                    let descriptor = try XCTUnwrap(prepared.videoCover); queuedCover = descriptor
+                    let cachedCover = try await value(box.mediaBox.resourceData(descriptor.resource, pathExtension: nil,
+                        option: .complete(waitUntilFetchStatus: false)))
+                    XCTAssertTrue(cachedCover.complete); XCTAssertEqual(cachedCover.offset, 0)
+                    XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cachedCover.path)), try Data(contentsOf: cover.url))
+                    XCTAssertNotEqual(descriptor.id, thumbnail.id); XCTAssertNotEqual(descriptor.id, resource.fileId)
+                } else { XCTAssertNil(prepared.videoCover) }
                 let cached = try await value(box.mediaBox.resourceData(resource, pathExtension: nil,
                     option: .complete(waitUntilFetchStatus: false)))
                 XCTAssertTrue(cached.complete); XCTAssertEqual(cached.offset, 0); XCTAssertEqual(cached.size, file.size)
@@ -98,7 +127,7 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
                     target: target, replySource: nil, captionAboveMedia: true, mediaSpoiler: true))
                 let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID, target: target, file: file,
                     caption: input.formattedText, captionAboveMedia: true, mediaSpoiler: true, localResourceID: resource.fileId,
-                    videoThumbnail: thumbnail)
+                    videoThumbnail: thumbnail, videoCover: prepared.videoCover)
                 let result = try await value(nativeVideoEnqueue(box, message: message, receipt: receipt))
                 XCTAssertEqual(result.0.count, 1); XCTAssertTrue(result.1)
                 let id = try XCTUnwrap(result.0.first ?? nil); queuedID = id
@@ -106,6 +135,7 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
                 let state = try await value(nativeVideoRead(box, id: id, accountID: 1))
                 XCTAssertEqual(state.0?.disposition, .accepted(localMessageID: "42:\(id.namespace):\(id.id)"))
                 XCTAssertEqual(state.0?.video, file.video)
+                XCTAssertEqual(state.0?.videoCover, archivedCover)
                 let queued = try XCTUnwrap(state.1)
                 XCTAssertEqual(queued.text, "Video 😀"); XCTAssertEqual(queued.author?.id, PeerId(1)); XCTAssertNil(queued.groupingKey)
                 XCTAssertTrue(queued.flags.contains(.Unsent))
@@ -114,6 +144,8 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
                 XCTAssertEqual((media.resource as? LocalFileMediaResource)?.fileId, resource.fileId)
                 XCTAssertEqual(media.previewRepresentations.count, 1)
                 XCTAssertTrue(thumbnail.matches(try XCTUnwrap(media.previewRepresentations.first)))
+                if let queuedCover { XCTAssertTrue(queuedCover.matches(try XCTUnwrap(media.videoCover?.representations.first))) }
+                else { XCTAssertNil(media.videoCover) }
                 XCTAssertEqual(media.attributes, [
                     .Video(duration: 0.3333333432674408, size: PixelDimensions(width: 16, height: 32),
                         flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil),
@@ -132,12 +164,20 @@ final class TelegramNativeVideoEnqueueTests: XCTestCase {
             let id = try XCTUnwrap(queuedID)
             let retained = try await value(nativeVideoRead(reopened, id: id, accountID: 1))
             XCTAssertEqual(retained.0?.video, file.video)
+            XCTAssertEqual(retained.0?.videoCover, archivedCover)
             XCTAssertEqual(retained.0?.disposition, .accepted(localMessageID: "42:\(id.namespace):\(id.id)"))
             XCTAssertNotNil(retained.1)
             let retainedMedia = try XCTUnwrap(retained.1?.media.first as? TelegramMediaFile)
             let thumbnail = try XCTUnwrap(queuedThumbnail)
             XCTAssertEqual(retainedMedia.previewRepresentations.count, 1)
             XCTAssertTrue(thumbnail.matches(try XCTUnwrap(retainedMedia.previewRepresentations.first)))
+            if let queuedCover {
+                XCTAssertTrue(queuedCover.matches(try XCTUnwrap(retainedMedia.videoCover?.representations.first)))
+                let cachedCover = try await value(reopened.mediaBox.resourceData(queuedCover.resource, pathExtension: nil,
+                    option: .complete(waitUntilFetchStatus: false)))
+                XCTAssertTrue(cachedCover.complete)
+                XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cachedCover.path)), try Data(contentsOf: XCTUnwrap(cover).url))
+            }
             let cachedJPEG = try await value(reopened.mediaBox.resourceData(thumbnail.resource, pathExtension: nil,
                 option: .complete(waitUntilFetchStatus: false)))
             XCTAssertTrue(cachedJPEG.complete)

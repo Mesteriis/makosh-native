@@ -20,21 +20,24 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
     let replyTarget: TelegramComposerReplyTarget?
     let file: ArchiveFileRecord
     let video: TelegramUploadVideoMetadata?
+    let videoCover: TelegramPendingUploadVideoCover?
     let disposition: TelegramPendingUploadDisposition
     init(id: UUID, revision: UUID = UUID(), accountID: Int64, chatID: Int64, title: String,
          captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?,
          replyTarget: TelegramComposerReplyTarget?, file: ArchiveFileRecord, video: TelegramUploadVideoMetadata? = nil,
+         videoCover: TelegramPendingUploadVideoCover? = nil,
          disposition: TelegramPendingUploadDisposition = .prepared) {
-        schemaVersion = video == nil ? 3 : 4; self.id = id; self.revision = revision; self.accountID = accountID
+        schemaVersion = videoCover != nil ? 5 : (video == nil ? 3 : 4); self.id = id; self.revision = revision; self.accountID = accountID
         self.chatID = chatID; self.title = title; self.captionInput = captionInput
         self.captionAboveMedia = captionAboveMedia
         self.mediaSpoiler = mediaSpoiler
         self.originalDraft = originalDraft; self.replyTarget = replyTarget; self.file = file; self.video = video
+        self.videoCover = videoCover
         self.disposition = disposition
     }
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, id, revision, accountID, chatID, title, captionInput, captionAboveMedia, mediaSpoiler
-        case originalDraft, replyTarget, file, video, disposition
+        case originalDraft, replyTarget, file, video, videoCover, disposition
     }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -54,6 +57,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         replyTarget = try c.decodeIfPresent(TelegramComposerReplyTarget.self, forKey: .replyTarget)
         file = try c.decode(ArchiveFileRecord.self, forKey: .file)
         video = try c.decodeIfPresent(TelegramUploadVideoMetadata.self, forKey: .video)
+        videoCover = try c.decodeIfPresent(TelegramPendingUploadVideoCover.self, forKey: .videoCover)
         disposition = try c.decode(TelegramPendingUploadDisposition.self, forKey: .disposition)
     }
     static func archiveIdentity(accountID: Int64, chatID: Int64, preparationID: UUID) -> MessageArchiveIdentity {
@@ -61,8 +65,9 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               messageID: "pending-upload:" + preparationID.uuidString.lowercased())
     }
     var isValid: Bool {
-        guard [1, 2, 3, 4].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
-              (schemaVersion == 4) == (video != nil),
+        guard [1, 2, 3, 4, 5].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+              (schemaVersion >= 4) == (video != nil), (schemaVersion == 5) == (videoCover != nil),
+              videoCover?.isValid(identity: Self.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: id)) ?? true,
               (file.attachment.kind == "video") == (video != nil),
               video?.isValid(name: file.attachment.name, size: file.plaintextByteCount) ?? true,
               !(schemaVersion < 3 && mediaSpoiler),
@@ -98,10 +103,10 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         return true
     }
     private static let zeroUUID = UUID(uuid: (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0))
-    private static func isHash(_ value: String) -> Bool {
+    static func isHash(_ value: String) -> Bool {
         value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
-    private static func isObjectKey(_ value: String) -> Bool {
+    static func isObjectKey(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 1024 &&
         value.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45,46,47,95].contains($0) } &&
         value.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }

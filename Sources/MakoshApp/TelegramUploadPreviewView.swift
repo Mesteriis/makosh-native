@@ -146,17 +146,19 @@ private struct TelegramUploadFilePreview: View {
     @State private var preview: TelegramImagePreview?
     @State private var failed = false
     private var isVideo: Bool { file.mode == .video }
+    private var previewKey: String { file.id.uuidString + ":" + (file.videoCover?.id.uuidString ?? "frame") }
+    private var playsVideo: Bool { isVideo && file.videoCover == nil && !mediaSpoiler && upload.phase == .ready }
     var body: some View {
         VStack(spacing: 10) {
             if file.mode == .photo || isVideo {
                 if let preview {
                     ZStack {
-                        Image(preview.image, scale: 1, label: Text(isVideo ? "Первый кадр видео" : "Предпросмотр фото")).resizable().scaledToFit()
+                        Image(preview.image, scale: 1, label: Text(file.videoCover != nil ? "Обложка видео" : (isVideo ? "Первый кадр видео" : "Предпросмотр фото"))).resizable().scaledToFit()
                             .frame(maxWidth: .infinity, maxHeight: 240)
                             .blur(radius: mediaSpoiler ? 18 : 0)
                             .accessibilityHidden(mediaSpoiler)
-                            .accessibilityIdentifier(isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview")
-                        if isVideo, !mediaSpoiler { TelegramUploadVideoPlayerView(playback: upload.videoPlayback) }
+                            .accessibilityIdentifier(file.videoCover != nil ? "telegram.upload.videoCoverPreview" : (isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview"))
+                        if playsVideo { TelegramUploadVideoPlayerView(playback: upload.videoPlayback) }
                         if mediaSpoiler {
                             Label(isVideo ? "Видео под спойлером" : "Фото под спойлером", systemImage: "eye.slash")
                                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(.thinMaterial)
@@ -177,8 +179,9 @@ private struct TelegramUploadFilePreview: View {
             }
         }
         .padding(12).frame(maxWidth: .infinity).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-        .task(id: file.id) {
+        .task(id: previewKey) {
             guard file.mode == .photo || file.mode == .video else { return }
+            preview = nil; failed = false
             do {
                 let result = try await TelegramUploadFileIO.preview(file)
                 guard !Task.isCancelled else { return }
@@ -188,8 +191,8 @@ private struct TelegramUploadFilePreview: View {
                 failed = true
             }
         }
-        .task(id: isVideo && !mediaSpoiler && upload.phase == .ready) {
-            if isVideo && !mediaSpoiler && upload.phase == .ready { await upload.openVideoPreview(contextID: contextID) }
+        .task(id: playsVideo) {
+            if playsVideo { await upload.openVideoPreview(contextID: contextID) }
             else { upload.stopVideoPreview(contextID: contextID) }
         }
         .onDisappear { upload.stopVideoPreview(contextID: contextID) }

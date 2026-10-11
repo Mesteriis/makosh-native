@@ -4,10 +4,11 @@ import Postbox
 @testable import MakoshTelegram
 
 func uploadVideoMappingFixture(name: String = "portrait.mov", size: Int64 = 42,
-    inCollage: Bool = true, hasAudio: Bool = false, duration: Double = 0.3333333432674408) -> TelegramUploadFile {
+    inCollage: Bool = true, hasAudio: Bool = false, duration: Double = 0.3333333432674408,
+    videoCover: TelegramUploadVideoCover? = nil) -> TelegramUploadFile {
     let video = TelegramUploadVideoMetadata(width: 16, height: 32, duration: duration, hasAudio: hasAudio, inCollage: inCollage)
     return TelegramUploadFile(id: UUID(), name: name, size: size, mode: .video,
-        pixelWidth: 16, pixelHeight: 32, url: URL(fileURLWithPath: "/unused"), directory: URL(fileURLWithPath: "/unused"), video: video)
+        pixelWidth: 16, pixelHeight: 32, url: URL(fileURLWithPath: "/unused"), directory: URL(fileURLWithPath: "/unused"), video: video, videoCover: videoCover)
 }
 
 final class TelegramUploadVideoMappingTests: XCTestCase {

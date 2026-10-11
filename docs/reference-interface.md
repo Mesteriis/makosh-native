@@ -295,6 +295,33 @@ replacement, spoiler/cancel/rebind/send и отказ повреждённой �
 Финальная native CUA проверила animated portrait MOV, accessibility видео,
 скрытие под спойлером, Escape и ordinary draft после restart. Native key/occlusion
 notifications отдельно через CUA не проверялись; события контроллера проверены.
-Custom cover, album/multiple selection, dust mask и полная визуальная parity
-остаются открытыми.
+Меню/editor custom cover, album/multiple selection, dust mask и полная визуальная
+parity остаются открытыми. Основа хранения/передачи обложки описана ниже.
 Реальная отправка/доставка видео и полная Account pipeline не проверены.
+
+## Обложка видео: хранение, передача и восстановление
+
+SenderController.swift:130–165,374–382 задаёт отдельный JPEG quality1.0 и
+native videoCover, сохраняя первый кадр в previewRepresentations. Собственная
+реализация обрезает ориентированное изображение, ограничивает обе стороны320px
+и проверяет dimensions/SHA256 owned stage. Обложка хранится отдельным encrypted
+S3 object с PostgreSQL metadata. Schema5 переносит ссылку через caption/options,
+submission и atomic receipt; старые schema1–4 без обложки читаются как прежде.
+MediaBox удерживает три отдельных ресурса и сверяет complete оригинал и точные
+байты обеих JPEG до enqueue. Receipt проверяет каждый native cover flag и
+representation; предыдущие S3 объекты сохраняются.
+
+ChatInteractiveContentView.swift:758–770 отключает autoplay при videoCover.
+В существующем modal обложка заменяет preview первого кадра; проигрыватель не
+открывается. Спойлер скрывает её из accessibility. Native CUA на заранее
+сохранённой synthetic подготовке проверила обложку, spoiler, edited caption,
+restart и local synthetic acceptance. Read-only Postbox/S3 проверка подтвердила
+accepted receipt и сохранённые байты; следующий restart не открыл подготовку
+повторно. Real native MediaBox/enqueue/reopen tests проверяют отдельный cover,
+первый кадр и оригинал. Account/network/server delivery остаются непроверенными.
+
+PreviewSenderController.swift:318–382,1575–1583 задаёт Upload/Change/Remove,
+single photo picker и crop editor. Эти пользовательские действия и сериализованная
+замена обложки ещё не перенесены. Текущий этап предоставляет основу и восстановление
+уже сохранённой обложки. Outer GPLv2 UI/asset не копируется; общий sidebar и
+подготовка сохраняют прежнее окно.

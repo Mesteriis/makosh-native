@@ -13,13 +13,15 @@ public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
     public let pixelWidth: Int32?
     public let pixelHeight: Int32?
     public let video: TelegramUploadVideoMetadata?
+    public let videoCover: TelegramUploadVideoCover?
     let url: URL
     let directory: URL
     init(id: UUID, name: String, size: Int64, mode: TelegramUploadMode, pixelWidth: Int32?, pixelHeight: Int32?,
-         url: URL, directory: URL, video: TelegramUploadVideoMetadata? = nil) {
+         url: URL, directory: URL, video: TelegramUploadVideoMetadata? = nil, videoCover: TelegramUploadVideoCover? = nil) {
         self.id = id; self.name = name; self.size = size; self.mode = mode
         self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight
         self.url = url; self.directory = directory; self.video = video
+        self.videoCover = videoCover
     }
 }
 
@@ -38,9 +40,22 @@ public enum TelegramUploadFileError: LocalizedError, Equatable {
 
 public enum TelegramUploadFileIO {
     public static func stage(_ source: URL, mode: TelegramUploadMode) async throws -> TelegramUploadFile {
+        try await stage(source, mode: mode, coverCrop: nil)
+    }
+
+    static func stageVideoCover(_ source: URL, crop: CGRect) async throws -> TelegramUploadFile {
+        guard crop.origin.x.isFinite, crop.origin.y.isFinite, crop.size.width.isFinite, crop.size.height.isFinite,
+              crop.origin.x >= 0, crop.origin.y >= 0, crop.size.width > 0, crop.size.height > 0,
+              crop.origin.x + crop.size.width <= 1, crop.origin.y + crop.size.height <= 1 else {
+            throw TelegramUploadFileError.invalidImage
+        }
+        return try await stage(source, mode: .photo, coverCrop: crop)
+    }
+
+    private static func stage(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?) async throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
-            let file = try prepare(source, mode: mode)
+            let file = try prepare(source, mode: mode, coverCrop: coverCrop)
             guard mode == .video else { return file }
             do {
                 let info = try await TelegramUploadVideoIO.inspect(file)
@@ -60,7 +75,10 @@ public enum TelegramUploadFileIO {
     /// Decode only our owned photo/video stage; UI never receives its private URL.
     public static func preview(_ file: TelegramUploadFile) async throws -> TelegramImagePreview {
         try Task.checkCancellation()
-        if file.mode == .video { return try await TelegramUploadVideoIO.poster(file) }
+        if file.mode == .video {
+            if let cover = file.videoCover { return try await TelegramUploadVideoCoverIO.preview(cover) }
+            return try await TelegramUploadVideoIO.poster(file)
+        }
         let expected = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + file.id.uuidString, isDirectory: true)
         guard file.mode == .photo, file.directory.isFileURL, file.url.isFileURL,
               file.directory.standardizedFileURL == expected.standardizedFileURL,
@@ -115,6 +133,19 @@ public enum TelegramUploadFileIO {
     }
 
     static func discard(_ file: TelegramUploadFile) throws {
+        let exists = try discardableDirectory(file)
+        if let cover = file.videoCover {
+            guard file.mode == .video, file.id != cover.id else { throw TelegramUploadFileError.stagingFailed }
+            _ = try discardableDirectory(cover.imageFile)
+            try discard(cover.imageFile)
+        }
+        if exists {
+            do { try FileManager.default.removeItem(at: file.directory) }
+            catch { throw TelegramUploadFileError.stagingFailed }
+        }
+    }
+
+    private static func discardableDirectory(_ file: TelegramUploadFile) throws -> Bool {
         let expected = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + file.id.uuidString, isDirectory: true)
         guard file.directory.standardizedFileURL == expected.standardizedFileURL,
               file.url.standardizedFileURL == expected.appendingPathComponent("payload-" + file.id.uuidString).standardizedFileURL else {
@@ -122,15 +153,14 @@ public enum TelegramUploadFileIO {
         }
         var info = stat()
         if lstat(file.directory.path, &info) != 0 {
-            if errno == ENOENT { return }
+            if errno == ENOENT { return false }
             throw TelegramUploadFileError.stagingFailed
         }
         guard info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid() else { throw TelegramUploadFileError.stagingFailed }
-        do { try FileManager.default.removeItem(at: file.directory) }
-        catch { throw TelegramUploadFileError.stagingFailed }
+        return true
     }
 
-    private static func prepare(_ source: URL, mode: TelegramUploadMode) throws -> TelegramUploadFile {
+    private static func prepare(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?) throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
@@ -199,17 +229,39 @@ public enum TelegramUploadFileIO {
             }
             try Task.checkCancellation()
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 2560,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: coverCrop == nil ? 2560 : 8192,
                 kCGImageSourceShouldCacheImmediately: true]
-            guard let image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
+            guard var image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
                 throw TelegramUploadFileError.invalidImage
+            }
+            if let coverCrop {
+                // The crop is expressed in oriented image coordinates, before scaling.
+                let x = floor(coverCrop.origin.x * CGFloat(image.width))
+                let y = floor(coverCrop.origin.y * CGFloat(image.height))
+                let right = min(CGFloat(image.width), ceil((coverCrop.origin.x + coverCrop.width) * CGFloat(image.width)))
+                let bottom = min(CGFloat(image.height), ceil((coverCrop.origin.y + coverCrop.height) * CGFloat(image.height)))
+                guard let cropped = image.cropping(to: CGRect(x: x, y: y, width: right - x, height: bottom - y)) else {
+                    throw TelegramUploadFileError.invalidImage
+                }
+                let scale = min(1, 320 / CGFloat(max(cropped.width, cropped.height)))
+                let targetWidth = max(1, Int((CGFloat(cropped.width) * scale).rounded()))
+                let targetHeight = max(1, Int((CGFloat(cropped.height) * scale).rounded()))
+                guard let context = CGContext(data: nil, width: targetWidth, height: targetHeight,
+                    bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                    throw TelegramUploadFileError.invalidImage
+                }
+                context.interpolationQuality = .high
+                context.draw(cropped, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+                guard let scaled = context.makeImage() else { throw TelegramUploadFileError.invalidImage }
+                image = scaled
             }
             let encoded = NSMutableData()
             guard let destination = CGImageDestinationCreateWithData(encoded, "public.jpeg" as CFString, 1, nil) else {
                 throw TelegramUploadFileError.stagingFailed
             }
             // Add only decoded pixels and explicit encoding quality, never source metadata.
-            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: coverCrop == nil ? 0.85 : 1.0] as CFDictionary)
             guard CGImageDestinationFinalize(destination), encoded.length > 0 else { throw TelegramUploadFileError.invalidImage }
             try Task.checkCancellation()
             try writeAll(output, bytes: encoded.bytes, count: encoded.length)

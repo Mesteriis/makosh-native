@@ -54,6 +54,49 @@ private func receiptMismatchedMessage(_ box: Postbox, receipt: TelegramPendingUp
     }
 }
 @MainActor final class TelegramPendingUploadEnqueuePostboxTests: XCTestCase {
+    func testCoverReceiptRequiresAdmittedBytesAndCanonicalSeparateNativeImage() async throws {
+        let box = try await open(root()), draft = try pendingUploadVideoCoverFixture(disposition: .submissionStarted)
+        let seeded = try await value(receiptSeed(box, draft: draft)); XCTAssertTrue(seeded)
+        let saved = try XCTUnwrap(draft.videoCover)
+        let cover = TelegramUploadVideoCover(id: UUID(), width: 160, height: 320, size: saved.file.plaintextByteCount,
+            name: saved.file.attachment.name, url: URL(fileURLWithPath: "/unused"), directory: URL(fileURLWithPath: "/unused"), sha256: saved.file.plaintextSHA256)
+        let file = uploadVideoMappingFixture(name: draft.file.attachment.name, size: draft.file.plaintextByteCount, videoCover: cover)
+        let thumbnail = TelegramUploadVideoThumbnailResource(id: 123, width: 16, height: 32, size: 456)
+        let descriptor = TelegramUploadVideoThumbnailResource(id: 124, width: 160, height: 320, size: cover.size)
+        let (resource, reference) = try XCTUnwrap(telegramUploadMedia(file, videoThumbnail: thumbnail, videoCover: descriptor))
+        let original = try XCTUnwrap(reference.media as? TelegramMediaFile)
+        let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: draft.id,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), file: file, caption: draft.captionInput.formattedText,
+            localResourceID: resource.fileId, videoThumbnail: thumbnail, videoCover: descriptor)
+        let missing = TelegramPendingUploadEnqueueReceipt(preparationID: draft.id,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"),
+            file: uploadVideoMappingFixture(name: draft.file.attachment.name, size: draft.file.plaintextByteCount),
+            caption: draft.captionInput.formattedText, localResourceID: resource.fileId, videoThumbnail: thumbnail)
+        let admitted = try await value(receiptValidate(box, receipt: missing)); XCTAssertFalse(admitted)
+        func image(_ previews: [TelegramMediaImageRepresentation], id: MediaId = MediaId(namespace: 0, id: 0),
+                   immediate: Data? = nil, flags: TelegramMediaImageFlags = []) -> TelegramMediaImage {
+            TelegramMediaImage(imageId: id, representations: previews, immediateThumbnailData: immediate,
+                reference: nil, partialReference: nil, flags: flags)
+        }
+        let variants: [TelegramMediaImage?] = [nil, image([]), image([descriptor.representation, descriptor.representation]),
+            image([thumbnail.representation]), image([descriptor.representation], id: MediaId(namespace: 0, id: 1)),
+            image([descriptor.representation], immediate: Data([1])), image([descriptor.representation], flags: [.hasStickers]),
+            image([TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: 160, height: 320),
+                resource: LocalFileMediaResource(fileId: 124, size: cover.size, isSecretRelated: true), progressiveSizes: [], immediateThumbnailData: nil)])]
+        let id = MessageId(peerId: PeerId(42), namespace: Namespaces.Message.Local, id: 199)
+        for coverImage in variants {
+            let altered = TelegramMediaFile(fileId: original.fileId, partialReference: nil, resource: original.resource,
+                previewRepresentations: original.previewRepresentations, videoThumbnails: [], videoCover: coverImage,
+                immediateThumbnailData: nil, mimeType: original.mimeType, size: original.size, attributes: original.attributes, alternativeRepresentations: [])
+            let accepted = try await value(receiptEnqueue(box, receipt: receipt, id: id, media: [altered])); XCTAssertFalse(accepted)
+            let retained = try await value(receiptRead(box, account: 1, chat: 42, id: id))
+            XCTAssertEqual(retained.0?.videoCover, saved); XCTAssertEqual(retained.0?.disposition, .submissionStarted)
+        }
+        let accepted = try await value(receiptEnqueue(box, receipt: receipt, id: id, media: [original])); XCTAssertTrue(accepted)
+        let retained = try await value(receiptRead(box, account: 1, chat: 42, id: id))
+        XCTAssertEqual(retained.0?.videoCover, saved)
+        XCTAssertEqual(retained.0?.disposition, .accepted(localMessageID: "42:\(Namespaces.Message.Local):199"))
+    }
     func testVideoReceiptRejectsMissingWrongOrDuplicateNativeMediaAndRetainsExactDescriptorAfterReopen() async throws {
         let path = try root()
         let draft = try pendingUploadVideoFixture(disposition: .submissionStarted)

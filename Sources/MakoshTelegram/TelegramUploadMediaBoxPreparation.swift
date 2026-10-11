@@ -7,11 +7,16 @@ struct TelegramPreparedUploadMedia {
     let resource: LocalFileMediaResource
     let reference: AnyMediaReference
     let videoThumbnail: TelegramUploadVideoThumbnailResource?
+    let videoCover: TelegramUploadVideoThumbnailResource?
+    init(resource: LocalFileMediaResource, reference: AnyMediaReference, videoThumbnail: TelegramUploadVideoThumbnailResource?,
+         videoCover: TelegramUploadVideoThumbnailResource? = nil) {
+        self.resource = resource; self.reference = reference; self.videoThumbnail = videoThumbnail; self.videoCover = videoCover
+    }
 }
 
 @MainActor
 final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
-    private let keep = MetaDisposable(), thumbnailKeep = MetaDisposable(), data = MetaDisposable()
+    private let keep = MetaDisposable(), thumbnailKeep = MetaDisposable(), coverKeep = MetaDisposable(), data = MetaDisposable()
     private var task: Task<Void, Never>?
     private var stopped = false, finished = false
     private let receive: @MainActor (Result<TelegramPreparedUploadMedia, TelegramUploadFileError>) -> Void
@@ -23,9 +28,10 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
             do {
                 try TelegramUploadFileIO.validateOwnedStage(file)
                 let jpeg = file.mode == .video ? try await TelegramUploadVideoIO.thumbnail(file) : nil
+                let cover = try file.videoCover.map { try TelegramUploadVideoCoverIO.validatedBytes($0) }
                 try Task.checkCancellation()
                 guard let self, !self.stopped else { return }
-                self.store(mediaBox: mediaBox, file: file, jpeg: jpeg)
+                self.store(mediaBox: mediaBox, file: file, jpeg: jpeg, coverBytes: cover)
             } catch {
                 guard let self, !self.stopped, !Task.isCancelled else { return }
                 self.finish(.failure(error as? TelegramUploadFileError ?? .unavailable))
@@ -33,27 +39,42 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
         }
     }
 
-    private func store(mediaBox: MediaBox, file: TelegramUploadFile, jpeg: TelegramUploadVideoThumbnail?) {
+    private func store(mediaBox: MediaBox, file: TelegramUploadFile, jpeg: TelegramUploadVideoThumbnail?, coverBytes: Data?) {
         let thumbnail = jpeg.map { TelegramUploadVideoThumbnailResource(id: Int64.random(in: Int64.min...Int64.max),
             width: $0.width, height: $0.height, size: Int64($0.data.count)) }
-        guard let (resource, reference) = telegramUploadMedia(file, videoThumbnail: thumbnail) else {
+        let cover = file.videoCover.map { staged -> TelegramUploadVideoThumbnailResource in
+            var id = Int64.random(in: Int64.min...Int64.max)
+            while id == thumbnail?.id { id = Int64.random(in: Int64.min...Int64.max) }
+            return TelegramUploadVideoThumbnailResource(id: id, width: staged.width, height: staged.height, size: staged.size)
+        }
+        guard let (resource, reference) = telegramUploadMedia(file, videoThumbnail: thumbnail, videoCover: cover) else {
             finish(.failure(.unavailable)); return
         }
-        let prepared = TelegramPreparedUploadMedia(resource: resource, reference: reference, videoThumbnail: thumbnail)
+        let prepared = TelegramPreparedUploadMedia(resource: resource, reference: reference, videoThumbnail: thumbnail, videoCover: cover)
         keep.set(mediaBox.keepResource(id: resource.id).start())
         if let thumbnail, let jpeg {
             thumbnailKeep.set(mediaBox.keepResource(id: thumbnail.resource.id).start())
             mediaBox.storeResourceData(thumbnail.resource.id, data: jpeg.data)
         }
-        // Both Void writes suppress errors. Observe complete files and verify
-        // the JPEG bytes before publishing a capability that can enter enqueue.
+        if let cover, let coverBytes {
+            coverKeep.set(mediaBox.keepResource(id: cover.resource.id).start())
+            mediaBox.storeResourceData(cover.resource.id, data: coverBytes)
+        }
+        // Void writes suppress errors. Observe complete files and verify both
+        // JPEGs before publishing a capability that can enter enqueue.
         mediaBox.copyResourceData(resource.id, fromTempPath: file.url.path)
-        data.set((telegramUploadMediaBoxReadback(mediaBox, resource: resource, thumbnail: thumbnail?.resource)
-            |> deliverOnMainQueue).start(next: { [weak self] original, preview in
+        data.set((telegramUploadMediaBoxReadback(mediaBox, resource: resource, thumbnail: thumbnail?.resource, cover: cover?.resource)
+            |> deliverOnMainQueue).start(next: { [weak self] original, preview, coverData in
                 guard let self, !self.stopped, !self.finished else { return }
                 guard original.complete, original.offset == 0, original.size == file.size,
                       validUploadCacheFile(original.path, size: file.size) else {
                     self.finish(.failure(.unavailable)); return
+                }
+                if let cover, let coverBytes {
+                    guard let coverData, coverData.complete, coverData.offset == 0, coverData.size == cover.size,
+                          validUploadCacheFile(coverData.path, size: cover.size, expected: coverBytes) else {
+                        self.finish(.failure(.unavailable)); return
+                    }
                 }
                 if let thumbnail, let jpeg {
                     guard let preview, preview.complete, preview.offset == 0, preview.size == thumbnail.size,
@@ -75,7 +96,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
     func stop() {
         guard !stopped else { return }
         stopped = true; task?.cancel(); task = nil
-        keep.dispose(); thumbnailKeep.dispose(); data.dispose()
+        keep.dispose(); thumbnailKeep.dispose(); coverKeep.dispose(); data.dispose()
     }
     isolated deinit { stop() }
 }
@@ -86,7 +107,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
 /// known failure, not an observation left waiting for a fetch that never starts.
 /// Pure mapping stays outside MainActor; only the final callback returns to UI.
 private nonisolated func telegramUploadMediaBoxReadback(_ mediaBox: MediaBox,
-    resource: LocalFileMediaResource, thumbnail: LocalFileMediaResource?) -> Signal<(MediaResourceData, MediaResourceData?), NoError> {
+    resource: LocalFileMediaResource, thumbnail: LocalFileMediaResource?, cover: LocalFileMediaResource?) -> Signal<(MediaResourceData, MediaResourceData?, MediaResourceData?), NoError> {
     let original = mediaBox.resourceData(resource, pathExtension: nil,
         option: .complete(waitUntilFetchStatus: false), attemptSynchronously: true) |> take(1)
     let preview: Signal<MediaResourceData?, NoError>
@@ -95,5 +116,11 @@ private nonisolated func telegramUploadMediaBoxReadback(_ mediaBox: MediaBox,
             option: .complete(waitUntilFetchStatus: false), attemptSynchronously: true)
             |> take(1) |> map { Optional($0) }
     } else { preview = .single(nil) }
-    return combineLatest(original, preview) |> take(1) |> runOn(mediaBox.dataQueue)
+    let coverData: Signal<MediaResourceData?, NoError>
+    if let cover {
+        coverData = mediaBox.resourceData(cover, pathExtension: nil,
+            option: .complete(waitUntilFetchStatus: false), attemptSynchronously: true)
+            |> take(1) |> map { Optional($0) }
+    } else { coverData = .single(nil) }
+    return combineLatest(original, preview, coverData) |> take(1) |> runOn(mediaBox.dataQueue)
 }

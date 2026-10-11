@@ -1,6 +1,51 @@
 # Development status — 2026-10-11
 
-## Current stage: muted looping video preparation preview
+## Current stage: custom video cover storage, transport and restoration
+
+Telegram remains in the common service-sidebar/dialog/conversation/dossier
+window. The cover groundwork follows SenderController.swift:130–165,374–382
+and ChatInteractiveContentView.swift:758–770: a separate bounded JPEG/native
+videoCover preserves the ordinary first-frame thumbnail and disables autoplay.
+Own IO crops oriented pixels, scales to at most320px, encodes JPEG quality1.0
+without source metadata, and verifies owned stage, dimensions and SHA256.
+No outer GPLv2 UI/assets or reference build dependency is introduced.
+
+Original video and cover use separate encrypted S3 objects with PostgreSQL
+metadata. Pending schema5 retains the cover through caption/options, submission
+and atomic acceptance; schema1–4 without a cover remains readable. Older builds
+reject schema5 rather than silently dropping its cover. Authenticated restoration
+recreates both owned stages. Cancellation releases stages, not archived objects;
+previous cover objects remain retained. MediaBox keeps three distinct resources
+and reads back the original and both exact JPEGs before enqueue. Strict native
+receipt validation rejects missing, altered, foreign or noncanonical covers.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**673 XCTest (610 Telegram +63 core), zero failures;32 Python regressions**.
+Final focused70 tests pass. The full log retains158 upstream t19 teardown
+diagnostics without test failure. Behavior reds cover crop/orientation/digest,
+mapping, schema, S3 restore, session preservation, native MediaBox/receipt and
+controller restoration. Missing-API compilation, a draft fixture forced-unwrap
+trap, a receipt fixture's reused native media identity and two QA seed setup
+failures are recorded separately; corrected fixtures and final gates pass.
+
+Owned native CUA QA restores a synthetic covered preparation in the existing
+sheet, shows the green portrait cover instead of the video's first frame, hides
+it under spoiler, and preserves edited caption and cover after restart. Local
+synthetic acceptance closes the sheet; read-only Postbox/S3 readback verifies
+the accepted receipt and retained cover bytes. A second restart does not reopen
+the accepted preparation. Strict built/QA signatures and unsigned payload match
+pass. This uses isolated Postbox/PostgreSQL and synthetic local S3 fixtures.
+Personal accounts, Keychain, Telegram network and server delivery are untested.
+
+The Upload/Change/Remove cover menu, picker/crop editor and serialized replacement
+operation are not yet exposed. This is storage/transport/restoration groundwork,
+not complete custom-cover workflow parity. Parent a812fb3 push38115191311 and
+PR38115193331 CI are terminal success for that exact SHA, verified directly.
+Current index/review/publication evidence stays in the private root report.
+Albums, complete Telegram parity, MMail/Aether, WhatsApp, Teams, Telemost,
+backups and standalone packaging remain open; the sequential goal stays active.
+
+## Historical muted looping video preparation preview (a812fb3)
 
 Telegram remains inside the common service/sidebar/dialog/conversation/dossier
 window. Video preparation now uses the reference's muted loop in its visible

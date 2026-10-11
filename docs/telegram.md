@@ -1466,5 +1466,44 @@ replacement, cleanup ordering, invalid preparation and immediate cancellation.
 Owned final CUA verifies animated portrait MOV, labelled native accessibility,
 spoiler hiding and Escape preserving the ordinary draft. Restart preserves that
 draft without cancelled-media resurrection. Native window notifications and held
-in-flight cancellation remain separately unverified in CUA. Custom cover,
-multiple selection/albums and full visual parity remain open.
+in-flight cancellation remain separately unverified in CUA. The cover workflow
+menu/editor, multiple selection/albums and full visual parity remain open.
+
+### Custom video cover storage, transport and restoration
+
+The optional `TelegramUploadVideoCover` owns a separate JPEG stage. Its IO crops
+normalized oriented-image coordinates, rejects nonfinite/out-of-bounds crops,
+scales to at most320px without upscaling and encodes quality1.0 decoded pixels.
+Owned-file checks, bounded reads, geometry and SHA256 reject altered stages.
+First-frame JPEG generation remains separate and unchanged. The native mapping
+sets videoCover to one canonical TelegramMediaImage while retaining the ordinary
+video previewRepresentation; original, thumbnail and cover have distinct IDs.
+
+Pending schema5 stores a bounded cover descriptor, with exact account/chat/
+preparation identity and archive attachment ID `video-cover`. Schema1–4 without
+a cover remains readable; older builds reject schema5. Original and cover are
+separate encrypted S3 objects. PostgreSQL and Postbox store metadata/pointers,
+not attachment bytes. The encrypted object format and PostgreSQL schema are
+unchanged. Authenticated export restores both owned stages and revalidates the
+cover digest/geometry. Caption/options, submission and accepted receipts retain
+the same descriptor. Retry refuses a dropped/changed cover. Cancelling preparation
+releases its owned temporary files; archived original and previous cover versions
+remain retained.
+
+Shared MediaBox preparation holds all three resources and reads back a complete
+original plus exact first-frame/cover JPEGs on the native FIFO queue before
+enqueue. Atomic admission and acknowledgement require matching persisted cover,
+stage and transport descriptors and every canonical native image field. Real
+encrypted Postbox/MediaBox enqueue/reopen tests exercise MP4/MOV both with and
+without covers; isolated PostgreSQL/S3 tests verify distinct retained objects
+and exact restoration. Recovery refuses a missing or mismatched cover. The
+existing preparation sheet displays the cover and disables video autoplay,
+following the selected reference. Spoiler hides the image from accessibility.
+
+Owned native CUA QA used a pre-saved synthetic cover, edited its caption, toggled
+spoiler, restarted and accepted it through the local synthetic provider. Read-only
+Postbox/S3 readback verified the accepted record and retained JPEG; restart did
+not restore the accepted preparation. User-facing Upload/Change/Remove cover,
+photo picker/crop editor and serialized replacement are still pending. This is
+groundwork, not a completed cover editing workflow. Full Account/network/server
+delivery remains unverified.

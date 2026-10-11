@@ -33,7 +33,7 @@ enum TelegramUploadEvent {
 @MainActor public final class TelegramUploadController: ObservableObject {
     public let videoPlayback = TelegramUploadVideoPlaybackController()
     public func openVideoPreview(contextID: UUID) async {
-        guard preparationID == contextID, phase == .ready, !mediaSpoiler, let file, file.mode == .video else { return }
+        guard preparationID == contextID, phase == .ready, !mediaSpoiler, let file, file.mode == .video, file.videoCover == nil else { return }
         await videoPlayback.load(file)
     }
     public func stopVideoPreview(contextID: UUID) {
@@ -502,8 +502,10 @@ enum TelegramUploadEvent {
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID,
               target.chatID == draft.chatID, target.hasValidReplySource,
               file.name == draft.file.attachment.name, file.size == draft.file.plaintextByteCount,
-              file.mode.rawValue == draft.file.attachment.kind, file.video == draft.video else { return false }
+              file.mode.rawValue == draft.file.attachment.kind, file.video == draft.video,
+              telegramPendingUploadCoverMatches(draft.videoCover, file.videoCover) else { return false }
         guard (try? TelegramUploadFileIO.validateOwnedStage(file)) != nil else { return false }
+        if let cover = file.videoCover, (try? TelegramUploadVideoCoverIO.validatedBytes(cover)) == nil { return false }
         switch draft.disposition {
         case .prepared:
             guard draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return false }

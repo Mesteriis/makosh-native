@@ -76,6 +76,46 @@ import ImageIO
         controller.prepare(source: URL(fileURLWithPath: "/synthetic/source"), mode: mode, target: target, caption: "original")
         return (controller, provider)
     }
+    func testCoveredVideoRecoveryRejectsDroppedCoverAndPreviewsCoverWithoutAutoplay() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        addTeardownBlock { try FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("portrait.mp4"), image = root.appendingPathComponent("cover.jpg")
+        try await writeUploadVideoFixture(source, rotated: true, timescale: 30)
+        try writeUploadVideoCoverFixture(image)
+        let original = try await TelegramUploadFileIO.stage(source, mode: .video)
+        let cover = try await TelegramUploadVideoCoverIO.stage(image, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
+        defer { try? TelegramUploadFileIO.discard(original); try? TelegramUploadFileIO.discard(cover.imageFile) }
+        let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size, mode: .video,
+            pixelWidth: original.pixelWidth, pixelHeight: original.pixelHeight, url: original.url, directory: original.directory,
+            video: original.video, videoCover: cover)
+        let draft = try pendingUploadMutating(pendingUploadVideoCoverFixture()) {
+            var record = $0["file"] as! [String: Any], attachment = record["attachment"] as! [String: Any]
+            attachment["name"] = file.name; attachment["size"] = file.size
+            record["attachment"] = attachment; record["plaintextByteCount"] = file.size; $0["file"] = record
+            var saved = $0["videoCover"] as! [String: Any], stored = saved["file"] as! [String: Any], a = stored["attachment"] as! [String: Any]
+            a["name"] = cover.name; a["size"] = cover.size; stored["attachment"] = a
+            stored["plaintextByteCount"] = cover.size; stored["plaintextSHA256"] = cover.sha256
+            saved["file"] = stored; saved["width"] = 40; saved["height"] = 80; $0["videoCover"] = saved
+        }
+        let dropped = TelegramUploadController(), store = Store(), provider = Provider()
+        dropped.discard = { _ in }
+        dropped.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        let restoredWithoutCover = dropped.restore(draft: draft, file: original, target: target, restorationEpoch: dropped.recoveryRestoreEpoch)
+        XCTAssertFalse(restoredWithoutCover, "Recovery must never drop the saved cover")
+        let controller = TelegramUploadController()
+        controller.discard = { _ in }
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        XCTAssertTrue(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        let preview = try await TelegramUploadFileIO.preview(file)
+        XCTAssertEqual(preview.image.width, 40); XCTAssertEqual(preview.image.height, 80)
+        XCTAssertEqual(preview.originalSHA256, cover.sha256)
+        await controller.openVideoPreview(contextID: draft.id)
+        XCTAssertNil(controller.videoPlayback.player, "Reference disables autoplay when a custom cover is selected")
+        XCTAssertNil(controller.videoPlayback.error)
+        controller.send(contextID: draft.id); await drain()
+        XCTAssertEqual(provider.files.first?.videoCover, cover)
+    }
     func testOwnedVideoRecoveryPreservesDescriptorAndOptionsWithoutResendingUnknownSubmission() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)

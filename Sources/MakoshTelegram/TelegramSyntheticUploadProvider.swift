@@ -34,7 +34,7 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
                         guard !lease.stopped else { return }
                         let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
                             target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
-                            localResourceID: prepared.resource.fileId, videoThumbnail: prepared.videoThumbnail)
+                            localResourceID: prepared.resource.fileId, videoThumbnail: prepared.videoThumbnail, videoCover: prepared.videoCover)
                         lease.operation.set((syntheticUploadCommit(postbox: postbox, receipt: receipt, reference: prepared.reference)
                             |> deliverOnMainQueue).start(next: { [weak lease] event in
                                 MainActor.assumeIsolated {

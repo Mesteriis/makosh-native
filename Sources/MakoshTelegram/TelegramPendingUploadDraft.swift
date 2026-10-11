@@ -1,8 +1,9 @@
 import Foundation
 import MakoshCore
+import TelegramCore
 
 internal enum TelegramPendingUploadDisposition: Codable, Equatable, Sendable {
-    case prepared, submissionStarted, accepted(localMessageID: String), cancelled
+    case prepared, submissionStarted, accepted(localMessageID: String), acceptedBatch(messageIDs: [TelegramUploadQueueID]), cancelled
 }
 
 /// Owned draft resource identity, never an engine MessageId or a history event.
@@ -136,6 +137,12 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         if case let .accepted(localMessageID) = disposition {
             guard schemaVersion < 6, !localMessageID.isEmpty, localMessageID.utf8.count <= 1024,
                   !localMessageID.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { return false }
+        }
+        if case let .acceptedBatch(messageIDs) = disposition {
+            let leadingText = !isGrouped && items.count > 1 && !captionInput.formattedText.text.isEmpty
+            guard schemaVersion == 6, messageIDs.count == items.count + (leadingText ? 1 : 0),
+                  Set(messageIDs).count == messageIDs.count,
+                  messageIDs.allSatisfy({ $0.peerID == chatID && $0.namespace == Namespaces.Message.Local }) else { return false }
         }
         guard let encoded = try? JSONEncoder().encode(self), encoded.count <= 512 * 1024 - 64 else { return false }
         return true

@@ -2,6 +2,7 @@ import Foundation
 import Postbox
 import TelegramCore
 import SwiftSignalKit
+import MakoshCore
 
 struct TelegramPreparedUploadMedia {
     let resource: LocalFileMediaResource
@@ -19,14 +20,22 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
     private let keep = MetaDisposable(), thumbnailKeep = MetaDisposable(), coverKeep = MetaDisposable(), data = MetaDisposable()
     private var task: Task<Void, Never>?
     private var stopped = false, finished = false
+    private let expectedPlaintextSHA256: String?
     private let receive: @MainActor (Result<TelegramPreparedUploadMedia, TelegramUploadFileError>) -> Void
 
-    init(mediaBox: MediaBox, file: TelegramUploadFile,
+    init(mediaBox: MediaBox, file: TelegramUploadFile, expectedPlaintextSHA256: String? = nil,
          receive: @escaping @MainActor (Result<TelegramPreparedUploadMedia, TelegramUploadFileError>) -> Void) {
         self.receive = receive
+        self.expectedPlaintextSHA256 = expectedPlaintextSHA256
         task = Task { [weak self] in
             do {
                 try TelegramUploadFileIO.validateOwnedStage(file)
+                if let expectedPlaintextSHA256 {
+                    guard TelegramPendingUploadDraft.isHash(expectedPlaintextSHA256),
+                          try await uploadPlaintextMatches(file.url, size: file.size, expected: expectedPlaintextSHA256) else {
+                        throw TelegramUploadFileError.unavailable
+                    }
+                }
                 let jpeg = file.mode == .video ? try await TelegramUploadVideoIO.thumbnail(file) : nil
                 let cover = try file.videoCover.map { try TelegramUploadVideoCoverIO.validatedBytes($0) }
                 try Task.checkCancellation()
@@ -82,7 +91,21 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
                         self.finish(.failure(.unavailable)); return
                     }
                 }
-                self.finish(.success(prepared))
+                if let expected = self.expectedPlaintextSHA256 {
+                    self.task = Task { [weak self] in
+                        do {
+                            guard try await uploadPlaintextMatches(URL(fileURLWithPath: original.path), size: file.size, expected: expected) else {
+                                throw TelegramUploadFileError.unavailable
+                            }
+                            try Task.checkCancellation()
+                            guard let self, !self.stopped else { return }
+                            self.finish(.success(prepared))
+                        } catch {
+                            guard let self, !self.stopped, !Task.isCancelled else { return }
+                            self.finish(.failure(.unavailable))
+                        }
+                    }
+                } else { self.finish(.success(prepared)) }
             }))
     }
 
@@ -99,6 +122,11 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
         keep.dispose(); thumbnailKeep.dispose(); coverKeep.dispose(); data.dispose()
     }
     isolated deinit { stop() }
+}
+
+private func uploadPlaintextMatches(_ url: URL, size: Int64, expected: String) async throws -> Bool {
+    let capture = try ArchiveFileCapture(file: url, byteCount: size)
+    return try await Task.detached(priority: .userInitiated) { try capture.plaintextSHA256() }.value == expected
 }
 
 /// Subscribe on the native FIFO data queue after the writes, avoiding the

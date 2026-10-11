@@ -7,12 +7,22 @@ import SwiftSignalKit
 /// Explicit UI fixture only. An injected synthetic Postbox can exercise the
 /// owned queue receipt; no Account, Telegram network or delivery is involved.
 @MainActor
-final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
+final class TelegramSyntheticUploadProvider: TelegramUploadBatchProvider {
     let accountID: Int64 = -1
     private let postbox: Postbox?
     private let loseAcknowledgement: Bool
     init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false) {
         self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement
+    }
+    func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
+                receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
+        guard let postbox else { receive(.rejected); return SyntheticUploadLease() }
+        let loseAcknowledgement = self.loseAcknowledgement
+        return TelegramUploadBatchSubmission(postbox: postbox, accountID: accountID, items: items, draft: draft,
+            target: target, enqueue: { receipt, messages in
+                telegramUploadBatchEnqueueLocally(postbox: postbox, receipt: receipt, messages: messages,
+                    loseAcknowledgement: loseAcknowledgement)
+            }, receive: receive)
     }
     func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
@@ -58,6 +68,18 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
             } catch { /* Only stops fixture observation, never a real send. */ }
         }
         return lease
+    }
+}
+
+nonisolated func telegramUploadBatchEnqueueLocally(postbox: Postbox, receipt: TelegramUploadBatchEnqueueReceipt,
+                                                 messages: [EnqueueMessage], loseAcknowledgement: Bool = false) -> Signal<TelegramUploadBatchAdmission, NoError> {
+    telegramUploadBatchEnqueue(receipt: receipt, messages: messages) { messages, admission, commit in
+        enqueueMessagesLocally(postbox: postbox, accountPeerId: PeerId(receipt.target.accountID), isSupportUser: false,
+            timestamp: 100, peerId: PeerId(receipt.target.chatID), messages: messages,
+            transactionAdmission: admission, transactionCommit: commit)
+    } |> map { admission in
+        if case .accepted = admission, loseAcknowledgement { return .uncertain }
+        return admission
     }
 }
 

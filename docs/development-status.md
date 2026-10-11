@@ -1,63 +1,63 @@
 # Development status — 2026-10-11
 
-## Current stage: ordered Telegram preparation storage
+## Current stage: Telegram native batch provider
 
-Telegram remains in the common Makosh service sidebar/dialog/conversation/
-dossier window. Album migration step1 now stores an ordered schema6 preparation
-with stable item IDs, shared caption/options and a grouping choice. Each original
-and video cover has its own immutable encrypted S3 resource. The Postbox pointer
-changes only after every resource is stored; a later failure preserves the
-previous pointer and any already retained objects. Restoration exports the whole
-ordered set or cleans up every newly exported temporary resource. Schema1–5
-remain readable and editable. Legacy controller/enqueue consumers reject schema6
-instead of silently using its first item.
+Telegram remains in the common Makosh service sidebar/dialog/conversation/dossier
+window. Album migration steps1/2 provide ordered schema6 Postbox/S3 preparation
+storage and a native batch provider. Every original/cover has a stable item/resource
+identity. All originals must match archived SHA256 before and after MediaBox copy.
+The full batch uses one native admission transaction and one complete typed-ID
+receipt. Grouped sends split10/10/1 at21 items; caption/entity placement follows
+verified reference source. Separate sends can add one leading rich-text message.
+Every queued ID participates in Account pending-status observation; local queue
+acceptance and100% progress never establish delivery.
 
-This is storage groundwork. Multi-picker, batch controller/recovery protocol,
-native grouped enqueue/all-message receipts and the reference preparation UI
-are not wired yet. See telegram-album-migration.md for the ordered next steps.
-The reference's picker order, first-occurrence deduplication, whole-list media/
-file modes, grouping eligibility and ten-item boundaries were confirmed from11
-frozen source files. Reference runtime was not executed; caption/entity quirks
-and later-group indexing differences remain explicit integration decisions.
+The picker, controller/recovery protocol and preparation UI still accept one
+file and reject schema6. Multi-selection, stable-ID reorder/remove/editor actions,
+whole-list mode/group normalization and the reference album screen remain steps3/4
+in telegram-album-migration.md. Schema1–5 remain supported. No first-item fallback
+or automatic resend is permitted. Reference runtime and live Account/network
+sending have not been exercised.
 
 scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
-**735 XCTest (670 Telegram +65 core), zero failures;32 Python regressions**.
-Focused76 tests pass. Tests use real encrypted Postbox, PostgreSQL and S3: exact
-ordered original/cover bytes across reopen, object reuse, same-size changed-byte
-and order conflicts, later-resource authentication failure cleanup, late upload
-failure preserving the previous pointer and retained objects, cancellation and
-legacy fail-closed admission. Logs retain176 upstream t19 teardown diagnostics
-without test failure. Meaningful behavior reds preceded implementation; missing
-API/test-fixture compile errors are recorded separately from those reds.
+**753 XCTest (688 Telegram +65 core), zero failures;32 Python regressions**.
+Focused23 batch tests pass. Real encrypted native Postbox tests cover all21 local
+IDs and bytes across reopen, mixed photo/covered-video derivatives, later changed
+payload, malformed/partial receipts, lost acknowledgement, stale retry and stop
+at commit boundary. Existing real PostgreSQL/S3 regressions verify retained
+objects, ordered restoration and previous-pointer preservation. Full logs retain
+216 upstream t19 teardown diagnostics without test failures. Compile/setup failures
+and an earlier actor-isolation crash are retained separately from behavior reds;
+the nonisolated queue fault mapping and final gates pass.
 
-Independent frozen review found one pre-existing P2: legacy same-name/same-size
-retry admitted different contents before changing the caption/revision. Root's
-real Postbox/PG/S3 regression reproduced it (1 test/2 failures). Both legacy and
-batch retries now verify staged plaintext SHA256 before pointer changes. The
-final independent review found no new issues; root revalidated18 source hashes
-and both pins. Worker tests/UI were not run; observed provider/model/usage is
-unknown. Lost-ACK fault injection, later cover-export failure and detached batch
-controller lifetime remain validation frontiers for the following steps.
+Independent frozen review identified two P2s: unsupported peer namespaces reached
+preparation, and reply quote/todo/thread attributes could receive acknowledgement.
+Root reproduced and fixed both. A related real-Postbox regression also reproduced
+an original reply fingerprint paired with a forged thread; admission now compares
+freshly derived thread metadata. A third P2, choosing the first rather than native last media in a migrated
+quote, was reproduced with1 test/2 failures and fixed. Empty and multi-media
+migrated quote fixtures now pass; live multi-media reachability stays unknown.
+All focused regression cases pass. Final bounded delta review found no new
+findings; root revalidated16 source/lock hashes,8 helper hashes and both pins.
+Worker tests/UI were not run; observed provider/model/usage remains unknown.
+Some worker read records retain command descriptions, so they are source evidence
+rather than independent executable gates.
 
-Owned native QA verifies legacy photo preparation, exact caption, spoiler and
-caption placement restored after restart, explicit Cancel staying closed after
-another restart, and switching between Mail and Telegram in the common shell.
-Final strict signatures and raw unsigned
-built/QA executable equality pass. An earlier QA payload comparison differed only
-in signing-adjusted LINKEDIT virtual size; its failed raw comparison and bounded
-normalization proof remain private. QA uses isolated synthetic storage without
-personal accounts, Keychain or Telegram network. These checks do not establish
-batch UI, native album sending or live delivery.
+Owned synthetic native QA verifies existing single-photo caption, spoiler and
+caption-above restoration after restart. On the final build, the prior preparation
+stays closed after restart and Mail/Telegram switching preserves the common shell.
+Strict built/QA signatures and raw unsigned executable equality pass. QA uses
+isolated Postbox/PostgreSQL/S3, without personal accounts, Keychain or Telegram
+network. Batch picker/UI and live delivery are still unverified.
 
-Remaining Telegram work is grouped into six broad areas: albums/multi-file
-preparation and sending; remaining message/media/special-chat actions; full search
-filters/navigation; profiles/chat administration/gallery; settings/sessions and
-reference UI gaps; real-account delivery/sync/reconnection acceptance. This is
-not an exact remaining-task count or a percentage estimate. MMail/Aether,
-WhatsApp, Teams, Telemost, backups and standalone packaging follow Telegram; the
-full sequential goal remains active. Parent246f446 PR38124117814 and
-push38124115415 CI are terminal success for that exact SHA. Current-head CI and
-publication evidence are recorded separately.
+Six broad Telegram areas remain: albums/multi-file preparation and sending;
+remaining message/media/special-chat actions; full search filters/navigation;
+profiles/chat administration/gallery; settings/sessions and reference UI gaps;
+real-account delivery/sync/reconnection acceptance. These are work areas, not an
+exact task count or percentage estimate. MMail/Aether, WhatsApp, Teams, Telemost,
+backups and standalone packaging follow Telegram. The sequential goal stays active.
+Previous ffe2196 PR38125833903 and push38125829691 CI are terminal success for
+that exact SHA; publication/current-head CI is recorded separately.
 
 ## Historical inserted images in the Telegram video cover editor (246f446)
 

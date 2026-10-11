@@ -82,7 +82,7 @@ import SwiftSignalKit
             }
             if let previous {
                 switch previous.disposition {
-                case .accepted, .cancelled: break
+                case .accepted, .acceptedBatch, .cancelled: break
                 case .prepared, .submissionStarted: throw TelegramPendingUploadPersistenceError.conflict
                 }
             }
@@ -135,7 +135,7 @@ import SwiftSignalKit
             }
             if let previous {
                 switch previous.disposition {
-                case .accepted, .cancelled: break
+                case .accepted, .acceptedBatch, .cancelled: break
                 case .prepared, .submissionStarted: throw TelegramPendingUploadPersistenceError.conflict
                 }
             }
@@ -218,6 +218,7 @@ import SwiftSignalKit
              (.submissionStarted, .submissionStarted), (.submissionStarted, .accepted),
              (.submissionStarted, .cancelled), (.cancelled, .cancelled): return true
         case let (.accepted(old), .accepted(new)): return old.utf8.elementsEqual(new.utf8)
+        case let (.acceptedBatch(old), .acceptedBatch(new)): return old == new
         default: return false
         }
     }

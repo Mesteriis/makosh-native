@@ -78,7 +78,7 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
     }
 }
 
-private nonisolated func telegramUploadNativeVideoCoverMatches(_ image: TelegramMediaImage?, resource: TelegramUploadVideoThumbnailResource?) -> Bool {
+nonisolated func telegramUploadNativeVideoCoverMatches(_ image: TelegramMediaImage?, resource: TelegramUploadVideoThumbnailResource?) -> Bool {
     switch (image, resource) {
     case (nil, nil): return true
     case let (.some(image), .some(resource)):

@@ -28,6 +28,27 @@ func pendingUploadBatchFixture() throws -> TelegramPendingUploadDraft {
 }
 
 final class TelegramPendingUploadBatchDraftTests: XCTestCase {
+    func testBatchAcceptanceRetainsEveryUniqueLocalMessageIDAndRejectsPartialReceipts() throws {
+        var json = try pendingUploadBatchJSON()
+        json["disposition"] = ["acceptedBatch": ["messageIDs": [
+            ["peerID": 42, "namespace": 1, "id": 1], ["peerID": 42, "namespace": 1, "id": 2]
+        ]]]
+        let draft: TelegramPendingUploadDraft
+        do { draft = try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: json)) }
+        catch { return XCTFail("A complete ordered batch receipt must survive decoding: \(error)") }
+        XCTAssertTrue(draft.isValid)
+        for ids in [
+            [["peerID": 42, "namespace": 1, "id": 1]],
+            [["peerID": 42, "namespace": 1, "id": 1], ["peerID": 42, "namespace": 1, "id": 1]],
+            [["peerID": 42, "namespace": 1, "id": 1], ["peerID": 43, "namespace": 1, "id": 2]],
+            [["peerID": 42, "namespace": 1, "id": 1], ["peerID": 42, "namespace": 0, "id": 2]]
+        ] {
+            json["disposition"] = ["acceptedBatch": ["messageIDs": ids]]
+            let invalid = try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: json))
+            XCTAssertFalse(invalid.isValid)
+        }
+    }
+
     // Catches silently reading/writing just the first file of an ordered set.
     func testSchema6RoundTripRetainsEveryOrderedResourceAndCommonCaption() throws {
         let json = try pendingUploadBatchJSON()

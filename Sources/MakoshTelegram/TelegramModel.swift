@@ -570,7 +570,7 @@ public final class TelegramModel: ObservableObject {
                 guard draft.isValid, draft.accountID == accountID, draft.chatID == chatID else { throw TelegramUploadFileError.unavailable }
                 switch draft.disposition {
                 case .cancelled: return
-                case .accepted:
+                case .accepted, .acceptedBatch:
                     if let original = draft.originalDraft { self.acknowledgeComposerDraft(formatted: original.input.formattedText, submitted: original) }
                     return
                 case .prepared, .submissionStarted: break

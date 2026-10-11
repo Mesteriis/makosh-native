@@ -7,7 +7,8 @@ import SwiftSignalKit
 
 /// New local media has no remote message provenance or invented cloud credentials.
 func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil,
-                         videoCover: TelegramUploadVideoThumbnailResource? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
+                         videoCover: TelegramUploadVideoThumbnailResource? = nil,
+                         resourceID requestedResourceID: Int64? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
     guard file.mode == .video || (file.video == nil && file.videoCover == nil),
           (file.videoCover == nil) == (videoCover == nil) else { return nil }
     if let staged = file.videoCover {
@@ -16,7 +17,8 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
     guard file.mode == .video ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
     guard file.mode == .video ? videoCover?.isValid ?? true : videoCover == nil,
           videoCover == nil || videoCover?.id != videoThumbnail?.id else { return nil }
-    var resourceID = Int64.random(in: Int64.min...Int64.max)
+    if let requestedResourceID, requestedResourceID == videoThumbnail?.id || requestedResourceID == videoCover?.id { return nil }
+    var resourceID = requestedResourceID ?? Int64.random(in: Int64.min...Int64.max)
     while resourceID == videoThumbnail?.id || resourceID == videoCover?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
     let resource = LocalFileMediaResource(fileId: resourceID, size: file.size)
     let media: Media
@@ -61,10 +63,19 @@ func telegramUploadVideoAttributes(_ file: TelegramUploadFile) -> [TelegramMedia
 }
 
 @MainActor
-final class TelegramEngineUploadProvider: TelegramUploadProvider {
+final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
     private let account: Account
     var accountID: Int64 { account.peerId.toInt64() }
     init(account: Account) { self.account = account }
+
+    func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
+                receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
+        let account = self.account
+        return TelegramUploadBatchSubmission(postbox: account.postbox, accountID: accountID, items: items, draft: draft,
+            target: target, enqueue: { receipt, messages in
+                enqueueBatchUploadWithReceipt(account: account, receipt: receipt, messages: messages)
+            }, observe: { ids in observeBatchUpload(account: account, ids: ids) }, receive: receive)
+    }
 
     func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
@@ -131,6 +142,27 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
     }
 }
 
+private nonisolated func enqueueBatchUploadWithReceipt(account: Account, receipt: TelegramUploadBatchEnqueueReceipt,
+                                                      messages: [EnqueueMessage]) -> Signal<TelegramUploadBatchAdmission, NoError> {
+    telegramUploadBatchEnqueue(receipt: receipt, messages: messages) { messages, admission, commit in
+        enqueueMessages(account: account, peerId: PeerId(receipt.target.chatID), messages: messages,
+            transactionAdmission: admission, transactionCommit: commit)
+    }
+}
+
+private nonisolated func observeBatchUpload(account: Account, ids: [MessageId]) -> Signal<TelegramUploadBatchEvent, NoError> {
+    let statuses = ids.map { account.pendingMessageManager.pendingMessageStatus($0) }
+    return combineLatest(statuses) |> map { statuses in
+        if statuses.contains(where: { $0.1 != nil }) { return .queueFailed }
+        let progress = statuses.compactMap { $0.0.map { Double($0.progress.progress) } }
+        guard !progress.isEmpty, progress.count == ids.count, progress.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else {
+            return .progress(nil)
+        }
+        // Every queued ID participates; nil/100% is not a delivery receipt.
+        return .progress(progress.reduce(0, +) / Double(ids.count))
+    }
+}
+
 private enum TelegramEngineUploadAdmission { case rejected, uncertain, accepted(MessageId) }
 
 /// Postbox invokes these hooks on its own queue. Construct them outside the
@@ -157,11 +189,12 @@ func telegramUploadMessage(caption: String, reference: AnyMediaReference, target
     return telegramUploadMessage(caption: value, reference: reference, target: target, replySource: replySource, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler)
 }
 
-func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference, target: TelegramUploadTarget,
+func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference?, target: TelegramUploadTarget,
                            replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false) -> EnqueueMessage? {
     guard telegramFormattedCaptionCanSend(caption), target.hasValidReplySource,
-          (!captionAboveMedia && !mediaSpoiler) || reference.media is TelegramMediaImage ||
-              (reference.media as? TelegramMediaFile)?.isVideo == true else { return nil }
+          reference != nil || telegramFormattedTextCanSend(caption),
+          (!captionAboveMedia && !mediaSpoiler) || reference?.media is TelegramMediaImage ||
+              (reference?.media as? TelegramMediaFile)?.isVideo == true else { return nil }
     if let captured = target.replySource {
         guard let replySource, replySource.accountID == captured.accountID,
               replySource.chatID == captured.chatID, replySource.peerID == captured.peerID,

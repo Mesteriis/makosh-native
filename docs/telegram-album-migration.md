@@ -6,11 +6,20 @@ this is a workflow migration, with independently authored native views.
 
 ## Current boundary
 
-The picker, upload controller, recovery protocol, provider and transactional
-enqueue receipt still carry one file. Step1 below now adds ordered schema6
-Postbox/S3 storage and restoration, but the interactive path does not create or
-submit such preparations yet. Existing schema1–5 preparations, covered videos,
-unknown submission outcomes and immutable archive versions survive the transition.
+Ordered schema6 Postbox/S3 storage and all-or-cleanup restoration are implemented.
+The native batch provider now prepares every resource, verifies original payload
+SHA256 before and after the MediaBox copy, derives the complete ordered send plan,
+and admits all messages with one transaction and one complete-ID receipt. Both
+the Account provider and isolated native enqueue use these hooks. The Account
+path observes every queued ID; local acceptance/progress never means delivery.
+Unsupported peer namespaces fail before resource preparation. Fresh reply
+metadata and every queued reply attribute bind the complete batch to its source
+thread, canonical quote and absence of a todo item.
+
+The picker, upload controller, recovery protocol and preparation UI still carry
+one file and reject schema6. They do not create or submit albums yet. Existing
+schema1–5 preparations remain supported. Real Account/network delivery has not
+been exercised; native queue tests use synthetic peers and encrypted Postbox.
 
 ## Target
 
@@ -68,11 +77,26 @@ after resolving any pending schema6 preparation; preserve S3 objects and the
 pointer instead of rewriting them into a single-file draft. No destructive data
 migration or archive-object deletion is part of this change.
 
-## Open fidelity decisions
+## Confirmed send behavior and remaining fidelity decisions
 
-Source inspection shows the reference repeats its caption for each ten-item
-chunk, reuses entity attributes on empty-text media, and uses local chunk
-indices against the global URL list for some later-group actions. Record exact
-source evidence and the chosen behavior before send/UI integration. Never copy
-indexing mistakes that can act on a different attachment. Reference runtime and
+At locked TelegramSwift revision579cebbf, PreviewSenderController.swift:1823–1832
+moves a nonempty caption to one leading text message for separate multi-media
+sends. Lines1890–1898 split grouped sends into ten-item chunks and repeat the
+caption for each chunk. SenderController.swift:647–704 assigns one group key per
+chunk, consumes the caption on the first interactive visual or last ordinary
+file, and places additional text first. Makosh follows this ordering, including
+the final singleton chunk, and retains a reply on every resulting message.
+
+Makosh deliberately gives empty-caption media no text entities. The reference
+reuses original entity attributes on these messages, which can leave ranges
+outside empty text. Empty or100% pending status is not server delivery. A missing
+or malformed native acknowledgement after queue insertion remains uncertain;
+it does not roll back or justify resending. A durable complete receipt survives
+lost callbacks and rejects stale resubmission.
+
+Whole-list presentation/grouping eligibility, reference trimming of unformatted
+input, later-group per-item actions and UI normalization remain for steps3/4.
+A whitespace-only leading text is currently rejected by text admission rather
+than silently dropped. Later-group actions must use stable item IDs, never the
+reference's local-chunk index against the global URL list. Reference runtime and
 live Telegram delivery remain separate, unexecuted evidence boundaries.

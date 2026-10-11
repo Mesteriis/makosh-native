@@ -590,7 +590,7 @@ enum TelegramUploadEvent {
         case .prepared:
             guard draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return false }
         case .submissionStarted: break // Missing reply cannot authorize any new submit.
-        case .accepted, .cancelled: return false
+        case .accepted, .acceptedBatch, .cancelled: return false
         }
         token = UUID(); preparationID = draft.id; self.file = file; self.target = target; captionInput = draft.captionInput
         captionAboveMedia = draft.captionAboveMedia; captionRevision = UUID(); sentCaptionAboveMedia = draft.captionAboveMedia

@@ -1710,14 +1710,13 @@ state, kind, name, size and digest validation; IDs and archive object IDs must
 be unique. Empty, ambiguous, downgraded or partially invalid batches fail closed.
 The existing512KiB encrypted preference payload limit remains unchanged.
 
-This step provides durable batch storage, not native album submission. The
-existing picker/controller/recovery protocol/provider still carry a single
-file and explicitly reject schema6 at their single-file boundaries. A one-ID
-accepted marker is invalid for schema6. Multi-picker, reorder/delete UI, mode
-switches, complete send plan, all-message transactional receipts and native
-batch observation are the following required steps in
-[telegram-album-migration.md](telegram-album-migration.md). No first-item fallback
-or automatic resend is available.
+The batch provider now has a reference-derived ordered send plan, all-message
+transactional admission/receipts and observation of every queued ID. The picker,
+controller and recovery protocol still use their single-file entry points and
+reject schema6. A one-ID acceptance remains invalid for schema6. Multi-picker,
+reorder/delete UI, mode switches and the reference preparation screen remain
+required steps in [telegram-album-migration.md](telegram-album-migration.md).
+No first-item fallback or automatic resend is available.
 
 Real Postbox/PostgreSQL/S3 regressions verify three ordered files including a
 covered video across reopen, exact bytes, committed retry reuse, same-size
@@ -1731,3 +1730,37 @@ reuse the existing S3 record. The independent review identified this pre-existin
 gap, and a real Postbox/PostgreSQL/S3 regression reproduced it before the fix.
 
 The broader sequential Telegram/product goal remains open.
+
+## Native batch provider: album migration step2
+
+Schema6 accepts a complete ordered array of typed Local message IDs, including
+one leading text ID for separate sends with a nonempty caption. Partial, duplicate,
+foreign-peer or non-Local IDs cannot acknowledge a preparation. The original
+ordered S3 records and caption/options remain in the accepted pointer.
+
+The Account and isolated native providers share sequential all-resource MediaBox
+preparation and transaction hooks. Every original must match its archived
+plaintext SHA256 both before and after the copy. One immutable receipt captures
+the full pointer revision, item identities, media descriptors, caption/entity
+assignments, reply and unique group keys. Unsupported peer namespaces are
+rejected before resource preparation. Admission checks current pointer,
+resolved mentions and freshly derived reply version/thread; acknowledgement verifies every queued ID,
+text, entities, placement, spoiler, grouping, thread and media. Strict derivative
+checks cover fields omitted by native media equality, including cloud references,
+video thumbnails, progressive/inline data and personal/video/type flags.
+Reply attributes must preserve the native source thread, canonical quote and
+absence of a todo item. A caller cannot combine an original fingerprint with a
+different thread to redirect the batch.
+Migrated-group quotes select the last eligible image/file, matching native
+enqueue. Real local regressions cover both empty and multi-media source quotes;
+whether a live source with multiple eligible media reaches this path is unknown.
+
+Native encrypted-Postbox regressions enqueue21 documents with10/10/1 grouping,
+read all original bytes and reopen the complete receipt. Mixed photo/covered-video
+submission retains its caption, spoiler, placement and derivatives. A later
+changed original rejects before enqueue; stopping at the committing checkpoint
+queues nothing. Partial or malformed receipts leave the started pointer intact.
+Lost callbacks retain complete acceptance and stale snapshots cannot enqueue
+again. Native queue insertion cannot be rolled back by a failed acknowledgement;
+this is uncertain, never permission to resend. Account network transformations,
+server delivery and reconnection remain unverified; no personal account is used.

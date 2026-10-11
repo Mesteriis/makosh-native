@@ -2041,7 +2041,8 @@ retains strict voice metadata: Int32 sample count1…28,800,000, lowercase plain
 SHA256 and an explicit nullable waveform. Duration is integral sampleCount/48,000,
 including0 for a subsecond recording. Picked Ogg/Opus files remain ordinary files;
 container/MIME/name never grants recorded provenance. The existing20MiB encoded
-limit applies. No product recorder control is connected yet.
+limit applies. This original preparation-only stage preceded the native recorder
+connection documented below.
 
 Schema11 accepts exactly one explicit voice item, no grouping, caption, spoiler,
 caption-above, source pair or cover. Internal `.file` presentation is its payload
@@ -2132,4 +2133,57 @@ Postbox/PostgreSQL/S3 stack, replacing only the unavailable server with native
 local enqueue. They read back exact MediaBox bytes and Voice attributes, verify
 stale context/no-resend and stage cleanup, and prove OFF objects remain absent
 after enabling later. Gates and actual UI limits are in development-status.md.
-Microphone capture and reference recording controls are still not connected.
+At that controller-only stage microphone capture and recording controls were not
+connected. The following stage now connects the native recorder.
+
+### Native microphone recorder and eligibility
+
+`TelegramVoiceRecordingController` owns permission/capture/held/locked/finishing
+states. Model, native button and async eligibility use frozen account/chat/reply,
+input-context, session and preparation IDs. An old cancelled final eligibility
+result cannot enqueue or clear a replacement intent. Context/surface/app removal
+cancels both capture and its matching cancelable durable preparation; accepted
+native queue state remains governed by existing receipt/recovery rules.
+
+The common empty composer uses hold300ms, inside release to send, outside release
+to cancel and upward >100points to lock. Locked cancel confirms against the exact
+session; accessible/keyboard activation locks explicitly. Availability and input
+context are explicit NSViewRepresentable values, so completion of asynchronous
+draft restoration refreshes the native button. A native600s cap ends in durable
+preparation requiring explicit Send. Short recordings require >25 complete960
+sample packets. Voice has no generic caption/file preview; storage/eligibility
+failures remain visible with explicit retry/send/cancel controls.
+
+The model prompts for microphone permission only after the user starts recording;
+`NSMicrophoneUsageDescription` is included in the built bundle. Constructing
+`TelegramMicrophoneVoiceCapture` has no filesystem/device/permission effect, and
+start requires existing `.authorized` status. AVAudioRecorder writes a private
+0700-directory/0600-file CAF,48kHz mono signed16 little-endian PCM, capped600s.
+After native stop, held no-follow descriptors, directory/file identity/mode/stat,
+finite CAF chunks/format/data extent and max28,800,000 samples gate AVAudioFile
+utility reads. Positive short reads continue to exact EOF; oversize is refused,
+not trimmed. Owned stage is removed on stop/cancel/error/deinit. Crash-time
+plaintext-stage collection and forced in-flight native I/O cancellation remain
+outside current runtime proof. The DEBUG synthetic capture requires explicit
+isolated preview and never requests permission or opens a microphone.
+
+Same-account Postbox transactions read peer/cache plus target-specific unsent
+messages for slow-mode channels, using server-adjusted local time. Native user
+privacy/block/payment, group membership/bans and channel access/media/boost/
+admin/fee/slow-mode rules run before permission, again after permission and before
+native admission. Missing required cache refuses. Paid contexts require separate
+future explicit payment support; no charge is authorized here. Saved Messages
+has no missing-cache exception; secret chat/monoforum are unsupported. The
+slow-channel history scan is conservative and currently unoptimized. A fresh
+local transaction does not establish current server permission or delivery.
+
+Recorded PCM uses only the existing owned codec, original waveform, schema11 and
+durable upload queue. S3 OFF forbids every new copy, including voice preparation;
+encrypted local records survive restart and never promote on re-enable. Bytes
+are not PostgreSQL payloads. Cancellation does not delete immutable archived
+resources. Real isolated encrypted Postbox/PostgreSQL/S3 regressions verify ON/OFF,
+blocked final permission with explicit later Send, cancelled eligibility,
+replacement ownership, exact native bytes/Voice attributes and no resend after
+reopen. Actual synthetic UI, full gate counts, setup failures and remaining
+reference/hardware gaps are in development-status.md and reference-interface.md.
+No dependency/schema/license/engine recipe or outer reference UI code was added.

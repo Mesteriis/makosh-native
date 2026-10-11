@@ -22,6 +22,7 @@ cat > "$makosh_bundle/Contents/Info.plist" <<'PLIST'
   <key>CFBundleVersion</key><string>2</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Макош использует микрофон только после вашего действия для записи голосового сообщения в выбранном чате Telegram.</string>
   <key>NSHumanReadableCopyright</key><string>2026 Makosh contributors; includes Telegram-iOS. Combined application GPLv3; see third-party notices.</string>
 </dict></plist>
 PLIST

@@ -717,7 +717,7 @@ Waveform рассчитан из исходного PCM и не пересчит
 schema11 остаётся null. Native pulse regression подтверждает original12/decoded15,
 exact frozen bytes и оба storage режима.
 
-Интерфейс этой частью не менялся: кнопка, recording/locked/preview-состояния и
+На историческом этапе кодека интерфейс не менялся: кнопка, recording/locked/preview-состояния и
 live waveform/playback ещё открыты. Общая оболочка/чат сохраняются. Реальный
 микрофон, live Account/server и minimum26 runtime ещё не проверены.
 
@@ -745,7 +745,36 @@ no match: этот iOS helper находится за пределами desktop
 записей сохраняют свои существующие границы. Изменение caption запрещено также
 до публикации staged item; cancellation снимает это ограничение. Реальные
 controller/native queue regressions подтверждают ON/OFF, exact bytes/attributes,
-accepted-pointer reopen и отсутствие повторной отправки. GUI и его layout этой
-частью не менялись. Захват микрофона, hold/lock/cancel/one-time/round-video controls,
+accepted-pointer reopen и отсутствие повторной отправки. На историческом этапе
+controller admission GUI и layout не менялись. Захват микрофона, hold/lock/cancel/one-time/round-video controls,
 live waveform/playback и peer/slow-mode gates остаются открытыми. GPLv2 UI/helper
 код и assets не копировались.
+
+### Нативный recorder в общей форме Telegram
+
+На том же desktop pin579cebbf0c01fd41b712eff3647fa7f69db9665d сверены
+`ChatInputActionsView.swift:126–143`, `ChatRecorderOverlayWindow.swift:241–348`,
+`ChatInputRecordingView.swift` (14-point dot и centisecond timer) и
+`ChatController.swift:3536–3640` (privacy/slow-mode/media/fee gates).
+Независимый NSButton/SwiftUI control теперь реализует hold300ms, release внутри
+для отправки, снаружи для отмены, upward >100points для фиксации и подтверждение
+отмены fixed-записи. Native peer/cache eligibility проверяется до/после разрешения
+микрофона и перед отправкой. Оплата не подтверждается автоматически.
+
+Кнопка остаётся в существующем common-window composer; приложение не зависит
+от reference checkout. UI QA на синтетическом звуке подтверждает hold/release →
+локальную очередь, locked timer/Continue/Cancel и прекращение записи при
+Mail→Telegram. Первый UI run выявил устаревшую доступность NSViewRepresentable
+во время восстановления черновика; явные value inputs исправлены и перепроверены.
+Drag-инструмент возвращает noWindowsAvailable: реальный жест вверх и отпускание
+снаружи визуально ещё не подтверждены, хотя state regressions проходят.
+
+Оставшиеся отличия: нет reference floating70-point overlay/его точной анимации,
+short click пока не переключает voice/video, round-video и one-time отсутствуют.
+Доступное/клавиатурное действие явно фиксирует запись. При600s запись переходит
+в durable preparation без автоматической отправки. Нет live waveform/playback
+или отдельно доказанного desktop preview-сценария; generic caption/file sheet
+для voice скрыт. Missing user cache (включая Saved Messages), secret/monoforum
+и платный контекст консервативно отказывают. No-follow/CAF bounds и собственный
+600s cap — решения Макош. Реальный микрофон, server delivery и minimum26 runtime
+не проверены. GPLv2 UI/helper code/assets не копировались.

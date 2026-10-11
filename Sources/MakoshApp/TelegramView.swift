@@ -86,10 +86,12 @@ struct TelegramDetailView: View {
             }
             .onAppear { peerStatus.setVisible(true) }
             .onDisappear {
+                model.cancelVoiceRecording()
                 attachmentActions.cancel(); model.cancelMediaLoads()
                 profilePresented = false; model.cancelContactProfile()
                 peerStatus.setVisible(false)
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in model.cancelVoiceRecording() }
             .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
                 TelegramContactProfileView(model: model, dossier: dossier,

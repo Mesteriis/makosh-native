@@ -554,12 +554,13 @@ enum TelegramUploadEvent {
     public var captionContextID: UUID { token }
     public var preparationContextID: UUID? { preparationID }
     public var showsPreparationPreview: Bool {
-        guard preparationID != nil else { return false }
+        guard preparationID != nil, !containsRecordedVoice else { return false }
         switch phase {
         case .preparing, .ready, .storing, .enqueuing, .uncertain: return true
         default: return false
         }
     }
+    public var isRecordedVoice: Bool { containsRecordedVoice }
 
     public func send(contextID: UUID) {
         guard preparationID == contextID else { return }

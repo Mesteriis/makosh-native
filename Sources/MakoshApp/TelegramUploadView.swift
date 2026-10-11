@@ -108,6 +108,22 @@ struct TelegramUploadView: View {
                 }
             }
             if !upload.showsPreparationPreview, upload.phase != .idle || upload.error != nil {
+                if upload.isRecordedVoice {
+                    if let status = upload.recoveryStatus {
+                        HStack {
+                            Text(status).font(.caption).accessibilityIdentifier("telegram.voice.recoveryStatus")
+                            if upload.canRetryRecovery { Button("Повторить сохранение", action: upload.retryRecovery) }
+                        }
+                    }
+                    if let contextID, upload.canCancel {
+                        HStack {
+                            Button("Отправить запись") { model.sendPreparedVoice(contextID: contextID) }
+                                .disabled(!upload.canSend).accessibilityIdentifier("telegram.voice.sendPrepared")
+                            Button("Отменить подготовку") { upload.dismissPreparation(contextID: contextID) }
+                                .accessibilityIdentifier("telegram.voice.cancelPrepared")
+                        }
+                    }
+                }
                 if let target = upload.target {
                     Label("Получатель: \(target.title)", systemImage: "paperplane").font(.callout)
                 }

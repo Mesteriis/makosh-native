@@ -201,7 +201,8 @@ Recorded voice now has an explicit typed PCM entry, strict schema11 digest/count
 binding and native Voice mapping. Both storage modes and encrypted Postbox reopen
 are covered without a microphone. New recordings freeze the reference's100-value
 5-bit waveform from original PCM through native enqueue; old nullable schema11
-waveforms remain readable. Recorder interaction remains open. The prepared engine
+waveforms remain readable. Native microphone capture and held/locked/cancel
+controls now connect this path; full recorder parity remains open. The prepared engine
 a24bbe45f9861f736a79916a50898512f751e0dc exposes native attributes but does not
 currently expose GIF conversion or Opus products. Its WebP helper is not adopted;
 Makosh uses the independently verified Apple decoder. UIKit wrappers
@@ -244,8 +245,9 @@ Continue in this dependency order:
    both original and validated MP4 with a separate optional raw-frame JPEG. Explicit voice
    now has a reviewed offline Opus/Ogg codec, original-PCM waveform and durable
    native path through the preparation controller, with strict >0.5s new-recording
-   admission and durable native enqueue; microphone/recorder interaction remains
-   open. Bound frames, dimensions,
+   admission and durable native enqueue. Native capture, peer/slow-mode gates and
+   common-window hold/lock/cancel now connect it. Full visual/gesture parity,
+   one-time/round video, hardware and server proof remain open. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every
    typed resource. Off remains encrypted local-only; mode edits never recapture.

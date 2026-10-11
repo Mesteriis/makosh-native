@@ -9,7 +9,7 @@ import SwiftSignalKit
 // Postbox transaction bodies run on its queue, outside the test's MainActor.
 private func recordedVoicePeers(_ box: Postbox) -> Signal<Void, NoError> {
     box.transaction { transaction in
-        let peers = [Int64(1), 42].map { value in
+        let peers = [Int64(1), 42, 10001].map { value in
             TelegramUser(id: PeerId(value), accessHash: nil, firstName: "Synthetic", lastName: nil, username: nil, phone: nil,
                 photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil,
                 nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
@@ -21,12 +21,48 @@ private func recordedVoicePeers(_ box: Postbox) -> Signal<Void, NoError> {
 private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Message?, NoError> {
     box.transaction { $0.getMessage(id) }
 }
+private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceEligibility], NoError> {
+    box.transaction { transaction in
+        let peerID = PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(92))
+        let peer = TelegramChannel(id: peerID, accessHash: nil, title: "Synthetic slow voice", username: nil,
+            photo: [], creationDate: 0, version: 1, participationStatus: .member,
+            info: .group(TelegramChannelGroupInfo(flags: [.slowModeEnabled])), flags: [], restrictionInfo: nil,
+            adminRights: nil, bannedRights: nil, defaultBannedRights: nil, usernames: [], storiesHidden: nil,
+            nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
+            emojiStatus: nil, approximateBoostLevel: nil, subscriptionUntilDate: nil,
+            verificationIconFileId: nil, sendPaidMessageStars: nil, linkedMonoforumId: nil)
+        transaction.updatePeersInternal([peer], update: { _,new in new })
+        transaction.updatePeerCachedData(peerIds: [peerID], update: { _,_ in
+            CachedChannelData().withUpdatedSlowModeTimeout(30).withUpdatedSlowModeValidUntilTimestamp(2_000)
+        })
+        let check = { telegramVoiceEligibilitySnapshot(transaction: transaction, peerID: peerID, now: 2_000) }
+        var values = [check()]
+        let message = { (peer: PeerId, namespace: Int32, flags: StoreMessageFlags) in
+            StoreMessage(id: MessageId(peerId: peer, namespace: namespace, id: 1), globallyUniqueId: nil,
+                groupingKey: nil, threadId: nil, timestamp: 1_999, flags: flags, tags: [], globalTags: [],
+                localTags: [], forwardInfo: nil, authorId: peer, text: "Synthetic pending", attributes: [], media: [])
+        }
+        _ = transaction.addMessages([message(PeerId(1), Namespaces.Message.Local, [.Unsent])], location: .Random)
+        values.append(check())
+        _ = transaction.addMessages([message(peerID, Namespaces.Message.Cloud, [])], location: .Random)
+        values.append(check())
+        _ = transaction.addMessages([message(peerID, Namespaces.Message.Local, [.Unsent])], location: .Random)
+        values.append(check())
+        transaction.deleteMessages([MessageId(peerId: peerID, namespace: Namespaces.Message.Local, id: 1)], forEachMedia: nil)
+        values.append(check())
+        transaction.updatePeerCachedData(peerIds: [peerID], update: { _,_ in
+            CachedChannelData().withUpdatedSlowModeTimeout(30).withUpdatedSlowModeValidUntilTimestamp(2_001)
+        })
+        values.append(check())
+        return values
+    }
+}
 
 @MainActor private final class RecordedVoiceLocalQueueProvider: TelegramUploadBatchProvider {
-    let accountID: Int64 = 1
+    let accountID: Int64
     private let postbox: Postbox
     private(set) var submissions = 0
-    init(postbox: Postbox) { self.postbox = postbox }
+    init(postbox: Postbox, accountID: Int64 = 1) { self.postbox = postbox; self.accountID = accountID }
     func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
                 receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
         submissions += 1
@@ -43,8 +79,33 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
     }
 }
 @MainActor private final class RecordedVoiceUnusedLease: TelegramUploadLease { func stop() {} }
+#if DEBUG
+@MainActor private final class RecordedVoiceModelCapture: TelegramVoiceCapture {
+    let samples: [Int16]
+    init(samples: [Int16]) { self.samples = samples }
+    var isRecording = false
+    var duration: Double { Double(samples.count) / 48_000 }
+    var level: Float { 0.5 }
+    func start() throws { isRecording = true }
+    func stop() async throws -> [Int16] { isRecording = false; return samples }
+    func cancel() { isRecording = false }
+}
+#endif
+
 
 @MainActor final class TelegramRecordedVoicePendingTests: XCTestCase {
+    // Catches reading another peer's pending queue, ignoring native .Unsent,
+    // retaining stale deadlines, or using peer/cache from separate snapshots.
+    func testEligibilityReadsCurrentNativeCacheAndTargetPendingFlags() async throws {
+        let path = try root()
+        let box = try await open(path); previousBox = box
+        let done = expectation(description: "Atomic voice eligibility snapshots")
+        var values: [TelegramVoiceEligibility] = []
+        let lease = (voiceEligibilitySnapshots(box) |> deliverOnMainQueue).start(next: { values = $0; done.fulfill() })
+        defer { lease.dispose() }
+        await fulfillment(of: [done], timeout: 20)
+        XCTAssertEqual(values, [.allowed, .allowed, .allowed, .slowMode(until: nil), .allowed, .slowMode(until: 2_001)])
+    }
     func testLocalVoiceRestoresAndQueuesAfterEncryptedPostboxReopen() async throws {
         try await reopenAndQueue(s3Enabled: false)
     }
@@ -61,18 +122,39 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
         try await controllerQueue(s3Enabled: true)
     }
 
+    #if DEBUG
+    // Catches using start-time permissions after durable preparation. The real
+    // model must retain the voice and require an explicit, newly eligible send.
+    func testRecorderReleaseRechecksPermissionsAfterLocalOnlyDurability() async throws {
+        try await controllerQueue(s3Enabled: false, modelDriven: true)
+    }
+    func testRecorderReleaseRechecksPermissionsAfterS3Durability() async throws {
+        try await controllerQueue(s3Enabled: true, modelDriven: true)
+    }
+    #endif
+
+    #if DEBUG
+    func testOldCancelledEligibilityCannotClearReplacementRecordingIntent() async throws {
+        try await controllerQueue(s3Enabled: false, modelDriven: true, cancelFinal: true, restartAfterCancel: true)
+    }
+    func testCancelWhileFinalEligibilityWaitsCancelsDurablePreparation() async throws {
+        try await controllerQueue(s3Enabled: false, modelDriven: true, cancelFinal: true)
+    }
+    #endif
+
     // Exercises the real controller, encrypted recovery, native MediaBox and
     // transactional queue. The provider replaces only the unavailable server.
-    private func controllerQueue(s3Enabled: Bool) async throws {
+    private func controllerQueue(s3Enabled: Bool, modelDriven: Bool = false, cancelFinal: Bool = false, restartAfterCancel: Bool = false) async throws {
+        let accountID: Int64 = modelDriven ? -1 : 1, chatID: Int64 = modelDriven ? 10001 : 42
         let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
         let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
         let archiveRoot = try root(), path = try root()
         let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
             configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
             keyProvider: { _, _ in Data(repeating: 0x68, count: 32) })
-        let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        let identity = MessageArchiveIdentity(service: "telegram", accountID: String(accountID), conversationID: String(chatID), messageID: "synthetic-policy")
         try await archive.setConversationFileSavingEnabled(identity: identity, enabled: s3Enabled)
-        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic controller voice")
+        let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: "Synthetic controller voice")
         var waveform = Data(repeating: 0, count: 63); waveform[0] = 0x0c
         var accepted: TelegramPendingUploadDraft?
         do {
@@ -80,32 +162,107 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
             let seeded = expectation(description: "Controller voice synthetic peers")
             let seed = (recordedVoicePeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
             defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
-            let store = session(box, archive: archive), controller = TelegramUploadController()
-            let provider = RecordedVoiceLocalQueueProvider(postbox: box)
+            let store = session(box, archive: archive, accountID: accountID)
+            #if DEBUG
+            let model = modelDriven ? TelegramModel.syntheticPreview() : nil
+            model?.selectedChatID = chatID
+            let controller = model?.upload ?? TelegramUploadController()
+            #else
+            let controller = TelegramUploadController()
+            #endif
+            let provider = RecordedVoiceLocalQueueProvider(postbox: box, accountID: accountID)
             controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
             defer { controller.bind(provider: nil) }
             var pcm = [Int16](repeating: 0, count: 48_137)
             for index in 0..<100 { pcm[index] = 1_000 }
+            #if DEBUG
+            if let model {
+                let capture = RecordedVoiceModelCapture(samples: pcm)
+                var checks = 0
+                var finalPermission: CheckedContinuation<TelegramVoiceEligibility, Never>?
+                model.voiceRecording.makeCapture = { capture }
+                model.voiceRecording.eligibility = { _ in
+                    checks += 1
+                    if checks <= 2 { return .allowed }
+                    if cancelFinal { return await withCheckedContinuation { finalPermission = $0 } }
+                    return .voicePrivacy
+                }
+                model.beginVoiceRecording()
+                for _ in 0..<1_000 where model.voiceRecording.phase == .authorizing { try await Task.sleep(for: .milliseconds(5)) }
+                XCTAssertEqual(model.voiceRecording.phase, .recording)
+                model.voiceRecording.release(inside: true)
+                if cancelFinal {
+                    for _ in 0..<1_000 where finalPermission == nil { try await Task.sleep(for: .milliseconds(10)) }
+                    XCTAssertEqual(model.voiceRecording.phase, .finishing); XCTAssertTrue(controller.canSend)
+                    model.voiceRecording.requestCancel()
+                    if restartAfterCancel {
+                        let oldPermission = finalPermission
+                        for _ in 0..<1_000 where controller.isCancellationBusy { try await Task.sleep(for: .milliseconds(5)) }
+                        var nextPermission: CheckedContinuation<TelegramVoiceEligibility, Never>?
+                        var nextChecks = 0
+                        model.voiceRecording.eligibility = { _ in
+                            nextChecks += 1
+                            if nextChecks <= 2 { return .allowed }
+                            return await withCheckedContinuation { nextPermission = $0 }
+                        }
+                        model.beginVoiceRecording()
+                        for _ in 0..<1_000 where model.voiceRecording.phase == .authorizing { try await Task.sleep(for: .milliseconds(5)) }
+                        XCTAssertEqual(model.voiceRecording.phase, .recording)
+                        model.voiceRecording.release(inside: true)
+                        for _ in 0..<1_000 where nextPermission == nil { try await Task.sleep(for: .milliseconds(5)) }
+                        XCTAssertEqual(model.voiceRecording.phase, .finishing); XCTAssertTrue(controller.canSend)
+                        oldPermission?.resume(returning: .allowed)
+                        for _ in 0..<20 { await Task.yield() }
+                        nextPermission?.resume(returning: .allowed)
+                        for _ in 0..<1_000 where model.voiceRecording.isActive || controller.phase == .storing || controller.phase == .enqueuing { try await Task.sleep(for: .milliseconds(5)) }
+                        XCTAssertEqual(controller.phase, .queued(nil)); XCTAssertEqual(provider.submissions, 1)
+                        return
+                    }
+                    finalPermission?.resume(returning: .allowed)
+                    for _ in 0..<100 { try await Task.sleep(for: .milliseconds(5)) }
+                    XCTAssertEqual(model.voiceRecording.phase, .idle)
+                    XCTAssertEqual(controller.phase, .idle); XCTAssertTrue(controller.items.isEmpty)
+                    XCTAssertEqual(provider.submissions, 0)
+                    let cancelled = try await store.load(chatID: chatID)
+                    XCTAssertEqual(cancelled?.disposition, .cancelled)
+                    return
+                }
+                for _ in 0..<1_000 where model.voiceRecording.isActive { try await Task.sleep(for: .milliseconds(10)) }
+                XCTAssertEqual(model.voiceRecording.phase, .idle)
+                XCTAssertEqual(controller.phase, .ready)
+                XCTAssertEqual(provider.submissions, 0)
+                guard controller.phase == .ready else { return }
+                XCTAssertNotNil(model.error)
+            } else { XCTAssertTrue(controller.prepareRecordedVoice(samples: pcm, target: target)) }
+            #else
             XCTAssertTrue(controller.prepareRecordedVoice(samples: pcm, target: target))
+            #endif
             for _ in 0..<1_000 where !controller.canSend && controller.phase != .failed {
                 try await Task.sleep(for: .milliseconds(10))
             }
             XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.phase, .ready)
             let stage = try XCTUnwrap(controller.file), bytes = try Data(contentsOf: stage.url)
-            let loaded = try await store.load(chatID: 42), prepared = try XCTUnwrap(loaded)
+            let loaded = try await store.load(chatID: chatID), prepared = try XCTUnwrap(loaded)
             XCTAssertEqual(prepared.schemaVersion, 11); XCTAssertEqual(prepared.disposition, .prepared)
             XCTAssertEqual(prepared.items.count, 1); XCTAssertEqual(prepared.items[0].metadata?.voice?.waveform, waveform)
             XCTAssertEqual(prepared.items[0].file.state, s3Enabled ? .stored : .local)
             XCTAssertEqual(controller.preparationContextID, prepared.id)
             controller.send(contextID: UUID())
             XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(provider.submissions, 0)
+            #if DEBUG
+            if let model {
+                model.voiceRecording.eligibility = { _ in .allowed }
+                model.sendPreparedVoice(contextID: prepared.id)
+            } else { controller.send(contextID: prepared.id) }
+            #else
             controller.send(contextID: prepared.id)
-            for _ in 0..<1_000 where controller.phase == .storing || controller.phase == .enqueuing {
+            #endif
+            for _ in 0..<1_000 where controller.phase != .queued(nil) && controller.phase != .failed {
                 try await Task.sleep(for: .milliseconds(10))
             }
             XCTAssertEqual(controller.phase, .queued(nil)); XCTAssertNil(controller.preparationContextID)
             XCTAssertEqual(provider.submissions, 1); XCTAssertEqual(controller.messageIDs.count, 1)
-            let saved = try await store.load(chatID: 42), value = try XCTUnwrap(saved)
+            let saved = try await store.load(chatID: chatID), value = try XCTUnwrap(saved)
             guard case let .acceptedBatch(ids) = value.disposition, let id = ids.first else {
                 XCTFail("Controller did not retain complete native admission"); return
             }
@@ -131,11 +288,11 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
         }
         try await released()
         let frozen = try XCTUnwrap(accepted), box = try await open(path)
-        let store = session(box, archive: archive), restoredLoad = try await store.load(chatID: 42)
+        let store = session(box, archive: archive, accountID: accountID), restoredLoad = try await store.load(chatID: chatID)
         XCTAssertEqual(restoredLoad, frozen)
         let restored = try await store.restoreItems(draft: frozen)
         defer { for item in restored { try? item.discard() } }
-        let controller = TelegramUploadController(), provider = RecordedVoiceLocalQueueProvider(postbox: box)
+        let controller = TelegramUploadController(), provider = RecordedVoiceLocalQueueProvider(postbox: box, accountID: accountID)
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
         XCTAssertFalse(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
         controller.send(); XCTAssertEqual(provider.submissions, 0)
@@ -283,8 +440,8 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
         }
     }
 
-    private func session(_ box: Postbox, archive: ArchiveFileRepository) -> TelegramPendingUploadSession {
-        TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+    private func session(_ box: Postbox, archive: ArchiveFileRepository, accountID: Int64 = 1) -> TelegramPendingUploadSession {
+        TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: accountID),
             files: { TelegramPendingUploadFiles(repository: archive) })
     }
     private weak var previousBox: Postbox?

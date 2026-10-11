@@ -1,6 +1,88 @@
 # Development status — 2026-10-11
 
-## Current stage: recorded PCM through preparation controller and native queue
+## Current stage: native voice capture and common-window recording controls
+
+The empty Telegram composer now exposes a native recorder in the existing
+common window. Hold300ms starts capture, release inside sends, release outside
+cancels, and upward movement >100 points locks recording. Locked cancellation
+requires confirmation; accessible/keyboard activation locks explicitly. Chat,
+account, surface removal and app deactivation cancel the current intent. Frozen
+input/session/preparation IDs prevent delayed holds, permission results and old
+cancelled handoffs from affecting a replacement recording. A600s cap stops into
+visible durable preparation and requires an explicit send, rather than sending
+automatically. One-time voice and round-video recording remain open.
+
+The native AVAudioRecorder leaf requests no access at construction/start: the
+model owns the microphone prompt after an explicit recording action. It checks
+same-account native peer/cache, voice privacy, membership/media bans, slow mode
+and fee eligibility before permission, after permission and immediately before
+queue admission. Missing required cache or paid context refuses; there is no
+implicit payment authorization. Postbox snapshot freshness is not server proof;
+slow-mode pending lookup currently scans only that channel's local history.
+Saved Messages without required user cache, secret chats and monoforum are
+conservatively unavailable in this ordinary-chat path.
+
+Capture uses private0700/0600 temporary CAF,48kHz mono signed16-bit PCM, held
+no-follow descriptors, bounded finite CAF extents and native AVAudioFile reads
+on a utility worker. Positive short reads continue to exact validated EOF;
+oversize input is refused without truncation. Stop/cancel/error/deinit remove
+owned temporary capture. Exact600s synthetic CAF readback passes. The existing
+codec/waveform/schema11/durable native queue remains the only handoff. Voice
+requires durable state, has no generic caption/file preview, and final eligibility
+failure retains explicit preparation. S3 OFF forbids every new copy, including
+voice preparation; encrypted local records never promote after re-enable.
+No schema, dependency, license or engine recipe changes are introduced.
+
+Compiled behavioral REDs are retained for recorder state7/29, model+preview10/8,
+native snapshot1/1, async request5/3, authorization lock1/2, final eligibility2/4,
+cancellation/context ordering3/9 and replacement ownership1/2. Capture and peer
+leaf RED/GREEN reports are retained separately. Compilation fixture failures,
+the invalid native PeerId sentinel trap and the NSView inputContext name collision
+are setup failures, not behavioral RED. Native CAF edit-count and short-read
+assumptions failed and were corrected against actual AVAudioFile output; the
+cleanup-mode regression also failed before correction.
+
+Focused integration:71 cases,1 skipped,0 failures. Full `scripts/test.sh`:
+**1,019 XCTest cases (943 Telegram +76 core),1 skipped,0 failures;38 Python
+regressions**. The direct unauthorized-start test skips because this host test
+process already has authorization; deterministic status-gate tests still cover
+all statuses without opening a device. `scripts/dev-db.sh up` and
+`scripts/build-app.sh` exit0; strict built/owned-QA signatures and raw unsigned
+payload equality pass. Final logs contain no compile warnings; existing upstream
+t19 teardown diagnostics remain without failed tests. Host27.0.1 does not
+establish minimum26 runtime.
+
+Actual synthetic common-window QA initially failed to start: NSViewRepresentable
+retained the restoring-draft availability because only the model reference and
+phase were inputs. Explicit availability/context values and SwiftUI disabled
+state fix this. Retested hold/release reaches synthetic local queue with S3 OFF,
+without a caption sheet. A button/keyboard sequence locks recording; timer,
+confirmation, Continue and confirmed cancellation restore the editor. Leaving
+an active recording for Mail and returning to Telegram stops capture and retains
+chat7/off. Restart does not resurrect the accepted preparation. Tool drag twice
+failed with noWindowsAvailable; upward/outside-release gestures are controller
+regressions, not claimed as rendered UI proof. Temporary diagnostics were removed.
+No personal Account, Telegram network, real microphone or permission grant was
+used. Hardware capture/route, in-flight native-I/O cancellation,600s hardware
+recording/playback and live server acceptance remain unproved.
+
+Two bounded inherited-model workers authored disjoint capture/eligibility leaves;
+the eligibility worker additionally reviewed root source read-only. Root resolved
+four ownership/order findings and verified integration. Worker hashes/raw exits
+are normalized locally; observed model/provider/usage are unknown and no quorum
+is claimed. The subsequent UI snapshot fix is root-reviewed separately. A project
+index attempt during diagnostic edits failed with source-changed exit1; it is
+not reused as fresh evidence. Final frozen project refresh/check/query and
+reference/engine checks exit0:414 indexed files,380/380 classified code. Current
+controller/handoff and desktop overlay hits are source-confirmed.
+Both hosted runs for54c28dc succeed; this new head's hosted checks are separate.
+
+Next: remaining reference recorder parity (including one-time/round video and
+verified gesture UI), then the ordered classifier, Archive/caption normalization
+and remaining sequential Telegram/service migration. See reference-interface.md
+for exact visual/workflow differences.
+
+## Historical PCM controller admission (54c28dc)
 
 The internal voice entry now connects original PCM to the existing owned codec,
 schema11 recovery and native batch queue. It requires same-account batch

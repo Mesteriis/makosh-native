@@ -127,8 +127,10 @@ import XCTest
         defer { controller.clear() }
         controller.didPrepare = { _, _, _ in controller.caption = "Too early" }
         XCTAssertTrue(controller.prepareRecordedVoice(samples: pulse(count: 24_960), target: target))
+        XCTAssertFalse(controller.showsPreparationPreview, "Recorded voice must not open the generic caption/file sheet")
         XCTAssertEqual(controller.captionInput, .empty)
         try await settled(controller)
+        XCTAssertFalse(controller.showsPreparationPreview)
         XCTAssertEqual(controller.captionInput, .empty)
     }
 

@@ -54,7 +54,9 @@ struct TelegramUploadPreviewView: View {
                         .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
                 }
             }
-            if let file = upload.file { TelegramUploadFilePreview(file: file, mediaSpoiler: mediaSpoiler).id(file.id) }
+            if let file = upload.file {
+                TelegramUploadFilePreview(file: file, mediaSpoiler: mediaSpoiler, upload: upload, contextID: contextID).id(file.id)
+            }
             else { ProgressView("Подготовка вложения…").frame(maxWidth: .infinity, minHeight: 140) }
             if upload.file != nil {
                 let captionContext = upload.captionContextID
@@ -139,6 +141,8 @@ struct TelegramUploadPreviewView: View {
 private struct TelegramUploadFilePreview: View {
     let file: TelegramUploadFile
     let mediaSpoiler: Bool
+    @ObservedObject var upload: TelegramUploadController
+    let contextID: UUID
     @State private var preview: TelegramImagePreview?
     @State private var failed = false
     private var isVideo: Bool { file.mode == .video }
@@ -152,6 +156,7 @@ private struct TelegramUploadFilePreview: View {
                             .blur(radius: mediaSpoiler ? 18 : 0)
                             .accessibilityHidden(mediaSpoiler)
                             .accessibilityIdentifier(isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview")
+                        if isVideo, !mediaSpoiler { TelegramUploadVideoPlayerView(playback: upload.videoPlayback) }
                         if mediaSpoiler {
                             Label(isVideo ? "Видео под спойлером" : "Фото под спойлером", systemImage: "eye.slash")
                                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(.thinMaterial)
@@ -183,5 +188,10 @@ private struct TelegramUploadFilePreview: View {
                 failed = true
             }
         }
+        .task(id: isVideo && !mediaSpoiler && upload.phase == .ready) {
+            if isVideo && !mediaSpoiler && upload.phase == .ready { await upload.openVideoPreview(contextID: contextID) }
+            else { upload.stopVideoPreview(contextID: contextID) }
+        }
+        .onDisappear { upload.stopVideoPreview(contextID: contextID) }
     }
 }

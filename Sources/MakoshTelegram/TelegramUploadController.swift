@@ -31,6 +31,15 @@ enum TelegramUploadEvent {
 }
 
 @MainActor public final class TelegramUploadController: ObservableObject {
+    public let videoPlayback = TelegramUploadVideoPlaybackController()
+    public func openVideoPreview(contextID: UUID) async {
+        guard preparationID == contextID, phase == .ready, !mediaSpoiler, let file, file.mode == .video else { return }
+        await videoPlayback.load(file)
+    }
+    public func stopVideoPreview(contextID: UUID) {
+        guard preparationID == contextID else { return }
+        videoPlayback.stop()
+    }
     @Published public private(set) var phase: TelegramUploadPhase = .idle
     @Published public private(set) var file: TelegramUploadFile?
     @Published public private(set) var target: TelegramUploadTarget?
@@ -41,6 +50,7 @@ enum TelegramUploadEvent {
         guard token == contextID, captionRevision == revision, phase == .ready,
               file?.mode == .photo || file?.mode == .video else { return false }
         if mediaSpoiler != spoiler {
+            if spoiler { videoPlayback.stop() }
             mediaSpoiler = spoiler; captionRevision = UUID(); persistCaption()
         }
         return true
@@ -214,6 +224,7 @@ enum TelegramUploadEvent {
             error = "Подпись или её форматирование не поддерживаются. Максимум — 1024 знака UTF16."; return
         }
         guard canSend, let provider, let file, let target else { return }
+        videoPlayback.stop()
         let frozen = captionInput, frozenAbove = captionAboveMedia, frozenSpoiler = spoilerOverride ?? mediaSpoiler
         if let store = recoveryStore, let id = preparationID {
             let bound = bindingID
@@ -478,6 +489,7 @@ enum TelegramUploadEvent {
         if preparationID == id { finishPreparation() }
     }
     @discardableResult private func releaseStage() -> Bool {
+        videoPlayback.stop()
         if recoveryInitialInFlight { file = nil; recoveryInitialInFlight = false; return true }
         return cleanup()
     }
@@ -513,9 +525,10 @@ enum TelegramUploadEvent {
         didFinishPreparation?(id)
     }
     @discardableResult private func cleanup() -> Bool {
+        videoPlayback.stop()
         guard let file else { return true }
         do { try discard(file); self.file = nil; return true }
         catch { self.error = "Не удалось удалить временный файл."; return false }
     }
-    isolated deinit { preparation?.cancel(); deadline?.cancel(); lease?.stop(); if let file { try? discard(file) } }
+    isolated deinit { videoPlayback.stop(); preparation?.cancel(); deadline?.cancel(); lease?.stop(); if let file { try? discard(file) } }
 }

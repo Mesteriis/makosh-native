@@ -136,7 +136,7 @@ enum TelegramUploadVideoIO {
         ])
     }
 
-    private static func validateSnapshot(_ file: TelegramUploadFile, fd: Int32, original: stat) throws {
+    static func validateSnapshot(_ file: TelegramUploadFile, fd: Int32, original: stat) throws {
         try TelegramUploadFileIO.validateOwnedStage(file)
         var final = stat(), currentPath = stat()
         guard fstat(fd, &final) == 0, lstat(file.url.path, &currentPath) == 0,

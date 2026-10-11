@@ -9,6 +9,8 @@ enum TelegramNativePlaybackError: LocalizedError, Equatable {
 
 @MainActor
 final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
+    private let mimeType: String?
+    private let keepsItemAtEnd: Bool
     private(set) var player: AVPlayer?
     private var asset: AVURLAsset?
     private var generation: UUID?
@@ -17,13 +19,19 @@ final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
     private var notifications: [NSObjectProtocol] = []
     private var timeObserver: Any?
 
+    init(mimeType: String? = nil, keepsItemAtEnd: Bool = false) {
+        self.mimeType = mimeType; self.keepsItemAtEnd = keepsItemAtEnd
+    }
+
     isolated deinit { cleanUp() }
 
-    static func restrictedAsset(file: URL) -> AVURLAsset {
-        AVURLAsset(url: file, options: [
+    static func restrictedAsset(file: URL, mimeType: String? = nil) -> AVURLAsset {
+        var options: [String: Any] = [
             AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue),
             AVURLAssetShouldSupportAliasDataReferencesKey: false
-        ])
+        ]
+        if let mimeType { options[AVURLAssetOverrideMIMETypeKey] = mimeType }
+        return AVURLAsset(url: file, options: options)
     }
 
     func load(file: URL, kind: TelegramPlaybackKind,
@@ -36,7 +44,7 @@ final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
               metadata.st_size > 0 else { throw TelegramNativePlaybackError.unavailable }
         let token = UUID()
         generation = token
-        let asset = Self.restrictedAsset(file: file)
+        let asset = Self.restrictedAsset(file: file, mimeType: mimeType)
         self.asset = asset
         do {
             return try await withTaskCancellationHandler {
@@ -120,7 +128,7 @@ final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
             notifications.append(NotificationCenter.default.addObserver(forName: name, object: item, queue: .main) { [weak self] _ in
                 Task { @MainActor in
                     guard self?.generation == token else { return }
-                    self?.stop()
+                    if name != AVPlayerItem.didPlayToEndTimeNotification || self?.keepsItemAtEnd != true { self?.stop() }
                     receive(event)
                 }
             })

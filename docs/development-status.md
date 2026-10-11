@@ -1,6 +1,55 @@
 # Development status — 2026-10-11
 
-## Current stage: outgoing video JPEG and verified MediaBox preparation
+## Current stage: muted looping video preparation preview
+
+Telegram remains inside the common service/sidebar/dialog/conversation/dossier
+window. Video preparation now uses the reference's muted loop in its visible
+key window, retaining the existing caption, spoiler, placement and send controls.
+Reference evidence: MediaPreviewRowItem.swift:46–55,212 and
+ChatInteractiveContentView.swift:26–39,566–577,758–770,1136–1174. The original
+video is not transcoded. Own SwiftUI/AppKit integration uses the existing native
+AVPlayer engine; no outer GPLv2 source/assets or reference build dependency is added.
+
+A dedicated preparation controller validates metadata and the owned immutable
+stage before opening, supplies the container MIME hint for extensionless bytes,
+and rechecks its inode/stat snapshot after native readiness. Playback is muted,
+external playback disabled, and a native AVPlayerView observes its actual window's
+key/occlusion state. It pauses when invisible/inactive. The upload owner detaches
+the decoder before submission, stage release or rebinding; spoiler and sheet
+closure also stop it. Player identity and generation guards reject stale view
+callbacks and late loading results. A 30-second loading deadline and visible
+safe errors preserve the first-frame fallback. Received-media end behavior keeps
+its previous default. This slice changes no persistence schema, archive retention
+or encrypted S3 format.
+
+Four new regressions exercise actual AVPlayer with generated MOV/MP4: owned-stage
+URL, silent playback/visibility, repeated loops, replacement and stale callbacks,
+spoiler/dismiss/rebind/send ordering before unlink/submit, invalid metadata,
+removed stage and immediate cancellation. Focused4 tests pass. Initial missing
+API compilation and a 4-test/5-failure behavior red are recorded separately;
+AppKit build initially failed on notification-name qualification and was fixed.
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**658 XCTest (595 Telegram +63 core), zero failures;32 Python regressions**.
+The full log retains152 upstream t19 teardown diagnostics without test failure.
+
+Owned native CUA QA uses an animated portrait MOV in the existing preparation
+sheet. The final native video surface has a labelled accessibility image;
+spoiler removes both video and poster from accessibility, and Escape returns the
+ordinary draft. Restart preserved that draft without restoring cancelled media.
+Strict built/QA signatures and unsigned payload match pass. UI actions and visual
+observations are recorded in the private root report; repeat/visibility and
+before-release ordering are proven by real-player regressions, not screenshot
+inference. Native window inactive/occlusion notifications and deterministic held
+in-flight cancellation have not been separately exercised through CUA.
+
+Parent dde0e6d push38114425140 and PR38114428835 CI are terminal success for the
+exact SHA, verified by direct readback. Current index/review/publication outcomes
+are in this slice's private root report. Custom cover, multiple selection/albums,
+complete Telegram visual/workflow parity and full Account/network/server delivery
+remain open. MMail/Aether, WhatsApp, Teams, Telemost, backups and standalone
+packaging still follow; the full sequential migration goal remains active.
+
+## Historical outgoing video JPEG and verified MediaBox preparation (dde0e6d)
 
 The reference's first-frame JPEG now accompanies ordinary video in one native
 previewRepresentation: preferred transform, at most320px and quality0.3. The

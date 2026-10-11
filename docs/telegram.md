@@ -1454,5 +1454,17 @@ S3 archive format and PostgreSQL schema are unchanged. The original is never
 transcoded. Owned native CUA verified local synthetic MOV acceptance through this
 shared preparation path in the common window.
 Full Account/media-transform/network pipeline and Telegram server acceptance
-remain unverified. Playback, custom cover, multiple selection/albums and full
-visual parity remain open.
+remain unverified. Preparation playback now borrows only the validated owned stage,
+rechecking its inode/stat snapshot after native readiness. A container MIME hint
+supports extensionless MOV/MP4; external playback is disabled. The reference's
+muted loop runs only in the native surface's visible key window. Spoiler, dismiss,
+rebind and submission detach the decoder before source release. Player identity
+and generation reject stale callbacks; loading has a30-second deadline and safe
+visible failure. Received-media playback retains its previous end behavior.
+Real AVPlayer regressions cover actual MOV/MP4, repeated loops, visibility,
+replacement, cleanup ordering, invalid preparation and immediate cancellation.
+Owned final CUA verifies animated portrait MOV, labelled native accessibility,
+spoiler hiding and Escape preserving the ordinary draft. Restart preserves that
+draft without cancelled-media resurrection. Native window notifications and held
+in-flight cancellation remain separately unverified in CUA. Custom cover,
+multiple selection/albums and full visual parity remain open.

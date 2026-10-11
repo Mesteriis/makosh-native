@@ -245,7 +245,7 @@ primary click через synthetic queue; Escape оставляет подгот
 reference send menu (silent/schedule/online/effects), playback/cover/альбомы и
 визуальная parity остаются открытыми. Подготовка видео описана ниже. GPLv2 UI/ассеты не копировались.
 
-## Видео: общий выбор и первый кадр
+## Видео: общий выбор, первый кадр и воспроизведение
 
 Общая боковая панель сервисов сохраняется. ChatInputAttachView.swift:105–122
 задаёт общий выбор «Фото или видео». Собственная NSOpenPanel теперь принимает
@@ -282,6 +282,19 @@ snapshot читается на native FIFO очереди после запис�
 и все флаги явно: native equality часть полей игнорирует. Real MediaBox/shared
 native enqueue/reopen проверяют миниатюру отдельно от synthetic StoreMessage UI.
 Native CUA подтверждает MOV и локальное принятие через общую подготовку.
-Playback, custom cover, album/multiple selection, dust mask и полная визуальная
-parity остаются открытыми.
+Воспроизведение в подготовке теперь следует MediaPreviewRowItem.swift:46–55,212
+и ChatInteractiveContentView.swift:26–39,566–577,758–770,1136–1174: тихий цикл
+в видимом key window, пауза вне него и отсутствие проигрывателя под спойлером.
+Собственный AVPlayerView сохраняет aspect ratio и прежнее окно/меню. Только
+проверенный owned stage доступен декодеру; MIME hint задаётся из проверенного
+имени, а inode/stat сверяются после readiness. Перед submit/release/rebind
+проигрыватель синхронно отсоединяется. Старый native view не может остановить
+новый player. Ошибка открытия видна рядом с fallback первого кадра.
+Четыре real AVPlayer regression проверяют MOV/MP4, mute, visibility, loop,
+replacement, spoiler/cancel/rebind/send и отказ повреждённой подготовки.
+Финальная native CUA проверила animated portrait MOV, accessibility видео,
+скрытие под спойлером, Escape и ordinary draft после restart. Native key/occlusion
+notifications отдельно через CUA не проверялись; события контроллера проверены.
+Custom cover, album/multiple selection, dust mask и полная визуальная parity
+остаются открытыми.
 Реальная отправка/доставка видео и полная Account pipeline не проверены.

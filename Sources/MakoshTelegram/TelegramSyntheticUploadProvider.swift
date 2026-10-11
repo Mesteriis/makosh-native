@@ -18,7 +18,8 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = SyntheticUploadLease()
         guard target.accountID == accountID, target.hasValidReplySource, telegramFormattedCaptionCanSend(caption),
-              (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo else {
+              (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo || file.mode == .video,
+              let (resource, reference) = telegramUploadMedia(file) else {
             receive(.rejected); return lease
         }
         let postbox = self.postbox, loseAcknowledgement = self.loseAcknowledgement
@@ -29,8 +30,9 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
                 receive(.committing)
                 if let postbox, let lease {
                     let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
-                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler)
-                    lease.operation.set((syntheticUploadCommit(postbox: postbox, receipt: receipt)
+                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
+                        localResourceID: resource.fileId)
+                    lease.operation.set((syntheticUploadCommit(postbox: postbox, receipt: receipt, reference: reference)
                         |> deliverOnMainQueue).start(next: { event in
                             MainActor.assumeIsolated {
                                 if case .accepted = event, loseAcknowledgement { receive(.uncertain) }
@@ -52,9 +54,9 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
     }
 }
 
-private func syntheticUploadCommit(postbox: Postbox, receipt: TelegramPendingUploadEnqueueReceipt) -> Signal<TelegramUploadEvent, NoError> {
+private func syntheticUploadCommit(postbox: Postbox, receipt: TelegramPendingUploadEnqueueReceipt, reference: AnyMediaReference) -> Signal<TelegramUploadEvent, NoError> {
     postbox.transaction { transaction in
-        guard receipt.validate(transaction: transaction), let (_, reference) = telegramUploadMedia(receipt.file) else { return .rejected }
+        guard receipt.validate(transaction: transaction) else { return .rejected }
         let uniqueID = Int64.random(in: Int64.min...Int64.max)
         var attributes = telegramOutgoingTextAttributes(receipt.caption)
         if receipt.captionAboveMedia { attributes.append(InvertMediaMessageAttribute()) }

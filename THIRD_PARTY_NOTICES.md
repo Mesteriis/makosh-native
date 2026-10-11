@@ -61,6 +61,11 @@ Build adaptations in the generated copy:
   receipt in the same Postbox transaction. Existing callers use nil defaults.
   The GPL-3.0-or-later patch in `scripts/telegram_enqueue_adaptation.py` checks
   exact input/output SHA256; no generated engine source is edited by hand.
+  Recipe 9 shares that transaction wrapper and native construction core with a
+  local entry point requiring Postbox and three scalar Account inputs. The
+  production transformation and lazy clock read stay in place. Reverse scalar
+  substitution must recover the exact original native-body SHA256; local tests
+  need neither Account construction nor network managers.
 - Expose a cached numeric-ID index lookup on Postbox transactions. Recipe 7
   composes the exact recipe-4 journal file with the GPL-3.0-or-later adaptation
   in `scripts/telegram_selection_adaptation.py`, checking both file hashes.

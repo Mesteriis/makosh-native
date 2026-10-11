@@ -10,6 +10,14 @@ struct TelegramUploadPreviewView: View {
         self.model = model; upload = model.upload; self.contextID = contextID
     }
     private var canDismiss: Bool { upload.canCancel || upload.phase == .uncertain }
+    private var isVisualMedia: Bool { upload.file?.mode == .photo || upload.file?.mode == .video }
+    private var title: String {
+        switch upload.file?.mode {
+        case .photo: "Отправить фото"
+        case .video: "Отправить видео"
+        default: "Отправить вложение"
+        }
+    }
     var body: some View {
         let captionContext = upload.captionContextID
         let captionRevision = upload.captionRevision
@@ -17,15 +25,15 @@ struct TelegramUploadPreviewView: View {
         let mediaSpoiler = upload.mediaSpoiler
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(upload.file?.mode == .photo ? "Отправить фото" : "Отправить вложение").font(.headline)
+                Text(title).font(.headline)
                 Spacer()
-                if upload.file?.mode == .photo {
+                if isVisualMedia {
                     Menu {
                         spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                         placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                     } label: { Image(systemName: "ellipsis.circle") }
                         .menuStyle(.borderlessButton).fixedSize()
-                        .accessibilityLabel("Действия с фото").accessibilityIdentifier("telegram.upload.actions")
+                        .accessibilityLabel(upload.file?.mode == .video ? "Действия с видео" : "Действия с фото").accessibilityIdentifier("telegram.upload.actions")
                 }
                 Button { upload.dismissPreparation(contextID: contextID) } label: { Image(systemName: "xmark") }
                     .buttonStyle(.plain).disabled(!canDismiss).keyboardShortcut(.cancelAction)
@@ -34,7 +42,7 @@ struct TelegramUploadPreviewView: View {
             .contentShape(Rectangle())
             .accessibilityElement(children: .contain).accessibilityIdentifier("telegram.upload.header")
             .contextMenu {
-                if upload.file?.mode == .photo {
+                if isVisualMedia {
                     spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                     placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                 }
@@ -78,7 +86,7 @@ struct TelegramUploadPreviewView: View {
                     Button("Закрыть наблюдение") { upload.dismissPreparation(contextID: contextID) }
                         .accessibilityIdentifier("telegram.upload.clear")
                 } else {
-                    if upload.file?.mode == .photo {
+                    if isVisualMedia {
                         Menu {
                             sendAsSpoilerButton(revision: captionRevision)
                         } label: {
@@ -133,24 +141,25 @@ private struct TelegramUploadFilePreview: View {
     let mediaSpoiler: Bool
     @State private var preview: TelegramImagePreview?
     @State private var failed = false
+    private var isVideo: Bool { file.mode == .video }
     var body: some View {
         VStack(spacing: 10) {
-            if file.mode == .photo {
+            if file.mode == .photo || isVideo {
                 if let preview {
                     ZStack {
-                        Image(preview.image, scale: 1, label: Text("Предпросмотр фото")).resizable().scaledToFit()
+                        Image(preview.image, scale: 1, label: Text(isVideo ? "Первый кадр видео" : "Предпросмотр фото")).resizable().scaledToFit()
                             .frame(maxWidth: .infinity, maxHeight: 240)
                             .blur(radius: mediaSpoiler ? 18 : 0)
                             .accessibilityHidden(mediaSpoiler)
-                            .accessibilityIdentifier("telegram.upload.photoPreview")
+                            .accessibilityIdentifier(isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview")
                         if mediaSpoiler {
-                            Label("Фото под спойлером", systemImage: "eye.slash")
+                            Label(isVideo ? "Видео под спойлером" : "Фото под спойлером", systemImage: "eye.slash")
                                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(.thinMaterial)
                                 .accessibilityIdentifier("telegram.upload.spoilerPreview")
                         }
                     }.clipped()
                 } else if failed {
-                    Label("Не удалось показать фото", systemImage: "photo.badge.exclamationmark")
+                    Label(isVideo ? "Не удалось показать первый кадр видео" : "Не удалось показать фото", systemImage: "photo.badge.exclamationmark")
                         .frame(maxWidth: .infinity, minHeight: 140)
                 } else { ProgressView().frame(maxWidth: .infinity, minHeight: 140) }
             } else {
@@ -164,7 +173,7 @@ private struct TelegramUploadFilePreview: View {
         }
         .padding(12).frame(maxWidth: .infinity).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
         .task(id: file.id) {
-            guard file.mode == .photo else { return }
+            guard file.mode == .photo || file.mode == .video else { return }
             do {
                 let result = try await TelegramUploadFileIO.preview(file)
                 guard !Task.isCancelled else { return }

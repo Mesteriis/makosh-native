@@ -1,6 +1,52 @@
 # Development status — 2026-10-11
 
-## Current stage: ordinary video data path verified; UI preparation pending
+## Current stage: combined photo/video picker and first-frame preview
+
+Telegram stays in the shared service-sidebar/dialog/conversation/dossier window.
+The attachment menu now follows the reference's Photo or Video choice, with a
+separate File choice. MP4/MOV open a video preview with a transformed, bounded
+first frame; PNG still follows photo normalization, and MP4 selected as File
+stays a document. Placement, spoiler and one-shot send actions now include video.
+Playback, custom cover and albums are still open.
+
+Recipe9 adds a local entry point sharing the production enqueue transaction
+wrapper and native message core. Production media transformation and the lazy
+clock read are preserved. Regeneration changed only EnqueueMessage.swift plus
+its preparation record; exact input/output and reverse-substitution body hashes
+are checked. Real encrypted Postbox/MediaBox tests carry original MP4/MOV bytes
+through native message construction, preserve rich caption/options and an atomic
+receipt across reopen, and reject a second admission of an accepted preparation.
+No Account or network managers are constructed by those tests.
+
+Native CUA QA on the owned synthetic app verified MOV/MP4 first frames, portrait
+orientation, spoiler mask/accessibility, edited caption/placement/spoiler after
+restart, one-shot synthetic ACK, Escape without submission, photo/file cancel,
+Mail→Telegram and restart preserving the ordinary draft without resurrection.
+The UI fixture still constructs explicitly synthetic StoreMessage records;
+shared native construction is verified separately. Strict built/QA signatures
+and unsigned executable payload match pass. No personal accounts, Keychain or
+Telegram network/server actions were used.
+
+Focused23 XCTest pass. Final scripts/dev-db.sh up, scripts/test.sh and
+scripts/build-app.sh exit0: **648 XCTest (585 Telegram +63 core), zero failures;
+32 Python regressions**. Logs retain146 upstream t19 teardown diagnostics without
+a test failure/trap. Poster runtime red was3 tests/1 failure; synthetic video
+receipt/options red was1 test/2 failures. Missing-API/actor-isolation compilation,
+a synthetic marker incorrectly converted to PeerId, and a QA-generator missing
+XCTest import are recorded separately from behavior failures. The fixture
+conversion was fixed without weakening native assertions.
+
+Final review/index/publication outcomes are recorded with this slice's private
+root verification report. Parent9a6a228 hosted push38111857277 and PR38111860659
+are both terminal success, read back for the exact SHA.
+
+Next transfer native JPEG thumbnails/MediaBox, playback, custom cover and albums,
+then remaining Telegram workflows. Full Account enqueue/server acceptance and
+visual parity remain unverified. MMail/Aether, WhatsApp, Teams, Telemost, backups
+and standalone packaging remain open; the full sequential migration goal stays
+active. Archive retention, encrypted S3 format and PostgreSQL schema are unchanged.
+
+## Historical ordinary video groundwork (9a6a228)
 
 Published one-shot photo work is c9ed40c on PR1. Hosted PR38110295928 and
 push38110293029 are both terminal success for that exact SHA, verified by direct

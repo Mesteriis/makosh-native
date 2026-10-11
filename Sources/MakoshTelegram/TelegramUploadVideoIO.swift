@@ -13,6 +13,46 @@ struct TelegramUploadVideoInfo: Equatable, Sendable {
 }
 
 enum TelegramUploadVideoIO {
+    /// Reference SenderController.previewForFile: first frame, transformed,320px.
+    static func poster(_ file: TelegramUploadFile) async throws -> TelegramImagePreview {
+        try Task.checkCancellation()
+        try TelegramUploadFileIO.validateOwnedStage(file)
+        guard file.mode == .video, let video = file.video,
+              video.isValid(name: file.name, size: file.size),
+              file.pixelWidth == video.width, file.pixelHeight == video.height else {
+            throw TelegramUploadFileError.invalidVideo
+        }
+        let info = try await inspect(file)
+        guard info.width == video.width, info.height == video.height,
+              info.duration == video.duration, info.hasAudio == video.hasAudio else {
+            throw TelegramUploadFileError.invalidVideo
+        }
+        let fd = Darwin.open(file.url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw TelegramUploadFileError.unavailable }
+        defer { Darwin.close(fd) }
+        var original = stat()
+        guard fstat(fd, &original) == 0, original.st_mode & S_IFMT == S_IFREG,
+              original.st_size == file.size else { throw TelegramUploadFileError.unavailable }
+        let asset = try restrictedAsset(file)
+        let decoder = TelegramUploadVideoPosterDecoder(asset: asset)
+        do {
+            let preview = try await withTaskCancellationHandler {
+                try await decoder.frame()
+            } onCancel: { Task { await decoder.cancel() } }
+            try Task.checkCancellation()
+            try validateSnapshot(file, fd: fd, original: original)
+            guard preview.image.width > 0, preview.image.height > 0,
+                  preview.image.width <= 320, preview.image.height <= 320 else {
+                throw TelegramUploadFileError.invalidVideo
+            }
+            return preview
+        } catch {
+            if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            if let error = error as? TelegramUploadFileError { throw error }
+            throw TelegramUploadFileError.invalidVideo
+        }
+    }
+
     /// Inspect the owned immutable copy, never the picker URL or nested media URLs.
     /// The reference preserves video bytes; this does not transcode or strip metadata.
     static func inspect(_ file: TelegramUploadFile) async throws -> TelegramUploadVideoInfo {
@@ -27,11 +67,7 @@ enum TelegramUploadVideoIO {
         var original = stat()
         guard fstat(fd, &original) == 0, original.st_mode & S_IFMT == S_IFREG,
               original.st_size == file.size else { throw TelegramUploadFileError.unavailable }
-        let asset = AVURLAsset(url: file.url, options: [
-            AVURLAssetOverrideMIMETypeKey: mime,
-            AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue),
-            AVURLAssetShouldSupportAliasDataReferencesKey: false
-        ])
+        let asset = try restrictedAsset(file)
         defer { asset.cancelLoading() }
         do {
             return try await withTaskCancellationHandler {
@@ -51,18 +87,7 @@ enum TelegramUploadVideoIO {
                 }
                 let hasAudio = !(try await asset.loadTracks(withMediaType: .audio)).isEmpty
                 try Task.checkCancellation()
-                try TelegramUploadFileIO.validateOwnedStage(file)
-                var final = stat(), currentPath = stat()
-                guard fstat(fd, &final) == 0, lstat(file.url.path, &currentPath) == 0,
-                      currentPath.st_mode & S_IFMT == S_IFREG,
-                      currentPath.st_dev == original.st_dev, currentPath.st_ino == original.st_ino,
-                      final.st_size == original.st_size,
-                      final.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec,
-                      final.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec,
-                      final.st_ctimespec.tv_sec == original.st_ctimespec.tv_sec,
-                      final.st_ctimespec.tv_nsec == original.st_ctimespec.tv_nsec else {
-                    throw TelegramUploadFileError.unavailable
-                }
+                try validateSnapshot(file, fd: fd, original: original)
                 let animated = !hasAudio && file.size < 10 * 1024 * 1024 &&
                     (file.name as NSString).pathExtension.lowercased() == "mp4"
                 // TelegramMediaFileAttribute.Video decodes via Float32 in both
@@ -75,5 +100,69 @@ enum TelegramUploadVideoIO {
             if let error = error as? TelegramUploadFileError { throw error }
             throw TelegramUploadFileError.invalidVideo
         }
+    }
+
+    private static func restrictedAsset(_ file: TelegramUploadFile) throws -> AVURLAsset {
+        guard let mime = UTType(filenameExtension: (file.name as NSString).pathExtension)?.preferredMIMEType,
+              mime.hasPrefix("video/") else { throw TelegramUploadFileError.invalidVideo }
+        return AVURLAsset(url: file.url, options: [
+            AVURLAssetOverrideMIMETypeKey: mime,
+            AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue),
+            AVURLAssetShouldSupportAliasDataReferencesKey: false
+        ])
+    }
+
+    private static func validateSnapshot(_ file: TelegramUploadFile, fd: Int32, original: stat) throws {
+        try TelegramUploadFileIO.validateOwnedStage(file)
+        var final = stat(), currentPath = stat()
+        guard fstat(fd, &final) == 0, lstat(file.url.path, &currentPath) == 0,
+              currentPath.st_mode & S_IFMT == S_IFREG,
+              currentPath.st_dev == original.st_dev, currentPath.st_ino == original.st_ino,
+              final.st_size == original.st_size,
+              final.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec,
+              final.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec,
+              final.st_ctimespec.tv_sec == original.st_ctimespec.tv_sec,
+              final.st_ctimespec.tv_nsec == original.st_ctimespec.tv_nsec else {
+            throw TelegramUploadFileError.unavailable
+        }
+    }
+}
+
+/// Keep the mutable native generator on one actor. Only immutable image values
+/// cross executors; cancellation before/during frame generation is remembered.
+private actor TelegramUploadVideoPosterDecoder {
+    private let asset: AVURLAsset
+    private var generator: AVAssetImageGenerator?
+    private var stopped = false
+    init(asset: AVURLAsset) { self.asset = asset }
+
+    func frame() async throws -> TelegramImagePreview {
+        try Task.checkCancellation()
+        guard !stopped else { throw CancellationError() }
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 320, height: 320)
+        self.generator = generator
+        defer { generator.cancelAllCGImageGeneration(); self.generator = nil; asset.cancelLoading() }
+        let preview: TelegramImagePreview = try await withCheckedThrowingContinuation { continuation in
+            // AVFoundation promises one callback for this one requested time,
+            // including a cancelled generation; no guessed callback timeout.
+            generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: .zero)]) { _, image, _, result, _ in
+                if result == .succeeded, let image {
+                    continuation.resume(returning: TelegramImagePreview(image: image))
+                } else {
+                    continuation.resume(throwing: TelegramUploadFileError.invalidVideo)
+                }
+            }
+        }
+        try Task.checkCancellation()
+        guard !stopped else { throw CancellationError() }
+        return preview
+    }
+
+    func cancel() {
+        stopped = true
+        generator?.cancelAllCGImageGeneration()
+        asset.cancelLoading()
     }
 }

@@ -201,7 +201,7 @@ PostgreSQL/S3 подтверждает оба меню, сохранение в�
 и перезапуске, synthetic queue acknowledgement, отсутствие пункта для файла,
 сброс новой подготовки, отмену с сохранением обычного черновика и переход
 Почта → Telegram. Реальная авторизация/отправка в Telegram не проверялась.
-Видео/альбомы в подготовке и прочие media options остаются открытыми.
+Видео-подготовка описана в следующем разделе; playback/cover/альбомы и прочие media options остаются открытыми.
 GPLv2 UI/ассеты не копировались; остальная визуальная parity не заявлена.
 
 ## Подготовка фото: скрытие под спойлером
@@ -224,8 +224,9 @@ latest tuple в исходном store; epoch, захваченный до load,
 снимок даже после завершения записи. Held-export model regression проверяет отказ,
 удаление временного экспорта и повторную загрузку актуального черновика.
 Storage-only retry проверен controller regression;
-нативная инъекция ошибки этой записи не выполнялась. Видео/альбомы, остальные
-media options и реальная отправка Telegram остаются открытыми.
+нативная инъекция ошибки этой записи не выполнялась. Подготовка видео описана
+ниже; playback/cover/альбомы, остальные media options и реальная отправка Telegram
+остаются открытыми.
 
 ## Подготовка фото: разовая отправка под спойлером
 
@@ -241,21 +242,37 @@ Native QA подтверждает правый и800ms held click, выбор �
 primary click через synthetic queue; Escape оставляет подготовку, отмена
 сохраняет ordinary draft, Mail→Telegram и restart его восстанавливают без
 отменённого фото. Реальная сеть Telegram не использовалась. Остальные пункты
-reference send menu (silent/schedule/online/effects), видео/альбомы и визуальная
-parity остаются открытыми. GPLv2 UI/ассеты не копировались.
+reference send menu (silent/schedule/online/effects), playback/cover/альбомы и
+визуальная parity остаются открытыми. Подготовка видео описана ниже. GPLv2 UI/ассеты не копировались.
 
-## Видео: подготовка данных до переноса экрана
+## Видео: общий выбор и первый кадр
 
-Общая боковая панель сервисов сохраняется. Выбор «Фото или видео», preview,
-poster/playback и cover ещё предстоит перенести; текущий picker видео не предлагает.
-Подготовлены собственные staging, schema4 и восстановление из S3 с повторной
-проверкой параметров, а также отображение в native media/проверка local receipt.
-Эта работа не доказывает визуальное соответствие или реальную отправку видео.
+Общая боковая панель сервисов сохраняется. ChatInputAttachView.swift:105–122
+задаёт общий выбор «Фото или видео». Собственная NSOpenPanel теперь принимает
+изображение или видео; отдельный «Файл» сохраняет MP4 обычным документом.
+Выбор пока одиночный; альбомы и отдельные ограничения канала ещё не перенесены.
+Modal показывает фото либо первый кадр видео, переносит обычный rich draft в
+подпись и предлагает прежние placement/spoiler/one-shot действия для обоих видов.
+SenderController.swift:79–139 задаёт первый кадр, preferred transform и предел
+320px; собственный AVFoundation decoder соблюдает эти параметры и проверяет
+принадлежность/неизменность stage. Видео не перекодируется.
+
+Native QA на отдельном synthetic Postbox и PostgreSQL/S3 проверила MOV/MP4,
+портретную ориентацию кадра, маску и скрытие изображения из accessibility,
+edited caption/placement/spoiler после restart, one-shot synthetic ACK и Escape
+без отправки. PNG сохраняет photo normalization; MP4 через «Файл» остаётся
+документом без media actions. Отмена фото/файла возвращает ordinary draft;
+Mail→Telegram и restart не воскрешают отменённые вложения. Полный shared native
+enqueue отдельно проверен real MediaBox/Postbox fixtures; UI synthetic provider
+по-прежнему использует обозначенные StoreMessage fixtures, а не Account/network.
 
 SenderController.swift:426–442,378–382 задаёт Video/supportsStreaming,
 stem.mp4, video/mp4 и условный Animated. CoreExtension.swift:2953–3015 и
 PreviewSenderController.swift:1743–1754 подтверждают inCollage=true даже для
 свежего одиночного видео; финальный nil groupingKey не меняет этот выбор.
 FetchVideoMediaResource.swift:50–72 сохраняет исходные байты; активной
-перекодировки нет. Эти условия зафиксированы в metadata и тестах; полный
-combined-picker/preview flow и его native QA остаются открытыми.
+перекодировки нет. Эти условия зафиксированы в metadata и тестах. Playback,
+custom cover, сохранение JPEG thumbnail в native MediaBox/previewRepresentations,
+album/multiple selection, dust mask и полная визуальная parity остаются открытыми.
+Первый кадр пока используется только в modal preview, не как исходящий thumbnail.
+Реальная отправка/доставка видео и полная Account pipeline не проверены.

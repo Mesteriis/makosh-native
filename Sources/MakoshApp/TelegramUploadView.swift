@@ -5,17 +5,23 @@ import MakoshTelegram
 
 @MainActor
 private enum TelegramUploadPanel {
-    static func choose(mode: TelegramUploadMode) async -> URL? {
+    enum Choice { case media, file }
+    static func choose(_ choice: Choice) async -> (source: URL, mode: TelegramUploadMode)? {
         let panel = NSOpenPanel()
-        panel.title = mode == .photo ? "Выберите фотографию" : "Выберите файл"
-        panel.allowedContentTypes = mode == .photo ? [.image] : [.item]
+        panel.title = choice == .media ? "Выберите фото или видео" : "Выберите файл"
+        panel.allowedContentTypes = choice == .media ? [.image, .movie, .video] : [.item]
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.resolvesAliases = false
-        return await withCheckedContinuation { continuation in
+        let source: URL? = await withCheckedContinuation { continuation in
             panel.begin { response in continuation.resume(returning: response == .OK ? panel.url : nil) }
         }
+        guard let source else { return nil }
+        if choice == .file { return (source, .file) }
+        let type = UTType(filenameExtension: source.pathExtension)
+        let mode: TelegramUploadMode = type?.conforms(to: .image) == true ? .photo : .video
+        return (source, mode)
     }
 }
 
@@ -30,28 +36,28 @@ struct TelegramAttachButtons: View {
     }
     var body: some View {
         Menu {
-            Button("Фото", systemImage: "photo") { choose(.photo) }
-                .accessibilityIdentifier("telegram.upload.choosePhoto")
+            Button("Фото или видео", systemImage: "photo.on.rectangle") { choose(.media) }
+                .accessibilityIdentifier("telegram.upload.chooseMedia")
             Button("Файл", systemImage: "doc") { choose(.file) }
                 .accessibilityIdentifier("telegram.upload.chooseFile")
         } label: { Image(systemName: "paperclip").font(.system(size: 22)).frame(width: 32, height: 32) }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .help("Прикрепить фото или файл").accessibilityLabel("Прикрепить")
+            .help("Прикрепить фото, видео или файл").accessibilityLabel("Прикрепить")
             .accessibilityIdentifier("telegram.upload.attach")
             .disabled(choosing || capturedTarget == nil || upload.phase != .idle || model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil)
     }
     private var capturedTarget: TelegramUploadTarget? {
         model.uploadTarget(replyTo: replySource, contextID: replyContextID ?? model.uploadContextID)
     }
-    private func choose(_ mode: TelegramUploadMode) {
+    private func choose(_ choice: TelegramUploadPanel.Choice) {
         guard !choosing, let target = capturedTarget else { return }
         let captionInput = model.composerInput
         let contextID = model.uploadContextID
         choosing = true
         Task { @MainActor in
             defer { choosing = false }
-            guard let source = await TelegramUploadPanel.choose(mode: mode) else { return }
-            model.prepareUpload(source: source, mode: mode, target: target, captionInput: captionInput, contextID: contextID)
+            guard let selected = await TelegramUploadPanel.choose(choice) else { return }
+            model.prepareUpload(source: selected.source, mode: selected.mode, target: target, captionInput: captionInput, contextID: contextID)
         }
     }
 }

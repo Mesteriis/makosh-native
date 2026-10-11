@@ -288,11 +288,20 @@ made by an older recipe. Preserve `.local/telegram-engine` under an unused backu
 directory name, then rerun `scripts/build-app.sh` or `scripts/test.sh`; the locked
 source/compiler caches can be reused. Do not edit the generated engine or remove
 the application-support session directory, PostgreSQL volume or Keychain items.
-Fresh checkouts prepare recipe 8 directly, retaining the recipe-4 journal,
+Fresh checkouts prepare recipe 9 directly, retaining the recipe-4 journal,
 recipe-5 read scan and recipe-6 enqueue hooks. Recipe 7 adds the hash-checked
 cached ID index lookup used by Shift selection. Preserve older prepared source
 under an unused ignored backup name before preparing recipe 8. Recipe 8 adds
 exact-hash-checked selected-message admission inside native delete's transaction.
+Recipe 9 adds a local enqueue entry point sharing the Account API's transaction
+wrapper and native message-construction core. Its three Account inputs become
+explicit scalars; the production API keeps its outgoing-media transformation
+and reads the server-adjusted clock at the original point in the transaction.
+Source/output digests and a reverse-substitution body digest guard this patch.
+Preserve recipe-8 preparations under an unused ignored name before regeneration.
+Offline encrypted Postbox/MediaBox tests exercise this shared core with actual
+MP4/MOV bytes, options, atomic receipts, reopen and duplicate admission refusal.
+They do not construct Account/network managers or prove Telegram server delivery.
 
 Archive tables share the configured PostgreSQL service/schema, without changing
 the contact aggregate. AES-GCM encrypts text and metadata with separate HKDF
@@ -1372,13 +1381,15 @@ independent from the preview toggle. Own SwiftUI Menu(primaryAction:) plus
 contextMenu preserves primary/secondary/held gestures, verified in the owned
 native synthetic app. Tests exercise stale identities/revisions, invalid input,
 file exclusion, frozen rich content/options, held/failed markers and acceptance
-retry without resend. The complete reference send menu, video/album preparation
-and live Telegram acceptance remain open.
+retry without resend. The complete reference send menu, playback/cover/album
+preparation and live Telegram acceptance remain open. Video support follows below.
 
-## Ordinary video preparation: storage and native mapping groundwork
+## Ordinary video preparation: picker, first frame and native queue
 
-Video is not exposed by the attachment picker yet. The owned staging path copies
-original bytes without transcoding or metadata stripping, then inspects only that
+The shared-window attachment menu offers Photo or Video and a separate File.
+The single-selection native panel routes images to photo normalization and
+videos to the owned staging path; an MP4 chosen as File remains a document.
+Video staging copies original bytes without transcoding or metadata stripping, then inspects only that
 copy with AVFoundation. External media references/aliases are forbidden. An
 explicit original-name MIME hint identifies extensionless private stage files;
 cancellation and inode/stat checks reject removed or changed stages. Duration is
@@ -1412,9 +1423,21 @@ Admission matches the persisted video descriptor. The same-transaction local
 receipt additionally checks one queued video, exact native attributes, MIME,
 size, local resource identity and singleton grouping before accepting its marker.
 Controller recovery requires the same descriptor, preserves rich input/options,
-and keeps an unknown submission non-resendable. Ready video supports placement,
-spoiler and one-shot override internally; no video controls are exposed yet.
-Tests use real generated MP4/MOV, encrypted Postbox, PostgreSQL and S3; queued
-records are synthetic StoreMessage fixtures, not live-account sends. Combined
-photo/video selection, poster/playback/cover preparation, native UI/lifecycle QA,
-the full engine enqueue path and Telegram server acceptance remain unverified.
+and keeps an unknown submission non-resendable. The video modal now shows the
+transformed first frame at the reference's320px decoder bound and exposes
+placement, spoiler and one-shot override. The decoder owns its generator on one
+actor, cancels native work and rejects a missing/changed or foreign stage.
+Native CUA QA verified MOV/MP4 preparation, orientation, spoiler accessibility,
+caption/options after restart, synthetic acknowledgement, photo/file cancel and
+shared Mail→Telegram navigation without resurrecting cancelled preparations.
+
+Tests use real generated MP4/MOV, encrypted Postbox, PostgreSQL and S3. Recipe9
+also permits exercising the production transaction wrapper and native enqueue
+core locally: original bytes enter real MediaBox, message/options and atomic
+receipt survive reopen, and accepted preparations cannot enqueue twice. This
+test creates no Account or network managers. The UI fixture separately retains
+explicit synthetic StoreMessage construction; its queue is not server delivery.
+Full Account/media-transform/network pipeline and Telegram server acceptance
+remain unverified. Playback, custom cover, native outgoing JPEG thumbnail/
+previewRepresentations, multiple selection/albums and full visual parity remain
+open. The first frame currently serves only the modal UI.

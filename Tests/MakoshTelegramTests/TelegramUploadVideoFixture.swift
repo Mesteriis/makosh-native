@@ -4,25 +4,25 @@ import CoreVideo
 @testable import MakoshTelegram
 
 @MainActor
-func writeUploadVideoFixture(_ url: URL, rotated: Bool = false, timescale: Int32 = 10) async throws {
+func writeUploadVideoFixture(_ url: URL, rotated: Bool = false, timescale: Int32 = 10, width: Int = 32, height: Int = 16) async throws {
     let writer = try AVAssetWriter(outputURL: url, fileType: url.pathExtension == "mov" ? .mov : .mp4)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-        AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 32, AVVideoHeightKey: 16
+        AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height
     ])
     if rotated { input.transform = CGAffineTransform(rotationAngle: .pi / 2) }
     let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input,
         sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-            kCVPixelBufferWidthKey as String: 32, kCVPixelBufferHeightKey as String: 16])
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height])
     writer.add(input)
     guard writer.startWriting() else { throw TelegramPlaybackFileError.unsupported }
     writer.startSession(atSourceTime: .zero)
     do {
         var buffer: CVPixelBuffer?
-        XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, 32, 16, kCVPixelFormatType_32ARGB, nil, &buffer), kCVReturnSuccess)
+        XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32ARGB, nil, &buffer), kCVReturnSuccess)
         let pixels = try XCTUnwrap(buffer)
         CVPixelBufferLockBaseAddress(pixels, [])
         if let address = CVPixelBufferGetBaseAddress(pixels) {
-            memset(address, 0, CVPixelBufferGetBytesPerRow(pixels) * 16)
+            memset(address, 0, CVPixelBufferGetBytesPerRow(pixels) * height)
         }
         CVPixelBufferUnlockBaseAddress(pixels, [])
         for frame in 0..<10 {

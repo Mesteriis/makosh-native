@@ -31,7 +31,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 8
+RECIPE = 9
 
 
 def run(*args):
@@ -223,7 +223,7 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
                         "Message search reports RPC failure without consuming either history cursor",
                         "Postbox records message snapshots before overwrite/removal in a durable same-transaction archive journal",
                         "Postbox restores all pending read synchronization operations using an integer-key table scan",
-                        "Outgoing queue admission and owned pending-upload receipt share one Postbox transaction",
+                        "Account and local outgoing enqueue share the native transaction core, admission and owned pending-upload receipt",
                         "Postbox exposes a bounded cached native-ID range lookup without history fetches",
                         "Selected-message fresh admission and exact-ID deletion share one Postbox transaction",
                         "FlatSerialization generated with pinned official flatc 24.12.23"]}, indent=2) + "\n")

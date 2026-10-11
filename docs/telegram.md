@@ -1651,5 +1651,36 @@ and first-pixel colors across eight orientations, zero-axis rejection/source
 retention and CoreGraphics half-pixel edge intersection. Focused30 tests and
 the709-test full suite pass. Native move/drawing-cancel/save/restart and prepared/
 accepted S3 checks verify320×192 quadrant cover, exact caption, retained receipt
-and unchanged video. Reference conditional feedback differences and inserted
-image overlays remain documented; complete Telegram/network parity is open.
+and unchanged video. Reference conditional feedback differences remain documented;
+inserted images follow below. Complete Telegram/network parity is open.
+
+### Inserted cover images
+
+The main cover editor accepts a file or an explicit Cmd+V paste of file URLs or
+PNG/TIFF. Decoding uses owned immutable oriented snapshots with20MiB,8192px-axis
+and40M-pixel bounds. It admits at most16 live layers and40M unique decoded pixels
+retained in current/undo state, with64 history steps. A multi-file paste publishes
+only after all inputs pass and produces one undo step. No source URL or image
+bytes enter PostgreSQL. Cmd+C copies the selected bitmap as PNG; Delete, Cmd+Z
+and Shift+Cmd+Z operate on ordered layers and selection. Eight handles preserve
+aspect by default and support the reference Shift formulas. Pointer movement is
+unclamped fitted-point geometry; export clips to the bounded crop.
+
+Each item captures its fitted-point rectangle and source multiplier at insertion.
+The transform renderer composites base and paint, restores their transform, then
+draws ordered images in transformed top-left source coordinates. Independent
+rounded pixel rectangles precede final bounded320px JPEG crop. Unrotated mirror
+keeps overlays. Original video/thumbnail remain distinct, and accepted flattened
+cover bytes use the existing encrypted S3/CAS/schema5 path. Working layers are
+ephemeral, like the drawing editor; this adds no persistence/configuration schema.
+
+Forty-one focused and720 full XCTest plus32 Python checks pass. Native regression
+reproduced and fixed drag Undo losing previous selection and handle double-click
+resetting crop. All eight stationary handle double-clicks, file Menu AX, clipboard
+shortcuts, Delete/Undo/Redo, pointer resize/Undo and Draw Cancel pass. Prepared and
+accepted readbacks verify320×192 quadrant/white-border output, exact caption,
+unchanged video and retained digest/receipt; restart restores prepared state and
+does not reopen accepted state. These are isolated synthetic checks, not live
+Telegram delivery. Release-only Shift and interrupted/clipped gesture edge cases
+are unexecuted. Deterministic centering, bounded state and reference captured-scale
+preview/export differences after refit are recorded in reference-interface.md.

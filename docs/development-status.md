@@ -1,6 +1,52 @@
 # Development status — 2026-10-11
 
-## Current stage: fitted initial crop and source-pixel precision
+## Current stage: inserted images in the Telegram video cover editor
+
+Telegram remains inside the common Makosh service sidebar/dialog/conversation/
+dossier window. The main cover editor now inserts an immutable oriented image
+from a file or explicit paste, moves it, exposes eight resize handles and Shift
+geometry, changes layer order, copies/deletes it and supports whole-action undo/
+redo. Multi-file paste is atomic and has one undo step. Images retain fitted-point
+rectangles and captured source multipliers, following the inspected reference.
+They render above base/paint and before final crop directly into bounded320px
+JPEG, including unrotated mirrored output. Original video remains unchanged;
+final cover bytes and previous cover versions use the existing encrypted S3 path.
+Layer editing state is ephemeral; no storage or credential schema changes.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**720 XCTest (657 Telegram +63 core), zero failures;32 Python regressions**.
+Focused41 tests pass. Meaningful image behavior red8tests/91failures and batch
+red11/2 preceded implementation; missing-API compile reds are separate. Final
+logs retain160 upstream t19 teardown diagnostics without test failure.
+
+Independent frozen source review found two P2s. Root reproduced both natively:
+drag Undo retained the new selection and a handle double-click reset crop.
+Capture-before-selection and shared actual handle hit regions fix them. Native
+rechecks pass for all eight stationary handle double-clicks, unselected-layer
+drag/Undo, Cmd+C/V, Delete/Cmd+Z/Shift+Cmd+Z, pointer resize/Undo and drawing Cancel.
+The insertion Menu was absent from AX; matching the existing borderless style
+restores its visible/actionable menu. Strict built/QA signatures and unsigned
+payload equality pass. Root revalidated the final review's13 hashes and both pins;
+the worker ran no tests/UI and observed provider/model/usage stays unknown.
+
+Prepared and accepted Postbox/S3 readbacks both exit0:320×192 JPEG, four known
+quadrant colors plus two white border samples, exact caption, unchanged original
+video and matching retained-cover digest/receipt. Restart restores preparation;
+after local synthetic acceptance, another restart keeps it closed. QA uses only
+isolated synthetic storage, without personal accounts, Keychain or Telegram
+network. Native release-only Shift, interrupted drag/import and clipped hit-test
+edge cases remain unexecuted; reference runtime was not run.
+
+Deliberate differences include deterministic center, bounded immutable decode,
+16 live layers/64 history steps/40M retained decoded pixels, no stale redo and
+retaining overlays in unrotated-mirror export. Captured reference point geometry
+can diverge between preview/export after base refitting; see reference-interface.md.
+Complete Telegram/album/menu and live Account/network parity, MMail/Aether,
+WhatsApp, Teams, Telemost, backups and standalone packaging remain open. The
+sequential goal stays active. Parent edf12db PR38122489641 and push38122486132
+CI are terminal success for that exact SHA. New-head evidence stays private.
+
+## Historical fitted initial crop and source-pixel precision (edf12db)
 
 The editor now initializes its selection once from the actual fitted canvas:
 floor(min(width,height)) square, then retained preset/Original aspect correction

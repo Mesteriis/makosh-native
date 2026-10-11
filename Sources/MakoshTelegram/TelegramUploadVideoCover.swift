@@ -46,18 +46,20 @@ public enum TelegramUploadVideoCoverIO {
     }
     public static func stage(_ selection: TelegramUploadVideoCoverSelection, crop: CGRect,
                              transform: TelegramUploadVideoCoverTransform = .init(),
-                             painting: TelegramUploadVideoCoverPainting = .init()) async throws -> TelegramUploadVideoCover {
+                             painting: TelegramUploadVideoCoverPainting = .init(),
+                             images: TelegramUploadVideoCoverImages = .init()) async throws -> TelegramUploadVideoCover {
         try TelegramUploadFileIO.validateOwnedStage(selection.file)
         guard let digest = selection.preview.originalSHA256 else { throw TelegramUploadFileError.unavailable }
-        return try await stagedCover(selection.file.url, crop: crop, expectedSHA256: digest, transform: transform, painting: painting)
+        return try await stagedCover(selection.file.url, crop: crop, expectedSHA256: digest, transform: transform, painting: painting, images: images)
     }
     public static func stage(_ source: URL, crop: CGRect) async throws -> TelegramUploadVideoCover {
         try await stagedCover(source, crop: crop, expectedSHA256: nil)
     }
     private static func stagedCover(_ source: URL, crop: CGRect, expectedSHA256: String?,
                                     transform: TelegramUploadVideoCoverTransform = .init(),
-                                    painting: TelegramUploadVideoCoverPainting = .init()) async throws -> TelegramUploadVideoCover {
-        let file = try await TelegramUploadFileIO.stageVideoCover(source, crop: crop, expectedSHA256: expectedSHA256, transform: transform, painting: painting)
+                                    painting: TelegramUploadVideoCoverPainting = .init(),
+                             images: TelegramUploadVideoCoverImages = .init()) async throws -> TelegramUploadVideoCover {
+        let file = try await TelegramUploadFileIO.stageVideoCover(source, crop: crop, expectedSHA256: expectedSHA256, transform: transform, painting: painting, images: images)
         do {
             try Task.checkCancellation()
             guard let width = file.pixelWidth, let height = file.pixelHeight,

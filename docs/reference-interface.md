@@ -440,4 +440,37 @@ normalized область с нулевой округлённой осью от
 CoreGraphics intersection на half-pixel boundary. Native/S3 проверка1001×601
 даёт320×192 cover с четырьмя ожидаемыми цветами и неизменным исходным видео.
 Paint использует прежний CTM и bounded output; схема архива не меняется.
-Inserted-image overlays и остальные Telegram flows ещё открыты.
+Inserted-image overlays перенесены следующим этапом; остальные Telegram flows
+и полная parity остаются открыты.
+
+## Вставленные изображения в обложке
+
+EditImageModalController.swift:1033–1046,1142–1152 задаёт вставку, fitted-point
+rect, захваченный multiplier и snapshot до смены выделения. Его восемь ручек
+и Shift-геометрия сверены с256–384; Extensions.swift:864–872,1226–1228,
+1860–1861 подтверждает fit/floor/центр и независимое округление source pixels.
+EditImageControls.swift:70–154 рисует вставки после основного изображения.
+Макош реализует это собственным SwiftUI/CoreGraphics кодом: файл/явная Paste,
+перемещение, восемь ручек, порядок, Copy/Delete, whole-action undo/redo.
+Пакетная вставка атомарна и отменяется одним действием. Draw sheet редактирует
+фон и paint; вставки сохраняются в основном редакторе над ними. Итоговый JPEG
+через существующий CAS попадает в S3; рабочие слои после закрытия не сохраняются.
+
+Native проверка выявила и исправила потерю предыдущего выделения при drag/Undo
+и сброс crop двойным щелчком по ручке вне bitmap rect. Capture выполняется до
+выделения; parent double-click исключает реальные12pt hit regions восьми ручек.
+Повторная проверка всех восьми ручек, Cmd+C/V, Delete/Undo/Redo, pointer resize/
+Undo и возврата из Draw проходит. Borderless Menu доступен в AX. Prepared/accepted
+readbacks и restart подтверждают320×192 обложку с четырьмя цветами и белой рамкой,
+точную подпись, неизменное видео и сохранённый cover digest/receipt.
+
+Собственные ограничения:20MiB/8192px/40M pixels на декодирование,16 живых слоёв,
+40M сохранённых в текущем состоянии/undo decoded pixels и64 шага истории. Это
+не точная гарантия peak RSS. Детерминированный центр заменяет random jitter;
+новая правка очищает redo, no-op не добавляет undo. Вставки сохраняются при
+unrotated mirror, где reference early return их пропускает. PNG Copy переносит
+immutable bitmap, без исходного URL. Captured point rect/multiplier не меняются
+при повороте/новом fit фона, как в reference; после refit возможна разница preview
+и export. Release-only Shift, прерванные drag/import и край clipped hit testing
+нативно не приняты; upstream callback runtime не запускался. Outer GPLv2 code/
+assets не копируются, build/run/test остаются независимыми от research checkout.

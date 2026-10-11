@@ -4,9 +4,9 @@ import UniformTypeIdentifiers
 import MakoshTelegram
 
 @MainActor enum TelegramVideoCoverPanel {
-    static func choose() async -> URL? {
+    static func choose(title: String = "Выберите обложку видео") async -> URL? {
         let panel = NSOpenPanel()
-        panel.title = "Выберите обложку видео"
+        panel.title = title
         panel.allowedContentTypes = [.image]
         panel.canChooseFiles = true; panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false; panel.resolvesAliases = false
@@ -34,6 +34,10 @@ struct TelegramVideoCoverEditorView: View {
     let close: () -> Void
     @State private var crop: TelegramUploadVideoCoverCrop
     @State private var painting = TelegramUploadVideoCoverPainting()
+    @State private var images = TelegramUploadVideoCoverImages()
+    @State private var canvasSize = CGSize.zero
+    @State private var importing = false
+    @State private var importTask: Task<Void, Never>?
     @State private var drawingEditor = false
     @State private var applying = false
     @State private var error: String?
@@ -44,8 +48,9 @@ struct TelegramVideoCoverEditorView: View {
     }
     var body: some View {
         VStack(spacing: 12) {
-            TelegramVideoCoverCropCanvas(preview: presentation.selection.preview, painting: painting, crop: $crop)
-                .frame(height: 360).disabled(applying)
+            TelegramVideoCoverCropCanvas(preview: presentation.selection.preview, painting: painting, crop: $crop,
+                images: $images, canvasSize: $canvasSize, error: $error)
+                .frame(height: 360).disabled(applying || importing)
             if let error { Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.videoCoverEditor.error") }
             HStack {
                 Button("Отмена") { upload.cancelVideoCoverEdit(presentation.id); close() }
@@ -66,31 +71,87 @@ struct TelegramVideoCoverEditorView: View {
                     .keyboardShortcut("d", modifiers: .command).disabled(applying)
                     .help("Рисовать на обложке (⌘D)").accessibilityLabel("Рисовать на обложке")
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.draw")
+                Menu {
+                    Button("Из файла…", action: chooseImage)
+                    Button("Скопировать вставку", action: copyImage).keyboardShortcut("c", modifiers: .command)
+                        .disabled(images.selectedID == nil)
+                    Button("На передний план") { images.bringSelectedToFront() }.disabled(images.selectedID == nil)
+                } label: { Image(systemName: "photo.badge.plus") }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .help("Вставить изображение из файла").accessibilityLabel("Добавить изображение")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.insert")
+                Button(action: pasteImages) { Image(systemName: "document.on.clipboard") }
+                    .keyboardShortcut("v", modifiers: .command)
+                    .help("Вставить изображение (⌘V)").accessibilityLabel("Вставить изображение")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.paste")
+                Button { images.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                    .keyboardShortcut("z", modifiers: .command).disabled(!images.canUndo)
+                    .help("Отменить изменение вставок (⌘Z)").accessibilityLabel("Отменить изменение вставок")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.undo")
+                Button { images.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                    .keyboardShortcut("z", modifiers: [.command, .shift]).disabled(!images.canRedo)
+                    .help("Вернуть изменение вставок (⇧⌘Z)").accessibilityLabel("Вернуть изменение вставок")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.redo")
+                Button { images.deleteSelected() } label: { Image(systemName: "trash") }
+                    .keyboardShortcut(.delete, modifiers: []).disabled(images.selectedID == nil)
+                    .help("Удалить вставку (Delete)").accessibilityLabel("Удалить вставку")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.deleteImage")
                 Spacer()
-                if applying { ProgressView().controlSize(.small) }
+                if applying || importing { ProgressView().controlSize(.small) }
                 Button("Готово", action: apply).keyboardShortcut(.defaultAction).disabled(applying)
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.done")
-            }
+            }.disabled(applying || importing || drawingEditor)
         }
         .padding(20).frame(width: 600)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("telegram.upload.videoCoverEditor")
-        .interactiveDismissDisabled(applying)
-        .onDisappear { applyTask?.cancel() }
+        .interactiveDismissDisabled(applying || importing)
+        .onDisappear { applyTask?.cancel(); importTask?.cancel() }
         .sheet(isPresented: $drawingEditor) {
             TelegramVideoCoverPaintingView(preview: presentation.selection.preview, transform: crop.transform,
                 painting: painting, save: { painting = $0 }, close: { drawingEditor = false })
         }
     }
+    private func chooseImage() {
+        startImport {
+            guard let source = await TelegramVideoCoverPanel.choose(title: "Выберите изображение для вставки") else { return nil }
+            return .files([source])
+        }
+    }
+    private func pasteImages() { startImport { try TelegramVideoCoverImageInput.pasteboard() } }
+    private func copyImage() {
+        guard let item = images.items.first(where: { $0.id == images.selectedID }) else { return }
+        do { try TelegramVideoCoverImageInput.copy(item) }
+        catch { self.error = "Не удалось скопировать вставку." }
+    }
+    private func startImport(_ read: @escaping @MainActor () async throws -> TelegramVideoCoverImageInput.Input?) {
+        guard !applying, !importing, !drawingEditor, canvasSize.width >= 1, canvasSize.height >= 1 else { return }
+        importing = true; error = nil
+        let accepted = images, canvas = canvasSize
+        let sourceSize = crop.transform.imageSize(CGSize(width: presentation.selection.preview.image.width,
+            height: presentation.selection.preview.image.height))
+        importTask = Task { @MainActor in
+            defer { importing = false; importTask = nil }
+            do {
+                guard let input = try await read() else { return }
+                let next = try await TelegramVideoCoverImageInput.adding(input, to: accepted, canvasSize: canvas, imageSize: sourceSize)
+                guard !Task.isCancelled else { return }
+                images = next
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.error = "Не удалось вставить изображение. Проверьте файл и ограничения редактора."
+            }
+        }
+    }
     private func apply() {
-        guard !applying, upload.videoCoverEditingID == presentation.id else { return }
+        guard !applying, !importing, upload.videoCoverEditingID == presentation.id else { return }
         applying = true; error = nil
         let selection = presentation.selection, rect = crop.rect, transform = crop.transform, id = presentation.id
-        let painting = painting
+        let painting = painting, images = images
         applyTask = Task { @MainActor in
             defer { applying = false; applyTask = nil }
             do {
-                let cover = try await TelegramUploadVideoCoverIO.stage(selection, crop: rect, transform: transform, painting: painting)
+                let cover = try await TelegramUploadVideoCoverIO.stage(selection, crop: rect, transform: transform, painting: painting, images: images)
                 guard !Task.isCancelled else { try? TelegramUploadVideoCoverIO.discardCover(cover); return }
                 if upload.commitVideoCover(cover, editID: id) { close() }
                 else {
@@ -109,6 +170,9 @@ private struct TelegramVideoCoverCropCanvas: View {
     let preview: TelegramImagePreview
     let painting: TelegramUploadVideoCoverPainting
     @Binding var crop: TelegramUploadVideoCoverCrop
+    @Binding var images: TelegramUploadVideoCoverImages
+    @Binding var canvasSize: CGSize
+    @Binding var error: String?
     @State private var gestureStart: TelegramUploadVideoCoverCrop?
     @State private var initializedSelection = false
     @FocusState private var focused: Bool
@@ -191,15 +255,22 @@ private struct TelegramVideoCoverCropCanvas: View {
                         }.onEnded { _ in gestureStart = nil })
                         .accessibilityHidden(true)
                 }
+                TelegramVideoCoverImagesView(images: $images, canvasSize: fitted.size, error: $error)
+                    .frame(width: fitted.width, height: fitted.height).clipped()
+                    .position(x: fitted.midX, y: fitted.midY)
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
                 .coordinateSpace(name: "telegram.videoCover.cropCanvas")
                 .onAppear {
+                    canvasSize = fitted.size
                     guard !initializedSelection, fitted.width >= 1, fitted.height >= 1 else { return }
                     crop.fitInitialSelection(canvasSize: fitted.size)
                     initializedSelection = true
                 }
+                .onChange(of: fitted.size) { canvasSize = fitted.size }
                 .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named("telegram.videoCover.cropCanvas")).onEnded { value in
                     guard selection.contains(value.location) else { return }
+                    let local = CGPoint(x: value.location.x - fitted.minX, y: value.location.y - fitted.minY)
+                    guard !TelegramVideoCoverImagesView.contains(local, images: images) else { return }
                     gestureStart = nil; crop.selectMaximumBounds(canvasSize: fitted.size)
                 })
                 .onChange(of: crop.transform) { gestureStart = nil }

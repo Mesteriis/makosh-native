@@ -147,7 +147,7 @@ receipt и storage-only consume защищают от автоматическо
 Неизвестный исход и недоступный источник сохраняют черновик. Новое вложение при
 активной пересылке пока явно недоступно. Initial history/selection picker теперь
 сразу пересылает в «Избранное» через отдельный durable intent/receipt, сохраняя
-ordinary Saved input/reply/forward и текущий чат. Picker comment/multiple recipients,
+ordinary Saved input/reply/forward и текущий чат. Picker comment,
 Saved accessory re-targeting, остальные selection actions, темы, paid/secret и
 live-account acceptance остаются впереди.
 Окончание этого участка не завершает Telegram или общий последовательный перенос.

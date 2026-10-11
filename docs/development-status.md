@@ -48,7 +48,7 @@ account, Keychain, Telegram network or server send was used.
 Reference ShareModalController.swift:1296–1335 confirms the initial own-peer
 exception and ordinary recipient staging. No outer GPLv2 source/assets were
 copied; dependency pins, preparation recipe 8 and PG schemas remain unchanged.
-Remaining Telegram parity includes picker comments/multiple recipients, Saved
+Remaining Telegram parity includes picker comments, Saved
 accessory re-targeting, album selection, special moderation/scheduled/topics/
 secret/paid actions and live-account acceptance. Later channels, backup and
 standalone packaging remain open; the full sequential migration goal stays active.

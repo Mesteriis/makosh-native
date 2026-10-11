@@ -894,7 +894,7 @@ Reference evidence: ShareModalController.swift:1296-1359; ChatInputAccessory.swi
 227-302; ChatInterfaceState.swift:1172-1180,1304-1320; SenderController.swift:492-523.
 No outer GPLv2 serializer/UI was copied. Makosh's atomic batch/receipt is an owned
 adaptation; the reference chains comment and forward separately. The initial history/selection picker's Saved Messages branch is described below.
-Accessory re-targeting to Saved Messages, picker comments/multiple recipients,
+Accessory re-targeting to Saved Messages, picker comments,
 remaining selection actions, topics, paid/secret-chat forwarding and live-account
 acceptance remain open. A new attachment cannot be
 combined with a staged forward yet; its attach button is disabled explicitly.
@@ -1024,10 +1024,11 @@ queue history and confirms one message, unchanged ordinary bytes and no duplicat
 submission; separate native admission/receipt regressions use positive peer IDs
 and genuinely reopen the encrypted Postbox.
 
-Reference evidence: `ShareModalController.swift:1296–1314` directly forwards to
+Reference evidence: `ShareModalController.swift:1232–1234` explicitly limits this
+forward object to one recipient; `1296–1314` directly forwards to
 the own peer and clears selection; `1315–1335` stages an ordinary recipient. Its
 delayed success animation does not establish server delivery. No outer GPLv2 UI
 source or assets were copied. Remaining parity includes the picker's optional
-comment and multiple-recipient workflows, Saved re-targeting from an already
+comment workflow, Saved re-targeting from an already
 staged accessory, album selection, special/topic/secret/paid behavior and
 live-account acceptance. The whole Telegram/sequential migration remains open.

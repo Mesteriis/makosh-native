@@ -221,7 +221,7 @@ import SwiftSignalKit
               Set(orderedIDs).count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12].contains(current.schemaVersion), current.disposition == .prepared,
                   current.items.map(\.id) == orderedIDs,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -281,7 +281,7 @@ import SwiftSignalKit
               Set(orderedIDs).isSubset(of: Set(previousIDs)) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
@@ -316,7 +316,7 @@ import SwiftSignalKit
         let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  [6, 7, 8, 9, 10, 11].contains(current.schemaVersion), current.disposition == .prepared,
+                  [6, 7, 8, 9, 10, 11, 12].contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
                   let index = current.items.firstIndex(where: { $0.id == itemID }) else {
                 throw TelegramPendingUploadPersistenceError.conflict

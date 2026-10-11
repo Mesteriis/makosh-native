@@ -750,7 +750,7 @@ controller admission GUI и layout не менялись. Захват микр�
 live waveform/playback и peer/slow-mode gates остаются открытыми. GPLv2 UI/helper
 код и assets не копировались.
 
-### Нативный recorder в общей форме Telegram
+### Нативный recorder в общей форме Telegram — исторический этап обычного голоса
 
 На том же desktop pin579cebbf0c01fd41b712eff3647fa7f69db9665d сверены
 `ChatInputActionsView.swift:126–143`, `ChatRecorderOverlayWindow.swift:241–348`,
@@ -778,3 +778,36 @@ short click пока не переключает voice/video, round-video и one
 и платный контекст консервативно отказывают. No-follow/CAF bounds и собственный
 600s cap — решения Макош. Реальный микрофон, server delivery и minimum26 runtime
 не проверены. GPLv2 UI/helper code/assets не копировались.
+
+
+### Одноразовый голос в locked recorder
+
+Desktop pin579cebbf0c01fd41b712eff3647fa7f69db9665d:
+ChatRecorderOverlayWindow.swift:74–113,226–250,299–340 —36-point SingleTimeControl,
+скрытый до lock, false по умолчанию, выбранное значение передаётся перед stop/send.
+ChatPresentationInterfaceState.swift:265–312 и SenderController.swift:52–60,573–575
+проводят его через VoiceSenderContainer в AutoremoveTimeout(viewOnceTimeout,0).
+Свежие XERJ hits подтверждены исходниками; outer GPLv2 UI/helper/assets не копировались.
+
+На native iOS pin a24bbe45f9861f736a79916a50898512f751e0dc отдельно сверены
+ChatTextInputPanelNode.swift:2827–2833,2975 и ChatControllerContentData.swift:792–803,994:
+другой TelegramUser без botInfo и sendPaidMessageStars; даже explicit zero
+сохраняет nonnil paid context. Desktop control сам не фильтрует получателя.
+Макош применяет поддержанный нативный gate; обычные голосовые в группах/каналах
+сохраняют прежние правила. EnqueueMessage.swift:653–666 нормализует media TTL в
+Autoclear(max,nil), сохраняя отдельный chat-wide Autoremove.
+
+Независимая36-point SF Symbol кнопка в существующей recording line доступна
+после lock и имеет явное selected accessibility value. Значение фиксируется
+до async stop, проходит strict schema12 и не теряется при восстановлении.
+Retained/restored preparation явно показывает одноразовый режим; переключателя
+для downgrade после фиксации нет. Настройка S3 остаётся настройкой каждого чата;
+OFF не имеет исключения для одноразового голоса. Результаты actual UI QA указаны
+в development-status.md.
+
+Открытые отличия: точный floating70-point overlay/анимации и жесты на actual UI,
+short-click voice/video, round-video, live waveform/playback и отдельно доказанный
+desktop preview. Текущий контроль расположен в общей строке composer и использует
+системный SF Symbol вместо reference assets. Нет входящего once playback,
+реального microphone/route, live Account/server/recipient или minimum26 runtime
+доказательства. Это не полное визуальное совпадение с reference.

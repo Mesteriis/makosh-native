@@ -165,7 +165,7 @@ preparation can also have `inCollage=true`, independently of actual send groupin
 | GIF | Media: H.264 MP4, Video wire duration0/flags[], Animated only when not inCollage. File: original GIF. | Bounded frame/timing decode, independent conversion, separately retained raw and transformed digests; actual MP4 duration separate from wire duration. |
 | WebP | Original bytes, ImageSize/FileName/Sticker even in File; grouping disabled. | Verified bounded decoder and explicit first-frame dimension policy; no JPEG replacement or inferred animated sticker. |
 | Ordinary audio | Original bytes, Audio(isVoice:false) with integral duration/title/performer even in File. | Validated AVFoundation duration and bounded tags, retained through native enqueue and restart; OGG/Opus filenames never imply voice. |
-| Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed codec, strict schema11, original-PCM waveform and authenticated local/S3 native recovery implemented; separate recorder workflow remains open. |
+| Recorded voice | Explicit recorded provenance, Ogg Opus, Audio(isVoice:true), waveform. | Reviewed codec, original-PCM waveform, ordinary schema11/one-time schema12, native capture and authenticated local/S3 recovery implemented; round video and exact overlay parity remain open. |
 
 Ordinary music now has a verified owned pipeline for synthetic WAV, tagged M4A
 and ID3 MP3. Schema9 carries exact duration/title/performer through File/Media
@@ -269,3 +269,12 @@ flow for each supported type, full gates and actual owned UI. Reference source
 research, offline codecs and synthetic local acceptance do not prove Account
 network transformation, server acceptance or delivery. Remaining Telegram and
 other services still follow the sequential product migration.
+
+
+One-time recorded Voice now uses strict schema12 while ordinary Voice keeps11.
+Its frozen true-only metadata binds native media TTL through restoration and the
+complete queue receipt; ordinary chat auto-delete stays separate. OFF forbids all
+new S3 copies. See telegram.md and development-status.md for supported targets,
+compatibility, raw RED/GREEN checks and current UI/server limitations. Round video,
+remaining classifier order, Archive/caption normalization and sequential migration
+remain open; this is not completion of the full Telegram migration.

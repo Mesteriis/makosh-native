@@ -4,6 +4,21 @@ import TelegramCore
 @testable import MakoshTelegram
 
 final class TelegramVoiceEligibilityTests: XCTestCase {
+    func testOneTimeVoiceRequiresAnotherHumanAndNoPaidMessageContext() {
+        let check: (Peer?, CachedPeerData?, Int64) -> TelegramVoiceEligibility = { peer, cache, accountID in
+            telegramVoiceOnceEligibility(peer: peer, cachedData: cache, accountID: accountID, now: 2_000)
+        }
+        XCTAssertEqual(check(user(), CachedUserData(), 1), .allowed)
+        XCTAssertEqual(check(user(), CachedUserData(), 42), .restricted)
+        XCTAssertEqual(check(user(bot: true), CachedUserData(), 1), .restricted)
+        XCTAssertEqual(check(group(), CachedGroupData(), 1), .restricted)
+        XCTAssertEqual(check(channel(), CachedChannelData(), 1), .restricted)
+        XCTAssertEqual(check(user(), CachedUserData().withUpdatedSendPaidMessageStars(.zero), 1), .paid)
+        XCTAssertEqual(check(user(), CachedUserData().withUpdatedSendPaidMessageStars(StarsAmount(value: 1, nanos: 0)), 1), .paid)
+        XCTAssertEqual(check(user(), CachedUserData().withUpdatedVoiceMessagesAvailable(false), 1), .voicePrivacy)
+        XCTAssertEqual(check(user(), CachedUserData().withUpdatedIsBlocked(true), 1), .restricted)
+        XCTAssertEqual(check(user(), nil, 1), .unavailable)
+    }
     private func user(namespace: PeerId.Namespace = Namespaces.Peer.CloudUser, flags: UserInfoFlags = [],
         bot: Bool = false) -> TelegramUser {
         TelegramUser(id: PeerId(namespace: namespace, id: ._internalFromInt64Value(42)), accessHash: nil,

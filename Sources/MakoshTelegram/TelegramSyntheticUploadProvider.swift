@@ -98,6 +98,7 @@ private nonisolated func syntheticUploadBatchCommit(postbox: Postbox, receipt: T
     }
     return postbox.transaction { transaction in
         transaction.updatePeersInternal([user(author), user(peer)], update: { current, new in current ?? new })
+        transaction.updatePeerCachedData(peerIds: [peer], update: { _, current in current ?? CachedUserData() })
         return true
     } |> mapToSignal { _ in
         telegramUploadBatchEnqueueLocally(postbox: postbox, receipt: receipt, messages: messages,

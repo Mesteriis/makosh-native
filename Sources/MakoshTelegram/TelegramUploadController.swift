@@ -506,7 +506,7 @@ enum TelegramUploadEvent {
     /// reference measures >0.5s using complete960-sample packets. Codec/recovery
     /// retain exact partial PCM and their historical bounds independently.
     @discardableResult
-    func prepareRecordedVoice(samples: [Int16], target: TelegramUploadTarget) -> Bool {
+    func prepareRecordedVoice(samples: [Int16], target: TelegramUploadTarget, isOneTime: Bool = false) -> Bool {
         guard samples.count / 960 > 25, samples.count <= TelegramRecordedVoiceCodec.maximumSamples,
               preparation == nil, phase == .idle || phase == .cancelled || phase == .failed || phase == .rejected,
               provider is any TelegramUploadBatchProvider, provider?.accountID == target.accountID,
@@ -521,7 +521,7 @@ enum TelegramUploadEvent {
         let original = originalDraftForRecovery?(target, request)
         preparation = Task { [weak self] in
             do {
-                let file = try await TelegramRecordedVoiceIO.prepare(samples: samples)
+                let file = try await TelegramRecordedVoiceIO.prepare(samples: samples, isOneTime: isOneTime)
                 guard let self else { try? discard(file); return }
                 guard self.token == request, !Task.isCancelled else {
                     do { try discard(file) }
@@ -533,7 +533,7 @@ enum TelegramUploadEvent {
                 self.preparation = nil; self.items = staged; self.selectedItemID = file.id
                 self.preparingRecordedVoice = false
                 self.itemsRevision = UUID(); self.phase = .ready
-                // Voice always needs a complete schema11 batch receipt. A missing
+                // Voice always needs a complete typed batch receipt. A missing
                 // store blocks admission, including in local-only chat policy.
                 self.persistInitial(file: file, target: target, input: .empty, original: original,
                     id: request, bound: bound, store: store, above: false, spoiler: false, batchItems: staged)
@@ -561,6 +561,7 @@ enum TelegramUploadEvent {
         }
     }
     public var isRecordedVoice: Bool { containsRecordedVoice }
+    public var isOneTimeVoice: Bool { file?.metadata?.voice?.isOneTime == true }
 
     public func send(contextID: UUID) {
         guard preparationID == contextID else { return }
@@ -662,7 +663,7 @@ enum TelegramUploadEvent {
                     try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, mediaSpoiler: frozenSpoiler, disposition: .submissionStarted)
                     if let batchItems {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
-                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9, 10, 11].contains(draft.schemaVersion),
+                              let draft = try await store.load(chatID: target.chatID), [6, 7, 8, 9, 10, 11, 12].contains(draft.schemaVersion),
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == batchItems.map(\.id), draft.isGrouped == grouped, draft.presentation == presentation,
                               draft.captionInput == frozen, draft.captionAboveMedia == frozenAbove, draft.mediaSpoiler == frozenSpoiler else {
@@ -1021,7 +1022,7 @@ enum TelegramUploadEvent {
             guard items.count == 1, items[0].id == draft.items[0].id else { return false }
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9, 10, 11].contains(draft.schemaVersion),
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7, 8, 9, 10, 11, 12].contains(draft.schemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,

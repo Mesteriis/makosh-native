@@ -1,6 +1,16 @@
 import Postbox
 import TelegramCore
 
+func telegramVoiceOnceEligibility(peer: Peer?, cachedData: CachedPeerData?, accountID: Int64, now: Int32) -> TelegramVoiceEligibility {
+    guard let user = peer as? TelegramUser, user.id.namespace == Namespaces.Peer.CloudUser,
+        user.id.toInt64() != accountID, user.botInfo == nil else { return .restricted }
+    let ordinary = telegramVoiceEligibility(peer: peer, cachedData: cachedData, now: now, hasPendingMessages: false)
+    guard ordinary == .allowed else { return ordinary }
+    // The pinned native recorder excludes even an explicit zero-price context.
+    guard let cache = cachedData as? CachedUserData else { return .unavailable }
+    return cache.sendPaidMessageStars == nil ? .allowed : .paid
+}
+
 public enum TelegramVoiceEligibility: Equatable, Sendable {
     case allowed
     case unavailable

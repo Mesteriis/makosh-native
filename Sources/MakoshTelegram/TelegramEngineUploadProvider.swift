@@ -229,11 +229,17 @@ func telegramUploadMessage(caption: String, reference: AnyMediaReference, target
 
 func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference?, target: TelegramUploadTarget,
                            replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
-                           presentation: TelegramUploadPresentation? = nil) -> EnqueueMessage? {
+                           presentation: TelegramUploadPresentation? = nil, isOneTime: Bool = false) -> EnqueueMessage? {
     guard telegramFormattedCaptionCanSend(caption), target.hasValidReplySource,
           reference != nil || telegramFormattedTextCanSend(caption),
           (presentation != nil && reference != nil) || (!captionAboveMedia && !mediaSpoiler) || reference?.media is TelegramMediaImage ||
               (reference?.media as? TelegramMediaFile)?.isVideo == true else { return nil }
+    if isOneTime {
+        guard caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
+              (reference?.media as? TelegramMediaFile)?.isVoice == true,
+              PeerId(target.chatID).namespace == Namespaces.Peer.CloudUser,
+              target.chatID != target.accountID else { return nil }
+    }
     if let captured = target.replySource {
         guard let replySource, replySource.accountID == captured.accountID,
               replySource.chatID == captured.chatID, replySource.peerID == captured.peerID,
@@ -248,6 +254,7 @@ func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaRe
     var attributes = telegramOutgoingTextAttributes(caption)
     if captionAboveMedia { attributes.append(InvertMediaMessageAttribute()) }
     if mediaSpoiler { attributes.append(MediaSpoilerMessageAttribute()) }
+    if isOneTime { attributes.append(AutoremoveTimeoutMessageAttribute(timeout: viewOnceTimeout, countdownBeginTime: 0)) }
     return .message(text: caption.text, attributes: attributes, inlineStickers: [:], mediaReference: reference,
         threadId: replySource?.threadID, replyToMessageId: reply, replyToStoryId: nil,
         localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])

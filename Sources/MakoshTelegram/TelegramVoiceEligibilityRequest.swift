@@ -21,9 +21,9 @@ func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, 
     private var continuation: CheckedContinuation<TelegramVoiceEligibility, Never>?
     private var deadline: Task<Void, Never>?
     isolated deinit { subscription.dispose(); deadline?.cancel(); continuation?.resume(returning: .unavailable) }
-    func check(account: Account, target: TelegramUploadTarget) async -> TelegramVoiceEligibility {
+    func check(account: Account, target: TelegramUploadTarget, isOneTime: Bool = false) async -> TelegramVoiceEligibility {
         guard account.peerId.toInt64() == target.accountID else { return .unavailable }
-        return await check(signal: telegramVoiceEligibilitySignal(account: account, peerID: PeerId(target.chatID)))
+        return await check(signal: telegramVoiceEligibilitySignal(account: account, peerID: PeerId(target.chatID), isOneTime: isOneTime))
     }
     func check(signal: Signal<TelegramVoiceEligibility, NoError>) async -> TelegramVoiceEligibility {
         cancel()
@@ -54,10 +54,14 @@ func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, 
     }
 }
 
-private func telegramVoiceEligibilitySignal(account: Account, peerID: PeerId) -> Signal<TelegramVoiceEligibility, NoError> {
+private func telegramVoiceEligibilitySignal(account: Account, peerID: PeerId, isOneTime: Bool) -> Signal<TelegramVoiceEligibility, NoError> {
     account.postbox.transaction { transaction in
         let timestamp = Date().timeIntervalSince1970 + account.network.globalTimeDifference
         guard timestamp.isFinite, timestamp >= Double(Int32.min), timestamp < Double(Int32.max) else { return .unavailable }
+        if isOneTime {
+            return telegramVoiceOnceEligibility(peer: transaction.getPeer(peerID), cachedData: transaction.getPeerCachedData(peerId: peerID),
+                accountID: account.peerId.toInt64(), now: Int32(timestamp))
+        }
         return telegramVoiceEligibilitySnapshot(transaction: transaction, peerID: peerID, now: Int32(timestamp))
     }
 }

@@ -359,8 +359,9 @@ public final class TelegramModel: ObservableObject {
             return try TelegramMicrophoneVoiceCapture()
         }
         voiceRecording.eligibility = { [weak self] target in await self?.checkVoiceEligibility(target) ?? .unavailable }
-        voiceRecording.handoff = { [weak self] samples, target, context, send in
-            await self?.prepareVoiceRecording(samples: samples, target: target, context: context, send: send) == true
+        voiceRecording.oneTimeEligibility = { [weak self] target in await self?.checkVoiceEligibility(target, isOneTime: true) == .allowed }
+        voiceRecording.handoff = { [weak self] samples, target, context, send, once in
+            await self?.prepareVoiceRecording(samples: samples, target: target, context: context, send: send, isOneTime: once) == true
         }
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
         upload.originalDraftForRecovery = { [weak self] _, id in
@@ -1235,17 +1236,17 @@ public final class TelegramModel: ObservableObject {
         return drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.replyTarget ==
             target.replySource.map(TelegramComposerReplyTarget.init(source:))
     }
-    private func checkVoiceEligibility(_ target: TelegramUploadTarget) async -> TelegramVoiceEligibility {
+    private func checkVoiceEligibility(_ target: TelegramUploadTarget, isOneTime: Bool = false) async -> TelegramVoiceEligibility {
         guard target.accountID == draftAccountID, phase == .ready else { return .unavailable }
         #if DEBUG
         if isSyntheticPreview { return .allowed }
         #endif
         guard let account else { return .unavailable }
-        return await voiceEligibilityRequest.check(account: account, target: target)
+        return await voiceEligibilityRequest.check(account: account, target: target, isOneTime: isOneTime)
     }
-    private func prepareVoiceRecording(samples: [Int16], target: TelegramUploadTarget, context: UUID, send: Bool) async -> Bool {
+    private func prepareVoiceRecording(samples: [Int16], target: TelegramUploadTarget, context: UUID, send: Bool, isOneTime: Bool) async -> Bool {
         guard isCurrentVoice(target, context: context),
-            upload.prepareRecordedVoice(samples: samples, target: target), let id = upload.preparationContextID else { return false }
+            upload.prepareRecordedVoice(samples: samples, target: target, isOneTime: isOneTime), let id = upload.preparationContextID else { return false }
         voicePreparationID = id
         // Wait only for this preparation's first durable receipt. A timeout,
         // failure, cancellation or changed context never creates a later send.
@@ -1272,7 +1273,10 @@ public final class TelegramModel: ObservableObject {
     private func sendPreparedVoice(contextID: UUID, accountContext: UUID, recordingIntent: UUID? = nil) async {
         guard !Task.isCancelled, upload.preparationContextID == contextID, upload.isRecordedVoice, upload.canSend,
             let target = upload.target, target.accountID == draftAccountID, accountContext == accountGeneration else { return }
-        let allowed = await voiceRecording.eligibility(target)
+        let allowed: TelegramVoiceEligibility
+        if upload.file?.metadata?.voice?.isOneTime == true {
+            allowed = await voiceRecording.oneTimeEligibility(target) ? .allowed : .restricted
+        } else { allowed = await voiceRecording.eligibility(target) }
         guard !Task.isCancelled, recordingIntent == nil || voicePreparationID == recordingIntent,
             accountContext == accountGeneration, upload.preparationContextID == contextID,
             upload.target == target, upload.canSend else { return }

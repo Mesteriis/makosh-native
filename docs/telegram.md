@@ -2187,3 +2187,48 @@ replacement ownership, exact native bytes/Voice attributes and no resend after
 reopen. Actual synthetic UI, full gate counts, setup failures and remaining
 reference/hardware gaps are in development-status.md and reference-interface.md.
 No dependency/schema/license/engine recipe or outer reference UI code was added.
+
+
+### One-time recorded voice
+
+The common locked recorder exposes an optional36-point once control. Selection
+is false by default, available only after lock, and frozen before awaited stop.
+Cancel/replacement resets it. The desktop pin's SingleTimeControl/VoiceSenderContainer
+flow informs the interaction; the independently pinned native iOS recorder supplies
+the supported destination gate: another CloudUser, no bot and no paid-message
+context. Its presentation state preserves the raw optional price, including zero.
+Missing cache, privacy/block and unsupported destinations refuse. Optional once
+capability is checked before the final ordinary permission snapshot immediately
+before capture. Final explicit send and the native queue transaction recheck once
+eligibility; server rejection never retries as ordinary voice.
+
+Ordinary Voice metadata retains its exact three-field representation and schema11.
+One-time metadata adds only literal `isOneTime:true`, uses strict schema12 and
+requires one voice, empty caption, File presentation, no grouping/spoiler/cover/
+original pair. False/null/wrong-type/extra keys and schema11/12 mode mismatches
+refuse. Existing schemas1–10 remain unchanged. Frozen metadata travels through
+PCM staging, authenticated encrypted local/S3 preparation, restore and MediaBox;
+Ogg probing verifies facts without inferring or clearing send intent.
+
+The native request adds AutoremoveTimeoutMessageAttribute(viewOnceTimeout,0).
+The pinned enqueue normalizes this to exactly one AutoclearTimeoutMessageAttribute
+(Int32.max,nil); the upload request uses ttl_seconds. Receipt acknowledgement
+requires that exact post-native lifetime for once, and no Autoclear for ordinary
+Voice. Chat-wide Autoremove is independent and may coexist. Missing, duplicate,
+changed TTL or an already-started countdown cannot become acceptedBatch.
+Prepared restart requires explicit Send; submissionStarted stays uncertain and
+cannot resend automatically. Retained preparation shows its frozen once label.
+
+S3 OFF forbids every new copy, including once preparation; authenticated local
+records never promote after re-enable. Cancellation, acceptance and remote
+expiration do not purge immutable archived resources. The once flag controls
+Telegram recipient playback, not Makosh archive retention. Incoming once playback,
+real recipient/server execution and microphone hardware are not proved here.
+Older binaries refuse schema12: preserve pending pointers, receipts, resources
+and encryption keys through rollback. No dependency, license or engine recipe
+changes; no outer GPLv2 source/assets copied.
+
+Primary protocol/interaction references: [Telegram's once recording flow](https://telegram.org/blog/new-saved-messages-and-9-more#one-time-voice-and-video-messages),
+[uploaded document TTL](https://core.telegram.org/constructor/inputMediaUploadedDocument).
+The exact pinned source trace, tests and actual UI limits are recorded in
+reference-interface.md and development-status.md.

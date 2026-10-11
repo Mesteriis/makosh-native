@@ -109,6 +109,9 @@ struct TelegramUploadView: View {
             }
             if !upload.showsPreparationPreview, upload.phase != .idle || upload.error != nil {
                 if upload.isRecordedVoice {
+                    Label(upload.isOneTimeVoice ? "Одноразовое голосовое сообщение" : "Голосовое сообщение",
+                        systemImage: upload.isOneTimeVoice ? "1.circle.fill" : "waveform")
+                        .font(.callout).accessibilityIdentifier("telegram.voice.preparedMode")
                     if let status = upload.recoveryStatus {
                         HStack {
                             Text(status).font(.caption).accessibilityIdentifier("telegram.voice.recoveryStatus")

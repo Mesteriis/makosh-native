@@ -11,12 +11,15 @@ public enum TelegramVoiceRecordingPhase: Equatable, Sendable {
     @Published public private(set) var level: Float = 0
     @Published public private(set) var error: String?
     @Published public private(set) var cancelConfirmationID: UUID?
+    @Published public private(set) var canUseOneTime = false
+    @Published public private(set) var isOneTime = false
     public var isActive: Bool { phase != .idle && phase != .failed }
     var authorize: () async -> Bool = { false }
     var makeCapture: () throws -> any TelegramVoiceCapture = { throw CancellationError() }
     var eligibility: (TelegramUploadTarget) async -> TelegramVoiceEligibility = { _ in .unavailable }
+    var oneTimeEligibility: (TelegramUploadTarget) async -> Bool = { _ in false }
     var isCurrent: (TelegramUploadTarget, UUID) -> Bool = { _,_ in false }
-    var handoff: ([Int16], TelegramUploadTarget, UUID, Bool) async -> Bool = { _,_,_,_ in false }
+    var handoff: ([Int16], TelegramUploadTarget, UUID, Bool, Bool) async -> Bool = { _,_,_,_,_ in false }
     var didCancel: () -> Void = {}
     private var sessionID = UUID()
     private var capture: (any TelegramVoiceCapture)?
@@ -41,6 +44,9 @@ public enum TelegramVoiceRecordingPhase: Equatable, Sendable {
             let permitted = await self.authorize()
             guard self.current(id) else { return }
             guard permitted else { self.fail("Разрешите доступ к микрофону в системных настройках, чтобы записать голосовое сообщение."); return }
+            let once = await self.oneTimeEligibility(target)
+            guard self.current(id) else { return }
+            self.canUseOneTime = once
             let fresh = await self.eligibility(target)
             guard self.current(id) else { return }
             guard fresh == .allowed else { self.fail(fresh.explanation); return }
@@ -93,12 +99,17 @@ public enum TelegramVoiceRecordingPhase: Equatable, Sendable {
         cancel()
     }
     public func dismissCancelConfirmation() { cancelConfirmationID = nil }
+    public func setOneTime(_ value: Bool) {
+        guard phase == .locked, canUseOneTime else { return }
+        isOneTime = value
+    }
     public func cancel() {
         let active = isActive
         sessionID = UUID(); operation?.cancel(); operation = nil
         meter?.cancel(); meter = nil; capture?.cancel(); capture = nil
         target = nil; contextID = nil; cancelConfirmationID = nil
         lockWhenReady = false
+        canUseOneTime = false; isOneTime = false
         duration = 0; level = 0; phase = .idle
         if active { didCancel() }
     }
@@ -109,6 +120,7 @@ public enum TelegramVoiceRecordingPhase: Equatable, Sendable {
         guard let capture, let target, let contextID else { cancel(); return }
         let id = sessionID
         guard current(id) else { return }
+        let once = isOneTime
         meter?.cancel(); meter = nil; phase = .finishing; cancelConfirmationID = nil
         operation = Task { [weak self] in
             do {
@@ -116,7 +128,7 @@ public enum TelegramVoiceRecordingPhase: Equatable, Sendable {
                 guard let self, self.current(id) else { return }
                 self.capture = nil
                 guard samples.count / 960 > 25, samples.count <= TelegramRecordedVoiceCodec.maximumSamples else { self.cancel(); return }
-                let admitted = await self.handoff(samples, target, contextID, send)
+                let admitted = await self.handoff(samples, target, contextID, send, once)
                 guard self.current(id) else { return }
                 if admitted { self.cancel() }
                 else { self.fail("Не удалось передать запись в подготовку отправки.") }

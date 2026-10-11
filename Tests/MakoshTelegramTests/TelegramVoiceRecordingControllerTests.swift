@@ -20,6 +20,60 @@ import XCTest
 }
 
 @MainActor final class TelegramVoiceRecordingControllerTests: XCTestCase {
+    func testOneTimeSelectionNeedsLockAndFreezesBeforeAsynchronousStop() async {
+        let capture = RecordingDevice(), value = controller(capture)
+        capture.heldStop = true
+        value.oneTimeEligibility = { _ in true }
+        var delivered: Bool?
+        value.handoff = { _,_,_,_,once in delivered = once; return true }
+        value.setOneTime(true); XCTAssertFalse(value.isOneTime)
+        value.begin(target: target, contextID: context); await wait { value.phase == .recording }
+        XCTAssertTrue(value.canUseOneTime)
+        value.setOneTime(true); XCTAssertFalse(value.isOneTime)
+        value.move(upward: 101); value.setOneTime(true); XCTAssertTrue(value.isOneTime)
+        value.setOneTime(false); XCTAssertFalse(value.isOneTime)
+        value.setOneTime(true); value.send(); await wait { capture.stopGate != nil }
+        value.setOneTime(false); XCTAssertTrue(value.isOneTime)
+        capture.stopGate?.resume(returning: capture.samples)
+        await wait { value.phase == .idle }
+        XCTAssertEqual(delivered, true)
+        XCTAssertFalse(value.isOneTime); XCTAssertFalse(value.canUseOneTime)
+    }
+    func testIneligibleLockedRecordingNeverSelectsOneTime() async {
+        let value = controller(RecordingDevice())
+        value.oneTimeEligibility = { _ in false }
+        value.begin(target: target, contextID: context); await wait { value.phase == .recording }
+        value.move(upward: 101); value.setOneTime(true)
+        XCTAssertFalse(value.canUseOneTime); XCTAssertFalse(value.isOneTime)
+        value.cancel()
+    }
+    func testCancelledOneTimeCapabilityCannotStartOrChangeReplacementCapture() async {
+        let capture = RecordingDevice(), value = controller(capture)
+        var pending: CheckedContinuation<Bool, Never>?
+        value.oneTimeEligibility = { _ in await withCheckedContinuation { pending = $0 } }
+        value.begin(target: target, contextID: context); await wait { pending != nil }
+        XCTAssertFalse(capture.isRecording)
+        value.cancel(); value.oneTimeEligibility = { _ in false }
+        value.begin(target: target, contextID: context); await wait { value.phase == .recording }
+        pending?.resume(returning: true)
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertFalse(value.canUseOneTime); XCTAssertFalse(value.isOneTime)
+        XCTAssertTrue(capture.isRecording)
+        value.cancel()
+    }
+    func testOrdinaryPermissionIsFreshAfterWaitingForOneTimeCapability() async {
+        let capture = RecordingDevice(), value = controller(capture)
+        var permission: TelegramVoiceEligibility = .allowed
+        var pending: CheckedContinuation<Bool, Never>?
+        value.eligibility = { _ in permission }
+        value.oneTimeEligibility = { _ in await withCheckedContinuation { pending = $0 } }
+        value.begin(target: target, contextID: context); await wait { pending != nil }
+        permission = .voicePrivacy; pending?.resume(returning: false)
+        await wait { value.phase != .authorizing }
+        XCTAssertEqual(value.phase, .failed); XCTAssertFalse(capture.isRecording)
+        XCTAssertEqual(value.error, "Собеседник запретил отправку голосовых сообщений.")
+        value.cancel()
+    }
     private let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic")
     private let context = UUID()
     private func controller(_ capture: RecordingDevice) -> TelegramVoiceRecordingController {
@@ -42,7 +96,7 @@ import XCTest
         let capture = RecordingDevice(), value = controller(capture)
         var deliveries: [(TelegramUploadTarget, UUID, Bool, Int)] = []
         var handoffGate: CheckedContinuation<Bool, Never>?
-        value.handoff = { samples, target, context, send in
+        value.handoff = { samples, target, context, send, _ in
             deliveries.append((target, context, send, samples.count))
             return await withCheckedContinuation { handoffGate = $0 }
         }
@@ -97,7 +151,7 @@ import XCTest
     func testOutsideReleaseCancelsAndLockNeedsExplicitSend() async {
         let capture = RecordingDevice(), value = controller(capture)
         var delivered = 0
-        value.handoff = { _,_,_,_ in delivered += 1; return true }
+        value.handoff = { _,_,_,_,_ in delivered += 1; return true }
         value.begin(target: target, contextID: context); await wait { value.phase == .recording }
         value.move(upward: 100); XCTAssertEqual(value.phase, .recording)
         value.release(inside: false); XCTAssertEqual(value.phase, .idle)
@@ -147,7 +201,7 @@ import XCTest
     func testShortCaptureAndCancelledStopNeverHandOff() async {
         let capture = RecordingDevice(), value = controller(capture)
         var delivered = 0
-        value.handoff = { _,_,_,_ in delivered += 1; return true }
+        value.handoff = { _,_,_,_,_ in delivered += 1; return true }
         capture.samples = [Int16](repeating: 1, count: 24_959)
         value.begin(target: target, contextID: context); await wait { value.phase == .recording }
         value.release(inside: true); await wait { value.phase == .idle }
@@ -165,7 +219,7 @@ import XCTest
     func testNativeAutoStopPreparesWithoutAutomaticSend() async {
         let capture = RecordingDevice(), value = controller(capture)
         var sendIntent: Bool?
-        value.handoff = { _,_,_,send in sendIntent = send; return true }
+        value.handoff = { _,_,_,send,_ in sendIntent = send; return true }
         value.begin(target: target, contextID: context); await wait { value.phase == .recording }
         capture.isRecording = false
         await wait { sendIntent != nil && value.phase == .idle }

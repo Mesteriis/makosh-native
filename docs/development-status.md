@@ -1,6 +1,77 @@
 # Development status — 2026-10-11
 
-## Current stage: native voice capture and common-window recording controls
+## Current stage: one-time recorded voice in the common Telegram window
+
+Locked recording now exposes an optional36-point one-time control. Its false
+initial value can change only while locked and eligible; it freezes before async
+stop and resets on cancellation/replacement. The visible retained/restored
+preparation reads its own frozen mode. Same-account native CloudUser/cache gates
+exclude self, bots and any paid-message context, including explicit zero as in
+the pinned iOS presentation path. Ordinary voice retains its existing group/
+channel rules. Optional once capability precedes the final fresh ordinary check
+before capture; final Send and native queue admission check once eligibility again.
+
+Normal Voice keeps the exact three-field metadata and schema11. Literal true
+adds one field and strict schema12: one voice, no caption/group/spoiler/cover/
+original pair. Explicit false/null/unknown fields or schema/mode mismatch refuse.
+The frozen flag survives PCM staging, encrypted local/S3 preparation, restore,
+MediaBox and canonical native receipt. Enqueue normalizes the outgoing maximum
+Autoremove TTL to one Autoclear(max,nil); acknowledgement rejects missing,
+changed/duplicate TTL or a started countdown. Ordinary Voice rejects Autoclear;
+chat-wide Autoremove remains independent. Prepared restore needs explicit Send;
+submissionStarted stays uncertain, accepted state cannot resend after reopen.
+S3 OFF forbids every new copy; local records never promote after enable. Archive
+retention remains immutable despite Telegram recipient expiration/cancellation.
+No dependency, license or engine recipe changes; no outer GPLv2 source/assets.
+
+Compiled behavioral RED: native builder2 cases/11 failures; state+eligibility12/11;
+real ON/OFF controller+reopen4/8; native lifetime callback tampering1/15; fresh
+ordinary permission after capability wait1/3. Metadata worker retains its separate
+corrected RED7/9(5 unexpected) then compatibility GREEN56/0. Root focused52/0
+precedes two additional real one-time Model ON/OFF final-permission regressions;
+all final cases pass the full suite. Setup failures (fixture Set typing and UI
+module access to an internal metadata helper) remain distinct from behavioral RED.
+Two concrete review findings—hidden retained mode and stale capture-time ordinary
+permission—are corrected with visible UI and the compiled freshness regression.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0. Full:
+**1,043 XCTest cases (967 Telegram +76 core),1 skipped,0 failures;38 Python
+regressions**. No compile warnings.330 existing upstream t19 teardown diagnostics
+remain without test failures. The permission-dependent capture test skips on this
+already-authorized host; deterministic status gates still run without a device.
+Strict signatures and raw unsigned built/owned-QA payload equality pass.
+
+Actual isolated common-window AX/screenshots verify keyboard lock, once OFF→ON→OFF,
+confirmed cancellation and fresh-session OFF reset, once send to native synthetic
+queue with chat7 S3 OFF, visible frozen once label under lost upload acknowledgement,
+and label/OFF preservation across Mail→Telegram. Initial loss QA used the forward
+flag and therefore did not exercise upload loss; corrected existing pending-upload
+flag then produces the expected uncertain UI. Restart with the already-persisted
+accepted receipt restores the ordinary composer without a sendable old preparation.
+Prepared/uncertain restoration is exercised by real controller/Postbox tests;
+its unaccepted restart UI was not separately rendered. No personal Account,
+Telegram network, microphone device or permission grant used.
+
+Two bounded inherited-model workers authored the metadata/draft leaf and researched/
+reviewed the reference contract read-only. Original reports/hashes/raw exits stay
+private; observed provider/model/usage are unknown and no quorum is claimed.
+Root independently rechecks all20 reviewed source/test hashes and the metadata
+worker's11 raw log/exit pairs. Final frozen review finds no additional actionable
+defects; R1/R2 remain closed. Initial transfer hashes are unknown; private
+normalization does not attest runtime identity. Root owns integration, docs and
+publication. Final frozen XERJ project refresh,
+three scope checks and queries exit0:416 files,382/382 classified code; own once
+eligibility, desktop SingleTimeControl and native Autoclear definitions are source-
+confirmed. Both hosted jobs for7aab0c7 succeed; this new head's checks are separate.
+
+Remaining: exact floating recorder overlay/animations and actual upward/outside
+release gestures, short-click voice/video and round-video, live waveform/playback,
+then ordered classifier, Archive/caption normalization and sequential services.
+Incoming once playback, real recipient/server acceptance, microphone routes,
+in-flight native I/O cancellation and minimum26 runtime remain unproved. Full
+Telegram migration and the overall goal remain open.
+
+## Historical native voice capture and common-window recording controls (7aab0c7)
 
 The empty Telegram composer now exposes a native recorder in the existing
 common window. Hold300ms starts capture, release inside sends, release outside

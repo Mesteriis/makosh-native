@@ -7,19 +7,52 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 // Postbox transaction bodies run on its queue, outside the test's MainActor.
-private func recordedVoicePeers(_ box: Postbox) -> Signal<Void, NoError> {
+private func recordedVoicePeers(_ box: Postbox, restricted: Bool = false, chatTTL: Bool = false) -> Signal<Void, NoError> {
     box.transaction { transaction in
         let peers = [Int64(1), 42, 10001].map { value in
             TelegramUser(id: PeerId(value), accessHash: nil, firstName: "Synthetic", lastName: nil, username: nil, phone: nil,
-                photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil,
+                photo: [], botInfo: restricted && value == 42 ? BotUserInfo(flags: [], inlinePlaceholder: nil) : nil,
+                restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil,
                 nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil,
                 subscriberCount: nil, verificationIconFileId: nil)
         }
         transaction.updatePeersInternal(peers, update: { _, new in new })
+        transaction.updatePeerCachedData(peerIds: Set(peers.map(\.id)), update: { _,_ in
+            chatTTL ? CachedUserData().withUpdatedAutoremoveTimeout(.known(.init(peerValue: 30))) : CachedUserData()
+        })
     }
 }
 private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Message?, NoError> {
     box.transaction { $0.getMessage(id) }
+}
+private enum VoiceTTLForge: CaseIterable, Sendable { case missing, wrongTimeout, duplicate, startedCountdown, unexpected }
+// Corrupt the real native queued message at the callback boundary. A receipt
+// must not accept a different lifetime even when audio bytes and IDs match.
+private func recordedVoiceForgedQueue(_ box: Postbox, receipt: TelegramUploadBatchEnqueueReceipt,
+    messages: [EnqueueMessage], forge: VoiceTTLForge) -> Signal<TelegramUploadBatchAdmission, NoError> {
+    telegramUploadBatchEnqueue(receipt: receipt, messages: messages) { messages, admission, commit in
+        enqueueMessagesLocally(postbox: box, accountPeerId: PeerId(1), isSupportUser: false, timestamp: 100,
+            peerId: PeerId(receipt.target.chatID), messages: messages, transactionAdmission: admission,
+            transactionCommit: { transaction, ids in
+                if let first = ids.first, let id = first, let message = transaction.getMessage(id) {
+                    var attributes = message.attributes.filter { !($0 is AutoclearTimeoutMessageAttribute) }
+                    switch forge {
+                    case .missing: break
+                    case .wrongTimeout: attributes.append(AutoclearTimeoutMessageAttribute(timeout: 30, countdownBeginTime: nil))
+                    case .duplicate:
+                        attributes.append(AutoclearTimeoutMessageAttribute(timeout: 2_147_483_647, countdownBeginTime: nil))
+                        attributes.append(AutoclearTimeoutMessageAttribute(timeout: 2_147_483_647, countdownBeginTime: nil))
+                    case .startedCountdown: attributes.append(AutoclearTimeoutMessageAttribute(timeout: 2_147_483_647, countdownBeginTime: 100))
+                    case .unexpected: attributes.append(AutoclearTimeoutMessageAttribute(timeout: 2_147_483_647, countdownBeginTime: nil))
+                    }
+                    transaction.updateMessage(id) { _ in .update(StoreMessage(id: id, globallyUniqueId: nil,
+                        groupingKey: message.groupingKey, threadId: message.threadId, timestamp: message.timestamp,
+                        flags: [.Unsent], tags: message.tags, globalTags: message.globalTags, localTags: message.localTags,
+                        forwardInfo: nil, authorId: PeerId(1), text: message.text, attributes: attributes, media: message.media)) }
+                }
+                commit(transaction, ids)
+            })
+    }
 }
 private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceEligibility], NoError> {
     box.transaction { transaction in
@@ -114,6 +147,30 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
         try await reopenAndQueue(s3Enabled: true)
     }
 
+    func testOneTimeVoiceRestoresAndQueuesWithS3Disabled() async throws {
+        try await reopenAndQueue(s3Enabled: false, isOneTime: true)
+    }
+    func testOneTimeVoiceRestoresAndQueuesWithS3Enabled() async throws {
+        try await reopenAndQueue(s3Enabled: true, isOneTime: true)
+    }
+    func testVoiceReceiptRefusesChangedNativeLifetimeAfterRealEnqueue() async throws {
+        for forge in VoiceTTLForge.allCases {
+            try await reopenAndQueue(s3Enabled: false, isOneTime: forge != .unexpected, forge: forge)
+        }
+    }
+    func testOneTimeReceiptRechecksChangedDestinationBeforeQueue() async throws {
+        try await reopenAndQueue(s3Enabled: false, isOneTime: true, restrictDestination: true)
+    }
+    func testOneTimeMediaTTLCoexistsWithOrdinaryChatAutoDelete() async throws {
+        try await reopenAndQueue(s3Enabled: false, isOneTime: true, chatTTL: true)
+    }
+    func testControllerQueuesOneTimePCMWithS3Disabled() async throws {
+        try await controllerQueue(s3Enabled: false, isOneTime: true)
+    }
+    func testControllerQueuesOneTimePCMWithS3Enabled() async throws {
+        try await controllerQueue(s3Enabled: true, isOneTime: true)
+    }
+
     func testControllerQueuesRecordedPCMWithS3Disabled() async throws {
         try await controllerQueue(s3Enabled: false)
     }
@@ -123,6 +180,12 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
     }
 
     #if DEBUG
+    func testRecorderOneTimeIntentSurvivesDeniedFinalSendWithS3Disabled() async throws {
+        try await controllerQueue(s3Enabled: false, modelDriven: true, isOneTime: true)
+    }
+    func testRecorderOneTimeIntentSurvivesDeniedFinalSendWithS3Enabled() async throws {
+        try await controllerQueue(s3Enabled: true, modelDriven: true, isOneTime: true)
+    }
     // Catches using start-time permissions after durable preparation. The real
     // model must retain the voice and require an explicit, newly eligible send.
     func testRecorderReleaseRechecksPermissionsAfterLocalOnlyDurability() async throws {
@@ -144,7 +207,7 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
 
     // Exercises the real controller, encrypted recovery, native MediaBox and
     // transactional queue. The provider replaces only the unavailable server.
-    private func controllerQueue(s3Enabled: Bool, modelDriven: Bool = false, cancelFinal: Bool = false, restartAfterCancel: Bool = false) async throws {
+    private func controllerQueue(s3Enabled: Bool, modelDriven: Bool = false, cancelFinal: Bool = false, restartAfterCancel: Bool = false, isOneTime: Bool = false) async throws {
         let accountID: Int64 = modelDriven ? -1 : 1, chatID: Int64 = modelDriven ? 10001 : 42
         let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
         let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
@@ -166,9 +229,9 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
             #if DEBUG
             let model = modelDriven ? TelegramModel.syntheticPreview() : nil
             model?.selectedChatID = chatID
-            let controller = model?.upload ?? TelegramUploadController()
+            var controller = model?.upload ?? TelegramUploadController()
             #else
-            let controller = TelegramUploadController()
+            var controller = TelegramUploadController()
             #endif
             let provider = RecordedVoiceLocalQueueProvider(postbox: box, accountID: accountID)
             controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
@@ -181,6 +244,10 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
                 var checks = 0
                 var finalPermission: CheckedContinuation<TelegramVoiceEligibility, Never>?
                 model.voiceRecording.makeCapture = { capture }
+                if isOneTime {
+                    var onceChecks = 0
+                    model.voiceRecording.oneTimeEligibility = { _ in onceChecks += 1; return onceChecks == 1 }
+                }
                 model.voiceRecording.eligibility = { _ in
                     checks += 1
                     if checks <= 2 { return .allowed }
@@ -190,7 +257,11 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
                 model.beginVoiceRecording()
                 for _ in 0..<1_000 where model.voiceRecording.phase == .authorizing { try await Task.sleep(for: .milliseconds(5)) }
                 XCTAssertEqual(model.voiceRecording.phase, .recording)
-                model.voiceRecording.release(inside: true)
+                if isOneTime {
+                    model.voiceRecording.move(upward: 101); model.voiceRecording.setOneTime(true)
+                    XCTAssertTrue(model.voiceRecording.isOneTime)
+                    model.voiceRecording.send()
+                } else { model.voiceRecording.release(inside: true) }
                 if cancelFinal {
                     for _ in 0..<1_000 where finalPermission == nil { try await Task.sleep(for: .milliseconds(10)) }
                     XCTAssertEqual(model.voiceRecording.phase, .finishing); XCTAssertTrue(controller.canSend)
@@ -233,9 +304,9 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
                 XCTAssertEqual(provider.submissions, 0)
                 guard controller.phase == .ready else { return }
                 XCTAssertNotNil(model.error)
-            } else { XCTAssertTrue(controller.prepareRecordedVoice(samples: pcm, target: target)) }
+            } else { XCTAssertTrue(controller.prepareRecordedVoice(samples: pcm, target: target, isOneTime: isOneTime)) }
             #else
-            XCTAssertTrue(controller.prepareRecordedVoice(samples: pcm, target: target))
+            XCTAssertTrue(controller.prepareRecordedVoice(samples: pcm, target: target, isOneTime: isOneTime))
             #endif
             for _ in 0..<1_000 where !controller.canSend && controller.phase != .failed {
                 try await Task.sleep(for: .milliseconds(10))
@@ -243,15 +314,26 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
             XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.phase, .ready)
             let stage = try XCTUnwrap(controller.file), bytes = try Data(contentsOf: stage.url)
             let loaded = try await store.load(chatID: chatID), prepared = try XCTUnwrap(loaded)
-            XCTAssertEqual(prepared.schemaVersion, 11); XCTAssertEqual(prepared.disposition, .prepared)
+            XCTAssertEqual(prepared.schemaVersion, isOneTime ? 12 : 11); XCTAssertEqual(prepared.items.first?.metadata?.voice?.isOneTime, isOneTime); XCTAssertEqual(prepared.disposition, .prepared)
             XCTAssertEqual(prepared.items.count, 1); XCTAssertEqual(prepared.items[0].metadata?.voice?.waveform, waveform)
             XCTAssertEqual(prepared.items[0].file.state, s3Enabled ? .stored : .local)
             XCTAssertEqual(controller.preparationContextID, prepared.id)
+            if isOneTime && !modelDriven {
+                controller.bind(provider: nil)
+                let recovered = try await store.restoreItems(draft: prepared)
+                controller = TelegramUploadController()
+                controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+                XCTAssertTrue(controller.restore(draft: prepared, items: recovered, target: target,
+                    restorationEpoch: controller.recoveryRestoreEpoch))
+                XCTAssertEqual(controller.phase, .ready); XCTAssertTrue(controller.isOneTimeVoice)
+                XCTAssertEqual(provider.submissions, 0)
+            }
             controller.send(contextID: UUID())
             XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(provider.submissions, 0)
             #if DEBUG
             if let model {
                 model.voiceRecording.eligibility = { _ in .allowed }
+                if isOneTime { model.voiceRecording.oneTimeEligibility = { _ in true } }
                 model.sendPreparedVoice(contextID: prepared.id)
             } else { controller.send(contextID: prepared.id) }
             #else
@@ -271,6 +353,9 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
             let done = expectation(description: "Controller voice native bytes"); var message: Message?
             let reading = (recordedVoiceMessage(box, id: id.nativeID) |> deliverOnMainQueue).start(next: { message = $0; done.fulfill() })
             defer { reading.dispose() }; await fulfillment(of: [done], timeout: 20)
+            let ttl = message?.attributes.compactMap { $0 as? AutoclearTimeoutMessageAttribute } ?? []
+            XCTAssertEqual(ttl.count, isOneTime ? 1 : 0)
+            if isOneTime { XCTAssertEqual(ttl.first?.timeout, 2_147_483_647); XCTAssertNil(ttl.first?.countdownBeginTime) }
             let media = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
             XCTAssertEqual(message?.text, ""); XCTAssertNil(message?.groupingKey)
             XCTAssertEqual(media.attributes, [.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: waveform)])
@@ -339,7 +424,8 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
     }
 
     // Catches losing explicit voice provenance, policy bypass, changed native bytes and stale retry admission.
-    private func reopenAndQueue(s3Enabled: Bool) async throws {
+    private func reopenAndQueue(s3Enabled: Bool, isOneTime: Bool = false, forge: VoiceTTLForge? = nil,
+        restrictDestination: Bool = false, chatTTL: Bool = false) async throws {
         let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
         let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
         let archiveRoot = try root(), path = try root()
@@ -357,14 +443,14 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
             let store = session(box, archive: archive)
             var pcm = [Int16](repeating: 0, count: 48_137)
             for index in 0..<100 { pcm[index] = 1_000 }
-            let file = try await TelegramRecordedVoiceIO.prepare(samples: pcm)
+            let file = try await TelegramRecordedVoiceIO.prepare(samples: pcm, isOneTime: isOneTime)
             defer { try? TelegramUploadFileIO.discard(file) }
             bytes = try Data(contentsOf: file.url)
             let preparationID = UUID(), item = TelegramUploadBatchItem(id: file.id, file: file)
             try await store.prepare(preparationID: preparationID, items: [item], isGrouped: false, presentation: .file,
                 target: target, captionInput: input, originalDraft: nil)
             let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
-            XCTAssertEqual(first.schemaVersion, 11); XCTAssertEqual(first.items[0].metadata?.voice?.sampleCount, 48_137)
+            XCTAssertEqual(first.schemaVersion, isOneTime ? 12 : 11); XCTAssertEqual(first.items.first?.metadata?.voice?.isOneTime, isOneTime); XCTAssertEqual(first.items[0].metadata?.voice?.sampleCount, 48_137)
             XCTAssertEqual(first.items[0].metadata?.voice?.waveform, expectedWaveform)
             try await store.prepare(preparationID: preparationID, items: [item], isGrouped: false, presentation: .file,
                 target: target, captionInput: input, originalDraft: nil)
@@ -385,23 +471,59 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
             defer { for item in restored { try? item.discard() } }
             XCTAssertEqual(restored.count, 1); XCTAssertEqual(restored[0].file.metadata, frozen.items[0].metadata)
             XCTAssertEqual(try Data(contentsOf: restored[0].file.url), bytes)
+            let controller = TelegramUploadController(), provider = RecordedVoiceLocalQueueProvider(postbox: box)
+            controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+            defer { controller.bind(provider: nil) }
+            XCTAssertTrue(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            XCTAssertEqual(controller.phase, .uncertain)
+            XCTAssertEqual(controller.file?.metadata?.voice?.isOneTime, isOneTime)
+            XCTAssertEqual(controller.isOneTimeVoice, isOneTime)
+            controller.send(); XCTAssertEqual(provider.submissions, 0)
             let seeded = expectation(description: "Voice synthetic peers")
-            let seed = (recordedVoicePeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+            let seed = (recordedVoicePeers(box, restricted: restrictDestination, chatTTL: chatTTL) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
             defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
             let queued = expectation(description: "Voice native queue"); var ids: [TelegramUploadQueueID] = []
+            var uncertain = false
+            var rejected = false
             let submission = TelegramUploadBatchSubmission(postbox: box, accountID: 1, items: restored, draft: frozen, target: target,
-                enqueue: { receipt, messages in telegramUploadBatchEnqueueLocally(postbox: box, receipt: receipt, messages: messages) }) { event in
+                enqueue: { receipt, messages in
+                    if let forge { return recordedVoiceForgedQueue(box, receipt: receipt, messages: messages, forge: forge) }
+                    return telegramUploadBatchEnqueueLocally(postbox: box, receipt: receipt, messages: messages)
+                }) { event in
                     switch event {
                     case let .accepted(value): ids = value; queued.fulfill()
-                    case .rejected, .uncertain: XCTFail("Voice must be admitted with a complete native receipt"); queued.fulfill()
+                    case .uncertain: uncertain = true; queued.fulfill()
+                    case .rejected: rejected = true; queued.fulfill()
                     default: break
                     }
                 }
             defer { submission.stop() }; await fulfillment(of: [queued], timeout: 20)
+            if restrictDestination {
+                XCTAssertTrue(rejected); XCTAssertFalse(uncertain); XCTAssertTrue(ids.isEmpty)
+                let unchanged = try await store.load(chatID: 42); XCTAssertEqual(unchanged, frozen)
+                XCTAssertEqual(try Data(contentsOf: restored[0].file.url), bytes)
+                return
+            }
+            XCTAssertFalse(rejected)
+            if forge != nil {
+                XCTAssertTrue(uncertain); XCTAssertTrue(ids.isEmpty)
+                let unchanged = try await store.load(chatID: 42); XCTAssertEqual(unchanged, frozen)
+                let retained = try await store.restoreItems(draft: frozen)
+                defer { for item in retained { try? item.discard() } }
+                XCTAssertEqual(try Data(contentsOf: XCTUnwrap(retained.first).file.url), bytes)
+                return
+            }
+            XCTAssertFalse(uncertain)
             let id = try XCTUnwrap(ids.first); XCTAssertEqual(ids.count, 1)
             let readDone = expectation(description: "Voice native payload"); var message: Message?
             let read = (recordedVoiceMessage(box, id: id.nativeID) |> deliverOnMainQueue).start(next: { message = $0; readDone.fulfill() })
             defer { read.dispose() }; await fulfillment(of: [readDone], timeout: 20)
+            let ttl = message?.attributes.compactMap { $0 as? AutoclearTimeoutMessageAttribute } ?? []
+            XCTAssertEqual(ttl.count, isOneTime ? 1 : 0)
+            if isOneTime { XCTAssertEqual(ttl.first?.timeout, 2_147_483_647); XCTAssertNil(ttl.first?.countdownBeginTime) }
+            let chatTimeout = message?.attributes.compactMap { $0 as? AutoremoveTimeoutMessageAttribute } ?? []
+            XCTAssertEqual(chatTimeout.count, chatTTL ? 1 : 0)
+            if chatTTL { XCTAssertEqual(chatTimeout.first?.timeout, 30); XCTAssertNil(chatTimeout.first?.countdownBeginTime) }
             let native = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
             XCTAssertEqual(message?.text, ""); XCTAssertNil(message?.groupingKey)
             XCTAssertEqual(native.mimeType, "audio/ogg"); XCTAssertNil(native.size)

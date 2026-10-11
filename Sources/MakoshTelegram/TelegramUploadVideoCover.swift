@@ -26,9 +26,11 @@ public struct TelegramUploadVideoCoverSelection: Identifiable, Sendable {
 
 public enum TelegramUploadVideoCoverIO {
     public static func openSelection(_ source: URL) async throws -> TelegramUploadVideoCoverSelection {
-        let file = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        let file = try await TelegramUploadFileIO.stageImageSource(source)
         do {
-            let preview = try await TelegramUploadFileIO.preview(file)
+            try TelegramUploadFileIO.validateOwnedStage(file)
+            let preview = try await TelegramDownloadedFileIO.image(source: file.url, expectedSize: file.size,
+                maximumBytes: 20 * 1024 * 1024, maximumDimension: 8192, maximumPixels: 40_000_000, thumbnailPixelSize: 8192)
             try Task.checkCancellation()
             return TelegramUploadVideoCoverSelection(preview: preview, file: file)
         } catch {
@@ -42,16 +44,18 @@ public enum TelegramUploadVideoCoverIO {
     public static func discardCover(_ cover: TelegramUploadVideoCover) throws {
         try TelegramUploadFileIO.discard(cover.imageFile)
     }
-    public static func stage(_ selection: TelegramUploadVideoCoverSelection, crop: CGRect) async throws -> TelegramUploadVideoCover {
+    public static func stage(_ selection: TelegramUploadVideoCoverSelection, crop: CGRect,
+                             transform: TelegramUploadVideoCoverTransform = .init()) async throws -> TelegramUploadVideoCover {
         try TelegramUploadFileIO.validateOwnedStage(selection.file)
         guard let digest = selection.preview.originalSHA256 else { throw TelegramUploadFileError.unavailable }
-        return try await stagedCover(selection.file.url, crop: crop, expectedSHA256: digest)
+        return try await stagedCover(selection.file.url, crop: crop, expectedSHA256: digest, transform: transform)
     }
     public static func stage(_ source: URL, crop: CGRect) async throws -> TelegramUploadVideoCover {
         try await stagedCover(source, crop: crop, expectedSHA256: nil)
     }
-    private static func stagedCover(_ source: URL, crop: CGRect, expectedSHA256: String?) async throws -> TelegramUploadVideoCover {
-        let file = try await TelegramUploadFileIO.stageVideoCover(source, crop: crop, expectedSHA256: expectedSHA256)
+    private static func stagedCover(_ source: URL, crop: CGRect, expectedSHA256: String?,
+                                    transform: TelegramUploadVideoCoverTransform = .init()) async throws -> TelegramUploadVideoCover {
+        let file = try await TelegramUploadFileIO.stageVideoCover(source, crop: crop, expectedSHA256: expectedSHA256, transform: transform)
         do {
             try Task.checkCancellation()
             guard let width = file.pixelWidth, let height = file.pixelHeight,

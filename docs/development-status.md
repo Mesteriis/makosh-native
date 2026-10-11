@@ -1,6 +1,54 @@
 # Development status — 2026-10-11
 
-## Current stage: video cover picker, crop, replacement and removal
+## Current stage: original cover source, rotation and horizontal mirror
+
+Telegram remains in the shared service sidebar/dialog/conversation/dossier
+window. The existing video-cover editor now retains original image bytes and
+full EXIF-oriented geometry, with20MiB/8192px-per-axis/40M-pixel limits. The
+normal photo attachment path is unchanged. Apply authenticates the displayed
+snapshot on the same source read, then renders rotation/mirror/crop directly
+into the bounded320px quality1.0 JPEG. Original video and first-frame thumbnail
+remain separate, and final cover bytes continue through encrypted S3.
+
+Rotate (Cmd+R) and Mirror sit between Cancel and Done. Preview fits the rotated
+extents; crop movement/resize and export use transformed coordinates. Source
+research confirms CCW quarter-turn state followed by horizontal output mirror.
+The reference retains CCW crop transport while mirrored, although the visible
+rotation then appears CW; this upstream behavior and operation-order crop paths
+are explicitly regression-covered. No outer GPLv2 UI/assets are copied.
+
+Source research also corrected two misleading frontier claims: crop has four
+corners; eight handles belong to inserted images.200×200.aspectFitted(canvas)
+can enlarge to the canvas's smaller dimension, so it is not a literal200pt cap.
+Existing normalized initialization already matches the main reference formula.
+Remaining editor work includes fitted-point rounding/40pt constraint, double-click
+full bounds, drawing/eraser/undo and inserted-image editing.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**688 XCTest (625 Telegram +63 core), zero failures;32 Python regressions**.
+Focused14 tests pass. The full log retains160 upstream t19 teardown diagnostics
+without test failure. Original-source behavior red (2 tests/5 failures) and
+corrected transform behavior red (4 tests/17 failures) precede implementation.
+Missing-API/init compilation and small-JPEG/color-tolerance fixture failures are
+retained separately; corrected focused/full checks pass.
+
+Owned native CUA QA verifies Cmd+R, horizontal mirror, transformed preview/crop,
+drag to an independently known yellow quadrant, Done, restart restoration and
+local synthetic acceptance. Read-only Postbox/S3 verification confirms160×320
+JPEG with four yellow samples, unchanged original video, exact caption, retained
+cover and accepted receipt. Strict built/QA signatures and unsigned payload match
+pass. No personal account, Keychain, Telegram network or server delivery is used.
+Independent source research/review checked frozen hashes; final review
+found no concrete issue in its9-file scope, but did not execute tests or UI.
+Provider/model/usage runtime metadata remains unknown; root owns all gates.
+
+Parent3c88a7f PR38118310901 and push38118307892 CI are terminal success for that
+exact SHA, verified directly. New-head CI/publication/index evidence is recorded
+privately. Complete Telegram parity, albums, MMail/Aether, WhatsApp, Teams,
+Telemost, backups and standalone packaging remain open. The full sequential
+migration goal remains active.
+
+## Historical video cover picker, crop, replacement and removal (3c88a7f)
 
 Telegram stays inside the common service-sidebar/dialog/conversation/dossier
 window. The existing preparation menu now exposes Add/Change/Remove cover,
@@ -41,8 +89,8 @@ and server delivery remain untested. Parent 5b13eae push38116708250 and
 PR38116711546 CI are terminal success for that exact SHA, verified directly.
 
 This is basic cover editing, not complete reference-editor parity. Rotation,
-mirror, drawing/undo, all eight handles and exact initial 200pt crop sizing are
-still open. Selection currently uses photo normalization (JPEG at most2560px,
+mirror and drawing/undo are still open at this historical stage. Later source
+research below corrects the earlier eight-handle/literal200pt frontier claims. Selection currently uses photo normalization (JPEG at most2560px,
 quality0.85), rather than the reference editor's full original source. Albums,
 complete Telegram parity, MMail/Aether, WhatsApp, Teams, Telemost, backups and
 standalone packaging remain open; the sequential goal stays active. Final

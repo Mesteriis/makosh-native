@@ -337,10 +337,25 @@ Cancel/Done, замену, снятие обложки, перезапуски �
 исправлена. Postbox/S3 readback проверяет исходное видео, подпись, receipt и три
 сохранённые версии; accepted подготовка повторно не открывается.
 
-Различия с полным EditImageModalController/EditImageControls остаются явными:
-нет rotate/mirror/draw/undo и остальных четырёх handles; начальная рамка пока
-нормализована к изображению вместо референсных200pt в fitted canvas. Источник
-редактора предварительно нормализуется в JPEG до2560px, quality0.85; референс
-редактирует полный оригинал. Это базовый crop workflow, а не полная parity.
+Редактор теперь сохраняет исходные байты и полную ориентированную геометрию
+изображения (до20MiB,8192px и40M pixels), а не предварительно пережатый JPEG.
+«Повернуть» (⌘R) и «Отразить по горизонтали» расположены между «Отмена» и «Готово»,
+как операции в EditImageControls.swift:230–285. Оригинальный файл не изменяется;
+Apply сверяет SHA256 того же snapshot и формирует отдельный JPEG≤320px quality1.0.
+Обычная подготовка фотографий сохраняет прежнюю нормализацию.
+
+Extensions.swift:1481–1570 и EditImageControls.swift:96–123 подтверждают CCW
+quarter turns и horizontal mirror результата. При включённом зеркале следующий
+поворот выглядит CW. Crop переносится CCW независимо от mirror, как в
+EditImageModalController.swift:1068–1113/Extensions.swift:1882–1926. Это особенность
+референса: одинаковый raster state может иметь разные crop paths при разном
+порядке операций. Размеры preview, рамки и экспорта учитывают поворот.
+
+Повторная сверка исправила прежние утверждения о gaps: у crop четыре угла;
+восемь handles относятся к inserted image overlays.200×200.aspectFitted(canvas)
+увеличивает квадрат до floor(min(canvas.width,canvas.height)), а не ограничивает
+его200pt. Текущая нормализованная начальная геометрия уже совпадает с основной
+формулой референса. Открыты fitted-point rounding,40pt resize constraint,
+double-click full bounds, отдельный draw/eraser/undo редактор и inserted images.
 Outer GPLv2 UI/asset не копируется; общий sidebar и подготовка сохраняют прежнее
 окно. Account/network/server delivery остаётся непроверенным.

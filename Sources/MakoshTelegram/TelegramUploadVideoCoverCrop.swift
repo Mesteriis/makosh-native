@@ -3,8 +3,10 @@ import Foundation
 public struct TelegramUploadVideoCoverCrop: Equatable, Sendable {
     public enum Corner: Sendable { case topLeft, topRight, bottomLeft, bottomRight }
     public private(set) var rect: CGRect
-    private let imageSize: CGSize
-    private let aspect: CGFloat
+    public private(set) var transform = TelegramUploadVideoCoverTransform()
+    private var imageSize: CGSize
+    private let presetAspect: CGFloat?
+    private var aspect: CGFloat { presetAspect ?? imageSize.width / imageSize.height }
     private var heightPerWidth: CGFloat { imageSize.width / imageSize.height / aspect }
 
     public init(imageSize: CGSize, videoSize: CGSize) throws {
@@ -14,7 +16,8 @@ public struct TelegramUploadVideoCoverCrop: Equatable, Sendable {
         // The reference's Original candidate has zero difference; a later
         // preset wins only an exact tie. Other videos retain the image's ratio.
         let presets: [CGFloat] = [1, 2.0/3, 3.0/5, 3.0/4, 4.0/5, 5.0/7, 9.0/16, 16.0/9]
-        aspect = presets.last(where: { 1 / $0 == videoSize.height / videoSize.width }) ?? imageSize.width / imageSize.height
+        presetAspect = presets.last(where: { 1 / $0 == videoSize.height / videoSize.width })
+        let aspect = presetAspect ?? imageSize.width / imageSize.height
         let width = min(min(imageSize.width, imageSize.height), imageSize.height * aspect)
         let height = width / aspect
         rect = CGRect(x: (1 - width / imageSize.width) / 2, y: (1 - height / imageSize.height) / 2,
@@ -24,6 +27,16 @@ public struct TelegramUploadVideoCoverCrop: Equatable, Sendable {
         guard translation.width.isFinite, translation.height.isFinite else { return }
         rect.origin.x = min(max(0, rect.minX + translation.width), 1 - rect.width)
         rect.origin.y = min(max(0, rect.minY + translation.height), 1 - rect.height)
+    }
+    public mutating func rotate() {
+        // Reference crop transport is CCW even while its output mirror is set.
+        rect = CGRect(x: rect.minY, y: max(0, 1 - rect.maxX), width: rect.height, height: rect.width)
+        imageSize = CGSize(width: imageSize.height, height: imageSize.width)
+        transform.rotate()
+    }
+    public mutating func flipHorizontally() {
+        rect.origin.x = max(0, 1 - rect.maxX)
+        transform.flipHorizontally()
     }
     public mutating func resize(by translation: CGSize, corner: Corner) {
         guard translation.width.isFinite, translation.height.isFinite else { return }

@@ -50,6 +50,17 @@ struct TelegramVideoCoverEditorView: View {
                     .keyboardShortcut(.cancelAction).disabled(applying)
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.cancel")
                 Spacer()
+                Button { crop.rotate() } label: { Image(systemName: "rotate.left") }
+                    .keyboardShortcut("r", modifiers: .command).disabled(applying)
+                    .help("Повернуть (⌘R)").accessibilityLabel("Повернуть обложку")
+                    .accessibilityValue("\(crop.transform.quarterTurns * 90)°")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.rotate")
+                Button { crop.flipHorizontally() } label: { Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right") }
+                    .disabled(applying).help("Отразить по горизонтали")
+                    .accessibilityLabel("Отразить обложку по горизонтали")
+                    .accessibilityValue(crop.transform.isHorizontallyFlipped ? "Включено" : "Выключено")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.flip")
+                Spacer()
                 if applying { ProgressView().controlSize(.small) }
                 Button("Готово", action: apply).keyboardShortcut(.defaultAction).disabled(applying)
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.done")
@@ -64,11 +75,11 @@ struct TelegramVideoCoverEditorView: View {
     private func apply() {
         guard !applying, upload.videoCoverEditingID == presentation.id else { return }
         applying = true; error = nil
-        let selection = presentation.selection, rect = crop.rect, id = presentation.id
+        let selection = presentation.selection, rect = crop.rect, transform = crop.transform, id = presentation.id
         applyTask = Task { @MainActor in
             defer { applying = false; applyTask = nil }
             do {
-                let cover = try await TelegramUploadVideoCoverIO.stage(selection, crop: rect)
+                let cover = try await TelegramUploadVideoCoverIO.stage(selection, crop: rect, transform: transform)
                 guard !Task.isCancelled else { try? TelegramUploadVideoCoverIO.discardCover(cover); return }
                 if upload.commitVideoCover(cover, editID: id) { close() }
                 else {
@@ -91,7 +102,9 @@ private struct TelegramVideoCoverCropCanvas: View {
     private let corners: [TelegramUploadVideoCoverCrop.Corner] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
     var body: some View {
         GeometryReader { geometry in
-            let width = CGFloat(preview.image.width), height = CGFloat(preview.image.height)
+            let original = CGSize(width: preview.image.width, height: preview.image.height)
+            let transformed = crop.transform.imageSize(original)
+            let width = transformed.width, height = transformed.height
             let scale = min(geometry.size.width / width, geometry.size.height / height)
             let fitted = CGRect(x: (geometry.size.width - width * scale) / 2, y: (geometry.size.height - height * scale) / 2,
                 width: width * scale, height: height * scale)
@@ -99,7 +112,10 @@ private struct TelegramVideoCoverCropCanvas: View {
                 width: crop.rect.width * fitted.width, height: crop.rect.height * fitted.height)
             ZStack(alignment: .topLeading) {
                 Image(preview.image, scale: 1, label: Text("Изображение для обложки")).resizable()
-                    .frame(width: fitted.width, height: fitted.height).offset(x: fitted.minX, y: fitted.minY)
+                    .frame(width: original.width * scale, height: original.height * scale)
+                    .rotationEffect(.degrees(-90 * Double(crop.transform.quarterTurns)))
+                    .scaleEffect(x: crop.transform.isHorizontallyFlipped ? -1 : 1, y: 1)
+                    .position(x: fitted.midX, y: fitted.midY)
                     .accessibilityHidden(true)
                 Path { path in path.addRect(fitted); path.addRect(selection) }
                     .fill(.black.opacity(0.55), style: FillStyle(eoFill: true)).allowsHitTesting(false)
@@ -150,6 +166,7 @@ private struct TelegramVideoCoverCropCanvas: View {
                         .accessibilityHidden(true)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+                .onChange(of: crop.transform) { gestureStart = nil }
         }
     }
 }

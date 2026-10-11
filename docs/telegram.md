@@ -1511,7 +1511,7 @@ remains unverified.
 
 The existing preparation menu exposes Add/Change/Remove. A small asynchronous
 NSOpenPanel helper selects one image; SwiftUI owns the editor and preparation
-context. The editor owns a normalized photo snapshot, verifies its displayed
+context. The editor owns a bounded copy of the original image, verifies its displayed
 digest against the exact bounded bytes read for Apply, and releases only owned
 stages. Cancel/Done, drag/move, four corner resize handles, keyboard arrows and
 accessibility adjustment operate a fixed aspect. Reference bestDimension selects
@@ -1543,8 +1543,33 @@ This uses isolated synthetic Postbox/PostgreSQL/S3, without personal account,
 Keychain or Telegram network. Real persistence regressions cover replacement,
 idempotence, stale editor, submission freeze and retained previous bytes.
 
-Remaining editor differences: rotation, mirror, drawing/undo, eight-handle parity
-and reference initial200pt crop sizing are not implemented. The picker currently
-uses the existing photo normalization (JPEG at most2560px, quality0.85) before
-the final cover crop, instead of retaining the reference editor's original image.
-This is basic cover editing, not complete Telegram/editor visual parity.
+### Original source, rotation and horizontal mirror
+
+The picker now copies the original image bytes before decoding, retaining their
+SHA256 and full oriented geometry. Input remains bounded to20MiB,8192px per axis
+and40 million pixels. Ordinary photo attachments retain their existing JPEG
+normalization. Apply checks the snapshot digest on the same read before EXIF
+orientation, editor rotation, output mirror and crop. Final rendering draws
+directly into the at-most320px JPEG at quality1.0, without a second full-size
+transformed bitmap or source metadata. Temporary source copies are released on
+cancel/close; the selected original is never changed. The final cover continues
+through the existing encrypted S3/pointer workflow.
+
+EditImageControls.swift:96–123 and TGUIKit Extensions.swift:1481–1570 establish
+counterclockwise quarter turns followed by horizontal output mirror. The two
+state fields are independent: a subsequent rotation appears clockwise while
+mirrored. EditImageModalController.swift:1068–1113 and Extensions.swift:1882–1926
+transport the crop counterclockwise and mirror its x origin. The reference keeps
+that crop direction even while mirrored; rotate/flip order can therefore change
+the crop path despite equal final raster state. Makosh retains these semantics.
+The selected dimension preset remains fixed for later resize; Original follows
+the current transformed image's aspect. The existing bottom controls now add
+Rotate (Cmd+R) and Mirror between Cancel and Done.
+
+Research corrected two earlier frontier claims. Crop has four corner controls,
+not eight; eight controls belong to inserted image overlays. The reference's
+200-square aspectFitted call may upscale to the smaller fitted canvas dimension;
+it is not a literal200pt initial crop. Makosh already matches its main normalized
+initial geometry. Reference point rounding,40pt resize constraints, double-click
+full bounds, drawing/eraser/undo and inserted-image editing remain open. This is
+progress toward complete reference editor/Telegram parity, not its completion.

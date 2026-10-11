@@ -44,19 +44,26 @@ public enum TelegramUploadFileIO {
         try await stage(source, mode: mode, coverCrop: nil)
     }
 
-    static func stageVideoCover(_ source: URL, crop: CGRect, expectedSHA256: String? = nil) async throws -> TelegramUploadFile {
+    static func stageImageSource(_ source: URL) async throws -> TelegramUploadFile {
+        try await stage(source, mode: .file, coverCrop: nil, sourceByteLimit: 20 * 1024 * 1024)
+    }
+
+    static func stageVideoCover(_ source: URL, crop: CGRect, expectedSHA256: String? = nil,
+                                transform: TelegramUploadVideoCoverTransform = .init()) async throws -> TelegramUploadFile {
         guard crop.origin.x.isFinite, crop.origin.y.isFinite, crop.size.width.isFinite, crop.size.height.isFinite,
               crop.origin.x >= 0, crop.origin.y >= 0, crop.size.width > 0, crop.size.height > 0,
               crop.origin.x + crop.size.width <= 1, crop.origin.y + crop.size.height <= 1 else {
             throw TelegramUploadFileError.invalidImage
         }
-        return try await stage(source, mode: .photo, coverCrop: crop, expectedCoverSHA256: expectedSHA256)
+        return try await stage(source, mode: .photo, coverCrop: crop, expectedCoverSHA256: expectedSHA256, coverTransform: transform)
     }
 
-    private static func stage(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String? = nil) async throws -> TelegramUploadFile {
+    private static func stage(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String? = nil,
+                              sourceByteLimit: Int64? = nil, coverTransform: TelegramUploadVideoCoverTransform = .init()) async throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
-            let file = try prepare(source, mode: mode, coverCrop: coverCrop, expectedCoverSHA256: expectedCoverSHA256)
+            let file = try prepare(source, mode: mode, coverCrop: coverCrop, expectedCoverSHA256: expectedCoverSHA256,
+                sourceByteLimit: sourceByteLimit, coverTransform: coverTransform)
             guard mode == .video else { return file }
             do {
                 let info = try await TelegramUploadVideoIO.inspect(file)
@@ -161,7 +168,8 @@ public enum TelegramUploadFileIO {
         return true
     }
 
-    private static func prepare(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String?) throws -> TelegramUploadFile {
+    private static func prepare(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String?,
+                                sourceByteLimit: Int64?, coverTransform: TelegramUploadVideoCoverTransform) throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
@@ -173,7 +181,8 @@ public enum TelegramUploadFileIO {
         guard fstat(input, &original) == 0, original.st_mode & S_IFMT == S_IFREG, original.st_size >= 0 else {
             throw TelegramUploadFileError.unavailable
         }
-        let cap: Int64 = mode == .photo ? 20 * 1024 * 1024 : 4 * 1024 * 1024 * 1024
+        let modeCap: Int64 = mode == .photo ? 20 * 1024 * 1024 : 4 * 1024 * 1024 * 1024
+        let cap = min(sourceByteLimit ?? modeCap, modeCap)
         guard original.st_size <= cap else { throw TelegramUploadFileError.tooLarge }
         let id = UUID()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + id.uuidString, isDirectory: true)
@@ -240,26 +249,7 @@ public enum TelegramUploadFileIO {
                 throw TelegramUploadFileError.invalidImage
             }
             if let coverCrop {
-                // The crop is expressed in oriented image coordinates, before scaling.
-                let x = floor(coverCrop.origin.x * CGFloat(image.width))
-                let y = floor(coverCrop.origin.y * CGFloat(image.height))
-                let right = min(CGFloat(image.width), ceil((coverCrop.origin.x + coverCrop.width) * CGFloat(image.width)))
-                let bottom = min(CGFloat(image.height), ceil((coverCrop.origin.y + coverCrop.height) * CGFloat(image.height)))
-                guard let cropped = image.cropping(to: CGRect(x: x, y: y, width: right - x, height: bottom - y)) else {
-                    throw TelegramUploadFileError.invalidImage
-                }
-                let scale = min(1, 320 / CGFloat(max(cropped.width, cropped.height)))
-                let targetWidth = max(1, Int((CGFloat(cropped.width) * scale).rounded()))
-                let targetHeight = max(1, Int((CGFloat(cropped.height) * scale).rounded()))
-                guard let context = CGContext(data: nil, width: targetWidth, height: targetHeight,
-                    bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-                    throw TelegramUploadFileError.invalidImage
-                }
-                context.interpolationQuality = .high
-                context.draw(cropped, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-                guard let scaled = context.makeImage() else { throw TelegramUploadFileError.invalidImage }
-                image = scaled
+                image = try coverTransform.render(image, crop: coverCrop)
             }
             let encoded = NSMutableData()
             guard let destination = CGImageDestinationCreateWithData(encoded, "public.jpeg" as CFString, 1, nil) else {

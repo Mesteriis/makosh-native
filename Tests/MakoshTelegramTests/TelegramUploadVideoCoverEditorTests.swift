@@ -78,6 +78,9 @@ import ImageIO
         defer { try? FileManager.default.removeItem(at: root) }
         let source = root.appendingPathComponent("cover.jpg")
         try writeUploadVideoCoverFixture(source)
+        var original = try Data(contentsOf: source)
+        original.append(Data(repeating: 0, count: 1024))
+        try original.write(to: source)
         let selection = try await TelegramUploadVideoCoverIO.openSelection(source)
         defer { try? TelegramUploadVideoCoverIO.discardSelection(selection) }
         let context = try XCTUnwrap(CGContext(data: nil, width: 40, height: 80, bitsPerComponent: 8,

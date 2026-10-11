@@ -3,6 +3,65 @@ import Foundation
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadBatchControllerTests: XCTestCase {
+    func testPhotoDerivativeFailureReleasesTheRawCopyBeforePublication() async throws {
+        let sources = try makeSources(), controller = TelegramUploadController()
+        controller.bind(provider: BatchStagingProvider())
+        var rawURL: URL?
+        controller.stage = { source, _ in
+            rawURL = source
+            XCTAssertNotEqual(source, sources[0])
+            XCTAssertEqual(try Data(contentsOf: source), Data("first.txt".utf8))
+            throw TelegramUploadFileError.invalidImage
+        }
+        controller.prepare(sources: [.init(source: sources[0], mode: .photo)], isGrouped: false,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .failed); XCTAssertTrue(controller.items.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(rawURL).deletingLastPathComponent().path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sources[0].path))
+    }
+
+    func testPhotoCancellationReleasesBothOriginalAndCompletedDerivative() async throws {
+        let sources = try makeSources(photos: true), controller = TelegramUploadController()
+        controller.bind(provider: BatchStagingProvider())
+        var rawURL: URL?, derivative: TelegramUploadFile?, release: CheckedContinuation<Void, Never>?
+        let ready = expectation(description: "Derivative completed before cancellation")
+        controller.stage = { source, mode in
+            rawURL = source; derivative = try await TelegramUploadFileIO.stage(source, mode: mode)
+            await withCheckedContinuation { release = $0; ready.fulfill() }
+            return try XCTUnwrap(derivative)
+        }
+        controller.prepare(sources: [.init(source: sources[0], mode: .photo)], isGrouped: false,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+        await fulfillment(of: [ready], timeout: 10)
+        controller.cancelPreparation(); release?.resume()
+        for _ in 0..<500 where FileManager.default.fileExists(atPath: try XCTUnwrap(rawURL).path) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.phase, .cancelled); XCTAssertTrue(controller.items.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(rawURL).deletingLastPathComponent().path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(derivative).directory.path))
+    }
+
+    func testPhotoInitialWriteOwnsBothStagesAfterControllerDeinit() async throws {
+        let sources = try makeSources(photos: true), entered = expectation(description: "Photo write owns both stages")
+        let store = BatchLifetimeStore(entered: { entered.fulfill() })
+        var controller: TelegramUploadController? = TelegramUploadController()
+        weak var observed = controller
+        controller?.bind(provider: BatchStagingProvider(), recoveryStore: store, requiresRecovery: true)
+        controller?.prepare(sources: sources.map { .init(source: $0, mode: .photo) }, isGrouped: true,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), captionInput: .empty)
+        await fulfillment(of: [entered], timeout: 10)
+        let files = try store.items.flatMap { [$0.file, try XCTUnwrap($0.originalFile)] }
+        controller = nil; XCTAssertNil(observed); XCTAssertEqual(files.count, 4)
+        for file in files { XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path)) }
+        store.release?.resume()
+        for _ in 0..<500 where files.contains(where: { FileManager.default.fileExists(atPath: $0.directory.path) }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        for file in files { XCTAssertFalse(FileManager.default.fileExists(atPath: file.directory.path)) }
+    }
+
     func testLaterStagingFailureReleasesEveryEarlierFileAndPublishesNoSubset() async throws {
         let sources = try makeSources(), controller = TelegramUploadController()
         controller.bind(provider: BatchStagingProvider())
@@ -61,12 +120,14 @@ import Foundation
         for file in files { XCTAssertFalse(FileManager.default.fileExists(atPath: file.directory.path)) }
     }
 
-    private func makeSources() throws -> [URL] {
+    private func makeSources(photos: Bool = false) throws -> [URL] {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         addTeardownBlock { try FileManager.default.removeItem(at: root) }
-        return try ["first.txt", "later.txt"].map { name in
-            let url = root.appendingPathComponent(name); try Data(name.utf8).write(to: url); return url
+        return try (photos ? ["first.jpg", "later.jpg"] : ["first.txt", "later.txt"]).map { name in
+            let url = root.appendingPathComponent(name)
+            if photos { try writeUploadVideoCoverFixture(url) } else { try Data(name.utf8).write(to: url) }
+            return url
         }
     }
 }

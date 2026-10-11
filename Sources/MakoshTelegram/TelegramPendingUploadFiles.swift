@@ -80,6 +80,21 @@ actor TelegramPendingUploadFiles {
             preparationID: preparationID, video: video, attachmentID: itemID.map(TelegramPendingUploadItem.attachmentID) ?? "prepared")
     }
 
+    func saveOriginal(_ file: TelegramUploadFile, accountID: Int64, chatID: Int64, preparationID: UUID,
+                      itemID: UUID, capture: ArchiveFileCapture) async throws -> ArchiveFileRecord {
+        guard file.mode == .file, file.size <= 20 * 1024 * 1024 else { throw TelegramUploadFileError.unavailable }
+        try Task.checkCancellation()
+        return try await repository.capture(capture,
+            identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
+            attachment: .init(id: TelegramPendingUploadItem.originalAttachmentID(itemID), kind: "file", name: file.name, size: file.size))
+    }
+
+    func restoreOriginal(_ record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID, itemID: UUID) async throws -> TelegramUploadFile {
+        guard record.attachment.kind == "file", record.plaintextByteCount <= 20 * 1024 * 1024 else { throw TelegramUploadFileError.unavailable }
+        return try await restorePayload(record: record, accountID: accountID, chatID: chatID,
+            preparationID: preparationID, video: nil, attachmentID: TelegramPendingUploadItem.originalAttachmentID(itemID))
+    }
+
     private func restorePayload(record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID,
                                 video: TelegramUploadVideoMetadata?, attachmentID: String) async throws -> TelegramUploadFile {
         try Task.checkCancellation()

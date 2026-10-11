@@ -45,6 +45,105 @@ private func pendingControllerPeers(_ box: Postbox) -> Signal<Void, NoError> {
 }
 @MainActor private final class PendingControllerEmptyLease: TelegramUploadLease { func stop() {} }
 @MainActor final class TelegramPendingUploadPostboxTests: XCTestCase {
+    func testBatchPhotoOriginalIsArchivedSeparatelyFromNormalizedJPEG() async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), box = try await open(root())
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x61, count: 32) })
+        let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+            files: { TelegramPendingUploadFiles(repository: archive) })
+        var sources: [URL] = []
+        for name in ["a.png", "b.png"] {
+            let source = archiveRoot.appendingPathComponent(name)
+            let context = try XCTUnwrap(CGContext(data: nil, width: 64, height: 32, bitsPerComponent: 8,
+                bytesPerRow: 64, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+            context.setFillColor(gray: name == "a.png" ? 0.25 : 0.75, alpha: 1)
+            context.fill(CGRect(x: 0, y: 0, width: 64, height: 32))
+            let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.png" as CFString, 1, nil))
+            CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+            XCTAssertTrue(CGImageDestinationFinalize(destination)); sources.append(source)
+        }
+        let originalBytes = try Data(contentsOf: sources[0])
+        let otherBytes = try Data(contentsOf: sources[1])
+        let controller = TelegramUploadController()
+        controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+        controller.prepare(sources: sources.map { .init(source: $0, mode: .photo) }, isGrouped: true,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic originals"), captionInput: .empty)
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.canSend)
+        let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
+        XCTAssertEqual(draft.schemaVersion, 7, "Old binaries must reject a pointer carrying raw originals")
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        let items = try XCTUnwrap(encoded["items"] as? [[String: Any]])
+        let original = try XCTUnwrap(items.first?["originalFile"] as? [String: Any], "A normalized JPEG cannot stand in for its original")
+        let record = try JSONDecoder().decode(ArchiveFileRecord.self, from: JSONSerialization.data(withJSONObject: original))
+        XCTAssertEqual(record.attachment.kind, "file"); XCTAssertEqual(record.attachment.name, "a.png")
+        XCTAssertNotEqual(record.id, draft.items[0].file.id)
+        var alteredBytes = originalBytes; alteredBytes[alteredBytes.count - 1] ^= 1
+        try alteredBytes.write(to: sources[0])
+        let altered = try await TelegramUploadFileIO.stageImageSource(sources[0])
+        defer { try? TelegramUploadFileIO.discard(altered) }
+        let substituted = [TelegramUploadBatchItem(id: controller.items[0].id, file: controller.items[0].file,
+            originalFile: altered), controller.items[1]]
+        do {
+            try await store.prepare(preparationID: draft.id, items: substituted, isGrouped: true,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic originals"), captionInput: .empty, originalDraft: nil)
+            XCTFail("Retry cannot replace an archived original using the same name and byte count")
+        } catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .conflict) }
+        try FileManager.default.removeItem(at: sources[0])
+        let exported = archiveRoot.appendingPathComponent("restored-original.png")
+        try await archive.export(record, to: exported)
+        XCTAssertEqual(try Data(contentsOf: exported), originalBytes)
+        XCTAssertNotEqual(try Data(contentsOf: controller.items[0].file.url), originalBytes)
+        XCTAssertEqual(controller.items.map { $0.file.name }, ["a.jpg", "b.jpg"])
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(controller.items[0].originalFile).url), originalBytes)
+        let initial = controller.items, context = try XCTUnwrap(controller.preparationContextID)
+        XCTAssertTrue(controller.moveItem(id: initial[1].id, to: 0, contextID: context, revision: controller.itemsRevision))
+        for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(controller.canSend)
+        controller.bind(provider: nil)
+        try FileManager.default.removeItem(at: sources[1])
+        let reorderedLoad = try await store.load(chatID: 42), reordered = try XCTUnwrap(reorderedLoad)
+        XCTAssertEqual(reordered.items.map(\.id), [initial[1].id, initial[0].id])
+        XCTAssertEqual(reordered.items.map(\.originalFile), [draft.items[1].originalFile, record])
+        let beforeFailure = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { $0.hasPrefix("makosh-upload-") })
+        let forged = try pendingUploadMutating(reordered) {
+            var values = $0["items"] as! [[String: Any]], original = values[1]["originalFile"] as! [String: Any]
+            original["plaintextSHA256"] = String(repeating: "0", count: 64)
+            values[1]["originalFile"] = original; $0["items"] = values
+        }
+        XCTAssertTrue(forged.isValid)
+        do { _ = try await store.restoreItems(draft: forged); XCTFail("A later original failure must refuse the whole restoration") } catch {}
+        let afterFailure = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { $0.hasPrefix("makosh-upload-") })
+        XCTAssertEqual(afterFailure, beforeFailure, "Earlier JPEG and original stages must both be released")
+        let restored = try await store.restoreItems(draft: reordered)
+        defer { for item in restored { try? item.discard() } }
+        XCTAssertEqual(try restored.map { try Data(contentsOf: XCTUnwrap($0.originalFile).url) }, [otherBytes, originalBytes])
+        let resumed = TelegramUploadController()
+        resumed.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
+        XCTAssertTrue(resumed.restore(draft: reordered, items: restored,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic originals"), restorationEpoch: resumed.recoveryRestoreEpoch))
+        let seeded = expectation(description: "Synthetic photo peers")
+        let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+        defer { seed.dispose() }
+        await fulfillment(of: [seeded], timeout: 20)
+        let queued = expectation(description: "Both restored photos admitted")
+        resumed.didQueue = { _, _ in queued.fulfill() }
+        resumed.send(contextID: context)
+        await fulfillment(of: [queued], timeout: 20)
+        let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
+        guard case let .acceptedBatch(ids) = accepted.disposition else { return XCTFail("Raw originals must survive complete native queue acceptance") }
+        XCTAssertEqual(ids.count, 2); XCTAssertEqual(accepted.items, reordered.items)
+        XCTAssertEqual(accepted.schemaVersion, 7)
+        for item in initial + restored {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: item.file.directory.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(item.originalFile).directory.path))
+        }
+    }
+
     func testBatchControllerRestoresEditedOrderAndAcknowledgesEveryNativeQueueID() async throws {
         let database = try PendingFilesTestDatabase()
         addTeardownBlock { try database.cleanup() }

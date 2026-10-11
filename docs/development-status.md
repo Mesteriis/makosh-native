@@ -1,6 +1,60 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram ordered controller and preparation UI
+## Current stage: Telegram raw photo originals
+
+Picker photos now retain the raw source separately from the prepared JPEG,
+including single selection. The frozen source produces the JPEG; both resources
+use one stable item ID and distinct encrypted S3 objects. Schema7 preserves their
+records through reorder, restart, cancellation and complete native acceptance.
+Schema1–6 remain readable; source-bearing schema6 and incomplete schema7 fail
+closed. Legacy JPEG-only photos cannot reconstruct missing originals. Temporary
+cleanup covers both resources; immutable archive objects remain retained.
+
+The real original-source regression first failed with schema6 and no original
+record, then passed. It now covers exact PNG bytes after deleting the selected
+source, same-name/size raw substitution refusal, reorder, authenticated full-set
+restoration, later-original failure cleanup and full native receipt acceptance.
+Additional regressions cover schema downgrade/alias/scope refusal, derivative
+failure, cancellation and detached initial-write lifetime for both stages.
+Final scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**765 XCTest (700 Telegram +65 core), zero failures;32 Python regressions**.
+The final test log retains226 upstream t19 teardown diagnostics without failures.
+The earlier compilation retained two weak-reference mutability warnings; the
+incremental final test compile prints no warning. Raw test/setup failures remain
+separate from passing gates.
+
+Owned native QA verifies11 selected PNGs, stable-ID context-menu movement across
+the10/11 boundary, exact11-ID/order/19-UTF16 caption restoration after SIGTERM,
+local queue acceptance and no preparation after the next restart. Root found
+that the single-photo picker still entered the old API and changed only that
+routing: one photo now uses an ungrouped ordered preparation while preserving
+the single-photo preview. On the final payload, single-photo preparation created
+two stored archive objects in the isolated schema; exact byte/kind proof is the
+separate integration test. Its13-UTF16 caption, spoiler and caption-above options
+survive restart, native queue acceptance and another restart without resurrection.
+Mail/Telegram switching preserves the selected dialog in the common shell.
+Strict signatures and raw unsigned built/QA payload equality pass. No personal
+account, Keychain or Telegram network was used. A drag gesture produced no
+observed reorder and remains unaccepted; the coordinate context menu passed.
+
+Media/file switching, whole-list eligibility, archive preparation and caption
+normalization remain the next album work. The other Telegram action/search/
+profile/settings workflows and live-account delivery/sync/reconnection remain
+open; MMail/Aether, WhatsApp, Teams, Telemost, backup and packaging follow in the
+existing order. This foundation does not complete Telegram or the full goal.
+Independent frozen source review found no new concrete correctness defect. Root
+revalidated all18 source/lock hashes and both project/reference pins. The raw
+worker report required contract normalization; its16 recorded zero-exit reads
+are source evidence, while worker tests/build/UI remain SKIP and observed
+provider/model/usage remains unknown. Parent test/build/native gates are separate.
+Final project XERJ refresh exits0 (354 files,323/323 code); project and reference
+freshness checks exit0, and a final query retrieves saveOriginal/restoreOriginal,
+confirmed against source. Final selected-credential audit exits0:359 publishable
+files, five selected credential fields, zero matched files or PR-body matches.
+Git/PR publication is recorded separately. Previous-head d216eab9 CI38130275556 (PR)
+and38130272671 (push) both completed successfully; they do not cover this patch.
+
+## Historical Telegram ordered controller and preparation UI (d216eab9)
 
 The existing common Telegram pane now accepts multiple selected files and owns
 one ordered upload state machine. Stable item IDs bind reorder/remove/selection,

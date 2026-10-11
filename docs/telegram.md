@@ -1733,6 +1733,37 @@ gap, and a real Postbox/PostgreSQL/S3 regression reproduced it before the fix.
 
 The broader sequential Telegram/product goal remains open.
 
+### Raw photo originals in ordered preparations
+
+New picker photo preparations, including a single selected photo, first copy the selected source into an
+owned stage, then derive JPEG from that frozen copy. The JPEG keeps the selected
+filename stem with `.jpg`; the raw source keeps its original filename and bytes.
+Both resources share one stable item ID but have different temporary and S3
+object IDs. Raw photos retain the existing20MiB preparation bound. Videos and
+ordinary files already retain their source payload; no extra copy is added here.
+
+Schema7 stores raw photo metadata as `originalFile`, with attachment ID
+`original:<item UUID>`. JPEG and cover attachment IDs remain unchanged. Every
+source is captured before the first S3 write, and the whole preparation is
+published only after every resource is stored. Retry compares original metadata
+and streamed plaintext SHA256. Restoration authenticates all records, returning
+both stages or cleaning the entire restored set on failure. Reorder/remove,
+detached writes, cancellation and accepted receipts preserve the source binding;
+temporary cleanup attempts both resources even when one removal fails. S3
+copies are never deleted by these operations.
+
+Schemas1–6 remain readable. A schema7 pointer requires originals for every photo;
+schema6 rejects source-bearing records. Metadata matching during native photo
+submission validates raw stage ownership/name/size; only the active JPEG enters
+MediaBox and gets the before/after-copy digest verification. The raw bytes are
+authenticated during archive restore and initial-write retry. Future file-mode
+conversion must separately verify its selected raw payload before enqueue.
+Legacy JPEG-only preparations cannot reconstruct original bytes. This foundation
+does not implement media/file switching or archive mode; both remain open.
+Single photo selection uses the ordered preparation path without grouping,
+preserving the existing single-photo preview and options. Existing single-file
+and video paths, and legacy programmatic preparation APIs, remain compatible.
+
 Real controller/Postbox/PostgreSQL/S3 regressions cover edited order/removal,
 restoration, a later video's cover following its ID, later-stage failure cleanup,
 cancellation and detached initial-write lifetime. Lost acknowledgement preserves

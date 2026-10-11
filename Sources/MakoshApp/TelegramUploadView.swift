@@ -58,10 +58,10 @@ struct TelegramAttachButtons: View {
         Task { @MainActor in
             defer { choosing = false }
             guard let selected = await TelegramUploadPanel.choose(choice) else { return }
-            if selected.count == 1, let first = selected.first {
+            if selected.count == 1, let first = selected.first, first.mode != .photo {
                 model.prepareUpload(source: first.source, mode: first.mode, target: target, captionInput: captionInput, contextID: contextID)
             } else {
-                model.prepareUpload(sources: selected, isGrouped: true, target: target, captionInput: captionInput, contextID: contextID)
+                model.prepareUpload(sources: selected, isGrouped: selected.count > 1, target: target, captionInput: captionInput, contextID: contextID)
             }
         }
     }

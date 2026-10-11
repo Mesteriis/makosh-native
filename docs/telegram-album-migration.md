@@ -17,13 +17,15 @@ metadata and every queued reply attribute bind the complete batch to its source
 thread, canonical quote and absence of a todo item.
 
 The picker, upload controller, recovery protocol and preparation UI now carry
-ordered schema6 items. Multi-selection, stable-ID reorder/remove, grouping,
+ordered schema6/7 items. Multi-selection, stable-ID reorder/remove, grouping,
 later-item covers and whole-set restart use the existing upload state machine.
 Grouped visual previews split at10; documents remain individual preview rows.
 Existing schema1–5 preparations remain supported. Whole-list presentation and
 group eligibility, original-file mode switching and archive preparation remain
-open. Prepared photos currently retain normalized JPEG; original-file mode needs
-a separately retained raw source, never renamed normalized bytes. Real
+open. New picker photo preparations, including single selection, retain both normalized JPEG and a separately
+encrypted raw source under schema7. File-mode switching is still pending; it must
+use that source, never renamed normalized bytes. Existing schema1–6 photos have
+no recoverable raw source unless it was separately retained. Real
 Account/network delivery has not been exercised; native queue tests
 use synthetic peers and encrypted Postbox.
 
@@ -82,6 +84,14 @@ items. A binary predating schema6 must fail closed on it. Roll back code only
 after resolving any pending schema6 preparation; preserve S3 objects and the
 pointer instead of rewriting them into a single-file draft. No destructive data
 migration or archive-object deletion is part of this change.
+
+Schema7 binds a photo's raw source to `original:<item UUID>`, separately from its
+`prepared:<item UUID>` JPEG. All photo items in a schema7 pointer must carry an
+original; schema6 cannot carry ignored original references. Reorder, cancellation,
+submission and acceptance retain both records. Removing the final source-bearing
+item can produce schema6 for the remaining source-free items; immutable S3
+objects remain retained. Rollback to a schema6-only binary must leave pending
+schema7 data intact and unavailable, rather than dropping its originals.
 
 ## Confirmed send behavior and remaining fidelity decisions
 

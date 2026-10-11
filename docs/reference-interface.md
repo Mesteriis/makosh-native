@@ -535,3 +535,13 @@ Native QA теперь проверяет visual10+1, перенос11-го ID �
 проверены мышью; сам drag/drop жест пока не проверен. Whole-list
 классификация, переключение исходных media/file и archive остаются открытыми.
 Telegram остаётся в общем WorkspaceView; live Telegram sending не проверялся.
+
+Новые photo preparations из picker, включая одиночный выбор, сохраняют исходный файл отдельно от JPEG, как
+требует граница `PreviewSenderController.swift:1617–1622` /
+`SenderController.swift:331–360,390–391`: media/file строятся из текущего source URL,
+а JPEG — отдельный ресурс. Макош сначала делает собственную неизменяемую копию
+исходника и генерирует JPEG из неё. Schema7 связывает оба S3-объекта с item UUID;
+legacy JPEG-only подготовки не получают выдуманный оригинал. Сам переключатель
+media/file и archive ещё впереди. Референсные image edits отдельно заменяют текущий
+URL; перенос этой операции не следует из сохранения raw source. Runtime референса
+не запускался; GPLv2 UI/ассеты не копировались.

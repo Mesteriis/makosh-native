@@ -582,10 +582,10 @@ public final class TelegramModel: ObservableObject {
                     if source == nil, draft.disposition == .prepared { throw TelegramUploadFileError.unavailable }
                 }
                 let items = try await store.restoreItems(draft: draft)
-                guard current() else { for item in items { try? TelegramUploadFileIO.discard(item.file) }; return }
+                guard current() else { for item in items { try? item.discard() }; return }
                 let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: draft.title, replySource: source)
                 guard self.upload.restore(draft: draft, items: items, target: target, restorationEpoch: restorationEpoch) else {
-                    for item in items { try? TelegramUploadFileIO.discard(item.file) }; throw TelegramUploadFileError.unavailable
+                    for item in items { try? item.discard() }; throw TelegramUploadFileError.unavailable
                 }
             } catch {
                 if current() { self.pendingUploadRecoveryError = "Не удалось восстановить подготовленное вложение. Черновик сохранён. Повторите восстановление." }

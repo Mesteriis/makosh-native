@@ -28,6 +28,37 @@ func pendingUploadBatchFixture() throws -> TelegramPendingUploadDraft {
 }
 
 final class TelegramPendingUploadBatchDraftTests: XCTestCase {
+    func testRawPhotoSourceCannotBeDroppedOrDowngradedIntoAnOlderBatch() throws {
+        var json = try pendingUploadBatchJSON(), items = json["items"] as! [[String: Any]]
+        var original = items[0]["file"] as! [String: Any]
+        var attachment = original["attachment"] as! [String: Any]
+        attachment["id"] = "original:00000000-0000-0000-0000-000000000011"
+        attachment["name"] = "original.png"; original["attachment"] = attachment
+        original["id"] = "00000000-0000-0000-0000-000000000099"
+        var prepared = items[0]["file"] as! [String: Any], photo = prepared["attachment"] as! [String: Any]
+        photo["kind"] = "photo"; photo["name"] = "original.jpg"; prepared["attachment"] = photo
+        items[0]["file"] = prepared; items[0]["originalFile"] = original
+        json["items"] = items; json["schemaVersion"] = 7
+        let decode: ([String: Any]) throws -> TelegramPendingUploadDraft = {
+            try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: $0))
+        }
+        let draft = try decode(json)
+        XCTAssertTrue(draft.isValid)
+        XCTAssertEqual(try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONEncoder().encode(draft)), draft)
+        var downgraded = json; downgraded["schemaVersion"] = 6
+        XCTAssertFalse(try decode(downgraded).isValid, "An older reader must not silently discard original references")
+        var missing = items; missing[0].removeValue(forKey: "originalFile")
+        var invalid = json; invalid["items"] = missing
+        XCTAssertFalse(try decode(invalid).isValid)
+        var duplicate = original; duplicate["id"] = prepared["id"]
+        var aliased = items; aliased[0]["originalFile"] = duplicate; invalid["items"] = aliased
+        XCTAssertFalse(try decode(invalid).isValid, "Original and normalized payload cannot share an archive object ID")
+        var foreign = original, identity = original["identity"] as! [String: Any]
+        identity["conversationID"] = "43"; foreign["identity"] = identity
+        var swapped = items; swapped[0]["originalFile"] = foreign; invalid["items"] = swapped
+        XCTAssertFalse(try decode(invalid).isValid)
+    }
+
     func testBatchAcceptanceRetainsEveryUniqueLocalMessageIDAndRejectsPartialReceipts() throws {
         var json = try pendingUploadBatchJSON()
         json["disposition"] = ["acceptedBatch": ["messageIDs": [

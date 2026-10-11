@@ -29,7 +29,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, draft.schemaVersion == 6, draft.disposition == .submissionStarted,
+        guard draft.isValid, [6, 7].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
@@ -45,7 +45,8 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             guard stored.id == resource.item.id, stored.file.attachment.name.utf8.elementsEqual(file.name.utf8),
                   stored.file.attachment.kind == file.mode.rawValue, stored.file.plaintextByteCount == file.size,
                   stored.file.plaintextSHA256 == resource.plaintextSHA256, stored.video == file.video,
-                  telegramPendingUploadCoverMatches(stored.videoCover, file.videoCover), resource.reference != nil else {
+                  telegramPendingUploadCoverMatches(stored.videoCover, file.videoCover),
+                  stored.matchesOriginal(resource.item.originalFile), resource.reference != nil else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             ids.append(resource.resourceID)

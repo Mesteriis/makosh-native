@@ -45,7 +45,8 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
          items: [TelegramPendingUploadItem], isGrouped: Bool,
          disposition: TelegramPendingUploadDisposition = .prepared) throws {
         guard !items.isEmpty else { throw TelegramPendingUploadPersistenceError.incompatibleData }
-        schemaVersion = 6; self.id = id; self.revision = revision; self.accountID = accountID; self.chatID = chatID
+        schemaVersion = items.contains(where: { $0.originalFile != nil }) ? 7 : 6
+        self.id = id; self.revision = revision; self.accountID = accountID; self.chatID = chatID
         self.title = title; self.captionInput = captionInput; self.captionAboveMedia = captionAboveMedia
         self.mediaSpoiler = mediaSpoiler; self.originalDraft = originalDraft; self.replyTarget = replyTarget
         self.items = items; self.isGrouped = isGrouped; self.disposition = disposition
@@ -78,7 +79,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
             : try c.decode(Bool.self, forKey: .mediaSpoiler)
         originalDraft = try c.decodeIfPresent(TelegramComposerDraft.self, forKey: .originalDraft)
         replyTarget = try c.decodeIfPresent(TelegramComposerReplyTarget.self, forKey: .replyTarget)
-        if schemaVersion == 6 {
+        if [6, 7].contains(schemaVersion) {
             guard !c.contains(.file), !c.contains(.video), !c.contains(.videoCover) else {
                 throw DecodingError.dataCorruptedError(forKey: .items, in: c, debugDescription: "Ambiguous preparation resources")
             }
@@ -105,7 +106,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         try c.encode(captionInput, forKey: .captionInput); try c.encode(captionAboveMedia, forKey: .captionAboveMedia)
         try c.encode(mediaSpoiler, forKey: .mediaSpoiler); try c.encodeIfPresent(originalDraft, forKey: .originalDraft)
         try c.encodeIfPresent(replyTarget, forKey: .replyTarget); try c.encode(disposition, forKey: .disposition)
-        if schemaVersion == 6 {
+        if [6, 7].contains(schemaVersion) {
             try c.encode(items, forKey: .items); try c.encode(isGrouped, forKey: .isGrouped)
         } else {
             try c.encode(file, forKey: .file); try c.encodeIfPresent(video, forKey: .video); try c.encodeIfPresent(videoCover, forKey: .videoCover)
@@ -116,8 +117,11 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               messageID: "pending-upload:" + preparationID.uuidString.lowercased())
     }
     var isValid: Bool {
-        guard [1, 2, 3, 4, 5, 6].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
-              schemaVersion == 6 || (items.count == 1 && (schemaVersion >= 4) == (video != nil) && (schemaVersion == 5) == (videoCover != nil)),
+        guard [1, 2, 3, 4, 5, 6, 7].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+              schemaVersion >= 6 || (items.count == 1 && (schemaVersion >= 4) == (video != nil) && (schemaVersion == 5) == (videoCover != nil)),
+              (schemaVersion == 7
+                ? items.contains(where: { $0.originalFile != nil }) && items.allSatisfy({ $0.file.attachment.kind != "photo" || $0.originalFile != nil })
+                : items.allSatisfy({ $0.originalFile == nil })),
               Set(items.map(\.id)).count == items.count,
               items.allSatisfy({ $0.isValid(identity: Self.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: id), legacy: schemaVersion < 6) }),
               !(schemaVersion < 3 && mediaSpoiler),
@@ -127,7 +131,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               captionInput.formattedText.text.utf8.count <= 64 * 1024,
               (try? TelegramComposerInput(formattedText: captionInput.formattedText, selection: captionInput.selection)) == captionInput,
               replyTarget?.isValid ?? true else { return false }
-        let resources = items.flatMap { [$0.file] + ($0.videoCover.map { [$0.file] } ?? []) }
+        let resources = items.flatMap { [$0.file] + ($0.videoCover.map { [$0.file] } ?? []) + ($0.originalFile.map { [$0] } ?? []) }
         guard Set(resources.map(\.id)).count == resources.count else { return false }
         if let originalDraft {
             guard originalDraft.isValid, originalDraft.accountID == accountID, originalDraft.chatID == chatID,
@@ -140,7 +144,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         }
         if case let .acceptedBatch(messageIDs) = disposition {
             let leadingText = !isGrouped && items.count > 1 && !captionInput.formattedText.text.isEmpty
-            guard schemaVersion == 6, messageIDs.count == items.count + (leadingText ? 1 : 0),
+            guard schemaVersion >= 6, messageIDs.count == items.count + (leadingText ? 1 : 0),
                   Set(messageIDs).count == messageIDs.count,
                   messageIDs.allSatisfy({ $0.peerID == chatID && $0.namespace == Namespaces.Message.Local }) else { return false }
         }

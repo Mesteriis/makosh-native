@@ -62,8 +62,20 @@ enum TelegramUploadEvent {
             do {
                 for source in selected {
                     try Task.checkCancellation()
-                    let file = try await stage(source.source, source.mode)
-                    staged.append(.init(id: file.id, file: file))
+                    if source.mode == .photo {
+                        let original = try await TelegramUploadFileIO.stageImageSource(source.source)
+                        // Own the raw copy before derivative generation can fail or suspend.
+                        staged.append(.init(id: original.id, file: original))
+                        let jpeg = try await stage(original.url, .photo)
+                        let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
+                        let file = TelegramUploadFile(id: jpeg.id, name: name, size: jpeg.size, mode: jpeg.mode,
+                            pixelWidth: jpeg.pixelWidth, pixelHeight: jpeg.pixelHeight, url: jpeg.url,
+                            directory: jpeg.directory, video: jpeg.video, videoCover: jpeg.videoCover)
+                        staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
+                    } else {
+                        let file = try await stage(source.source, source.mode)
+                        staged.append(.init(id: file.id, file: file))
+                    }
                     try Task.checkCancellation()
                     guard self?.token == request else { throw CancellationError() }
                 }
@@ -74,7 +86,7 @@ enum TelegramUploadEvent {
                     id: request, bound: bound, store: store, above: false, spoiler: false, batchItems: staged, grouped: isGrouped)
             } catch {
                 var cleanupFailed = false
-                for item in staged { do { try discard(item.file) } catch { cleanupFailed = true } }
+                for item in staged { do { try item.discard(using: discard) } catch { cleanupFailed = true } }
                 guard let self else { return }
                 self.preparation = nil
                 guard self.token == request else {
@@ -133,7 +145,7 @@ enum TelegramUploadEvent {
                 self.isRecoveryBusy = false; self.recoveryPrepared = true; self.recoveryStatus = nil
                 var remaining: [TelegramUploadBatchItem] = []
                 for item in self.retiredItems {
-                    do { try self.discard(item.file) } catch { remaining.append(item); self.error = "Не удалось удалить временный файл." }
+                    do { try item.discard(using: self.discard) } catch { remaining.append(item); self.error = "Не удалось удалить временный файл." }
                 }
                 self.retiredItems = remaining; self.persistCaption()
             } catch {
@@ -239,7 +251,7 @@ enum TelegramUploadEvent {
         set {
             guard let newValue else { items = []; selectedItemID = nil; return }
             if let index = items.firstIndex(where: { $0.id == selectedItemID }) {
-                items[index] = .init(id: items[index].id, file: newValue)
+                items[index] = .init(id: items[index].id, file: newValue, originalFile: items[index].originalFile)
             } else { items = [.init(id: newValue.id, file: newValue)]; selectedItemID = newValue.id }
         }
     }
@@ -439,7 +451,7 @@ enum TelegramUploadEvent {
                     try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, mediaSpoiler: frozenSpoiler, disposition: .submissionStarted)
                     if let batchItems {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
-                              let draft = try await store.load(chatID: target.chatID), draft.schemaVersion == 6,
+                              let draft = try await store.load(chatID: target.chatID), [6, 7].contains(draft.schemaVersion),
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == batchItems.map(\.id), draft.isGrouped == grouped,
                               draft.captionInput == frozen, draft.captionAboveMedia == frozenAbove, draft.mediaSpoiler == frozenSpoiler else {
@@ -501,7 +513,7 @@ enum TelegramUploadEvent {
         Task { [weak self] in
             do {
                 guard let accepted = try await store.load(chatID: draft.chatID), accepted.id == draft.id,
-                      accepted.schemaVersion == 6, accepted.accountID == draft.accountID, accepted.chatID == draft.chatID,
+                      accepted.schemaVersion == draft.schemaVersion, accepted.accountID == draft.accountID, accepted.chatID == draft.chatID,
                       accepted.title == draft.title, accepted.items == draft.items, accepted.isGrouped == draft.isGrouped,
                       accepted.captionInput == draft.captionInput, accepted.captionAboveMedia == draft.captionAboveMedia,
                       accepted.mediaSpoiler == draft.mediaSpoiler, accepted.originalDraft == draft.originalDraft,
@@ -648,7 +660,7 @@ enum TelegramUploadEvent {
                     self?.persistCancellation(store: store, id: id, chatID: target.chatID, input: cancelled.input, bound: bound, above: cancelled.above, spoiler: cancelled.spoiler, presentation: cancellationPresentation)
                 }
                 self?.persistDetachedInitialIfNeeded(store: store, id: id, chatID: target.chatID)
-                guard let self, self.bindingID == bound, self.preparationID == id else { for item in staged { try? discard(item.file) }; return }
+                guard let self, self.bindingID == bound, self.preparationID == id else { for item in staged { try? item.discard(using: discard) }; return }
                 self.recoveryInitialInFlight = false; self.isRecoveryBusy = false; self.recoveryPrepared = true; self.recoveryStatus = nil
                 if self.captionInput != input || self.captionAboveMedia != above || self.mediaSpoiler != spoiler { self.persistCaption() }
             } catch {
@@ -656,7 +668,7 @@ enum TelegramUploadEvent {
                     self?.persistCancellation(store: store, id: id, chatID: target.chatID, input: cancelled.input, bound: bound, above: cancelled.above, spoiler: cancelled.spoiler, presentation: cancellationPresentation)
                 }
                 self?.persistDetachedInitialIfNeeded(store: store, id: id, chatID: target.chatID)
-                guard let self, self.bindingID == bound, self.preparationID == id else { for item in staged { try? discard(item.file) }; return }
+                guard let self, self.bindingID == bound, self.preparationID == id else { for item in staged { try? item.discard(using: discard) }; return }
                 self.recoveryInitialInFlight = false; self.isRecoveryBusy = false; self.recoveryPrepared = false
                 self.recoveryStatus = "Не удалось сохранить вложение. Отправка заблокирована."
                 self.recoveryRetry = { [weak self] in self?.persistInitial(file: file, target: target, input: input, original: original, id: id, bound: bound, store: store, above: above, spoiler: spoiler, batchItems: batchItems, grouped: grouped) }
@@ -779,7 +791,7 @@ enum TelegramUploadEvent {
             guard items.count == 1, items[0].id == draft.items[0].id else { return false }
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, draft.schemaVersion == 6,
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, [6, 7].contains(draft.schemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,
@@ -788,6 +800,7 @@ enum TelegramUploadEvent {
                   staged.id == saved.id && staged.file.name.utf8.elementsEqual(saved.file.attachment.name.utf8) &&
                   staged.file.size == saved.file.plaintextByteCount && staged.file.mode.rawValue == saved.file.attachment.kind &&
                   staged.file.video == saved.video && telegramPendingUploadCoverMatches(saved.videoCover, staged.file.videoCover) &&
+                  saved.matchesOriginal(staged.originalFile) &&
                   (try? TelegramUploadFileIO.validateOwnedStage(staged.file)) != nil &&
                   (staged.file.videoCover == nil || (try? TelegramUploadVideoCoverIO.validatedBytes(staged.file.videoCover!)) != nil)
               }) else { return false }
@@ -846,7 +859,7 @@ enum TelegramUploadEvent {
         videoPlayback.stop()
         var failed: [TelegramUploadBatchItem] = []
         for item in items + retiredItems {
-            do { try discard(item.file) } catch { failed.append(item) }
+            do { try item.discard(using: discard) } catch { failed.append(item) }
         }
         items = failed; retiredItems = []
         if !items.contains(where: { $0.id == selectedItemID }) { selectedItemID = items.first?.id }
@@ -856,6 +869,6 @@ enum TelegramUploadEvent {
     isolated deinit {
         videoPlayback.stop(); preparation?.cancel(); deadline?.cancel(); lease?.stop()
         // The initial write task owns the captured whole set until it completes.
-        if !recoveryInitialInFlight { for item in items + retiredItems { try? discard(item.file) } }
+        if !recoveryInitialInFlight { for item in items + retiredItems { try? item.discard(using: discard) } }
     }
 }

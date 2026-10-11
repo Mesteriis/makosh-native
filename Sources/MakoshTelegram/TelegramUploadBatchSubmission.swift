@@ -40,9 +40,9 @@ enum TelegramUploadBatchAdmission {
         self.enqueue = enqueue; self.observe = observe; self.receive = receive
         guard accountID == target.accountID, draft.accountID == accountID, target.chatID == draft.chatID,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
-              target.hasValidReplySource, draft.isValid, draft.schemaVersion == 6, draft.disposition == .submissionStarted,
+              target.hasValidReplySource, draft.isValid, [6, 7].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               items.count == draft.items.count,
-              zip(items, draft.items).allSatisfy({ $0.id == $1.id }),
+              zip(items, draft.items).allSatisfy({ $0.id == $1.id && $1.matchesOriginal($0.originalFile) }),
               (try? TelegramUploadBatchPlan(items: items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
                 captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler)) != nil else {
             finish(.rejected); return

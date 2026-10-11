@@ -42,6 +42,8 @@ extension TelegramModel {
                     model.syntheticPendingPostbox = box
                     model.composerForward.bind(TelegramSyntheticForwardProvider(postbox: box,
                         loseAcknowledgement: ProcessInfo.processInfo.arguments.contains("--telegram-forward-ack-loss-qa")))
+                    model.savedMessagesForward.bind(TelegramSyntheticSavedMessagesForwardProvider(postbox: box,
+                        loseAcknowledgement: ProcessInfo.processInfo.arguments.contains("--telegram-saved-forward-ack-loss-qa")))
                     model.bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: box, accountID: -1))
                     continuation.resume()
                 }

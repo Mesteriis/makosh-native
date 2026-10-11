@@ -1,6 +1,68 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram selected-message copy and delete
+## Current stage: Telegram initial picker Saved Messages forwarding
+
+Telegram remains inside the shared service-selector/list/conversation window.
+The initial history/selection recipient picker pins **Избранное** first; one
+explicit click anywhere in the row queues the captured batch without navigation
+or a recipient composer. Ordinary recipients still stage their composer. The
+ordinary Saved input/reply/forward is preserved by a separate account-scoped
+schema-1 Postbox intent/receipt, with bounded decoding and unknown-byte retention.
+Started is durable before enqueue; final fresh whole-batch admission and the
+unique outgoing Local receipt share native queue transactions. Only proven
+zero-queue refusal clears the exact intent. Cancellation, timeout or ambiguous
+results never trigger automatic retry; restart reads accepted/started state.
+Local acceptance clears only the original selection revision and does not prove
+server delivery or power-loss survival. PG archive records/S3 files are unchanged.
+
+`scripts/dev-db.sh up`, focused/full `scripts/test.sh`, `scripts/build-app.sh`
+and strict deep signature/payload checks exit 0: **526 XCTest (463 Telegram +
+63 core), zero failures; 30 Python regressions**. Saved-focused 16 cases pass.
+Encrypted Postbox tests cover separate ordinary bytes, actual queue records,
+genuine reopen, unknown formats, duplicate intent refusal and changed/protected/
+foreign-source admission. The lost-ACK test counts actual native queue history
+and preserves ordinary bytes. Full logs retain 114 upstream t19 teardown
+diagnostics without failure/trap.
+
+Initial focused tests trapped because MainActor transaction closures ran on the
+Postbox queue. A separate real-provider recovery regression reproduced the same
+SIGTRAP before nonisolated signal builders fixed both recovery and rejection
+boundaries; callback delivery remains MainActor. Further real-provider coverage
+exposed the offline logical account -1 being used as an invalid native PeerId.
+The DEBUG fixture now reserves valid destination 10000 in its isolated Postbox,
+retains account -1 only as its logical scope and records actual native queue IDs.
+The first native row-center click merely selected the intrinsic-width button's
+row; a full-width label/hit area fixed one-click behavior. Failed raw logs remain
+local rather than being converted into passes.
+
+Actual native AX/screenshots verify one-click selection forwarding, source chat/
+ordinary draft/reply130 retention, selection clearing, ordinary-recipient staging
+and protected120 forward refusal. Lost-ACK simulation shows uncertainty with
+resubmission disabled while ordinary recipients remain enabled. Mail → Telegram
+preserves state. Restart reads the accepted receipt, removes uncertainty and
+retains ordinary input/reply without a new modal. DEBUG forwarding is explicit
+StoreMessage/receipt simulation, not a live Account enqueue; native admission/
+receipt behavior is separately established by encrypted regressions. No personal
+account, Keychain, Telegram network or server send was used.
+
+Reference ShareModalController.swift:1296–1335 confirms the initial own-peer
+exception and ordinary recipient staging. No outer GPLv2 source/assets were
+copied; dependency pins, preparation recipe 8 and PG schemas remain unchanged.
+Remaining Telegram parity includes picker comments/multiple recipients, Saved
+accessory re-targeting, album selection, special moderation/scheduled/topics/
+secret/paid actions and live-account acceptance. Later channels, backup and
+standalone packaging remain open; the full sequential migration goal stays active.
+This slice uses root source review/integration evidence, without new workers or
+quorum claims. Final XERJ project refresh exits 0: 287 files, 257/257 classified
+code. Project/engine/reference fingerprint checks pass; active Saved admission,
+native enqueue and reference own-peer queries are confirmed against source.
+Publication audit checks 292 publishable files and the PR body against five
+selected credential fields, with zero matches. Index attempts interrupted by
+concurrent source changes remain recorded as failures; the final frozen refresh
+passes. Machine configuration, runtime data and QA artifacts remain ignored.
+Prior published head dafa334 passed both hosted PR/push CI; new-head CI is separate.
+
+## Historical Telegram selected-message copy and delete
 
 Telegram remains inside the shared service-selector/list/conversation window.
 The reference panel now exposes Delete/count/Forward, with Cancel/Escape beside

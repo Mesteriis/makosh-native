@@ -66,7 +66,7 @@ import SwiftSignalKit
     }
 }
 
-private nonisolated func syntheticForwardPreviews(_ draft: TelegramComposerDraft) -> [TelegramComposerForwardPreview]? {
+nonisolated func syntheticForwardPreviews(_ draft: TelegramComposerDraft) -> [TelegramComposerForwardPreview]? {
     guard draft.accountID == -1, draft.isValid, let intent = draft.forwardIntent else { return nil }
     var result: [TelegramComposerForwardPreview] = []
     for frozen in intent.sources {

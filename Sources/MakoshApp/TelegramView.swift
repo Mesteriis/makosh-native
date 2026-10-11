@@ -48,6 +48,7 @@ struct TelegramDetailView: View {
             TelegramPlaybackView(playback: playback)
             TelegramUploadView(model: model)
             TelegramMessageActionsStatus(controller: messageActions, synthetic: model.isSyntheticPreview)
+            TelegramSavedMessagesForwardStatus(controller: model.savedMessagesForward, synthetic: model.isSyntheticPreview)
             if let error = model.error {
                 HStack(alignment: .top) {
                     Image(systemName: "exclamationmark.circle"); Text(error).textSelection(.enabled)

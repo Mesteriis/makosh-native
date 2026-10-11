@@ -145,8 +145,11 @@ Cancel убирает только пересылку. Schema4 совмести�
 comment+forwards проходит повторную transaction admission; локальный accepted
 receipt и storage-only consume защищают от автоматического resend после restart.
 Неизвестный исход и недоступный источник сохраняют черновик. Новое вложение при
-активной пересылке пока явно недоступно. Saved Messages immediate exception,
-остальные selection actions, темы, paid/secret и live-account acceptance остаются впереди.
+активной пересылке пока явно недоступно. Initial history/selection picker теперь
+сразу пересылает в «Избранное» через отдельный durable intent/receipt, сохраняя
+ordinary Saved input/reply/forward и текущий чат. Picker comment/multiple recipients,
+Saved accessory re-targeting, остальные selection actions, темы, paid/secret и
+live-account acceptance остаются впереди.
 Окончание этого участка не завершает Telegram или общий последовательный перенос.
 
 ## Текущий участок: выбор нескольких сообщений
@@ -154,8 +157,8 @@ receipt и storage-only consume защищают от автоматическо
 Меню «Выбрать» включает typed selection до 100 сообщений. Панель count/cancel/forward
 временно заменяет composer без изменения ordinary/reply/edit; выбор переживает
 пагинацию и переключение сервисов в общем окне. Пересылка фиксирует revision,
-native порядок и все source fingerprints; picker только открывает recipient
-composer с batch. Защищённый или изменённый source блокирует весь batch. Cancel,
+native порядок и все source fingerprints; ordinary recipient открывает composer
+с batch, а explicit Saved row пересылает сразу через отдельную операцию. Защищённый или изменённый source блокирует весь batch. Cancel,
 поиск, смена чата/account очищают выбор; restart его не сохраняет. AX использует
 маскирование spoilers и безопасный fallback при недоступном formatting.
 Shift-click добавляет сохранённый диапазон через границы страниц: endpoint
@@ -170,5 +173,6 @@ source. Scheduled/topic/migrated-peer ranges и album individual/group selection
 Copy/delete выбранных сообщений добавлены в общий shell: ⌘C с masked safe text,
 wholebatch revalidation, explicit scope и atomic native delete admission (recipe 8).
 Сохранённые версии и S3 остаются. Gate/native acceptance записываются в
-`development-status.md`; Saved Messages immediate-forward exception ещё впереди.
+`development-status.md`; initial Saved branch добавлен с wholebatch native admission,
+отдельным receipt и restart без resend. Оставшаяся picker/accessory parity открыта.
 Общий порядок переноса сохранён.

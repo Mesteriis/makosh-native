@@ -893,9 +893,10 @@ server delivery, remote permission freshness, fsync or power-loss survival.
 Reference evidence: ShareModalController.swift:1296-1359; ChatInputAccessory.swift:
 227-302; ChatInterfaceState.swift:1172-1180,1304-1320; SenderController.swift:492-523.
 No outer GPLv2 serializer/UI was copied. Makosh's atomic batch/receipt is an owned
-adaptation; the reference chains comment and forward separately. Saved Messages'
-immediate-picker exception, remaining selection actions, topics, paid/secret-chat
-forwarding and live-account acceptance remain open. A new attachment cannot be
+adaptation; the reference chains comment and forward separately. The initial history/selection picker's Saved Messages branch is described below.
+Accessory re-targeting to Saved Messages, picker comments/multiple recipients,
+remaining selection actions, topics, paid/secret-chat forwarding and live-account
+acceptance remain open. A new attachment cannot be
 combined with a staged forward yet; its attach button is disabled explicitly.
 
 ## History message selection
@@ -907,7 +908,8 @@ up to 100 frozen sources are ordered by native MessageId, matching the reference
 sorted-then-reversed enqueue order. Protected messages can be selected, but any
 non-forwardable or visibly changed source blocks the complete forward batch.
 The recipient picker captures the selection revision and refuses stale snapshots.
-Accepting it stages the existing recipient composer; it never submits automatically.
+An ordinary recipient stages its existing composer. Explicitly choosing Saved
+Messages submits immediately through the separate operation described below.
 
 Pagination does not prune off-page selection, and the shared model retains it
 across service switches. Explicit Cancel/Escape, search opening, actual chat
@@ -942,8 +944,8 @@ Reference evidence: ChatMessageMenuItems.swift:1005-1011; ChatPresentationInterf
 MessageActionsPanelView.swift:61-118; SenderController.swift:492-523;
 ChatController.swift:6531-6577; ChatPresentationInterfaceState.swift:1684-1738.
 No GPLv2 UI source was copied. Scheduled/topic/migrated-peer range parity,
-album individual/group selection and Saved Messages'
-immediate-forward exception remain open. Cross-native-peer numeric ranges are
+album individual/group selection and the remaining Saved Messages picker/accessory
+parity described below remain open. Cross-native-peer numeric ranges are
 refused instead of mixing unrelated message IDs.
 
 ### Selected-message copy and delete
@@ -984,3 +986,48 @@ ChatController.swift:4411-4490,9753-9776. Own SwiftUI/AppKit code is used;
 the outer GPLv2 UI/serializer is not copied. Specialized admin moderation,
 scheduled/topics/secret/paid actions, exhaustive media localization/music metadata
 and live-account acceptance remain open.
+
+## Initial picker forwarding to Saved Messages
+
+Telegram remains in the shared service-selector/list/conversation window. The
+initial history-message and selection recipient picker pins **Избранное** first.
+Clicking that row immediately forwards the frozen source batch without navigating
+away or staging/consuming the ordinary Saved Messages composer. Ordinary recipient
+rows retain recipient-composer staging. The captured account/context and selection
+revision guard both submission and clearing; a later chat, selection, input or
+reply is preserved. Protected or changed sources refuse the whole batch.
+
+An owned schema-1 record uses the account-scoped Postbox preference key
+`Makosh.SavedForward.Preference.v1` and marker `Makosh.SavedForward.JSON.v1`. It is
+separate from ordinary input/reply/forward and pending-upload keys. Encoded records
+are bounded to 512 KiB; unknown/malformed bytes remain untouched and block this
+operation. A durable started intent precedes enqueue. Fresh full-batch native
+admission rechecks exact sources and permissions after asynchronous media work;
+the existing enqueue adaptation writes a full unique outgoing Local receipt in
+the same Postbox transaction as the queue. No unselected album member is added.
+Only a proven zero-queue refusal clears the exact started intent. Cancellation,
+timeout, partial admission or missing acknowledgement remain uncertain; UI
+cancellation does not abort durable completion, and no automatic resend occurs.
+Restart reads accepted/started state without enqueue. An accepted record may be
+replaced only by a new explicit operation ID. Started/unknown records block Saved
+forwarding until reconciliation; ordinary recipient staging remains available.
+Local acceptance is not confirmation of Telegram server delivery or power-loss
+durability. Archive PostgreSQL records and encrypted S3 objects are unaffected.
+
+Postbox signal builders are nonisolated; callbacks return explicitly to MainActor.
+Regression reproduction exposed inherited MainActor transaction closures, then
+verified recovery from an owned encrypted Postbox after the boundary fix. DEBUG
+Saved forwarding is an explicit offline StoreMessage/receipt simulation, not a
+live Account enqueue: logical fixture account -1 uses valid native destination
+10000 in its isolated Postbox. A lost-acknowledgement regression counts actual
+queue history and confirms one message, unchanged ordinary bytes and no duplicate
+submission; separate native admission/receipt regressions use positive peer IDs
+and genuinely reopen the encrypted Postbox.
+
+Reference evidence: `ShareModalController.swift:1296–1314` directly forwards to
+the own peer and clears selection; `1315–1335` stages an ordinary recipient. Its
+delayed success animation does not establish server delivery. No outer GPLv2 UI
+source or assets were copied. Remaining parity includes the picker's optional
+comment and multiple-recipient workflows, Saved re-targeting from an already
+staged accessory, album selection, special/topic/secret/paid behavior and
+live-account acceptance. The whole Telegram/sequential migration remains open.

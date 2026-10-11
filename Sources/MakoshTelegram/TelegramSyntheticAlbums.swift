@@ -19,6 +19,7 @@ func telegramSyntheticAlbumMessage(_ original: TelegramMessage) -> TelegramMessa
     var message = TelegramMessage(id: original.id, date: original.date, text: original.text,
         author: "Синтетический альбом", isOutgoing: false, delivery: .none)
     message.albumGroupID = group; message.nativeGroupingKey = Int64(group)
+    message.captionAboveMedia = number == 126 || number == 129
     message.attachments = [.init(id: "synthetic-album-\(kind):\(metadata.peerID):\(number)", kind: files || video ? .file : .photo,
         name: "Синтетическое вложение \(number)." + (files ? "txt" : video ? "mp4" : "png"),
         byteCount: nil, mimeType: files ? "text/plain" : video ? "video/mp4" : "image/png",

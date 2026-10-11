@@ -44,6 +44,7 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
                     }
                 }
                 if item.isVisualAlbum {
+                    if item.visualCaptionAboveMedia { caption(context: context, selecting: session != nil, toggle: toggleGroup) }
                     TelegramAlbumMosaicLayout(aspects: item.messages.map { $0.attachments[0].dimensions?.aspectRatio ?? 1 }) {
                         ForEach(item.messages) { message in
                             let source = model.actionSource(for: message)
@@ -74,20 +75,7 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
                                 .id(message.id)
                         }
                     }.clipShape(RoundedRectangle(cornerRadius: 8))
-                    if let message = item.messages.first(where: { !$0.text.isEmpty }) {
-                        if session != nil {
-                            Button(action: toggleGroup) {
-                                TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
-                                    canCopy: message.actionMetadata?.canCopy == true) { menu(message) }
-                                    .allowsHitTesting(false).accessibilityHidden(true)
-                            }.buttonStyle(.plain).accessibilityLabel("Выбрать альбом, \(item.messages.count) сообщений")
-                                .accessibilityIdentifier("telegram.album.caption." + item.id)
-                                .contextMenu { menu(message) }
-                        } else {
-                            TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
-                                canCopy: message.actionMetadata?.canCopy == true) { menu(message) }
-                        }
-                    }
+                    if !item.visualCaptionAboveMedia { caption(context: context, selecting: session != nil, toggle: toggleGroup) }
                 } else {
                     ForEach(item.messages) { message in
                         TelegramSelectableHistoryRow(selection: selection, message: message, source: model.actionSource(for: message)) {
@@ -128,6 +116,23 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
                 Color.clear.contentShape(Rectangle()).onTapGesture(perform: toggleGroup)
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("telegram.album." + item.id)
+    }
+
+    @ViewBuilder private func caption(context: UUID, selecting: Bool, toggle: @escaping () -> Void) -> some View {
+        if let message = item.visualCaption {
+            if selecting {
+                Button(action: toggle) {
+                    TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
+                        canCopy: message.actionMetadata?.canCopy == true) { menu(message) }
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }.buttonStyle(.plain).accessibilityLabel("Выбрать альбом, \(item.messages.count) сообщений")
+                    .accessibilityIdentifier("telegram.album.caption." + item.id)
+                    .contextMenu { menu(message) }
+            } else {
+                TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
+                    canCopy: message.actionMetadata?.canCopy == true) { menu(message) }
+            }
+        }
     }
 
     private func tile(_ message: TelegramMessage, context: UUID) -> some View {

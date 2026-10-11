@@ -31,6 +31,8 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public var albumGroupID: UInt32? = nil
     public var nativeGroupingKey: Int64? = nil
     public var canGroupMedia = true
+    /// Received placement for supported photo/video; an album caption may belong to another member.
+    public var captionAboveMedia = false
     public var formattedTextForDisplay: TelegramFormattedText? {
         guard let metadata = actionMetadata else { return try? TelegramFormattedText(text: text) }
         guard let value = metadata.formattedText, value.text.utf8.elementsEqual(text.utf8) else { return nil }

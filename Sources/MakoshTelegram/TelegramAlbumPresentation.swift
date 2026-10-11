@@ -4,6 +4,12 @@ public struct TelegramHistoryItem: Identifiable, Equatable, Sendable {
     public let id: String
     public let messages: [TelegramMessage]
     public var isAlbum: Bool { messages.count > 1 }
+    public var visualCaption: TelegramMessage? {
+        isVisualAlbum ? messages.first(where: { !$0.text.isEmpty }) : nil
+    }
+    public var visualCaptionAboveMedia: Bool {
+        visualCaption != nil && messages.first?.captionAboveMedia == true
+    }
     public var isVisualAlbum: Bool {
         isAlbum && messages.allSatisfy {
             $0.attachments.count == 1 && ($0.attachments[0].kind == .photo || $0.attachments[0].playback == .video)

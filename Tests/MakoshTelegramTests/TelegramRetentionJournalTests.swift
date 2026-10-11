@@ -174,6 +174,11 @@ final class TelegramRetentionJournalTests: XCTestCase {
         defer { opening.dispose() }
         wait(for: [opened], timeout: 20)
         let store = try XCTUnwrap(postbox)
+        let ready = expectation(description: "Both MediaBox stores ready"); ready.expectedFulfillmentCount = 2
+        let storage = (store.mediaBox.storageBox.all() |> take(1) |> deliverOnMainQueue).start(next: { _ in ready.fulfill() })
+        let cache = (store.mediaBox.cacheStorageBox.all() |> take(1) |> deliverOnMainQueue).start(next: { _ in ready.fulfill() })
+        defer { storage.dispose(); cache.dispose() }
+        wait(for: [ready], timeout: 20)
         let completed = expectation(description: "central capture committed")
         let peer = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(999))
         func message(_ number: Int32, text: String) -> StoreMessage {

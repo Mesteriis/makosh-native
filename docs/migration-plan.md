@@ -214,7 +214,7 @@ preference не восстанавливается decode. Saved exception со�
 native transport — hideNames OR hideCaptions. Native AX/restart/retarget и реальные
 регрессии описаны в development-status. PostgreSQL/S3 retention не меняется.
 
-## Текущий участок: обычные фото и видео Telegram
+## Перенесённый участок: обычные фото и видео Telegram
 
 Обычная история и поиск показывают inline photo/video с подписью ниже. Shared
 own renderer сохраняет album fill, а ordinary rows используют aspect-fit и
@@ -227,9 +227,27 @@ DEBUG album search использует те же media descriptors и верс�
 исправление подтверждено regression и native red → green для search129.
 Native QA принимает фото в search/history, видео115, portrait126, переключение
 Почта → Telegram и restart с сохранённым черновиком и новым Reveal. Core sizing
-имеет deliberate narrow-window/min1px адаптации; invertMedia, autoload,
+имеет deliberate narrow-window/min1px адаптации; autoload,
 specialized renderers и exhaustive pixel parity открыты. Фактические checks и
 source review записаны в development-status; PostgreSQL/S3 retention не меняется.
 
 Полный Telegram, server acceptance, последующие MMail/Aether, WhatsApp, Teams,
 Telemost, backups и standalone packaging остаются открытыми в исходном порядке.
+
+## Текущий участок: подпись над полученными фото/видео
+
+Native InvertMediaMessageAttribute сохраняется в модели для фото/обычного видео;
+история и поиск ставят тот же rich caption выше media, default остаётся ниже.
+Visual album использует placement первого member и первую непустую подпись.
+WebM и file/audio/voice/round-video cards не включаются в этот mapping. Selection
+подписью сохраняет exact visible IDs, context/copy protection и Reveal не меняются.
+DEBUG fixtures126/129 проверяют новый порядок, остальные сохраняют прежний.
+
+Регрессии используют native objects, а реальная синтетическая UI-проверка
+подтверждает history/search/album order, Reveal/preview, exact selection,
+Почта → Telegram и restart с черновиком. Подробные результаты и отдельное
+исправление двух test fixture readiness gaps — в development-status. Историческая
+причина CI WAL trap остаётся недоказанной; engine assertions не ослаблялись.
+Outbound placement, autoload и specialized parity остаются открытыми. Полный
+Telegram и остальные выбранные каналы продолжаются в исходном порядке;
+PostgreSQL/S3 retention и независимость от reference checkout сохраняются.

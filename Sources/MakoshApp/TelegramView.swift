@@ -230,6 +230,9 @@ struct TelegramDetailView: View {
                                                 GridRow {
                                                     Text(item.author).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                                                 }
+                                                if item.captionAboveMedia, !item.text.isEmpty {
+                                                    GridRow { messageCaption(item) }
+                                                }
                                                 ForEach(item.attachments) { attachment in
                                                     GridRow {
                                                         TelegramAttachmentRow(attachment: attachment, contextID: model.messageActionContextID,
@@ -238,14 +241,8 @@ struct TelegramDetailView: View {
                                                             }
                                                     }
                                                 }
-                                                if !item.text.isEmpty {
-                                                    GridRow {
-                                                        TelegramMessageTextView(value: item.formattedTextForDisplay,
-                                                            identity: model.messageActionContextID.uuidString + item.id,
-                                                            canCopy: item.actionMetadata?.canCopy == true) {
-                                                                messageActionItems(item)
-                                                            }
-                                                    }
+                                                if !item.captionAboveMedia, !item.text.isEmpty {
+                                                    GridRow { messageCaption(item) }
                                                 }
                                                 GridRow {
                                                     TelegramMessageMetadataView(message: item)
@@ -347,17 +344,14 @@ struct TelegramDetailView: View {
                                         Spacer()
                                         TelegramMessageMetadataView(message: item, includesDate: true)
                                     }
+                                    if item.captionAboveMedia { messageCaption(item, lineLimit: 4) }
                                     ForEach(item.attachments) { attachment in
                                         TelegramAttachmentRow(attachment: attachment, contextID: model.messageActionContextID,
                                             hasCaption: !item.text.isEmpty, media: media, actions: attachmentActions, playback: playback) {
                                                 messageActionItems(item)
                                             }
                                     }
-                                    TelegramMessageTextView(value: item.formattedTextForDisplay,
-                                        identity: model.messageActionContextID.uuidString + item.id,
-                                        canCopy: item.actionMetadata?.canCopy == true, lineLimit: 4) {
-                                            messageActionItems(item)
-                                        }
+                                    if !item.captionAboveMedia { messageCaption(item, lineLimit: 4) }
                                 }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
                                 Button("В истории") { model.openSearchMessage(id: item.id) }
                                     .buttonStyle(.bordered).controlSize(.small)
@@ -374,6 +368,14 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.messageSearch.more")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func messageCaption(_ item: TelegramMessage, lineLimit: Int? = nil) -> some View {
+        TelegramMessageTextView(value: item.formattedTextForDisplay,
+            identity: model.messageActionContextID.uuidString + item.id,
+            canCopy: item.actionMetadata?.canCopy == true, lineLimit: lineLimit) {
+                messageActionItems(item)
+            }
     }
 
     private func openMessageSearch() {

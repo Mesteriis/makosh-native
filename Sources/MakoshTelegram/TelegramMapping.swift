@@ -20,6 +20,9 @@ extension TelegramMessage {
             author: message.author.map(telegramPeerTitle) ?? "Telegram", isOutgoing: telegramMessageIsOutgoing(message, accountID: accountID),
             delivery: telegramMessageDelivery(message, isRead: isRead, accountID: accountID))
         attachments = telegramAttachments(message).map(\.attachment)
+        let visual = attachments.first.map { $0.kind == .photo || $0.playback == .video } == true
+        let webm = (message.media.first as? TelegramMediaFile)?.mimeType.lowercased() == "video/webm"
+        captionAboveMedia = visual && !webm && message.attributes.contains { $0 is InvertMediaMessageAttribute }
         actionMetadata = telegramMessageActionMetadata(message)
         albumGroupID = message.groupInfo?.stableId
         nativeGroupingKey = message.groupingKey

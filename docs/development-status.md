@@ -1,6 +1,67 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram ordinary photo/video presentation
+## Current stage: received Telegram captions above visual media
+
+Telegram stays inside the common Makosh service sidebar, dialog list and
+conversation/dossier. Received photo and ordinary-video messages now retain the
+native `InvertMediaMessageAttribute`: history and search place their existing
+rich caption above media when requested; the default stays below. Visual albums
+use the first member's placement and the first nonempty caption, matching the
+verified reference. File/audio/voice/round-video cards and WebM are excluded from
+this mapping. Sending a new caption-above option and specialized renderer parity
+remain open. No outer GPLv2 code/assets were copied; pins, recipe 8, PostgreSQL
+schema and S3 format are unchanged.
+
+Runtime red reproduces seven failed caption-placement assertions in nine focused
+tests; the final focused run passes all nine. Missing-API compilation red is
+separate. An initial green attempt referred to an outer-UI-only `isWebm` extension
+and failed compilation; the final code uses the verified MIME rule directly.
+An intermediate native build with the old UI fails the caption-above assertion
+for search129 before the UI change. Final `scripts/dev-db.sh up`,
+`scripts/test.sh` and `scripts/build-app.sh` exit 0: **590 XCTest (527 Telegram +
+63 core), zero failures; 30 Python regressions**. The full tests were repeated
+after the fixture readiness changes below. Logs retain 126 upstream t19 teardown
+diagnostics without a local failure/trap. Failed raw evidence is not a pass.
+
+Actual native AX/screenshots verify caption-above search129, separate Reveal,
+loaded photo preview, caption-above focused history129 with a fresh Reveal and
+exact one-message selection. Visual album129/130 and portrait album126 retain
+caption-above order; default album122 and file cards retain below order. The
+moved album caption deselects/reselects exactly IDs129/130; selection hides inner
+media actions. Mail → Telegram retains the selected chat and ordinary draft.
+An owned-process restart preserves the draft and caption placement while requiring
+Reveal again. QA uses only owned encrypted synthetic Postbox and isolated
+PostgreSQL/S3, without personal accounts, Keychain or Telegram network/server
+operations. Native video-above placement is covered by mapping regression, not
+claimed as a separate playback check in this slice.
+
+The previous e114ce8 head passed
+[push CI](https://github.com/Mesteriis/makosh-native/actions/runs/38105288325) but
+failed [PR CI](https://github.com/Mesteriis/makosh-native/actions/runs/38105290875)
+at the upstream SQLite WAL assertion. Read-only investigation finds exactly two
+of nineteen synthetic Postbox test files missing both MediaBox initialization
+barriers. RetentionJournal and ArchiveEndToEnd now wait, with a bounded timeout,
+for storage/cache readiness before proceeding to teardown. This repairs the
+confirmed fixture gaps; the historical crash cause remains unproven because its
+log lacks a stack, database path and SQLite error code. Engine assertions remain
+unchanged. Current-head hosted CI is recorded separately after publication.
+
+Read-only review found no new source finding in the frozen ten-file snapshot;
+all ten changed and fourteen supporting hashes match before/after and at root
+integration. Worker runtime/build/UI gates are SKIP; root owns those checks.
+Observed provider/model/usage remain unknown and no quorum is claimed. A failed
+auxiliary review-artifact invocation remains recorded separately from its passing
+correction. Final lexical XERJ refresh exits 0: 301 files, 271/271 classified code;
+project/reference/engine fingerprints pass and query hits were confirmed against
+current source. Strict deep signatures and unsigned built/QA payload comparison
+pass. Selected-field publication audit checks 306 publishable files and the PR
+body against five credential fields, with zero matches. Final diff check passes.
+Machine indexes/configuration/runtime and raw QA artifacts remain ignored.
+Autoload, specialized renderers, exhaustive pixel parity, live-account acceptance,
+later channels, backups and standalone packaging remain open. The full sequential
+migration goal stays active.
+
+## Historical Telegram ordinary photo/video presentation
 
 Telegram remains inside the common Makosh service sidebar, dialog list and
 conversation/dossier. Ordinary history and search now show photo/video inline,

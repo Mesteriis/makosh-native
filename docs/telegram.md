@@ -1179,7 +1179,7 @@ or assets were copied; pins, recipe 8, PostgreSQL schemas and S3 format stay fix
 
 History and search use the shared own visual renderer for ordinary photo/video
 attachments, including a single visible album member. Caption text follows the
-attachment. Ordinary images use aspect-fit, while album tiles retain aspect-fill.
+attachment by default; received placement is described below. Ordinary images use aspect-fit, while album tiles retain aspect-fill.
 Other file/audio/voice/round-video/unsupported attachments keep their existing
 cards and explicit controls; this slice does not implement their specialized UI.
 
@@ -1189,8 +1189,8 @@ are preserved, captions reserve portrait width, landscape video fits up to 420
 points, and portrait video uses the 320-point bound. Available widths are finite
 and bounded; narrower windows clamp the reference minimums to available width,
 and pathological landscape video keeps at least one pixel of height. These are
-deliberate own adaptations. InvertMedia at ChatMediaItem.swift:774–777, autoload
-and exhaustive pixel parity remain open. Supplemental fitted/aspectFitted source
+deliberate own adaptations. Autoload and exhaustive pixel parity remain open.
+Received InvertMedia placement is described below. Supplemental fitted/aspectFitted source
 in TGUIKit Extensions.swift was read directly; it is outside the original index.
 
 The exact attachment/context reveal guard applies independently in history and
@@ -1211,3 +1211,28 @@ Mail → Telegram and restart with the ordinary draft preserved and media hidden
 again. These isolated checks do not establish live-account/server acceptance.
 No outer GPLv2 UI/assets were copied; pins, recipe 8, PostgreSQL schema and S3
 format remain unchanged. Actual gate outcomes are in development-status.
+
+## Received caption placement
+
+The native `InvertMediaMessageAttribute` is projected for supported received
+photos and ordinary videos. History and search move the existing rich caption
+above the visual attachment when requested; otherwise it remains below. MIME
+`video/webm` and nonvisual file/audio/voice/round-video cards are excluded. Search
+keeps its existing four-line limit and copy protection, context menus and native
+message identity remain unchanged.
+
+For a visual album, placement comes from the first visible member while the
+caption comes from the first member with nonempty text; these need not be the
+same message. Original captions and IDs remain in the model. The moved caption
+still toggles the exact visible group during message selection. This follows
+ChatRowItem.swift:114–121,1766–1767,1788, ChatGroupedItem.swift:43–52,1169–1172 and
+ChatMediaItem.swift:774–777. CoreExtension.swift:307–320,1534–1539 confirms the
+interactive-media and WebM boundary; broader animation/map/paid/secret parity is
+not claimed. Sending a new caption-above option remains open.
+
+The explicit DEBUG album fixture marks messages126 and129 above media; defaults
+are unchanged and search/history share placement with the same descriptors and
+versions. Mapping regressions use native photo/video/attribute objects and cover
+history/search, default order, excluded cards, first-member placement, empty
+captions and file albums. Actual owned synthetic native checks and their limits
+are recorded in development-status. PostgreSQL/S3 retention is unchanged.

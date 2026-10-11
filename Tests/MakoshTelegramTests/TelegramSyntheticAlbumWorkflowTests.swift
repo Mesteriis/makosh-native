@@ -66,6 +66,8 @@ import XCTest
         XCTAssertEqual(result.attachments.first?.isSpoiler, true)
         XCTAssertEqual(result.attachments, history.attachments)
         XCTAssertEqual(result.actionMetadata, history.actionMetadata)
+        XCTAssertTrue(result.captionAboveMedia)
+        XCTAssertEqual(result.captionAboveMedia, history.captionAboveMedia)
     }
 
     func testAlbumShiftRangeUsesCurrentVersionsInsteadOfInvalidatingMembers() throws {

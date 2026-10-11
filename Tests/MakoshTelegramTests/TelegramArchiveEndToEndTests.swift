@@ -115,6 +115,11 @@ private actor EndToEndArchiveRepository: TelegramArchiveRepository {
         defer { opening.dispose() }
         await fulfillment(of: [opened], timeout: 20)
         let source = try XCTUnwrap(postbox)
+        let ready = expectation(description: "Both MediaBox stores ready"); ready.expectedFulfillmentCount = 2
+        let storage = (source.mediaBox.storageBox.all() |> take(1) |> deliverOnMainQueue).start(next: { _ in ready.fulfill() })
+        let cache = (source.mediaBox.cacheStorageBox.all() |> take(1) |> deliverOnMainQueue).start(next: { _ in ready.fulfill() })
+        defer { storage.dispose(); cache.dispose() }
+        await fulfillment(of: [ready], timeout: 20)
         let peer = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(987654))
         let deletedID = MessageId(peerId: peer, namespace: Namespaces.Message.Cloud, id: 1)
         let captured = await value(captureEndToEnd(source, peer: peer, deletedID: deletedID))

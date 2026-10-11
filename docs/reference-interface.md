@@ -720,3 +720,32 @@ exact frozen bytes и оба storage режима.
 Интерфейс этой частью не менялся: кнопка, recording/locked/preview-состояния и
 live waveform/playback ещё открыты. Общая оболочка/чат сохраняются. Реальный
 микрофон, live Account/server и minimum26 runtime ещё не проверены.
+
+### Подготовка записанного голоса через controller
+
+Свежий XERJ/source review подтверждает desktop-сценарий выбранного pin:
+`ChatInputActionsView.swift:126–143` различает Click (смена voice/video) и
+LongMouseDown (начало записи); `ChatRecorderOverlayWindow.swift:241–274,281–348`
+отправляет при отпускании внутри, отменяет снаружи, фиксирует запись после
+движения вверх более100 points и подтверждает отмену в fixed-состоянии.
+`ChatPresentationInterfaceState.swift:284–291` допускает только duration >0.5s.
+Отдельный desktop preview этими участками не подтверждён; прежнее слово preview
+в плане не является доказательством референсного поведения. Перед внедрением
+его нужно подтвердить отдельным текущим source/UI исследованием.
+
+Source trace `AudioRecorder.swift:594–641,690–741` и отдельно pinned iOS
+`OpusBinding/Sources/opusenc/opusenc.m:516–528,636–639` подтверждает порог через
+complete960-sample packets и total_samples/coding_rate. XERJ encodedDuration дал
+no match: этот iOS helper находится за пределами desktop submodule scope и
+подтверждён исходником/commit/hash, а не заявлен как результат XERJ.
+
+Новый внутренний controller entry принимает только explicit48kHz PCM с более25
+полными пакетами (первый count24,960), сохраняет один schema11 Voice без caption/grouping и
+требует durable batch перед отправкой. Кодек и restore исторических коротких
+записей сохраняют свои существующие границы. Изменение caption запрещено также
+до публикации staged item; cancellation снимает это ограничение. Реальные
+controller/native queue regressions подтверждают ON/OFF, exact bytes/attributes,
+accepted-pointer reopen и отсутствие повторной отправки. GUI и его layout этой
+частью не менялись. Захват микрофона, hold/lock/cancel/one-time/round-video controls,
+live waveform/playback и peer/slow-mode gates остаются открытыми. GPLv2 UI/helper
+код и assets не копировались.

@@ -22,6 +22,28 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
     box.transaction { $0.getMessage(id) }
 }
 
+@MainActor private final class RecordedVoiceLocalQueueProvider: TelegramUploadBatchProvider {
+    let accountID: Int64 = 1
+    private let postbox: Postbox
+    private(set) var submissions = 0
+    init(postbox: Postbox) { self.postbox = postbox }
+    func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
+                receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
+        submissions += 1
+        return TelegramUploadBatchSubmission(postbox: postbox, accountID: accountID, items: items, draft: draft, target: target,
+            enqueue: { [postbox] receipt, messages in
+                telegramUploadBatchEnqueueLocally(postbox: postbox, receipt: receipt, messages: messages)
+            }, receive: receive)
+    }
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID,
+                caption: TelegramFormattedText, captionAboveMedia: Bool, mediaSpoiler: Bool,
+                receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
+        XCTFail("Recorded voice must use a complete typed batch receipt")
+        receive(.rejected); return RecordedVoiceUnusedLease()
+    }
+}
+@MainActor private final class RecordedVoiceUnusedLease: TelegramUploadLease { func stop() {} }
+
 @MainActor final class TelegramRecordedVoicePendingTests: XCTestCase {
     func testLocalVoiceRestoresAndQueuesAfterEncryptedPostboxReopen() async throws {
         try await reopenAndQueue(s3Enabled: false)
@@ -29,6 +51,105 @@ private func recordedVoiceMessage(_ box: Postbox, id: MessageId) -> Signal<Messa
 
     func testS3VoiceRestoresAndQueuesAfterEncryptedPostboxReopen() async throws {
         try await reopenAndQueue(s3Enabled: true)
+    }
+
+    func testControllerQueuesRecordedPCMWithS3Disabled() async throws {
+        try await controllerQueue(s3Enabled: false)
+    }
+
+    func testControllerQueuesRecordedPCMWithS3Enabled() async throws {
+        try await controllerQueue(s3Enabled: true)
+    }
+
+    // Exercises the real controller, encrypted recovery, native MediaBox and
+    // transactional queue. The provider replaces only the unavailable server.
+    private func controllerQueue(s3Enabled: Bool) async throws {
+        let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), path = try root()
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x68, count: 32) })
+        let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        try await archive.setConversationFileSavingEnabled(identity: identity, enabled: s3Enabled)
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic controller voice")
+        var waveform = Data(repeating: 0, count: 63); waveform[0] = 0x0c
+        var accepted: TelegramPendingUploadDraft?
+        do {
+            let box = try await open(path); previousBox = box
+            let seeded = expectation(description: "Controller voice synthetic peers")
+            let seed = (recordedVoicePeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
+            defer { seed.dispose() }; await fulfillment(of: [seeded], timeout: 20)
+            let store = session(box, archive: archive), controller = TelegramUploadController()
+            let provider = RecordedVoiceLocalQueueProvider(postbox: box)
+            controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+            defer { controller.bind(provider: nil) }
+            var pcm = [Int16](repeating: 0, count: 48_137)
+            for index in 0..<100 { pcm[index] = 1_000 }
+            XCTAssertTrue(controller.prepareRecordedVoice(samples: pcm, target: target))
+            for _ in 0..<1_000 where !controller.canSend && controller.phase != .failed {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.phase, .ready)
+            let stage = try XCTUnwrap(controller.file), bytes = try Data(contentsOf: stage.url)
+            let loaded = try await store.load(chatID: 42), prepared = try XCTUnwrap(loaded)
+            XCTAssertEqual(prepared.schemaVersion, 11); XCTAssertEqual(prepared.disposition, .prepared)
+            XCTAssertEqual(prepared.items.count, 1); XCTAssertEqual(prepared.items[0].metadata?.voice?.waveform, waveform)
+            XCTAssertEqual(prepared.items[0].file.state, s3Enabled ? .stored : .local)
+            XCTAssertEqual(controller.preparationContextID, prepared.id)
+            controller.send(contextID: UUID())
+            XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(provider.submissions, 0)
+            controller.send(contextID: prepared.id)
+            for _ in 0..<1_000 where controller.phase == .storing || controller.phase == .enqueuing {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertEqual(controller.phase, .queued(nil)); XCTAssertNil(controller.preparationContextID)
+            XCTAssertEqual(provider.submissions, 1); XCTAssertEqual(controller.messageIDs.count, 1)
+            let saved = try await store.load(chatID: 42), value = try XCTUnwrap(saved)
+            guard case let .acceptedBatch(ids) = value.disposition, let id = ids.first else {
+                XCTFail("Controller did not retain complete native admission"); return
+            }
+            XCTAssertEqual(value.items, prepared.items)
+            XCTAssertEqual(controller.messageIDs, ids.map(\.description)); XCTAssertFalse(controller.canSend)
+            let done = expectation(description: "Controller voice native bytes"); var message: Message?
+            let reading = (recordedVoiceMessage(box, id: id.nativeID) |> deliverOnMainQueue).start(next: { message = $0; done.fulfill() })
+            defer { reading.dispose() }; await fulfillment(of: [done], timeout: 20)
+            let media = try XCTUnwrap(message?.media.first as? TelegramMediaFile)
+            XCTAssertEqual(message?.text, ""); XCTAssertNil(message?.groupingKey)
+            XCTAssertEqual(media.attributes, [.Audio(isVoice: true, duration: 1, title: nil, performer: nil, waveform: waveform)])
+            XCTAssertEqual(media.mimeType, "audio/ogg"); XCTAssertNil(media.size)
+            let cachedDone = expectation(description: "Controller voice complete cache"); var cached: MediaResourceData?
+            let cacheRead = (box.mediaBox.resourceData(media.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
+                |> take(1) |> deliverOnMainQueue).start(next: { cached = $0; cachedDone.fulfill() })
+            defer { cacheRead.dispose() }; await fulfillment(of: [cachedDone], timeout: 20)
+            let payload = try XCTUnwrap(cached); XCTAssertTrue(payload.complete)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: payload.path)), bytes)
+            controller.send(contextID: prepared.id); controller.send()
+            XCTAssertEqual(provider.submissions, 1)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: stage.directory.path))
+            accepted = value
+        }
+        try await released()
+        let frozen = try XCTUnwrap(accepted), box = try await open(path)
+        let store = session(box, archive: archive), restoredLoad = try await store.load(chatID: 42)
+        XCTAssertEqual(restoredLoad, frozen)
+        let restored = try await store.restoreItems(draft: frozen)
+        defer { for item in restored { try? item.discard() } }
+        let controller = TelegramUploadController(), provider = RecordedVoiceLocalQueueProvider(postbox: box)
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        XCTAssertFalse(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        controller.send(); XCTAssertEqual(provider.submissions, 0)
+        let record = frozen.items[0].file
+        let remote = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
+        if s3Enabled { XCTAssertNotNil(remote) }
+        else {
+            XCTAssertNil(remote)
+            XCTAssertEqual(try database.execute("SELECT count(*) FROM \"\(database.schema)\".archive_file_events"), [["0"]])
+            try await archive.setConversationFileSavingEnabled(identity: identity, enabled: true)
+            let promoted = try await archive.resume(); XCTAssertEqual(promoted, 0)
+            let stillAbsent = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
+            XCTAssertNil(stillAbsent)
+        }
     }
 
     // Validation after archive capture would leave forbidden preparations in S3.

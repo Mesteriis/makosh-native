@@ -2096,3 +2096,40 @@ the test asserts exact original bytes survive restoration and native enqueue in
 both storage modes. Old explicit null waveform stays null. S3 OFF still forbids
 all new copies and enabling later never promotes local preparations. No schema,
 dependency, license, microphone action or recorder UI change is introduced.
+
+### Recorded-voice controller admission
+
+The internal `TelegramUploadController.prepareRecordedVoice(samples:target:)`
+connects explicit PCM to the existing preparation and native batch queue. It
+bypasses picker classification, requires the same-account batch capability and
+a valid reply target, and refuses concurrent preparations. Following pinned
+`ChatPresentationInterfaceState.swift:284–291`, new recording admission requires
+more than25 complete960-sample packets at48kHz (strictly more than0.5s;
+the first accepted count is24,960), up to the existing600s bound. The source
+recorder passes only complete packets to the writer, whose encodedDuration uses
+total_samples/coding_rate. Its pinned iOS `OpusBinding/Sources/opusenc/opusenc.m`
+was source-confirmed separately; it is outside the desktop XERJ submodule scope,
+where an encodedDuration query returned no match. The codec and schema retain
+their previous broader format compatibility and exact partial-PCM preservation;
+older explicit short preparations are not reinterpreted or rejected by this gate.
+
+One owned `Voice.ogg` item retains original-PCM waveform, schema11 provenance,
+File transport presentation, empty caption and no grouping. Both rich and legacy
+caption mutations are refused, including before the encoder publishes its item.
+Cancellation releases the voice restriction. Synchronous composer callbacks may
+cancel or rebind the account before a worker starts; a stale task cannot publish
+its stage. Staged resources retain the existing cleanup/recovery ownership rules.
+
+Voice always requires a durable whole-batch record before `canSend`, even when
+the controller's ordinary single-file path is configured without recovery. A
+missing store blocks sending. The existing chat flag chooses encrypted S3 or
+encrypted local preparation; OFF grants no S3 exception. This entry does not
+automatically enqueue. Explicit send uses the complete schema11 native receipt,
+and accepted preparations cannot be resent after an encrypted Postbox reopen.
+
+Real controller regressions use native encoding and an isolated encrypted
+Postbox/PostgreSQL/S3 stack, replacing only the unavailable server with native
+local enqueue. They read back exact MediaBox bytes and Voice attributes, verify
+stale context/no-resend and stage cleanup, and prove OFF objects remain absent
+after enabling later. Gates and actual UI limits are in development-status.md.
+Microphone capture and reference recording controls are still not connected.

@@ -243,7 +243,9 @@ Continue in this dependency order:
    is now regenerated from authenticated bytes in MediaBox only. GIF now retains
    both original and validated MP4 with a separate optional raw-frame JPEG. Explicit voice
    now has a reviewed offline Opus/Ogg codec, original-PCM waveform and durable
-   native path; recorder interaction remains open. Bound frames, dimensions,
+   native path through the preparation controller, with strict >0.5s new-recording
+   admission and durable native enqueue; microphone/recorder interaction remains
+   open. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every
    typed resource. Off remains encrypted local-only; mode edits never recapture.

@@ -39,6 +39,10 @@ enum TelegramUploadEvent {
     @Published public private(set) var presentation: TelegramUploadPresentation = .media
     @Published public private(set) var messageIDs: [String] = []
     private var usesBatchRecovery = false
+    private var preparingRecordedVoice = false
+    private var containsRecordedVoice: Bool {
+        preparingRecordedVoice || items.contains(where: { $0.file.metadata?.voice != nil })
+    }
     private var retiredItems: [TelegramUploadBatchItem] = []
     public var canEditItems: Bool {
         usesBatchRecovery && phase == .ready && recoveryPrepared && !isRecoveryBusy &&
@@ -439,6 +443,7 @@ enum TelegramUploadEvent {
         get { captionInput.formattedText.text }
         set {
             guard videoCoverEditingID == nil, !isVideoCoverSaving else { return }
+            guard !containsRecordedVoice || newValue.isEmpty else { return }
             guard !newValue.utf8.elementsEqual(caption.utf8) else { return }
             guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: newValue)) else {
                 error = "Не удалось сохранить подпись."; return
@@ -496,6 +501,54 @@ enum TelegramUploadEvent {
     var discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard
 
     public init() {}
+
+    /// Explicit recorded PCM bypasses the file picker and its classifier. The
+    /// reference measures >0.5s using complete960-sample packets. Codec/recovery
+    /// retain exact partial PCM and their historical bounds independently.
+    @discardableResult
+    func prepareRecordedVoice(samples: [Int16], target: TelegramUploadTarget) -> Bool {
+        guard samples.count / 960 > 25, samples.count <= TelegramRecordedVoiceCodec.maximumSamples,
+              preparation == nil, phase == .idle || phase == .cancelled || phase == .failed || phase == .rejected,
+              provider is any TelegramUploadBatchProvider, provider?.accountID == target.accountID,
+              target.hasValidReplySource else { return false }
+        clear(); resetCancellationPresentation()
+        guard items.isEmpty else { phase = .failed; return false }
+        usesBatchRecovery = true; preparingRecordedVoice = true; presentation = .file
+        self.target = target; captionInput = .empty; phase = .preparing
+        let request = token, bound = bindingID, discard = self.discard, store = recoveryStore
+        preparationID = request; didPrepare?(target, .empty, request)
+        guard token == request, phase == .preparing else { return false }
+        let original = originalDraftForRecovery?(target, request)
+        preparation = Task { [weak self] in
+            do {
+                let file = try await TelegramRecordedVoiceIO.prepare(samples: samples)
+                guard let self else { try? discard(file); return }
+                guard self.token == request, !Task.isCancelled else {
+                    do { try discard(file) }
+                    catch { if self.bindingID == bound { self.error = "Не удалось удалить временный файл." } }
+                    self.preparation = nil
+                    return
+                }
+                let staged = [TelegramUploadBatchItem(id: file.id, file: file)]
+                self.preparation = nil; self.items = staged; self.selectedItemID = file.id
+                self.preparingRecordedVoice = false
+                self.itemsRevision = UUID(); self.phase = .ready
+                // Voice always needs a complete schema11 batch receipt. A missing
+                // store blocks admission, including in local-only chat policy.
+                self.persistInitial(file: file, target: target, input: .empty, original: original,
+                    id: request, bound: bound, store: store, above: false, spoiler: false, batchItems: staged)
+            } catch {
+                guard let self else { return }
+                self.preparation = nil
+                guard self.token == request else { return }
+                self.preparingRecordedVoice = false
+                self.phase = Task.isCancelled ? .cancelled : .failed
+                if !Task.isCancelled { self.error = "Не удалось подготовить голосовое сообщение." }
+                self.finishPreparation()
+            }
+        }
+        return true
+    }
     public var canSend: Bool { phase == .ready && videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy && ((!usesBatchRecovery && !requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && telegramFormattedCaptionCanSend(captionInput.formattedText) }
     public var canCancel: Bool { phase == .preparing || phase == .ready || phase == .storing }
     public var captionContextID: UUID { token }
@@ -528,6 +581,7 @@ enum TelegramUploadEvent {
     @discardableResult
     public func updateCaptionInput(_ input: TelegramComposerInput, contextID: UUID) -> Bool {
         guard token == contextID, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving else { return false }
+        guard !containsRecordedVoice || input == .empty else { return false }
         if captionInput != input { captionInput = input; captionRevision = UUID() }
         error = nil; persistCaption(); return true
     }
@@ -710,6 +764,7 @@ enum TelegramUploadEvent {
     public func cancelPreparation() {
         guard canCancel else { return }
         tombstoneKnownUnsent()
+        preparingRecordedVoice = false
         token = UUID(); preparation?.cancel(); deadline?.cancel(); deadline = nil
         let old = lease; lease = nil; old?.stop()
         releaseStage(); phase = .cancelled
@@ -749,7 +804,7 @@ enum TelegramUploadEvent {
         token = UUID(); preparation?.cancel(); deadline?.cancel(); deadline = nil
         let old = lease; lease = nil; old?.stop()
         let cleaned = releaseStage(); target = nil; captionInput = .empty; messageID = nil; messageIDs = []; committed = false
-        usesBatchRecovery = false; isGrouped = false; presentation = .media; itemsRevision = UUID()
+        usesBatchRecovery = false; preparingRecordedVoice = false; isGrouped = false; presentation = .media; itemsRevision = UUID()
         captionAboveMedia = false; mediaSpoiler = false; captionRevision = UUID()
         phase = .idle; acceptancePending = false; recoveryPrepared = false
         recoveryRetry = nil; isRecoveryBusy = false; recoveryStatus = nil

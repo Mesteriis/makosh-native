@@ -1,6 +1,65 @@
 # Development status — 2026-10-11
 
-## Current stage: original-PCM waveform; recorder interaction remains open
+## Current stage: recorded PCM through preparation controller and native queue
+
+The internal voice entry now connects original PCM to the existing owned codec,
+schema11 recovery and native batch queue. It requires same-account batch
+capability, valid reply target and no active preparation. One Voice has empty
+caption, no grouping and File transport presentation. Durable whole-batch state
+is mandatory before send, including when ordinary single-file recovery is
+optional. OFF still forbids every new S3 copy and uses encrypted local storage.
+No microphone capture, recorder control, schema, dependency, license or engine
+recipe change is introduced.
+
+The new-recording threshold follows the complete source trace: desktop
+ChatRecordingAudioState requires duration >0.5s; AudioRecorder submits only full
+960-sample packets, and the pinned iOS writer computes total_samples/coding_rate.
+More than25 packets are required (first accepted count24,960). Initial raw-PCM
+24,001 acceptance was too permissive and is corrected. Codec/restore retain
+their prior exact partial-PCM/short-record compatibility. A source-confirmed
+XERJ class hit informs the trace; encodedDuration itself returns no match in
+the desktop scope and is separately verified against the pinned iOS source/hash.
+
+Compiled stub RED6 tests/19 failures(1 unexpected), early-caption RED1/2,
+cancel-restriction RED1/1 and complete-packet minimum RED1/7 precede final
+focused GREEN13/0 (8 controller +5 pending). Rich/legacy caption edits refuse
+also before item publication; cancellation releases the restriction. Reentrant
+composer cancellation/account replacement cannot launch a stale worker.
+Two new real controller tests exercise encrypted Postbox/PostgreSQL/S3 ON/OFF,
+complete native receipt, exact MediaBox bytes/Voice attributes, stage cleanup,
+stale-context send refusal and accepted-pointer reopen/no-resend. OFF remains
+absent from S3 after later enable. No personal account/server was used.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0 after the
+packet correction: **979 XCTest (903 Telegram +76 core), zero failures;38 Python
+regressions**. The earlier full979/0 run predates that correction and is retained
+separately. Final full/build logs have zero compile warnings. Earlier targeted
+compilation reports two unchanged weak-variable warnings in existing batch
+tests.294 existing upstream t19 teardown diagnostics remain without failures;
+historical cold C warnings are retained below.
+
+Owned synthetic bundle update passes strict signatures and raw unsigned built–QA
+payload equality. Actual screenshots/AX inspected: chat7 S3 OFF, Mail selects its
+existing disconnected surface, then Telegram returns to chat7/off in the common
+window. This is shell smoke, not microphone/recorder UI or live Account/server
+proof. No personal account, Telegram network or microphone was used. Host27.0.1
+does not prove minimum26 runtime.
+
+Root reviews the focused source/diff, packet threshold, callback/cancellation
+ownership, caption guards, legacy compatibility and real native ON/OFF recovery.
+No new worker/quorum is claimed. Current frozen XERJ refresh/check/query and
+reference/engine checks exit0:401 files,367/367 classified code; controller and
+reference class hits are source-confirmed. The encodedDuration no-match limitation
+is recorded above. Both hosted runs for f842bc8 now succeed; validation of this
+new publication is separate.
+
+Next: explicit microphone capability, peer/slow-mode eligibility and reference
+hold/lock/cancel controls in the common window. A separate desktop preview is
+not established by the inspected reference controls; confirm it before adding.
+One-time/round-video, full ordered classifier, Archive/caption normalization,
+live Account/server, other channels and the sequential migration remain open.
+
+## Historical original-PCM waveform (f842bc8)
 
 New explicit voice preparations now retain100 five-bit waveform values in63
 bytes from original PCM. Source-confirmed AudioRecorder:594–745 and

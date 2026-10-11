@@ -1,6 +1,81 @@
 # Development status — 2026-10-11
 
-## Current stage: new-photo caption placement
+## Current stage: outgoing photo media spoilers
+
+Telegram remains in the common Makosh service-sidebar/dialog/conversation window.
+Photo preparation now offers Hide with Spoiler / Disable Spoiler through native
+photo actions and the whole-header context menu. The preview is masked and its
+image is hidden from accessibility while enabled. Ordinary files have neither
+photo option. Rich input, selection, placement and spoiler stay independent;
+stale menus and started/uncertain submissions cannot change the choice.
+
+Submission freezes all content/options together. Pending JSON writes schema3
+with an explicit mediaSpoiler Bool; schema1/2 without it restore false, while
+legacy true claims, missing new fields, future schemas and spoiler-on-file fail
+closed. Native enqueue carries exactly one MediaSpoilerMessageAttribute when
+requested. Admission and same-transaction receipt validate the choice/count;
+accepted/cancelled records preserve it. PostgreSQL schema, encrypted S3 format,
+engine pins/recipe8 and archive retention are unchanged.
+
+Read-only review found that rebinding during the first write could lose newer
+input/options. Three runtime regressions reproduced initial-write and ready-state
+loss, plus missing detached-write failure reporting. Detachment now freezes the
+latest tuple on the original store; completion consumes the initial snapshot
+before stale-binding guards. Failed writes have an inline storage-only retry;
+restoring the same preparation is blocked while its update is unconfirmed.
+A second review regression held file export until a detached save completed:
+the stale loaded draft was still admitted (one test, three failures). Recovery
+now captures an epoch before load; reset and detached write start/completion
+invalidate older snapshots even after pending markers are cleared. A rejected
+export is discarded, and explicit recovery reloads the current rich input/options.
+Cancellation retains its separate tombstone path. This cannot guarantee unsaved
+changes across process death during a failed storage write.
+
+Final scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh results are
+recorded in the local root verification report. Full tests after the review fix
+exit0: **619 XCTest (556 Telegram +63 core), zero failures; 30 Python regressions**.
+The log retains134 upstream t19 teardown diagnostics without a test failure/trap.
+Initial schema red:1 test/7 failures; spoiler runtime red:4/11; recovery runtime
+red:23/20; rebind red:1/4; detached retry red:2/8; ready rebind red:1/3;
+stale restore red:1/3. Focused epoch green:23 tests. Missing-API,
+test-conformance and duplicate-parameter compile failures are separate evidence.
+A new test initially trapped because its inline Postbox closure inherited
+MainActor; the crash frames confirmed the cause, and a file-level helper fixed
+it before the runtime red. No engine assertions were weakened.
+
+Real encrypted Postbox tests cover exact native counts/admission/reopen. Real
+PostgreSQL/S3 tests restore normalized photo bytes, rich caption and both options,
+and retain the immutable archive on cancellation. Owned native AX/screenshots
+verify the old missing menu, enable/disable through both menus, masked preview,
+independence after input/placement changes, restart restoration, synthetic queue
+acknowledgement, file exclusion, reset/cancel and Mail→Telegram. QA uses only owned
+encrypted synthetic Postbox and isolated PostgreSQL/S3, without personal accounts,
+Keychain or Telegram network/server operations. Detached failure presentation has
+controller/source coverage; native failure injection was not performed. Server
+acceptance and exhaustive visual parity remain unverified.
+
+Hosted CI for prior72af053 is now terminal success for both PR38107976142 and
+push38107973476. The first project XERJ refresh refused to record freshness because a test changed
+during indexing (exit1); final refresh/check/query, source review and new-head
+publication/CI are recorded separately in the root report. Remaining Telegram preparation work
+includes albums/video, one-shot Send as Spoiler and other reference options;
+animated dust parity, autoload, specialized renderers, live-account acceptance,
+subsequent MMail/Aether, WhatsApp, Teams, Telemost, backups and standalone packaging
+remain open. The full sequential migration goal stays active.
+
+Final source review covers20 changed and11 supporting files. All31 hashes/bytes
+match before/after; both P2 findings are resolved with no remaining source finding.
+Worker runtime gates are SKIP; root owns verification. Final XERJ refresh exits0
+(305 indexed files,275/275 code, zero junk), and project/reference/engine freshness
+checks plus scoped queries pass with source-confirmed hits. Publication audit
+checks310 publishable files and the PR body against5 credential fields:zero matches.
+Latest built/QA signatures and unsigned executable match pass. Latest native QA
+repeats photo restoration with exact input/options, cancellation, ordinary draft,
+Mail→Telegram and final restart without resurrecting the cancelled photo. Native
+failure injection and live-server acceptance remain unverified. Observed route
+and usage remain unknown; no quorum is claimed.
+
+## Historical new-photo caption placement
 
 Telegram remains inside the common Makosh service-sidebar/dialog/conversation
 window. New photo preparation offers Move Caption Up/Down through native actions

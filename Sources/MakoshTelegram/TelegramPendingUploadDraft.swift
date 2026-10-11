@@ -15,22 +15,24 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
     let title: String
     let captionInput: TelegramComposerInput
     let captionAboveMedia: Bool
+    let mediaSpoiler: Bool
     let originalDraft: TelegramComposerDraft?
     let replyTarget: TelegramComposerReplyTarget?
     let file: ArchiveFileRecord
     let disposition: TelegramPendingUploadDisposition
     init(id: UUID, revision: UUID = UUID(), accountID: Int64, chatID: Int64, title: String,
-         captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, originalDraft: TelegramComposerDraft?,
+         captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?,
          replyTarget: TelegramComposerReplyTarget?, file: ArchiveFileRecord,
          disposition: TelegramPendingUploadDisposition = .prepared) {
-        schemaVersion = 2; self.id = id; self.revision = revision; self.accountID = accountID
+        schemaVersion = 3; self.id = id; self.revision = revision; self.accountID = accountID
         self.chatID = chatID; self.title = title; self.captionInput = captionInput
         self.captionAboveMedia = captionAboveMedia
+        self.mediaSpoiler = mediaSpoiler
         self.originalDraft = originalDraft; self.replyTarget = replyTarget; self.file = file
         self.disposition = disposition
     }
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, id, revision, accountID, chatID, title, captionInput, captionAboveMedia
+        case schemaVersion, id, revision, accountID, chatID, title, captionInput, captionAboveMedia, mediaSpoiler
         case originalDraft, replyTarget, file, disposition
     }
     init(from decoder: any Decoder) throws {
@@ -44,6 +46,9 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         captionAboveMedia = schemaVersion == 1
             ? try c.decodeIfPresent(Bool.self, forKey: .captionAboveMedia) ?? false
             : try c.decode(Bool.self, forKey: .captionAboveMedia)
+        mediaSpoiler = schemaVersion < 3
+            ? try c.decodeIfPresent(Bool.self, forKey: .mediaSpoiler) ?? false
+            : try c.decode(Bool.self, forKey: .mediaSpoiler)
         originalDraft = try c.decodeIfPresent(TelegramComposerDraft.self, forKey: .originalDraft)
         replyTarget = try c.decodeIfPresent(TelegramComposerReplyTarget.self, forKey: .replyTarget)
         file = try c.decode(ArchiveFileRecord.self, forKey: .file)
@@ -54,7 +59,9 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               messageID: "pending-upload:" + preparationID.uuidString.lowercased())
     }
     var isValid: Bool {
-        guard [1, 2].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+        guard [1, 2, 3].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+              !(schemaVersion < 3 && mediaSpoiler),
+              !mediaSpoiler || file.attachment.kind == "photo",
               !captionAboveMedia || file.attachment.kind == "photo",
               id != Self.zeroUUID, revision != Self.zeroUUID,
               title.utf8.count <= 4096, !title.utf8.contains(0),

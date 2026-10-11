@@ -122,7 +122,7 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
     func testPendingCaptionAndFileReopenTogetherAndCancellationRetainsArchive() async throws {
         try await pendingCaptionAndFileReopen(mode: .file)
     }
-    func testPendingPhotoPlacementReopensWithRealS3BytesAndCancellationRetainsChoice() async throws {
+    func testPendingPhotoSpoilerAndPlacementReopenWithRealS3BytesAndCancellationRetainChoice() async throws {
         try await pendingCaptionAndFileReopen(mode: .photo)
     }
     private func pendingCaptionAndFileReopen(mode: TelegramUploadMode) async throws {
@@ -157,7 +157,7 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         let original = TelegramComposerDraft(accountID: 1, chatID: 42, text: "Original input", replyTarget: reply)
         let caption = try pendingUploadFixture().captionInput
         let pending = TelegramPendingUploadDraft(id: preparationID, accountID: 1, chatID: 42,
-            title: "Synthetic recipient", captionInput: caption, captionAboveMedia: mode == .photo, originalDraft: original, replyTarget: reply,
+            title: "Synthetic recipient", captionInput: caption, captionAboveMedia: mode == .photo, mediaSpoiler: mode == .photo, originalDraft: original, replyTarget: reply,
             file: savedFile, disposition: .submissionStarted)
         try await seedThenRelease(path, draft: pending)
         try TelegramUploadFileIO.discard(staged)
@@ -169,6 +169,7 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         let restored = try XCTUnwrap(result)
         XCTAssertEqual(restored.captionInput, caption)
         XCTAssertEqual(restored.captionAboveMedia, mode == .photo)
+        XCTAssertEqual(restored.mediaSpoiler, mode == .photo)
         XCTAssertEqual(Array(restored.captionInput.formattedText.text.utf8), Array(caption.formattedText.text.utf8))
         XCTAssertEqual(restored.originalDraft, original)
         XCTAssertEqual(restored.replyTarget, reply)
@@ -181,12 +182,13 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
         XCTAssertEqual(recoveredFile.name, staged.name)
         let session = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: reopenedArchive) })
         try await session.save(preparationID: restored.id, chatID: restored.chatID, captionInput: restored.captionInput,
-            captionAboveMedia: restored.captionAboveMedia, disposition: .cancelled)
+            captionAboveMedia: restored.captionAboveMedia, mediaSpoiler: restored.mediaSpoiler, disposition: .cancelled)
         let retainedFiles = try await reopenedArchive.files(identity: savedFile.identity, attachmentID: "prepared")
         XCTAssertEqual(retainedFiles, [savedFile], "Cancelling preparation retains immutable archived bytes")
         let retainedDraft = try await load(42, repository: repository).get()
         XCTAssertEqual(retainedDraft?.disposition, .cancelled)
         XCTAssertEqual(retainedDraft?.captionAboveMedia, mode == .photo)
+        XCTAssertEqual(retainedDraft?.mediaSpoiler, mode == .photo)
         let lateWrite = await save(restored, expected: restored.revision, repository: repository)
         if case .failure(.conflict) = lateWrite {} else { XCTFail("Late writer must not resurrect the cancelled preparation") }
     }

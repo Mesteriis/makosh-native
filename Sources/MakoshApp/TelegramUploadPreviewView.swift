@@ -14,12 +14,14 @@ struct TelegramUploadPreviewView: View {
         let captionContext = upload.captionContextID
         let captionRevision = upload.captionRevision
         let captionAbove = upload.captionAboveMedia
+        let mediaSpoiler = upload.mediaSpoiler
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(upload.file?.mode == .photo ? "Отправить фото" : "Отправить вложение").font(.headline)
                 Spacer()
                 if upload.file?.mode == .photo {
                     Menu {
+                        spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                         placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                     } label: { Image(systemName: "ellipsis.circle") }
                         .menuStyle(.borderlessButton).fixedSize()
@@ -33,6 +35,7 @@ struct TelegramUploadPreviewView: View {
             .accessibilityElement(children: .contain).accessibilityIdentifier("telegram.upload.header")
             .contextMenu {
                 if upload.file?.mode == .photo {
+                    spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                     placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                 }
             }
@@ -43,7 +46,7 @@ struct TelegramUploadPreviewView: View {
                         .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
                 }
             }
-            if let file = upload.file { TelegramUploadFilePreview(file: file).id(file.id) }
+            if let file = upload.file { TelegramUploadFilePreview(file: file, mediaSpoiler: mediaSpoiler).id(file.id) }
             else { ProgressView("Подготовка вложения…").frame(maxWidth: .infinity, minHeight: 140) }
             if upload.file != nil {
                 let captionContext = upload.captionContextID
@@ -92,6 +95,13 @@ struct TelegramUploadPreviewView: View {
         .disabled(upload.phase != .ready || upload.preparationContextID != contextID)
         .accessibilityIdentifier("telegram.upload.captionPlacement")
     }
+    private func spoilerButton(context: UUID, revision: UUID, spoiler: Bool) -> some View {
+        Button(spoiler ? "Отключить спойлер" : "Скрыть под спойлером") {
+            upload.updateMediaSpoiler(!spoiler, contextID: context, revision: revision)
+        }
+        .disabled(upload.phase != .ready || upload.preparationContextID != contextID)
+        .accessibilityIdentifier("telegram.upload.spoiler")
+    }
     private func send() {
         guard upload.canSend, captionError == nil else { return }
         upload.send(contextID: contextID)
@@ -100,15 +110,25 @@ struct TelegramUploadPreviewView: View {
 
 private struct TelegramUploadFilePreview: View {
     let file: TelegramUploadFile
+    let mediaSpoiler: Bool
     @State private var preview: TelegramImagePreview?
     @State private var failed = false
     var body: some View {
         VStack(spacing: 10) {
             if file.mode == .photo {
                 if let preview {
-                    Image(preview.image, scale: 1, label: Text("Предпросмотр фото")).resizable().scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: 240)
-                        .accessibilityIdentifier("telegram.upload.photoPreview")
+                    ZStack {
+                        Image(preview.image, scale: 1, label: Text("Предпросмотр фото")).resizable().scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: 240)
+                            .blur(radius: mediaSpoiler ? 18 : 0)
+                            .accessibilityHidden(mediaSpoiler)
+                            .accessibilityIdentifier("telegram.upload.photoPreview")
+                        if mediaSpoiler {
+                            Label("Фото под спойлером", systemImage: "eye.slash")
+                                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.thinMaterial)
+                                .accessibilityIdentifier("telegram.upload.spoilerPreview")
+                        }
+                    }.clipped()
                 } else if failed {
                     Label("Не удалось показать фото", systemImage: "photo.badge.exclamationmark")
                         .frame(maxWidth: .infinity, minHeight: 140)

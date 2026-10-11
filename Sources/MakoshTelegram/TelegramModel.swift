@@ -549,7 +549,7 @@ public final class TelegramModel: ObservableObject {
               upload.phase == .idle,
               pendingRecoveryAttempt?.account != accountID || pendingRecoveryAttempt?.chat != chatID else { return }
         pendingRecoveryAttempt = (accountID, chatID)
-        let request = UUID(), context = accountGeneration
+        let request = UUID(), context = accountGeneration, restorationEpoch = upload.recoveryRestoreEpoch
         pendingRecoveryID = request; isRestoringPendingUpload = true; pendingUploadRecoveryError = nil
         pendingRecoveryDeadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(30)) } catch { return }
@@ -584,7 +584,7 @@ public final class TelegramModel: ObservableObject {
                 let file = try await store.restoreFile(draft: draft)
                 guard current() else { try TelegramUploadFileIO.discard(file); return }
                 let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: draft.title, replySource: source)
-                guard self.upload.restore(draft: draft, file: file, target: target) else {
+                guard self.upload.restore(draft: draft, file: file, target: target, restorationEpoch: restorationEpoch) else {
                     try TelegramUploadFileIO.discard(file); throw TelegramUploadFileError.unavailable
                 }
             } catch {

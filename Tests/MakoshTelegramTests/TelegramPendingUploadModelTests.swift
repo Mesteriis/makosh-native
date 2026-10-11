@@ -1,6 +1,8 @@
 #if DEBUG
 import XCTest
 import Foundation
+import CoreGraphics
+import ImageIO
 import SwiftSignalKit
 @testable import MakoshTelegram
 
@@ -10,14 +12,28 @@ import SwiftSignalKit
         var loads: [(Int64, CheckedContinuation<TelegramPendingUploadDraft?, Error>)] = []
         var restored = 0
         var file: TelegramUploadFile?
+        var holdPrepare = false, holdRestore = false
+        var prepareGate: CheckedContinuation<Void, Error>?
+        var restoreGate: CheckedContinuation<Void, Error>?
+        var savedDraft: TelegramPendingUploadDraft?
         func load(chatID: Int64) async throws -> TelegramPendingUploadDraft? {
             try await withCheckedThrowingContinuation { loads.append((chatID, $0)) }
         }
-        func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, originalDraft: TelegramComposerDraft?) async throws {}
-        func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, disposition: TelegramPendingUploadDisposition) async throws {}
+        func prepare(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?) async throws {
+            if holdPrepare { try await withCheckedThrowingContinuation { prepareGate = $0 } }
+        }
+        func save(preparationID: UUID, chatID: Int64, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, disposition: TelegramPendingUploadDisposition) async throws {
+            guard let current = savedDraft else { return }
+            guard current.id == preparationID, current.chatID == chatID else { throw TelegramUploadFileError.unavailable }
+            savedDraft = TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: chatID,
+                title: current.title, captionInput: captionInput, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
+                originalDraft: current.originalDraft, replyTarget: current.replyTarget, file: current.file, disposition: disposition)
+        }
         func restoreFile(draft: TelegramPendingUploadDraft) async throws -> TelegramUploadFile {
             restored += 1
-            guard let file else { throw TelegramUploadFileError.unavailable }; return file
+            guard let file else { throw TelegramUploadFileError.unavailable }
+            if holdRestore { try await withCheckedThrowingContinuation { restoreGate = $0 } }
+            return file
         }
     }
     private final class Composer: TelegramComposerDraftRepository {
@@ -106,7 +122,65 @@ import SwiftSignalKit
     private final class Provider: TelegramUploadProvider {
         let accountID: Int64 = -1
         var submissions = 0
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease { submissions += 1; return Lease() }
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease { submissions += 1; return Lease() }
+    }
+    func testSnapshotLoadedBeforeDetachedSaveCannotRestoreAfterItsFileExportCompletes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("synthetic.jpg")
+        let image = try XCTUnwrap(CGContext(data: nil, width: 40, height: 20, bitsPerComponent: 8,
+            bytesPerRow: 40, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0)?.makeImage())
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil); XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let restoredFile = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        addTeardownBlock { try TelegramUploadFileIO.discard(restoredFile) }
+        let model = TelegramModel.syntheticPreview(); model.selectedChatID = 10001
+        let store = Store(), provider = Provider()
+        store.holdPrepare = true; store.holdRestore = true; store.file = restoredFile
+        model.upload.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        model.upload.prepare(source: source, mode: .photo,
+            target: .init(accountID: -1, chatID: 10001, title: "Synthetic"), caption: "initial")
+        await eventually { store.prepareGate != nil }
+        let id = try XCTUnwrap(model.upload.preparationContextID)
+        let oldDraft = try pendingUploadMutating(pendingUploadFixture(accountID: -1, chatID: 10001, id: id)) {
+            var record = $0["file"] as! [String: Any], attachment = record["attachment"] as! [String: Any]
+            attachment["kind"] = "photo"; attachment["name"] = restoredFile.name; attachment["size"] = restoredFile.size
+            record["attachment"] = attachment; record["plaintextByteCount"] = restoredFile.size; $0["file"] = record
+        }
+        XCTAssertTrue(oldDraft.isValid); store.savedDraft = oldDraft
+        let latest = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "latest 😀",
+            entities: [.init(offset: 0, length: 6, kind: .bold)]), selection: .init(location: 7, length: 2))
+        XCTAssertTrue(model.upload.updateCaptionInput(latest, contextID: model.upload.captionContextID))
+        XCTAssertTrue(model.upload.updateCaptionPlacement(true, contextID: model.upload.captionContextID, revision: model.upload.captionRevision))
+        XCTAssertTrue(model.upload.updateMediaSpoiler(true, contextID: model.upload.captionContextID, revision: model.upload.captionRevision))
+        model.upload.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        model.bindPendingUploadRecovery(store, replyProvider: nil)
+        await eventually { store.loads.count == 1 }
+        store.loads[0].1.resume(returning: oldDraft)
+        await eventually { store.restoreGate != nil }
+        store.prepareGate?.resume(); store.prepareGate = nil
+        await eventually { store.savedDraft?.mediaSpoiler == true && model.upload.detachedRecoveryStatus == nil }
+        let fresh = try XCTUnwrap(store.savedDraft)
+        XCTAssertEqual(fresh.captionInput, latest); XCTAssertTrue(fresh.captionAboveMedia)
+        store.restoreGate?.resume(); store.restoreGate = nil
+        await eventually { !model.isRestoringPendingUpload }
+        XCTAssertEqual(model.upload.phase, .idle, "The completed detached save must invalidate an already loaded snapshot")
+        XCTAssertNotNil(model.pendingUploadRecoveryError)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: restoredFile.url.path))
+        XCTAssertEqual(provider.submissions, 0)
+        guard model.upload.phase == .idle else { model.disconnect(); return }
+        let freshFile = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        addTeardownBlock { try TelegramUploadFileIO.discard(freshFile) }
+        store.file = freshFile; store.holdRestore = false
+        model.retryPendingUploadRecovery()
+        await eventually { store.loads.count == 2 }
+        store.loads[1].1.resume(returning: fresh)
+        await eventually { !model.isRestoringPendingUpload }
+        XCTAssertEqual(model.upload.phase, .ready); XCTAssertTrue(model.upload.mediaSpoiler)
+        XCTAssertTrue(model.upload.captionAboveMedia); XCTAssertEqual(model.upload.captionInput, latest)
+        XCTAssertEqual(provider.submissions, 0)
+        model.disconnect()
     }
     func testPreparedAndUnknownSubmissionRestoreWithoutAutomaticSendOrNewerDraftOverwrite() async throws {
         for unknown in [false, true] {

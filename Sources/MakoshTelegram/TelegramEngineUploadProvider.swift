@@ -32,13 +32,13 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
     var accountID: Int64 { account.peerId.toInt64() }
     init(account: Account) { self.account = account }
 
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = EngineUploadLease(receive: receive)
         let peerID = PeerId(target.chatID)
         guard target.accountID == accountID, target.hasValidReplySource,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(peerID.namespace),
-              telegramFormattedCaptionCanSend(caption), !captionAboveMedia || file.mode == .photo,
+              telegramFormattedCaptionCanSend(caption), (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo,
               let (resource, reference) = telegramUploadMedia(file) else {
             receive(.rejected); return lease
         }
@@ -58,14 +58,14 @@ final class TelegramEngineUploadProvider: TelegramUploadProvider {
                 lease.data.dispose()
                 let commit: @MainActor (TelegramMessageActionSource?) -> Void = { [weak lease, account] reply in
                     guard let lease, !lease.stopped, !lease.committing else { return }
-                    guard let message = telegramUploadMessage(caption: caption, reference: reference, target: target, replySource: reply, captionAboveMedia: captionAboveMedia) else {
+                    guard let message = telegramUploadMessage(caption: caption, reference: reference, target: target, replySource: reply, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler) else {
                         lease.receive(.rejected); lease.stop(); return
                     }
                     lease.committing = true
                     lease.receive(.committing)
                     guard !lease.stopped else { return }
                     let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
-                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia)
+                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler)
                     lease.enqueue.set((enqueueUploadWithReceipt(account: account, peerID: peerID,
                         message: message, receipt: receipt)
                     |> deliverOnMainQueue).start(next: { [weak lease, account] admission in
@@ -125,15 +125,15 @@ private nonisolated func enqueueUploadWithReceipt(account: Account, peerID: Peer
 
 /// A failed reply preflight must never degrade into an ordinary media message.
 func telegramUploadMessage(caption: String, reference: AnyMediaReference, target: TelegramUploadTarget,
-                           replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false) -> EnqueueMessage? {
+                           replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false) -> EnqueueMessage? {
     guard let value = try? TelegramFormattedText(text: caption) else { return nil }
-    return telegramUploadMessage(caption: value, reference: reference, target: target, replySource: replySource, captionAboveMedia: captionAboveMedia)
+    return telegramUploadMessage(caption: value, reference: reference, target: target, replySource: replySource, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler)
 }
 
 func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference, target: TelegramUploadTarget,
-                           replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false) -> EnqueueMessage? {
+                           replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false) -> EnqueueMessage? {
     guard telegramFormattedCaptionCanSend(caption), target.hasValidReplySource,
-          !captionAboveMedia || reference.media is TelegramMediaImage else { return nil }
+          (!captionAboveMedia && !mediaSpoiler) || reference.media is TelegramMediaImage else { return nil }
     if let captured = target.replySource {
         guard let replySource, replySource.accountID == captured.accountID,
               replySource.chatID == captured.chatID, replySource.peerID == captured.peerID,
@@ -147,6 +147,7 @@ func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaRe
     }
     var attributes = telegramOutgoingTextAttributes(caption)
     if captionAboveMedia { attributes.append(InvertMediaMessageAttribute()) }
+    if mediaSpoiler { attributes.append(MediaSpoilerMessageAttribute()) }
     return .message(text: caption.text, attributes: attributes, inlineStickers: [:], mediaReference: reference,
         threadId: replySource?.threadID, replyToMessageId: reply, replyToStoryId: nil,
         localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])

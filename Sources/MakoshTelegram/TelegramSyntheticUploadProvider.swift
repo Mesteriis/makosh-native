@@ -14,11 +14,11 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
     init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false) {
         self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement
     }
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
         let lease = SyntheticUploadLease()
         guard target.accountID == accountID, target.hasValidReplySource, telegramFormattedCaptionCanSend(caption),
-              !captionAboveMedia || file.mode == .photo else {
+              (!captionAboveMedia && !mediaSpoiler) || file.mode == .photo else {
             receive(.rejected); return lease
         }
         let postbox = self.postbox, loseAcknowledgement = self.loseAcknowledgement
@@ -29,7 +29,7 @@ final class TelegramSyntheticUploadProvider: TelegramUploadProvider {
                 receive(.committing)
                 if let postbox, let lease {
                     let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
-                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia)
+                        target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler)
                     lease.operation.set((syntheticUploadCommit(postbox: postbox, receipt: receipt)
                         |> deliverOnMainQueue).start(next: { event in
                             MainActor.assumeIsolated {
@@ -58,6 +58,7 @@ private func syntheticUploadCommit(postbox: Postbox, receipt: TelegramPendingUpl
         let uniqueID = Int64.random(in: Int64.min...Int64.max)
         var attributes = telegramOutgoingTextAttributes(receipt.caption)
         if receipt.captionAboveMedia { attributes.append(InvertMediaMessageAttribute()) }
+        if receipt.mediaSpoiler { attributes.append(MediaSpoilerMessageAttribute()) }
         let message = StoreMessage(peerId: PeerId(receipt.target.chatID), namespace: Namespaces.Message.Local,
             globallyUniqueId: uniqueID, groupingKey: nil, threadId: receipt.target.replySource?.threadID,
             timestamp: 100, flags: [.Unsent], tags: [], globalTags: [], localTags: [],

@@ -89,6 +89,17 @@ struct TelegramUploadView: View {
                     }
                 }
             }
+            if let status = upload.detachedRecoveryStatus {
+                HStack {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("telegram.upload.detachedRecoveryStatus")
+                    Spacer()
+                    if upload.canRetryDetachedRecovery {
+                        Button("Повторить сохранение параметров", action: upload.retryDetachedRecovery)
+                            .accessibilityIdentifier("telegram.upload.retryDetachedRecovery")
+                    }
+                }
+            }
             if !upload.showsPreparationPreview, upload.phase != .idle || upload.error != nil {
                 if let target = upload.target {
                     Label("Получатель: \(target.title)", systemImage: "paperplane").font(.callout)
@@ -104,7 +115,7 @@ struct TelegramUploadView: View {
                 }
             }
         }
-        .padding(model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || upload.cancellationStatus != nil ? 16 :
+        .padding(model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || upload.cancellationStatus != nil || upload.detachedRecoveryStatus != nil ? 16 :
             upload.showsPreparationPreview || (upload.phase == .idle && upload.error == nil) ? 0 : 16)
         .sheet(isPresented: Binding(get: { upload.showsPreparationPreview }, set: { shown in
             if !shown, let contextID { upload.dismissPreparation(contextID: contextID) }

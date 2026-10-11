@@ -25,7 +25,7 @@ import SwiftSignalKit
 }
 
 @MainActor final class TelegramPendingUploadSessionTests: XCTestCase {
-    func testPlacementWritesSurviveSessionRecreationAndAcceptedMarker() async throws {
+    func testSpoilerAndPlacementWritesSurviveSessionRecreationAndAcceptedMarker() async throws {
         let first = try pendingUploadMutating(pendingUploadFixture()) {
             var file = $0["file"] as! [String: Any], attachment = file["attachment"] as! [String: Any]
             attachment["kind"] = "photo"; file["attachment"] = attachment; $0["file"] = file
@@ -33,15 +33,17 @@ import SwiftSignalKit
         let repository = PendingSessionRepository(first)
         let session = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
         try await session.save(preparationID: first.id, chatID: first.chatID, captionInput: first.captionInput,
-            captionAboveMedia: true, disposition: .prepared)
+            captionAboveMedia: true, mediaSpoiler: true, disposition: .prepared)
         let reopened = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
         let loaded = try await reopened.load(chatID: first.chatID)
         XCTAssertEqual(loaded?.captionAboveMedia, true)
+        XCTAssertEqual(loaded?.mediaSpoiler, true)
         try await reopened.save(preparationID: first.id, chatID: first.chatID, captionInput: first.captionInput,
-            captionAboveMedia: true, disposition: .submissionStarted)
+            captionAboveMedia: true, mediaSpoiler: true, disposition: .submissionStarted)
         try await reopened.save(preparationID: first.id, chatID: first.chatID, captionInput: first.captionInput,
-            captionAboveMedia: true, disposition: .accepted(localMessageID: "receipt"))
+            captionAboveMedia: true, mediaSpoiler: true, disposition: .accepted(localMessageID: "receipt"))
         XCTAssertEqual(repository.value?.captionAboveMedia, true)
+        XCTAssertEqual(repository.value?.mediaSpoiler, true)
         XCTAssertEqual(repository.value?.originalDraft, first.originalDraft)
     }
     func testPendingWritesSerializeAcrossCallerCancellationAndTombstoneRejectsResurrection() async throws {

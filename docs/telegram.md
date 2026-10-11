@@ -1286,7 +1286,8 @@ and thread validation remain required. Admission checks the pending flag and the
 same-transaction receipt requires exactly the corresponding native attribute
 count. Acceptance records preserve the choice; an unknown outcome never resends.
 
-Pending JSON now writes schemaVersion2 with an explicit captionAboveMedia Bool.
+Placement introduced schemaVersion2 with an explicit captionAboveMedia Bool;
+current writes use schemaVersion3 as described below.
 Legacy schemaVersion1 without the field restores below; version1 with an above
 flag, version2 without the field, future schemas and above on a file are refused.
 Older Makosh versions reject version2 rather than silently losing placement.
@@ -1305,3 +1306,48 @@ include real encrypted Postbox admission/reopen and real PostgreSQL/S3 photo
 restoration. Native owned synthetic QA verifies actions/context menus, text
 preservation, restart, queue acknowledgement, file exclusion and cancellation.
 It establishes no live Telegram server acceptance.
+
+## Outgoing photo media spoilers
+
+The native photo actions and whole-header context menus offer Hide with Spoiler
+and Disable Spoiler, independent of caption placement and rich input/selection.
+The preparation preview is blurred/covered and the image is absent from AX while
+hidden. Ordinary file preparation cannot enable either photo option. The input
+stays below the preview. Menu actions capture the current context/revision and
+reject stale, started or uncertain states.
+
+The send freezes caption, placement and spoiler, persists the submission marker,
+and adds MediaSpoilerMessageAttribute to the pinned native engine message. The
+engine retains the attribute and uses its uploaded-photo spoiler bit. Pending
+admission compares the exact option; the atomic native receipt requires exactly
+one attribute when enabled and zero when disabled. Rich entities, reply/thread
+validation and no-resend behavior remain unchanged.
+
+Pending JSON writes schemaVersion3 with an explicit mediaSpoiler Bool. Legacy
+schema1/2 may omit it and restore false; legacy true claims, missing schema3 Bool,
+wrong types, future schemas and true-on-file are refused. Older apps reject the
+new schema rather than silently opening the photo. The existing envelope,
+PostgreSQL schema and encrypted S3 format are unchanged. Files remain encrypted
+S3 objects; PostgreSQL stores metadata. Acceptance/cancellation preserve both
+options, and cancelling never deletes the immutable archive.
+
+Rebinding freezes the latest prepared tuple against its original store, including
+while the initial write is pending. Initial snapshots are consumed on completion;
+failed detached updates retain a storage-only retry and prevent that preparation
+from being restored with stale options. Recovery captures a controller epoch
+before loading; reset and detached write start/completion invalidate older
+snapshots, including file exports finishing after the pending marker cleared.
+Rejected exports are discarded; explicit retry reloads current state. Retrying
+never submits a message and cannot mutate the new store. A failed/unacknowledged storage write does not prove
+that the latest unsaved input will survive process death.
+
+Verified reference: PreviewSenderController.swift:381–386 (toggle),1701–1705
+(ordinary media eligibility, excluding secret/paid),1893–1897 (send flag);
+MediaPreviewRowItem.swift:48,212 (forceSpoiler with no parent). The engine sources
+SyncCore_MediaSpoilerMessageAttribute.swift, EnqueueMessage.swift:249,286 and
+PendingMessageUploadedContent.swift:646–658 confirm the native boundary. No outer
+GPLv2 UI code/assets or embedded credentials were copied; recipe8 is unchanged.
+Current preparation supports ordinary photos, not secret/paid/video/albums.
+Animated dust effects, one-shot Send as Spoiler and full media-option parity
+remain open. Real Postbox/PG/S3 regressions and owned synthetic native QA establish
+local behavior; live Telegram server acceptance is not established.

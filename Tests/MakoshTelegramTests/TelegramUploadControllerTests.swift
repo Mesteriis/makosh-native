@@ -14,7 +14,7 @@ import XCTest
         var captions: [String] = []
         var formattedCaptions: [TelegramFormattedText] = []
         var synchronous: [TelegramUploadEvent] = []
-        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false,
+        func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
                     receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
             let lease = Lease(); leases.append(lease); callbacks.append(receive)
             targets.append(target); captions.append(caption.text); formattedCaptions.append(caption)

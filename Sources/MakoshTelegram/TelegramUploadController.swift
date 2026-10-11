@@ -23,7 +23,7 @@ public enum TelegramUploadPhase: Equatable, Sendable {
 @MainActor protocol TelegramUploadLease: AnyObject { func stop() }
 @MainActor protocol TelegramUploadProvider: AnyObject {
     var accountID: Int64 { get }
-    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool,
+    func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID, caption: TelegramFormattedText, captionAboveMedia: Bool, mediaSpoiler: Bool,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease
 }
 enum TelegramUploadEvent {
@@ -35,6 +35,15 @@ enum TelegramUploadEvent {
     @Published public private(set) var file: TelegramUploadFile?
     @Published public private(set) var target: TelegramUploadTarget?
     @Published public private(set) var captionInput: TelegramComposerInput = .empty
+    @Published public private(set) var mediaSpoiler = false
+    @discardableResult
+    public func updateMediaSpoiler(_ spoiler: Bool, contextID: UUID, revision: UUID) -> Bool {
+        guard token == contextID, captionRevision == revision, phase == .ready, file?.mode == .photo else { return false }
+        if mediaSpoiler != spoiler {
+            mediaSpoiler = spoiler; captionRevision = UUID(); persistCaption()
+        }
+        return true
+    }
     @Published public private(set) var captionAboveMedia = false
     @Published public private(set) var captionRevision = UUID()
     @discardableResult
@@ -74,9 +83,17 @@ enum TelegramUploadEvent {
     private var recoveryPrepared = false
     private var recoveryInitialInFlight = false
     private var bindingID = UUID()
+    private(set) var recoveryRestoreEpoch = UUID()
     private var acceptancePending = false
-    private var cancelledRecoveryContents: [UUID: (input: TelegramComposerInput, above: Bool)] = [:]
+    private var cancelledRecoveryContents: [UUID: (input: TelegramComposerInput, above: Bool, spoiler: Bool)] = [:]
     private var sentCaptionAboveMedia = false
+    private var sentMediaSpoiler = false
+    @Published public private(set) var detachedRecoveryStatus: String?
+    public var canRetryDetachedRecovery: Bool { !detachedRecoveryRetries.isEmpty }
+    public func retryDetachedRecovery() { for retry in Array(detachedRecoveryRetries.values) { retry() } }
+    private var detachedInitialContents: [UUID: (input: TelegramComposerInput, above: Bool, spoiler: Bool)] = [:]
+    private var detachedRecoveryWrites: Set<UUID> = []
+    private var detachedRecoveryRetries: [UUID: () -> Void] = [:]
     private var sentInput: TelegramComposerInput = .empty
     var originalDraftForRecovery: ((TelegramUploadTarget, UUID) -> TelegramComposerDraft?)?
     var didRestore: ((TelegramUploadTarget, TelegramComposerDraft?, UUID) -> Void)?
@@ -169,7 +186,7 @@ enum TelegramUploadEvent {
                 self.preparation = nil; self.file = result; self.phase = .ready
                 if self.requiresRecovery || store != nil {
                     self.persistInitial(file: result, target: target, input: captionInput, original: original,
-                        id: request, bound: bound, store: store, above: false)
+                        id: request, bound: bound, store: store, above: false, spoiler: false)
                 }
             } catch {
                 guard let self else { return }
@@ -187,7 +204,7 @@ enum TelegramUploadEvent {
             error = "Подпись или её форматирование не поддерживаются. Максимум — 1024 знака UTF16."; return
         }
         guard canSend, let provider, let file, let target else { return }
-        let frozen = captionInput, frozenAbove = captionAboveMedia
+        let frozen = captionInput, frozenAbove = captionAboveMedia, frozenSpoiler = mediaSpoiler
         if let store = recoveryStore, let id = preparationID {
             let bound = bindingID
             isRecoveryBusy = true; recoveryRetry = nil
@@ -195,10 +212,10 @@ enum TelegramUploadEvent {
             Task { [weak self] in
                 guard self?.bindingID == bound, self?.preparationID == id, self?.phase == .storing else { return }
                 do {
-                    try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, disposition: .submissionStarted)
+                    try await store.save(preparationID: id, chatID: target.chatID, captionInput: frozen, captionAboveMedia: frozenAbove, mediaSpoiler: frozenSpoiler, disposition: .submissionStarted)
                     guard let self, self.bindingID == bound, self.preparationID == id, self.phase == .storing else { return }
                     self.isRecoveryBusy = false
-                    self.dispatch(provider: provider, file: file, target: target, frozen: frozen, above: frozenAbove)
+                    self.dispatch(provider: provider, file: file, target: target, frozen: frozen, above: frozenAbove, spoiler: frozenSpoiler)
                 } catch {
                     guard let self, self.bindingID == bound, self.preparationID == id, self.phase == .storing else { return }
                     // A failed write acknowledgement may have committed the marker.
@@ -207,12 +224,13 @@ enum TelegramUploadEvent {
                     self.recoveryStatus = "Не удалось подтвердить сохранение начала отправки. Автоматического повтора нет."
                 }
             }
-        } else if !requiresRecovery { dispatch(provider: provider, file: file, target: target, frozen: frozen, above: frozenAbove) }
+        } else if !requiresRecovery { dispatch(provider: provider, file: file, target: target, frozen: frozen, above: frozenAbove, spoiler: frozenSpoiler) }
     }
 
-    private func dispatch(provider: any TelegramUploadProvider, file: TelegramUploadFile, target: TelegramUploadTarget, frozen: TelegramComposerInput, above: Bool) {
+    private func dispatch(provider: any TelegramUploadProvider, file: TelegramUploadFile, target: TelegramUploadTarget, frozen: TelegramComposerInput, above: Bool, spoiler: Bool) {
         guard let preparationID else { return }
         let request = UUID(); token = request; sentInput = frozen; sentCaption = frozen.formattedText; sentCaptionAboveMedia = above; committed = false
+        sentMediaSpoiler = spoiler
         phase = .storing; error = nil
         deadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(30)) } catch { return }
@@ -221,7 +239,7 @@ enum TelegramUploadEvent {
         }
         willSubmit?(target, sentCaption)
         guard token == request, phase == .storing else { return }
-        let returned = provider.submit(file: file, target: target, preparationID: preparationID, caption: sentCaption, captionAboveMedia: above) { [weak self] event in
+        let returned = provider.submit(file: file, target: target, preparationID: preparationID, caption: sentCaption, captionAboveMedia: above, mediaSpoiler: spoiler) { [weak self] event in
             guard let self, self.token == request else { return }
             self.receive(event)
         }
@@ -244,11 +262,21 @@ enum TelegramUploadEvent {
     }
 
     private func resetObservation() {
+        recoveryRestoreEpoch = UUID()
+        // Rebinding detaches UI observation, not the user's latest preparation.
+        // The original initial-write task consumes this snapshot on completion.
+        if recoveryInitialInFlight, let id = preparationID, cancelledRecoveryContents[id] == nil {
+            detachedInitialContents[id] = (captionInput, captionAboveMedia, mediaSpoiler)
+        } else if phase == .ready, recoveryPrepared, let id = preparationID, let target, let store = recoveryStore,
+                  !cancellationStarted.contains(id) {
+            persistDetachedPreparation(store: store, id: id, chatID: target.chatID,
+                input: captionInput, above: captionAboveMedia, spoiler: mediaSpoiler)
+        }
         let possiblyQueued = committed || messageID != nil || phase == .uncertain
         token = UUID(); preparation?.cancel(); deadline?.cancel(); deadline = nil
         let old = lease; lease = nil; old?.stop()
         let cleaned = releaseStage(); target = nil; captionInput = .empty; messageID = nil; committed = false
-        captionAboveMedia = false; captionRevision = UUID()
+        captionAboveMedia = false; mediaSpoiler = false; captionRevision = UUID()
         phase = .idle; acceptancePending = false; recoveryPrepared = false
         recoveryRetry = nil; isRecoveryBusy = false; recoveryStatus = nil
         let notice = "Отправка могла остаться в очереди Telegram. Повторно автоматически не отправляем."
@@ -280,7 +308,7 @@ enum TelegramUploadEvent {
             deadline?.cancel(); deadline = nil
             if let store = recoveryStore, let preparationID, let target {
                 persistAcceptance(store: store, id: preparationID, target: target, input: sentInput,
-                    localMessageID: id, bound: bindingID, above: sentCaptionAboveMedia)
+                    localMessageID: id, bound: bindingID, above: sentCaptionAboveMedia, spoiler: sentMediaSpoiler)
             } else { acknowledgeAccepted() }
         case .progress(let value):
             guard messageID != nil, !acceptancePending else { return }
@@ -304,7 +332,7 @@ enum TelegramUploadEvent {
     public func retryRecovery() { guard !isRecoveryBusy else { return }; recoveryRetry?() }
 
     private func persistInitial(file: TelegramUploadFile, target: TelegramUploadTarget, input: TelegramComposerInput,
-                                original: TelegramComposerDraft?, id: UUID, bound: UUID, store: (any TelegramUploadRecoveryStore)?, above: Bool) {
+                                original: TelegramComposerDraft?, id: UUID, bound: UUID, store: (any TelegramUploadRecoveryStore)?, above: Bool, spoiler: Bool) {
         guard let store, store.accountID == target.accountID else {
             recoveryPrepared = false; recoveryStatus = "Настройте хранилище вложений для сохранения перед отправкой."
             recoveryRetry = nil
@@ -314,39 +342,68 @@ enum TelegramUploadEvent {
         let discard = self.discard, cancellationPresentation = cancellationPresentationID
         Task { [weak self] in
             do {
-                try await store.prepare(preparationID: id, file: file, target: target, captionInput: input, captionAboveMedia: above, originalDraft: original)
+                try await store.prepare(preparationID: id, file: file, target: target, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, originalDraft: original)
                 if let cancelled = self?.cancelledRecoveryContents.removeValue(forKey: id) {
-                    self?.persistCancellation(store: store, id: id, chatID: target.chatID, input: cancelled.input, bound: bound, above: cancelled.above, presentation: cancellationPresentation)
+                    self?.persistCancellation(store: store, id: id, chatID: target.chatID, input: cancelled.input, bound: bound, above: cancelled.above, spoiler: cancelled.spoiler, presentation: cancellationPresentation)
                 }
+                self?.persistDetachedInitialIfNeeded(store: store, id: id, chatID: target.chatID)
                 guard let self, self.bindingID == bound, self.preparationID == id else { try? discard(file); return }
                 self.recoveryInitialInFlight = false; self.isRecoveryBusy = false; self.recoveryPrepared = true; self.recoveryStatus = nil
-                if self.captionInput != input || self.captionAboveMedia != above { self.persistCaption() }
+                if self.captionInput != input || self.captionAboveMedia != above || self.mediaSpoiler != spoiler { self.persistCaption() }
             } catch {
                 if let cancelled = self?.cancelledRecoveryContents.removeValue(forKey: id) {
-                    self?.persistCancellation(store: store, id: id, chatID: target.chatID, input: cancelled.input, bound: bound, above: cancelled.above, presentation: cancellationPresentation)
+                    self?.persistCancellation(store: store, id: id, chatID: target.chatID, input: cancelled.input, bound: bound, above: cancelled.above, spoiler: cancelled.spoiler, presentation: cancellationPresentation)
                 }
+                self?.persistDetachedInitialIfNeeded(store: store, id: id, chatID: target.chatID)
                 guard let self, self.bindingID == bound, self.preparationID == id else { try? discard(file); return }
                 self.recoveryInitialInFlight = false; self.isRecoveryBusy = false; self.recoveryPrepared = false
                 self.recoveryStatus = "Не удалось сохранить вложение. Отправка заблокирована."
-                self.recoveryRetry = { [weak self] in self?.persistInitial(file: file, target: target, input: input, original: original, id: id, bound: bound, store: store, above: above) }
+                self.recoveryRetry = { [weak self] in self?.persistInitial(file: file, target: target, input: input, original: original, id: id, bound: bound, store: store, above: above, spoiler: spoiler) }
             }
         }
     }
     private func persistCaption() {
         guard let store = recoveryStore, recoveryPrepared, let id = preparationID, let target, phase == .ready else { return }
-        let bound = bindingID, input = captionInput, above = captionAboveMedia
+        let bound = bindingID, input = captionInput, above = captionAboveMedia, spoiler = mediaSpoiler
         Task { [weak self] in
-            guard self?.bindingID == bound, self?.preparationID == id, self?.phase == .ready, self?.captionInput == input, self?.captionAboveMedia == above else { return }
+            guard self?.bindingID == bound, self?.preparationID == id, self?.phase == .ready, self?.captionInput == input, self?.captionAboveMedia == above, self?.mediaSpoiler == spoiler else { return }
             do {
-                try await store.save(preparationID: id, chatID: target.chatID, captionInput: input, captionAboveMedia: above, disposition: .prepared)
-                guard let self, self.bindingID == bound, self.preparationID == id, self.captionInput == input, self.captionAboveMedia == above, self.phase == .ready else { return }
+                try await store.save(preparationID: id, chatID: target.chatID, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .prepared)
+                guard let self, self.bindingID == bound, self.preparationID == id, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
                 self.recoveryStatus = nil; self.recoveryRetry = nil
             } catch {
-                guard let self, self.bindingID == bound, self.preparationID == id, self.captionInput == input, self.captionAboveMedia == above, self.phase == .ready else { return }
+                guard let self, self.bindingID == bound, self.preparationID == id, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
                 self.recoveryStatus = "Не удалось сохранить подпись. Повторите сохранение перед отправкой."
                 self.recoveryRetry = { [weak self] in self?.persistCaption() }
             }
         }
+    }
+    private func persistDetachedInitialIfNeeded(store: any TelegramUploadRecoveryStore, id: UUID, chatID: Int64) {
+        guard let content = detachedInitialContents.removeValue(forKey: id) else { return }
+        persistDetachedPreparation(store: store, id: id, chatID: chatID, input: content.input, above: content.above, spoiler: content.spoiler)
+    }
+    private func persistDetachedPreparation(store: any TelegramUploadRecoveryStore, id: UUID, chatID: Int64,
+                                            input: TelegramComposerInput, above: Bool, spoiler: Bool) {
+        guard detachedRecoveryWrites.insert(id).inserted else { return }
+        recoveryRestoreEpoch = UUID()
+        detachedRecoveryRetries.removeValue(forKey: id); updateDetachedRecoveryStatus()
+        Task { [weak self] in
+            do {
+                try await store.save(preparationID: id, chatID: chatID, captionInput: input,
+                    captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .prepared)
+            } catch {
+                self?.detachedRecoveryRetries[id] = { [weak self] in
+                    self?.persistDetachedPreparation(store: store, id: id, chatID: chatID, input: input, above: above, spoiler: spoiler)
+                }
+            }
+            self?.recoveryRestoreEpoch = UUID()
+            self?.detachedRecoveryWrites.remove(id); self?.updateDetachedRecoveryStatus()
+        }
+    }
+    private func updateDetachedRecoveryStatus() {
+        detachedRecoveryStatus = !detachedRecoveryRetries.isEmpty
+            ? "Не удалось сохранить параметры предыдущего вложения. Повторите сохранение."
+            : !detachedRecoveryWrites.isEmpty ? "Сохраняем параметры предыдущего вложения…" : nil
     }
     private func resetCancellationPresentation() {
         cancellationPresentationID = UUID()
@@ -357,24 +414,24 @@ enum TelegramUploadEvent {
         // The initial write may commit even when its acknowledgement fails. Wait
         // for its completion before publishing the cancellation marker.
         if recoveryInitialInFlight {
-            cancelledRecoveryContents[id] = (captionInput, captionAboveMedia)
+            cancelledRecoveryContents[id] = (captionInput, captionAboveMedia, mediaSpoiler)
             return
         }
-        persistCancellation(store: store, id: id, chatID: target.chatID, input: captionInput, bound: bindingID, above: captionAboveMedia)
+        persistCancellation(store: store, id: id, chatID: target.chatID, input: captionInput, bound: bindingID, above: captionAboveMedia, spoiler: mediaSpoiler)
     }
     private func persistCancellation(store: any TelegramUploadRecoveryStore, id: UUID,
-                                     chatID: Int64, input: TelegramComposerInput, bound: UUID, above: Bool, presentation: UUID? = nil) {
+                                     chatID: Int64, input: TelegramComposerInput, bound: UUID, above: Bool, spoiler: Bool, presentation: UUID? = nil) {
         guard cancellationStarted.insert(id).inserted else { return }
         let presentation = presentation ?? cancellationPresentationID
-        writeCancellation(store: store, id: id, chatID: chatID, input: input, bound: bound, above: above, presentation: presentation)
+        writeCancellation(store: store, id: id, chatID: chatID, input: input, bound: bound, above: above, spoiler: spoiler, presentation: presentation)
     }
     private func writeCancellation(store: any TelegramUploadRecoveryStore, id: UUID,
-                                   chatID: Int64, input: TelegramComposerInput, bound: UUID, above: Bool, presentation: UUID) {
+                                   chatID: Int64, input: TelegramComposerInput, bound: UUID, above: Bool, spoiler: Bool, presentation: UUID) {
         let current = bindingID == bound && cancellationPresentationID == presentation
         if current { isCancellationBusy = true; cancellationRetry = nil }
         Task { [weak self] in
             do {
-                try await store.save(preparationID: id, chatID: chatID, captionInput: input, captionAboveMedia: above, disposition: .cancelled)
+                try await store.save(preparationID: id, chatID: chatID, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .cancelled)
                 guard let self, self.bindingID == bound, self.cancellationPresentationID == presentation else { return }
                 self.isCancellationBusy = false; self.cancellationStatus = nil; self.cancellationRetry = nil
             } catch {
@@ -382,24 +439,24 @@ enum TelegramUploadEvent {
                 self.isCancellationBusy = false
                 self.cancellationStatus = "Не удалось подтвердить отмену сохранённого вложения. Повторите сохранение отмены."
                 self.cancellationRetry = { [weak self] in
-                    self?.writeCancellation(store: store, id: id, chatID: chatID, input: input, bound: bound, above: above, presentation: presentation)
+                    self?.writeCancellation(store: store, id: id, chatID: chatID, input: input, bound: bound, above: above, spoiler: spoiler, presentation: presentation)
                 }
             }
         }
     }
     private func persistAcceptance(store: any TelegramUploadRecoveryStore, id: UUID, target: TelegramUploadTarget,
-                                   input: TelegramComposerInput, localMessageID: String, bound: UUID, above: Bool) {
+                                   input: TelegramComposerInput, localMessageID: String, bound: UUID, above: Bool, spoiler: Bool) {
         isRecoveryBusy = true; recoveryRetry = nil
         Task { [weak self] in
             do {
-                try await store.save(preparationID: id, chatID: target.chatID, captionInput: input, captionAboveMedia: above, disposition: .accepted(localMessageID: localMessageID))
+                try await store.save(preparationID: id, chatID: target.chatID, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .accepted(localMessageID: localMessageID))
                 guard let self, self.bindingID == bound, self.preparationID == id, self.messageID == localMessageID else { return }
                 self.isRecoveryBusy = false; self.recoveryStatus = nil; self.acknowledgeAccepted()
             } catch {
                 guard let self, self.bindingID == bound, self.preparationID == id, self.messageID == localMessageID else { return }
                 self.isRecoveryBusy = false; self.phase = .uncertain
                 self.recoveryStatus = "Очередь приняла вложение, но сохранить подтверждение не удалось. Повтор отправки запрещён."
-                self.recoveryRetry = { [weak self] in self?.persistAcceptance(store: store, id: id, target: target, input: input, localMessageID: localMessageID, bound: bound, above: above) }
+                self.recoveryRetry = { [weak self] in self?.persistAcceptance(store: store, id: id, target: target, input: input, localMessageID: localMessageID, bound: bound, above: above, spoiler: spoiler) }
             }
         }
     }
@@ -415,8 +472,11 @@ enum TelegramUploadEvent {
         return cleanup()
     }
     @discardableResult
-    func restore(draft: TelegramPendingUploadDraft, file: TelegramUploadFile, target: TelegramUploadTarget) -> Bool {
-        guard phase == .idle, draft.isValid, provider?.accountID == draft.accountID,
+    func restore(draft: TelegramPendingUploadDraft, file: TelegramUploadFile, target: TelegramUploadTarget, restorationEpoch: UUID) -> Bool {
+        // A load/file export may finish after a detached write has cleared its
+        // pending marker. Only a snapshot begun in the current epoch can apply.
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, provider?.accountID == draft.accountID,
+              detachedInitialContents[draft.id] == nil, !detachedRecoveryWrites.contains(draft.id), detachedRecoveryRetries[draft.id] == nil,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID,
               target.chatID == draft.chatID, target.hasValidReplySource,
               file.name == draft.file.attachment.name, file.size == draft.file.plaintextByteCount,
@@ -430,6 +490,7 @@ enum TelegramUploadEvent {
         }
         token = UUID(); preparationID = draft.id; self.file = file; self.target = target; captionInput = draft.captionInput
         captionAboveMedia = draft.captionAboveMedia; captionRevision = UUID(); sentCaptionAboveMedia = draft.captionAboveMedia
+        mediaSpoiler = draft.mediaSpoiler; sentMediaSpoiler = draft.mediaSpoiler
         recoveryPrepared = true; committed = false; sentCaption = draft.captionInput.formattedText
         if case .submissionStarted = draft.disposition { phase = .uncertain; committed = true }
         else { phase = .ready }

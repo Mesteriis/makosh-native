@@ -47,7 +47,7 @@ final class TelegramPendingUploadDraftTests: XCTestCase {
     func testUnknownSchemaForeignScopeUnstoredAndUnsafeMetadataFailClosed() throws {
         let draft = try pendingUploadFixture()
         for mutation: (inout [String: Any]) -> Void in [
-            { $0["schemaVersion"] = 3 }, { $0["accountID"] = 99 }, { $0["chatID"] = 99 },
+            { $0["schemaVersion"] = 4 }, { $0["accountID"] = 99 }, { $0["chatID"] = 99 },
             { $0["title"] = String(repeating: "x", count: 4097) },
             { var file = $0["file"] as! [String: Any]; file["state"] = "pending"; $0["file"] = file },
             { var file = $0["file"] as! [String: Any]; file["sha256"] = "invalid"; $0["file"] = file },

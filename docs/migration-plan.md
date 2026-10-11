@@ -248,6 +248,25 @@ DEBUG fixtures126/129 проверяют новый порядок, осталь
 Почта → Telegram и restart с черновиком. Подробные результаты и отдельное
 исправление двух test fixture readiness gaps — в development-status. Историческая
 причина CI WAL trap остаётся недоказанной; engine assertions не ослаблялись.
-Outbound placement, autoload и specialized parity остаются открытыми. Полный
+Outgoing photo/edit placement описан в telegram.md; autoload и specialized parity
+остаются открытыми. Полный
 Telegram и остальные выбранные каналы продолжаются в исходном порядке;
 PostgreSQL/S3 retention и независимость от reference checkout сохраняются.
+
+## Перенесённый участок: спойлер при подготовке фото
+
+Фото в общем окне получает reference toggle Hide with Spoiler/Disable Spoiler
+через native actions/header context menu. Rich caption, placement и spoiler
+независимы и восстанавливаются вместе с нормализованным JPEG из S3. Schema3,
+native MediaSpoilerMessageAttribute и exact atomic receipt сохраняют выбор;
+неопределённый результат не приводит к повторной отправке. Rebind/отмена и
+storage-only retries работают против исходного store. Epoch защиты восстановления
+отвергает снимок, загруженный до завершения фоновой записи, и разрешает свежую
+загрузку по явному повтору. Реальные Postbox/PG/S3
+регрессии, native synthetic QA и фактические gates — в development-status.
+
+Дальше по Telegram остаются подготовка видео/альбомов, one-shot Send as Spoiler,
+прочие media options, animated dust parity, autoload/specialized renderers,
+оставшиеся клиентские workflows и отдельная live-account проверка. Затем
+MMail/Aether → WhatsApp → Teams → Telemost → backup/distribution. Этот участок
+не завершает полный последовательный перенос.

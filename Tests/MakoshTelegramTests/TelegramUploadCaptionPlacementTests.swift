@@ -50,7 +50,7 @@ final class TelegramUploadCaptionPlacementTests: XCTestCase {
         let legacy = try pendingUploadMutating(base) { $0["schemaVersion"] = 1; $0.removeValue(forKey: "captionAboveMedia") }
         XCTAssertTrue(legacy.isValid)
         let newJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(base)) as? [String: Any])
-        XCTAssertEqual(newJSON["schemaVersion"] as? Int, 2)
+        XCTAssertEqual(newJSON["schemaVersion"] as? Int, 3)
         XCTAssertEqual(newJSON["captionAboveMedia"] as? Bool, false)
         let photo = try pendingUploadMutating(base) {
             $0["schemaVersion"] = 2; $0["captionAboveMedia"] = true
@@ -62,7 +62,7 @@ final class TelegramUploadCaptionPlacementTests: XCTestCase {
         XCTAssertEqual(roundtrip["captionAboveMedia"] as? Bool, true)
         XCTAssertFalse(try pendingUploadMutating(base) { $0["captionAboveMedia"] = true }.isValid)
         XCTAssertFalse(try pendingUploadMutating(photo) { $0["schemaVersion"] = 1 }.isValid)
-        XCTAssertFalse(try pendingUploadMutating(photo) { $0["schemaVersion"] = 3 }.isValid)
+        XCTAssertFalse(try pendingUploadMutating(photo) { $0["schemaVersion"] = 4 }.isValid)
         XCTAssertThrowsError(try pendingUploadMutating(photo) { $0.removeValue(forKey: "captionAboveMedia") })
     }
 }
@@ -74,7 +74,7 @@ final class TelegramUploadCaptionPlacementTests: XCTestCase {
         var submitted: [(TelegramFormattedText, Bool)] = []
         var callback: (@MainActor (TelegramUploadEvent) -> Void)?
         func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID,
-                    caption: TelegramFormattedText, captionAboveMedia: Bool,
+                    caption: TelegramFormattedText, captionAboveMedia: Bool, mediaSpoiler: Bool,
                     receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
             submitted.append((caption, captionAboveMedia)); callback = receive; return Lease()
         }

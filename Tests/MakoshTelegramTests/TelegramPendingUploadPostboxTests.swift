@@ -158,6 +158,26 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
                 XCTAssertEqual(native.mimeType, "image/webp")
                 XCTAssertEqual(native.attributes, [.ImageSize(size: PixelDimensions(width: 320, height: 160)),
                     .FileName(fileName: "Synthetic.bin"), .Sticker(displayText: "", packReference: nil, maskData: nil)])
+                XCTAssertEqual(native.previewRepresentations.count, 1)
+                if let preview = native.previewRepresentations.first {
+                    XCTAssertEqual(preview.dimensions, PixelDimensions(width: 320, height: 160))
+                    XCTAssertTrue(preview.progressiveSizes.isEmpty); XCTAssertNil(preview.immediateThumbnailData)
+                    XCTAssertFalse(preview.hasVideo); XCTAssertFalse(preview.isPersonal); XCTAssertEqual(preview.typeHint, .generic)
+                    XCTAssertNotEqual(preview.resource.id, native.resource.id)
+                    let previewDone = expectation(description: "WebP transport JPEG after restart")
+                    var previewData: MediaResourceData?
+                    let reading = (box.mediaBox.resourceData(preview.resource, pathExtension: nil,
+                        option: .complete(waitUntilFetchStatus: false)) |> take(1) |> deliverOnMainQueue).start(next: {
+                        previewData = $0; previewDone.fulfill()
+                    })
+                    defer { reading.dispose() }; await fulfillment(of: [previewDone], timeout: 20)
+                    let cached = try XCTUnwrap(previewData); XCTAssertTrue(cached.complete)
+                    let jpeg = try Data(contentsOf: URL(fileURLWithPath: cached.path))
+                    let imageSource = try XCTUnwrap(CGImageSourceCreateWithData(jpeg as CFData, nil))
+                    XCTAssertEqual(CGImageSourceGetType(imageSource) as String?, "public.jpeg")
+                    let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(imageSource, 0, nil))
+                    XCTAssertEqual(image.width, 320); XCTAssertEqual(image.height, 160)
+                }
             } else {
                 XCTAssertEqual(native.attributes, [.Audio(isVoice: false, duration: 1, title: "Synthetic 😀", performer: "Artist", waveform: nil), .FileName(fileName: "Synthetic.m4a")])
             }

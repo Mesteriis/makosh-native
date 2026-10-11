@@ -1931,8 +1931,25 @@ restart paths retain exact bytes/descriptor/caption through native enqueue;
 changed dimensions fail even with a valid plaintext digest. S3-off still prohibits
 every new object and later re-enable cannot promote local preparations.
 
-The reference's optional320px JPEG transport preview/quality0.7 remains a separate
-open derivative; current file previews are empty. Full ordered source options
-(including40-point/aspect rules), GIF conversion and explicit voice remain open.
+Typed WebP also prepares the reference's optional first-frame JPEG transport
+preview: transformed index0, maximum320px without upscaling, quality0.7 and at
+most1MiB. The held owned bytes are checked against the frozen plaintext digest
+before native encoding and independently against the typed canvas descriptor.
+Original WebP bytes and animation remain unchanged. Native codec/encode failure
+may omit this derivative; ownership, digest, unsafe input and cancellation errors
+are never converted into optional success.
+
+The separate `webPPreview` capability reuses the bounded JPEG identity without
+occupying the mandatory video-thumbnail role. MediaBox reads back exact JPEG
+bytes and the original before enqueue. All batch original/derivative IDs must be
+unique; native receipts check dimensions, resource identity/size and every
+progressive/immediate/flag field which upstream equality omits. The derivative
+is regenerated from the authenticated original after restart, stays in MediaBox,
+and creates no archive record or S3 copy even when S3 is enabled. Generic legacy
+files retain an empty preview. Composer File presentation still shows its file
+icon; this change supplies the native transport representation.
+
+Full ordered source options (including40-point/aspect rules), GIF conversion
+and explicit voice remain open.
 Apple ImageIO and owned synthetic fixtures add no codec dependency or copied GPL UI.
 Actual owned UI/host and full gate results are recorded in development-status.md.

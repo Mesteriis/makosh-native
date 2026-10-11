@@ -1,6 +1,65 @@
 # Development status — 2026-10-11
 
-## Current stage: typed original WebP verified through restart and native queue
+## Current stage: optional WebP transport JPEG verified through native recovery
+
+Typed WebP now supplies a separate optional first-frame JPEG in native enqueue:
+transformed index0, maximum320px without upscaling, quality0.7 and at most1MiB.
+The same held owned bytes are checked against the frozen plaintext digest before
+encoding. Original WebP bytes/animation and schema9 remain unchanged. The distinct
+webPPreview role reuses the existing bounded JPEG identity; mandatory video
+thumbnails retain their role. MediaBox reads back exact derivative/original bytes;
+batch admission rejects shared/cross-original IDs and ACK checks every hidden
+representation flag. Codec/encode omission is optional; ownership/hash/cancel
+errors still fail. No dependency, engine recipe or license change was introduced.
+
+Actual RED: missing native preview1/1 twice, local/S3 recovery2/2, mapper1/7,
+shared/cross-original admission1/2. Combined stub RED19 tests/22 failures,
+zero unexpected. First focused implementation58/1 fails only the quality test's
+oracle: native prototype exit0 proves ImageIO quantization differs between a
+WebP CGImage and a decoded JPEG CGImage at the same0.7 quality. Correcting the
+oracle to start from the literal original fixture gives focused GREEN58/0.
+Production quality remains0.7. Native fixtures prove640×320→320×160, small
+20×10 without upscaling, animated frame0, partial canvas and digest mismatch.
+
+`scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**894 XCTest (818 Telegram +76 core), zero failures;32 Python regressions**.
+Full test compilation reports three existing warnings (unreachable catch in
+TelegramRetentionJournalTests and two weak-let suggestions in batch controller
+tests);266 upstream t19 teardown diagnostics remain without test failures.
+Build log has no compile warning. Temporary private readback tests were removed.
+
+Actual owned common-sidebar UI picks196-byte partial-canvas WebP under.bin in
+S3-off chat7, retains its12-UTF16 caption after hash-verified source removal,
+SIGTERM and relaunch, then accepts one native queue ID. Another restart shows no
+preparation resurrection; Mail→Telegram retains chat/off. Screenshots were
+inspected; strict signatures and raw unsigned built–QA equality pass. The File
+composer still shows its existing icon; this slice supplies transport preview.
+Native GoTo paste left the old selected path unchanged; AXsetValue corrected and
+verified the exact owned source before opening. No product input bug is inferred.
+No personal account, microphone or Telegram network was used; native host remains
+macOS27.0.1, without local runtime proof on minimum macOS26.
+
+Private real Postbox/PostgreSQL/S3 readbacks before/after acceptance each pass1/0:
+same preparation/local record, exact original bytes/hash/metadata/caption, absent
+local/conventional S3 keys and empty archive-file metadata. Accepted MediaBox has a separate
+320×160 JPEG/default flags and unchanged WebP original. Both storage recovery
+paths and no promotion after re-enable remain covered. JPEG is regenerated from
+the authenticated original and creates no archive/S3 record.
+
+XERJ refresh/check/query and reference/engine freshness checks exit0:
+373 indexed files,342/342 classified code. Root confirms new webPPreview hits
+against source and validates the author contract's10 terminal source/lock hashes.
+Independent frozen source review reports no concrete defect; root verifies9 patch
+hashes and14 supporting source/lock/report hashes plus25 raw command/exit pointers.
+Worker runtime is SKIP; root gates/UI remain separate, observed provider/model/
+usage unknown, no quorum. Hosted CI for original-WebP commit036cded is successful
+in both runs; this new preview slice awaits its own publication/CI.
+
+Next: GIF typed conversion and explicit voice/codec work, then the frozen ordered
+source-option fold, Archive and caption normalization. Full Telegram parity,
+Account/server delivery and the remaining sequential migration stay open.
+
+## Historical typed original WebP (036cded)
 
 WebP now retains original bytes and strict width/height metadata in schema9.
 Content inspection runs before photo/suffix classification, including misleading

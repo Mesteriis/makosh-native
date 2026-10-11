@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import ImageIO
 import MakoshCore
 import TelegramCore
 import SwiftSignalKit
@@ -98,6 +99,115 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
 }
 
 @MainActor final class TelegramNativeBatchEnqueueTests: XCTestCase {
+    // Catches sharing one derivative identity across different files in the atomic batch capability.
+    func testReceiptRejectsSharedOrCrossOriginalWebPPreviewIdentities() async throws {
+        let root = try root()
+        let (draft, items) = try await fixture(root, modes: [.file, .file], grouped: false, webP: true)
+        defer { items.forEach { try? TelegramUploadFileIO.discard($0.file) } }
+        for previewIDs: [Int64] in [[900, 900], [900, 801]] {
+            var resources: [TelegramUploadBatchResource] = []
+            for (index, item) in items.enumerated() {
+                let preview = TelegramUploadVideoThumbnailResource(id: previewIDs[index], width: 320, height: 160, size: 128)
+                let media = try XCTUnwrap(telegramUploadMedia(item.file, webPPreview: preview, resourceID: Int64(801 + index)))
+                resources.append(.init(item: item, plaintextSHA256: draft.items[index].file.plaintextSHA256,
+                    prepared: .init(resource: media.0, reference: media.1, videoThumbnail: nil, webPPreview: preview)))
+            }
+            XCTAssertThrowsError(try TelegramUploadBatchEnqueueReceipt(draft: draft,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic"), resources: resources, groupKeys: []))
+        }
+    }
+
+    // Catches admitting a derivative in a wrong role, an invalid cache identity, or aliasing its original.
+    func testWebPMapperRejectsWrongRoleMalformedPreviewAndAliasedOriginal() async throws {
+        let root = try root()
+        let (_, items) = try await fixture(root, modes: [.file], grouped: false, webP: true)
+        let typed = items[0].file
+        defer { try? TelegramUploadFileIO.discard(typed) }
+        let preview = TelegramUploadVideoThumbnailResource(id: 900, width: 320, height: 160, size: 128)
+        let generic = TelegramUploadFile(id: typed.id, name: typed.name, size: typed.size, mode: .file,
+            pixelWidth: nil, pixelHeight: nil, url: typed.url, directory: typed.directory)
+        XCTAssertNil(telegramUploadMedia(generic, webPPreview: preview, resourceID: 801))
+        XCTAssertNil(telegramUploadMedia(typed, webPPreview: preview, resourceID: 900))
+        for invalid in [
+            TelegramUploadVideoThumbnailResource(id: 901, width: 0, height: 160, size: 128),
+            TelegramUploadVideoThumbnailResource(id: 901, width: 321, height: 160, size: 128),
+            TelegramUploadVideoThumbnailResource(id: 901, width: 320, height: 160, size: 1_048_577)
+        ] {
+            XCTAssertNil(telegramUploadMedia(typed, webPPreview: invalid, resourceID: 801))
+        }
+        let native = try XCTUnwrap(telegramUploadMedia(typed, webPPreview: preview, resourceID: 801)?.1.media as? TelegramMediaFile)
+        XCTAssertEqual(native.previewRepresentations.count, 1)
+        XCTAssertEqual((native.previewRepresentations.first?.resource as? LocalFileMediaResource)?.fileId, 900)
+        let optional = try XCTUnwrap(telegramUploadMedia(typed, resourceID: 801)?.1.media as? TelegramMediaFile)
+        XCTAssertTrue(optional.previewRepresentations.isEmpty)
+    }
+
+    // Catches missing transport JPEG, replacement of the original, and wrong native preview geometry/flags.
+    func testTypedWebPPreparationStoresSeparateFirstFrameJPEGAndOriginalBytes() async throws {
+        let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
+        let (draft, items) = try await fixture(root, modes: [.file], grouped: false, webP: true)
+        defer { items.forEach { try? TelegramUploadFileIO.discard($0.file) } }
+        let (resources, preparations) = try await prepare(box, draft: draft, items: items)
+        defer { preparations.forEach { $0.stop() } }
+        let file = try XCTUnwrap(resources[0].reference?.media as? TelegramMediaFile)
+        XCTAssertEqual(file.previewRepresentations.count, 1)
+        guard let preview = file.previewRepresentations.first else { return }
+        XCTAssertEqual(preview.dimensions, PixelDimensions(width: 320, height: 160))
+        XCTAssertTrue(preview.progressiveSizes.isEmpty); XCTAssertNil(preview.immediateThumbnailData)
+        XCTAssertFalse(preview.hasVideo); XCTAssertFalse(preview.isPersonal); XCTAssertEqual(preview.typeHint, .generic)
+        let previewResource = try XCTUnwrap(preview.resource as? LocalFileMediaResource)
+        XCTAssertNotEqual(previewResource.fileId, resources[0].resourceID); XCTAssertFalse(previewResource.isSecretRelated)
+        let previewData = try await value(box.mediaBox.resourceData(previewResource, pathExtension: nil,
+            option: .complete(waitUntilFetchStatus: false)))
+        XCTAssertTrue(previewData.complete)
+        let bytes = try Data(contentsOf: URL(fileURLWithPath: previewData.path))
+        XCTAssertGreaterThan(bytes.count, 0); XCTAssertLessThanOrEqual(bytes.count, 1_048_576)
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(bytes as CFData, nil))
+        XCTAssertEqual(CGImageSourceGetType(source) as String?, "public.jpeg"); XCTAssertEqual(CGImageSourceGetCount(source), 1)
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        XCTAssertEqual(image.width, 320); XCTAssertEqual(image.height, 160)
+        let original = try await value(box.mediaBox.resourceData(file.resource, pathExtension: nil,
+            option: .complete(waitUntilFetchStatus: false)))
+        XCTAssertTrue(original.complete)
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: original.path)), UploadWebPFixture.staticLossless.data)
+        XCTAssertEqual(try Data(contentsOf: items[0].file.url), UploadWebPFixture.staticLossless.data)
+        XCTAssertEqual(file.mimeType, "image/webp")
+    }
+
+    // Native representation equality omits hidden flags; the complete receipt must check this derivative explicitly.
+    func testWebPPreviewHiddenFlagsCannotAcknowledgeNativeQueue() async throws {
+        let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
+        let (draft, items) = try await fixture(root, modes: [.file], grouped: false, webP: true)
+        defer { items.forEach { try? TelegramUploadFileIO.discard($0.file) } }
+        let seeded = try await value(batchNativeSeed(box, draft: draft)); XCTAssertTrue(seeded)
+        let (resources, preparations) = try await prepare(box, draft: draft, items: items)
+        defer { preparations.forEach { $0.stop() } }
+        let receipt = try TelegramUploadBatchEnqueueReceipt(draft: draft,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic"), resources: resources, groupKeys: [])
+        var messages = try XCTUnwrap(receipt.messages(replySource: nil))
+        let file = try XCTUnwrap(resources[0].reference?.media as? TelegramMediaFile)
+        guard let preview = file.previewRepresentations.first else { return XCTFail("WebP transport preview missing") }
+        let mutations = [
+            TelegramMediaImageRepresentation(dimensions: preview.dimensions, resource: preview.resource,
+                progressiveSizes: [1], immediateThumbnailData: nil),
+            TelegramMediaImageRepresentation(dimensions: preview.dimensions, resource: preview.resource,
+                progressiveSizes: [], immediateThumbnailData: Data([7])),
+            TelegramMediaImageRepresentation(dimensions: preview.dimensions, resource: preview.resource,
+                progressiveSizes: [], immediateThumbnailData: nil, hasVideo: true),
+            TelegramMediaImageRepresentation(dimensions: preview.dimensions, resource: preview.resource,
+                progressiveSizes: [], immediateThumbnailData: nil, isPersonal: true),
+            TelegramMediaImageRepresentation(dimensions: preview.dimensions, resource: preview.resource,
+                progressiveSizes: [], immediateThumbnailData: nil, typeHint: .video)
+        ]
+        for altered in mutations {
+            messages[0] = batchNativeReplacingMedia(messages[0], file.withUpdatedPreviewRepresentations([altered]))
+            let result = try await value(batchNativeEnqueue(box, receipt: receipt, messages: messages))
+            XCTAssertFalse(result.1)
+            let saved = try await value(batchNativeRead(box, ids: result.0.compactMap { $0 }))
+            XCTAssertEqual(saved.0, draft)
+        }
+    }
+
     // Catches acknowledging a real queued WebP whose sticker attributes differ from the frozen resource.
     func testMissingExtraOrReorderedWebPAttributesCannotAcknowledgeNativeQueue() async throws {
         let mutations: [([TelegramMediaFileAttribute]) -> [TelegramMediaFileAttribute]] = [

@@ -221,7 +221,9 @@ Continue in this dependency order:
    suffixes. Bind source facts to stable item ID, owned raw size/digest and resource
    role, including logical image eligibility independent of JPEG pixels.
 2. Extend the owned music probe with the remaining byte probes and typed transformations. Music and WebP retain
-   original bytes; GIF retains both original and validated MP4. Explicit voice
+   original bytes; WebP's separate optional first-frame320px JPEG transport preview
+   is now regenerated from authenticated bytes in MediaBox only. GIF must retain
+   both original and validated MP4. Explicit voice
    needs offline Opus/Ogg codec and waveform proof. Bound frames, dimensions,
    duration, tags, output, cancellation and source mutation before publication.
 3. Extend existing policy-aware capture and all-or-cleanup restoration for every

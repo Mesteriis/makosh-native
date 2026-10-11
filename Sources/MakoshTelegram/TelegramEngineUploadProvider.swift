@@ -8,6 +8,7 @@ import SwiftSignalKit
 /// New local media has no remote message provenance or invented cloud credentials.
 func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUploadVideoThumbnailResource? = nil,
                          videoCover: TelegramUploadVideoThumbnailResource? = nil,
+                         webPPreview: TelegramUploadVideoThumbnailResource? = nil,
                          resourceID requestedResourceID: Int64? = nil) -> (LocalFileMediaResource, AnyMediaReference)? {
     guard (try? TelegramUploadFileIO.validateMetadata(file)) != nil else { return nil }
     guard file.mode == .video || (file.video == nil && file.videoCover == nil),
@@ -18,9 +19,13 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
     guard file.mode == .video ? videoThumbnail?.isValid == true : videoThumbnail == nil else { return nil }
     guard file.mode == .video ? videoCover?.isValid ?? true : videoCover == nil,
           videoCover == nil || videoCover?.id != videoThumbnail?.id else { return nil }
-    if let requestedResourceID, requestedResourceID == videoThumbnail?.id || requestedResourceID == videoCover?.id { return nil }
+    if let webPPreview {
+        guard file.mode == .file, case .webP = file.metadata, webPPreview.isValid,
+              webPPreview.id != videoThumbnail?.id, webPPreview.id != videoCover?.id else { return nil }
+    }
+    if let requestedResourceID, requestedResourceID == videoThumbnail?.id || requestedResourceID == videoCover?.id || requestedResourceID == webPPreview?.id { return nil }
     var resourceID = requestedResourceID ?? Int64.random(in: Int64.min...Int64.max)
-    while resourceID == videoThumbnail?.id || resourceID == videoCover?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
+    while resourceID == videoThumbnail?.id || resourceID == videoCover?.id || resourceID == webPPreview?.id { resourceID = Int64.random(in: Int64.min...Int64.max) }
     let resource = LocalFileMediaResource(fileId: resourceID, size: file.size)
     let media: Media
     switch file.mode {
@@ -47,7 +52,7 @@ func telegramUploadMedia(_ file: TelegramUploadFile, videoThumbnail: TelegramUpl
             attributes.append(.Sticker(displayText: "", packReference: nil, maskData: nil))
         }
         media = TelegramMediaFile(fileId: MediaId(namespace: Namespaces.Media.LocalFile, id: resource.fileId),
-            partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [],
+            partialReference: nil, resource: resource, previewRepresentations: webPPreview.map { [$0.representation] } ?? [], videoThumbnails: [],
             immediateThumbnailData: nil, mimeType: mime, size: file.size,
             attributes: attributes, alternativeRepresentations: [])
     case .photo:

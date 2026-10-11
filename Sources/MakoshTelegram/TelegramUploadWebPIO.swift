@@ -2,8 +2,20 @@ import Foundation
 import Darwin
 import ImageIO
 import CoreGraphics
+import CryptoKit
 
 enum TelegramUploadWebPIO {
+    static func thumbnail(_ raw: TelegramUploadFile,
+                          expectedPlaintextSHA256: String? = nil) async throws -> TelegramUploadVideoThumbnail? {
+        try Task.checkCancellation()
+        let worker = Task.detached(priority: .utility) {
+            try thumbnailOwned(raw, expectedPlaintextSHA256: expectedPlaintextSHA256)
+        }
+        let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+        try Task.checkCancellation()
+        return result
+    }
+
     static func inspect(_ raw: TelegramUploadFile) async throws -> TelegramUploadWebPMetadata? {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) { try inspectOwned(raw) }
@@ -14,6 +26,60 @@ enum TelegramUploadWebPIO {
 
     /// Probe frozen bytes independently of a persisted descriptor or caller-supplied filename.
     private static func inspectOwned(_ raw: TelegramUploadFile) throws -> TelegramUploadWebPMetadata? {
+        try withOwnedBytes(raw) { data in
+            try data.map { try dimensions($0) }
+        }
+    }
+
+    private static func thumbnailOwned(_ raw: TelegramUploadFile,
+                                       expectedPlaintextSHA256: String?) throws -> TelegramUploadVideoThumbnail? {
+        try Task.checkCancellation()
+        guard case let .webP(frozen)? = raw.metadata else { return nil }
+        guard frozen.isValid else { throw TelegramUploadFileError.invalidWebP }
+        if let expectedPlaintextSHA256 {
+            guard TelegramPendingUploadDraft.isHash(expectedPlaintextSHA256) else {
+                throw TelegramUploadFileError.unavailable
+            }
+        }
+        return try withOwnedBytes(raw) { data in
+            guard let data else { throw TelegramUploadFileError.invalidWebP }
+            // Bind the derivative to these exact held-fd bytes before any optional codec fallback.
+            if let expectedPlaintextSHA256 {
+                let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                guard digest == expectedPlaintextSHA256 else { throw TelegramUploadFileError.unavailable }
+            }
+            let (source, actual) = try validatedSource(data)
+            guard actual == frozen else { throw TelegramUploadFileError.invalidWebP }
+            try Task.checkCancellation()
+            let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 320,
+                kCGImageSourceShouldCacheImmediately: true]
+            guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                return nil
+            }
+            guard image.width > 0, image.height > 0, image.width <= 320, image.height <= 320,
+                  CGImageSourceGetStatusAtIndex(source, 0) == .statusComplete else {
+                throw TelegramUploadFileError.invalidWebP
+            }
+            try Task.checkCancellation()
+            let output = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
+                return nil
+            }
+            CGImageDestinationAddImage(destination, image,
+                [kCGImageDestinationLossyCompressionQuality: 0.7] as CFDictionary)
+            guard CGImageDestinationFinalize(destination), output.length > 0, output.length <= 1_048_576 else {
+                return nil
+            }
+            try Task.checkCancellation()
+            return TelegramUploadVideoThumbnail(data: output as Data,
+                width: Int32(image.width), height: Int32(image.height))
+        }
+    }
+
+    /// Keep the descriptor, digest and native derivative on the same bounded owned file snapshot.
+    private static func withOwnedBytes<Result>(_ raw: TelegramUploadFile,
+                                              body: (Data?) throws -> Result) throws -> Result {
         try Task.checkCancellation()
         guard raw.mode == .file else { throw TelegramUploadFileError.unavailable }
         try TelegramUploadFileIO.validateOwnedStage(raw)
@@ -28,7 +94,7 @@ enum TelegramUploadWebPIO {
             // Generic documents only need a 12-byte sniff, regardless of their potentially large size.
             var header = Data(count: Int(min(12, raw.size)))
             try read(fd, into: &header)
-            var result: TelegramUploadWebPMetadata?
+            var data: Data?
             if header.count == 12, header.prefix(4) == Data("RIFF".utf8),
                header.suffix(4) == Data("WEBP".utf8) {
                 let declared = (4..<8).reduce(UInt32(0)) {
@@ -37,13 +103,14 @@ enum TelegramUploadWebPIO {
                 guard raw.size <= 20 * 1024 * 1024, UInt64(declared) + 8 == UInt64(raw.size) else {
                     throw TelegramUploadFileError.invalidWebP
                 }
-                var data = Data(count: Int(raw.size))
-                data.replaceSubrange(0..<12, with: header)
-                try read(fd, into: &data, startingAt: 12)
+                var bytes = Data(count: Int(raw.size))
+                bytes.replaceSubrange(0..<12, with: header)
+                try read(fd, into: &bytes, startingAt: 12)
                 try Task.checkCancellation()
                 try TelegramUploadVideoIO.validateSnapshot(raw, fd: fd, original: original)
-                result = try dimensions(data)
+                data = bytes
             }
+            let result = try body(data)
             try Task.checkCancellation()
             try TelegramUploadVideoIO.validateSnapshot(raw, fd: fd, original: original)
             return result
@@ -70,6 +137,28 @@ enum TelegramUploadWebPIO {
     }
 
     private static func dimensions(_ data: Data) throws -> TelegramUploadWebPMetadata {
+        let (source, result) = try validatedSource(data)
+        // Inspect the intrinsic frame 0 dimensions lazily, then prove bounded native decoding.
+        guard let frame = CGImageSourceCreateImageAtIndex(source, 0,
+                  [kCGImageSourceShouldCache: false] as CFDictionary),
+              frame.width == Int(result.width), frame.height == Int(result.height) else {
+            throw TelegramUploadFileError.invalidWebP
+        }
+        try Task.checkCancellation()
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 256,
+            kCGImageSourceShouldCacheImmediately: true]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
+              thumbnail.width > 0, thumbnail.height > 0,
+              thumbnail.width <= 256, thumbnail.height <= 256,
+              CGImageSourceGetStatusAtIndex(source, 0) == .statusComplete else {
+            throw TelegramUploadFileError.invalidWebP
+        }
+        try Task.checkCancellation()
+        return result
+    }
+
+    private static func validatedSource(_ data: Data) throws -> (CGImageSource, TelegramUploadWebPMetadata) {
         try Task.checkCancellation()
         guard let source = CGImageSourceCreateWithData(data as CFData,
                   [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -91,24 +180,8 @@ enum TelegramUploadWebPIO {
                 throw TelegramUploadFileError.invalidWebP
             }
         }
-        // Inspect the intrinsic frame 0 dimensions lazily, then prove bounded native decoding.
-        guard let frame = CGImageSourceCreateImageAtIndex(source, 0,
-                  [kCGImageSourceShouldCache: false] as CFDictionary),
-              frame.width == Int(width), frame.height == Int(height) else {
-            throw TelegramUploadFileError.invalidWebP
-        }
         try Task.checkCancellation()
-        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 256,
-            kCGImageSourceShouldCacheImmediately: true]
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
-              thumbnail.width > 0, thumbnail.height > 0,
-              thumbnail.width <= 256, thumbnail.height <= 256,
-              CGImageSourceGetStatusAtIndex(source, 0) == .statusComplete else {
-            throw TelegramUploadFileError.invalidWebP
-        }
-        try Task.checkCancellation()
-        return result
+        return (source, result)
     }
 
     private static func dimension(_ value: Any?) -> Int32? {

@@ -633,8 +633,15 @@ rules относятся к ещё открытому ordered classifier. Exact 
 256px; exhaustive frame/stream integrity не заявлена. Проверки текущего host27
 не подменяют runtime macOS26.
 
-`SenderController.swift:131–157` также включает WebP в optional JPEG transport
-preview320px/quality0.7. Этот отдельный derivative ещё не перенесён; текущий
-WebP file имеет пустые previewRepresentations. Полный ordered option fold,
-Archive и image edits остаются открыты. GPLv2 UI/helper/ассеты не копировались,
+`SenderController.swift:131–164` также включает WebP в optional JPEG transport
+preview320px/quality0.7. Собственный ImageIO helper переносит этот контракт:
+первый transformed frame, без увеличения маленького источника, отдельный JPEG
+до1MiB. Frozen digest сверяется с теми же held-fd bytes до кодирования; исходный
+WebP не меняется. `webPPreview` отделён от videoThumbnail; точный MediaBox readback,
+уникальные IDs и strict native receipt сохраняют роль, размеры и все флаги.
+Codec/encode failure допускает отсутствие превью; ошибки ownership/hash/cancel
+остаются ошибками. Превью пересоздаётся после restart и хранится только в MediaBox,
+без новых S3 objects или PostgreSQL payload bytes. В composer File пока остаётся
+прежняя иконка файла; новый JPEG относится к transport representation.
+Полный ordered option fold, Archive и image edits остаются открыты. GPLv2 UI/helper/ассеты не копировались,
 новая codec dependency не добавлялась.

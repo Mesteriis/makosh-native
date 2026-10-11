@@ -2,8 +2,8 @@ import Foundation
 import Postbox
 import TelegramCore
 
-/// Immutable identity for a bounded video JPEG, used separately for its first
-/// frame and optional cover. Bytes stay in MediaBox, not Postbox.
+/// Immutable identity for a bounded JPEG, used in distinct video-frame,
+/// video-cover and WebP-preview roles. Bytes stay in MediaBox, not Postbox.
 struct TelegramUploadVideoThumbnailResource: Sendable {
     let id: Int64
     let width: Int32

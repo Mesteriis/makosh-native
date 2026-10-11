@@ -1684,3 +1684,50 @@ does not reopen accepted state. These are isolated synthetic checks, not live
 Telegram delivery. Release-only Shift and interrupted/clipped gesture edge cases
 are unexecuted. Deterministic centering, bounded state and reference captured-scale
 preview/export differences after refit are recorded in reference-interface.md.
+
+## Ordered preparation storage: album migration step1
+
+`TelegramPendingUploadDraft` schema6 has one canonical ordered `items` array and
+an explicit grouping choice. Each item has a stable UUID independent of its
+preview position and restored temporary path. Shared caption/entities/selection,
+reply and original composer draft remain account/chat scoped. Legacy schema1–5
+retain their single-file encoding and `prepared`/`video-cover` attachment IDs;
+editing old photo options still upgrades their schema as before.
+
+Batch originals use `prepared:<item UUID>` and covers use
+`video-cover:<item UUID>` under the same preparation identity. S3 stores the
+existing authenticated encrypted envelopes; PostgreSQL stores metadata only.
+All items/covers must be stored before one Postbox CAS publishes the preparation.
+A later failure leaves the previous pointer/revision unchanged and retains
+successfully archived originals. A committed-pointer retry checks exact order,
+metadata, cover and streamed plaintext SHA256 before reusing stored objects.
+The digest reads the frozen inode in bounded chunks without consuming capture.
+
+Shared caption, submission and cancellation writes retain every item and the
+grouping choice. Restoration exports all items in order and releases every new
+temporary file/cover on any later failure. Every item receives full scope,
+state, kind, name, size and digest validation; IDs and archive object IDs must
+be unique. Empty, ambiguous, downgraded or partially invalid batches fail closed.
+The existing512KiB encrypted preference payload limit remains unchanged.
+
+This step provides durable batch storage, not native album submission. The
+existing picker/controller/recovery protocol/provider still carry a single
+file and explicitly reject schema6 at their single-file boundaries. A one-ID
+accepted marker is invalid for schema6. Multi-picker, reorder/delete UI, mode
+switches, complete send plan, all-message transactional receipts and native
+batch observation are the following required steps in
+[telegram-album-migration.md](telegram-album-migration.md). No first-item fallback
+or automatic resend is available.
+
+Real Postbox/PostgreSQL/S3 regressions verify three ordered files including a
+covered video across reopen, exact bytes, committed retry reuse, same-size
+content substitution rejection, late preparation failure retaining prior state,
+and forged third-item restore releasing earlier stages including its cover.
+Single-file controller/receipt regressions reject first-item-only admission.
+Legacy preparation retries also verify the staged plaintext SHA256 before
+accepting caption/options changes. Same-name/same-size changed contents conflict
+without changing the stored revision or caption; acknowledged unchanged retries
+reuse the existing S3 record. The independent review identified this pre-existing
+gap, and a real Postbox/PostgreSQL/S3 regression reproduced it before the fix.
+
+The broader sequential Telegram/product goal remains open.

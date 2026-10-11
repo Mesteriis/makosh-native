@@ -6,10 +6,10 @@ struct TelegramPendingUploadVideoCover: Codable, Equatable, Sendable {
     let width: Int32
     let height: Int32
 
-    func isValid(identity: MessageArchiveIdentity) -> Bool {
+    func isValid(identity: MessageArchiveIdentity, attachmentID: String = "video-cover") -> Bool {
         width > 0 && height > 0 && width <= 320 && height <= 320 && file.identity == identity &&
             file.state == .stored && file.id != UUID(uuid: (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)) &&
-            file.attachment.id == "video-cover" && file.attachment.kind == "photo" &&
+            file.attachment.id == attachmentID && file.attachment.kind == "photo" &&
             !file.attachment.name.isEmpty && file.attachment.name.utf8.count <= 1024 &&
             file.attachment.name == telegramAttachmentName(file.attachment.name) &&
             file.plaintextByteCount > 0 && file.plaintextByteCount <= 1_048_576 &&

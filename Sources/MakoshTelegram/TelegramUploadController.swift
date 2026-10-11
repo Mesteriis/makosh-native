@@ -576,7 +576,8 @@ enum TelegramUploadEvent {
     func restore(draft: TelegramPendingUploadDraft, file: TelegramUploadFile, target: TelegramUploadTarget, restorationEpoch: UUID) -> Bool {
         // A load/file export may finish after a detached write has cleared its
         // pending marker. Only a snapshot begun in the current epoch can apply.
-        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, provider?.accountID == draft.accountID,
+        guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, draft.isValid, draft.schemaVersion < 6,
+              provider?.accountID == draft.accountID,
               detachedInitialContents[draft.id] == nil, !detachedRecoveryWrites.contains(draft.id), detachedRecoveryRetries[draft.id] == nil,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID,
               target.chatID == draft.chatID, target.hasValidReplySource,

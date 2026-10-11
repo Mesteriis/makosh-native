@@ -100,6 +100,20 @@ public final class ArchiveFileCapture: @unchecked Sendable {
         return ArchiveFileCapture(fd: copied,original: original)
     }
     deinit { Darwin.close(fd) }
+    /// Content identity for idempotent preparation retries. Reads the frozen
+    /// inode in bounded chunks without consuming its encryption capability.
+    public func plaintextSHA256() throws -> String {
+        lock.lock(); defer { lock.unlock() }
+        try stable(fd, original)
+        var hash = SHA256(), offset: Int64 = 0
+        while offset < original.st_size {
+            let count = Int(min(Int64(envelopeChunk), original.st_size - offset))
+            hash.update(data: try readExactly(fd, count, at: offset))
+            offset += Int64(count)
+        }
+        try stable(fd, original)
+        return digest(hash)
+    }
     public func seal(to destination: URL, key: Data, objectID: UUID) throws -> ArchiveFileEnvelopeReceipt {
         lock.lock(); defer { lock.unlock() }
         guard !used else { throw ArchiveFileEnvelopeError.invalid }; used = true

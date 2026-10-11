@@ -13,6 +13,28 @@ final class ArchiveFileEnvelopeTests: XCTestCase {
         return root
     }
     private func sha(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    func testPlaintextDigestUsesFrozenInodeAndDoesNotConsumeEncryptionCapture() throws {
+        let root = try directory(), source = root.appendingPathComponent("source")
+        try Data("abc".utf8).write(to: source)
+        let capture = try ArchiveFileCapture(file: source, byteCount: 3)
+        try FileManager.default.removeItem(at: source); try Data("xyz".utf8).write(to: source)
+        let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        XCTAssertEqual(try capture.plaintextSHA256(), expected)
+        let receipt = try capture.seal(to: root.appendingPathComponent("encrypted"), key: key, objectID: UUID())
+        XCTAssertEqual(receipt.plaintextSHA256, expected)
+        XCTAssertEqual(try capture.plaintextSHA256(), expected)
+    }
+    func testPlaintextDigestCoversEveryChunkAndRejectsChangedInode() throws {
+        for count in [0, 3 * 1024 * 1024 + 19] {
+            let root = try directory(), source = root.appendingPathComponent("source")
+            let bytes = Data((0..<count).map { UInt8($0 % 251) }); try bytes.write(to: source)
+            let capture = try ArchiveFileCapture(file: source, byteCount: Int64(count))
+            XCTAssertEqual(try capture.plaintextSHA256(), sha(bytes))
+            let handle = try FileHandle(forWritingTo: source)
+            try handle.truncate(atOffset: UInt64(count + 1)); try handle.close()
+            XCTAssertThrowsError(try capture.plaintextSHA256())
+        }
+    }
     func testChunkRoundtripReceiptsModesAndOneUseIncludingEmpty() throws {
         for count in [0, 1, 1024 * 1024, 3 * 1024 * 1024 + 19] {
             let root = try directory(), source = root.appendingPathComponent("source")

@@ -474,3 +474,38 @@ immutable bitmap, без исходного URL. Captured point rect/multiplier 
 и export. Release-only Shift, прерванные drag/import и край clipped hit testing
 нативно не приняты; upstream callback runtime не запускался. Outer GPLv2 code/
 assets не копируются, build/run/test остаются независимыми от research checkout.
+
+## Несколько вложений: исследование и хранение подготовки
+
+Сверены11 файлов TelegramSwift на закреплённом revision, включая
+`ChatController.swift:5457–5543,5643–5656`, `PanelUtils.swift:22–50`,
+`Extensions.swift:2158–2177`, `ThumbUtils.swift:222–260`,
+`CoreExtension.swift:2953–3015`, `PreviewSenderController.swift` и
+`MediaGroupPreviewRowItem.swift`. Оба picker используют multiple selection;
+порядок `panel.urls` сохраняется с удалением повторов по первому вхождению.
+Это не доказательство порядка щелчков внутри системной панели.
+
+Режим media/file выбирается для всего набора. Initial media требует ровно
+options `[.media]`; обычные документы могут отправляться группой, хотя preview
+показывает их отдельными строками. Initial grouping берётся из eligibility,
+а не из временного значения FastSettings. Группы ограничены10 элементами.
+Точный классификатор учитывает music/voice/WebP и зависит от native attributes;
+его полная реализация ещё впереди. Обложка выбирается в меню при одном видео,
+но ранее выбранная обложка явно не очищается после добавления других файлов.
+
+Source подтверждает три upstream особенности, которые нельзя скрыть под
+заявлением о полном совпадении: caption передаётся заново в каждый chunk;
+entity attributes повторяются даже на media без текста; локальные индексы второй
+группы используются против общей URL-коллекции, поэтому действие над11-м файлом
+может попасть на первый. Runtime референса не запускался. Для действий Макош
+использует постоянные item UUID; caption/entity policy будет явно зафиксирована
+при интеграции отправки. Точная preview mosaic-геометрия остаётся отдельным
+неисследованным helper boundary.
+
+Первый шаг в Макош — schema6 подготовки с ordered items, grouping и отдельными
+S3-оригиналами/обложками на каждый ID. Pointer публикуется целиком, старые схемы
+читаются, поздний сбой не заменяет прежнюю подготовку. Реальные Postbox/PG/S3
+tests принимают порядок/байты/cover после restart и cleanup при ошибке третьего
+объекта. Одиночные UI/provider consumers пока отклоняют schema6; multiple picker,
+preview/reorder/remove, все native сообщения/receipts и визуальная проверка
+альбомов ещё не перенесены. Telegram остаётся в общем WorkspaceView.

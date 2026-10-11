@@ -1,6 +1,65 @@
 # Development status — 2026-10-11
 
-## Current stage: inserted images in the Telegram video cover editor
+## Current stage: ordered Telegram preparation storage
+
+Telegram remains in the common Makosh service sidebar/dialog/conversation/
+dossier window. Album migration step1 now stores an ordered schema6 preparation
+with stable item IDs, shared caption/options and a grouping choice. Each original
+and video cover has its own immutable encrypted S3 resource. The Postbox pointer
+changes only after every resource is stored; a later failure preserves the
+previous pointer and any already retained objects. Restoration exports the whole
+ordered set or cleans up every newly exported temporary resource. Schema1–5
+remain readable and editable. Legacy controller/enqueue consumers reject schema6
+instead of silently using its first item.
+
+This is storage groundwork. Multi-picker, batch controller/recovery protocol,
+native grouped enqueue/all-message receipts and the reference preparation UI
+are not wired yet. See telegram-album-migration.md for the ordered next steps.
+The reference's picker order, first-occurrence deduplication, whole-list media/
+file modes, grouping eligibility and ten-item boundaries were confirmed from11
+frozen source files. Reference runtime was not executed; caption/entity quirks
+and later-group indexing differences remain explicit integration decisions.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**735 XCTest (670 Telegram +65 core), zero failures;32 Python regressions**.
+Focused76 tests pass. Tests use real encrypted Postbox, PostgreSQL and S3: exact
+ordered original/cover bytes across reopen, object reuse, same-size changed-byte
+and order conflicts, later-resource authentication failure cleanup, late upload
+failure preserving the previous pointer and retained objects, cancellation and
+legacy fail-closed admission. Logs retain176 upstream t19 teardown diagnostics
+without test failure. Meaningful behavior reds preceded implementation; missing
+API/test-fixture compile errors are recorded separately from those reds.
+
+Independent frozen review found one pre-existing P2: legacy same-name/same-size
+retry admitted different contents before changing the caption/revision. Root's
+real Postbox/PG/S3 regression reproduced it (1 test/2 failures). Both legacy and
+batch retries now verify staged plaintext SHA256 before pointer changes. The
+final independent review found no new issues; root revalidated18 source hashes
+and both pins. Worker tests/UI were not run; observed provider/model/usage is
+unknown. Lost-ACK fault injection, later cover-export failure and detached batch
+controller lifetime remain validation frontiers for the following steps.
+
+Owned native QA verifies legacy photo preparation, exact caption, spoiler and
+caption placement restored after restart, explicit Cancel staying closed after
+another restart, and switching between Mail and Telegram in the common shell.
+Final strict signatures and raw unsigned
+built/QA executable equality pass. An earlier QA payload comparison differed only
+in signing-adjusted LINKEDIT virtual size; its failed raw comparison and bounded
+normalization proof remain private. QA uses isolated synthetic storage without
+personal accounts, Keychain or Telegram network. These checks do not establish
+batch UI, native album sending or live delivery.
+
+Remaining Telegram work is grouped into six broad areas: albums/multi-file
+preparation and sending; remaining message/media/special-chat actions; full search
+filters/navigation; profiles/chat administration/gallery; settings/sessions and
+reference UI gaps; real-account delivery/sync/reconnection acceptance. This is
+not an exact remaining-task count or a percentage estimate. MMail/Aether,
+WhatsApp, Teams, Telemost, backups and standalone packaging follow Telegram; the
+full sequential goal remains active. Parent246f446 PR38124117814 and
+push38124115415 CI are terminal success for that exact SHA. Current-head CI and
+publication evidence are recorded separately.
+
+## Historical inserted images in the Telegram video cover editor (246f446)
 
 Telegram remains inside the common Makosh service sidebar/dialog/conversation/
 dossier window. The main cover editor now inserts an immutable oriented image

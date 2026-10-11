@@ -468,4 +468,22 @@ import ImageIO
         controller.clear(); await drain()
         XCTAssertTrue(store.saves.isEmpty, "Uncertain close preserves submission marker")
     }
+    func testSingleFileControllerCannotMakeOnlyFirstBatchItemSendable() async throws {
+        let store = Store(), controller = TelegramUploadController(), provider = Provider()
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        let draft = try pendingUploadBatchFixture()
+        let id = UUID(), directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + id.uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("payload-" + id.uuidString)
+        try Data("Synthetic 😀".utf8).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        let file = TelegramUploadFile(id: id, name: draft.file.attachment.name, size: draft.file.plaintextByteCount,
+            mode: .file, pixelWidth: nil, pixelHeight: nil, url: url, directory: directory)
+        XCTAssertFalse(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        XCTAssertFalse(controller.canSend)
+        controller.send(); await drain()
+        XCTAssertEqual(provider.calls, 0)
+        XCTAssertTrue(store.saves.isEmpty)
+    }
 }

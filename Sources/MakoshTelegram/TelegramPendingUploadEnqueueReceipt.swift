@@ -29,7 +29,7 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
               file.mode == .video ? localResourceID != nil && telegramUploadVideoAttributes(file) != nil &&
                   videoThumbnail?.isValid == true && videoThumbnail?.id != localResourceID : videoThumbnail == nil,
               case let .success(value) = telegramPendingUploadRead(transaction: transaction, accountID: target.accountID, chatID: target.chatID),
-              let draft = value, draft.id == preparationID, draft.disposition == .submissionStarted,
+              let draft = value, draft.schemaVersion < 6, draft.id == preparationID, draft.disposition == .submissionStarted,
               draft.captionInput.formattedText == caption,
               draft.captionAboveMedia == captionAboveMedia,
               draft.mediaSpoiler == mediaSpoiler,

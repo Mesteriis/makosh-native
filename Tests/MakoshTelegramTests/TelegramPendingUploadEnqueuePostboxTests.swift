@@ -54,6 +54,22 @@ private func receiptMismatchedMessage(_ box: Postbox, receipt: TelegramPendingUp
     }
 }
 @MainActor final class TelegramPendingUploadEnqueuePostboxTests: XCTestCase {
+    func testSingleFileReceiptCannotAdmitFirstItemOfBatch() async throws {
+        let box = try await open(root()), original = try pendingUploadBatchFixture()
+        let draft = original.updating(captionInput: original.captionInput, captionAboveMedia: false, mediaSpoiler: false,
+            disposition: .submissionStarted)
+        let seeded = try await value(receiptSeed(box, draft: draft)); XCTAssertTrue(seeded)
+        let single = receipt(draft)
+        let admitted = try await value(receiptValidate(box, receipt: single))
+        XCTAssertFalse(admitted, "A first-item receipt cannot authorize a multi-file preparation")
+        let id = MessageId(peerId: PeerId(42), namespace: Namespaces.Message.Local, id: 999)
+        let accepted = try await value(receiptEnqueue(box, receipt: single, id: id))
+        XCTAssertFalse(accepted)
+        let retained = try await value(receiptRead(box, account: 1, chat: 42, id: id))
+        XCTAssertFalse(retained.1, "Batch rejection must happen before adding even the first message")
+        XCTAssertEqual(retained.0, draft)
+    }
+
     func testCoverReceiptRequiresAdmittedBytesAndCanonicalSeparateNativeImage() async throws {
         let box = try await open(root()), draft = try pendingUploadVideoCoverFixture(disposition: .submissionStarted)
         let seeded = try await value(receiptSeed(box, draft: draft)); XCTAssertTrue(seeded)

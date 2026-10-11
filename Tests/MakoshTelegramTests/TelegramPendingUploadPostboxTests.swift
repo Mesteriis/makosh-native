@@ -16,6 +16,225 @@ private func pendingFixtureRaw(_ box: Postbox, accountID: Int64, chatID: Int64, 
     }
 }
 @MainActor final class TelegramPendingUploadPostboxTests: XCTestCase {
+    func testBatchCaptionSubmissionAndCancellationPreserveWholeOrderedPointer() async throws {
+        let box = try await open(root()), repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let first = try pendingUploadBatchFixture()
+        try await save(first, expected: nil, repository: repository).get()
+        let session = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
+        let edited = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Album 😀 caption"))
+        for state: TelegramPendingUploadDisposition in [.prepared, .submissionStarted, .cancelled] {
+            do {
+                try await session.save(preparationID: first.id, chatID: 42, captionInput: edited, disposition: state)
+            } catch { XCTFail("A shared caption/terminal write must retain all batch resources: \(state)"); return }
+            let loaded = try await session.load(chatID: 42)
+            let value = try XCTUnwrap(loaded)
+            let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any])
+            XCTAssertEqual((encoded["items"] as? [[String: Any]])?.count, 2)
+            XCTAssertEqual(encoded["isGrouped"] as? Bool, true)
+            XCTAssertEqual(value.items, first.items); XCTAssertEqual(value.captionInput, edited)
+            XCTAssertEqual(value.disposition, state); XCTAssertNotEqual(value.revision, first.revision)
+        }
+        let stale = await save(first, expected: first.revision, repository: repository)
+        if case .failure(.conflict) = stale {} else { XCTFail("A stale writer cannot resurrect the ordered preparation") }
+    }
+
+    func testLegacyPhotoPreparationCanUpgradeCaptionOptionsWithoutLosingItsResource() async throws {
+        for version in [1, 2] {
+            let original = try pendingUploadMutating(pendingUploadFixture()) {
+                $0["schemaVersion"] = version
+                var file = $0["file"] as! [String: Any], attachment = file["attachment"] as! [String: Any]
+                attachment["kind"] = "photo"; file["attachment"] = attachment; $0["file"] = file
+            }
+            let box = try await open(root()), repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            try await save(original, expected: nil, repository: repository).get()
+            let session = TelegramPendingUploadSession(repository: repository, files: { throw TelegramUploadFileError.unavailable })
+            do {
+                try await session.save(preparationID: original.id, chatID: 42, captionInput: original.captionInput,
+                    captionAboveMedia: true, mediaSpoiler: true, disposition: .prepared)
+            } catch { XCTFail("Legacy photo options must still upgrade on a user edit"); continue }
+            let loaded = try await session.load(chatID: 42)
+            XCTAssertEqual(loaded?.file, original.file); XCTAssertEqual(loaded?.schemaVersion, 3)
+            XCTAssertEqual(loaded?.captionAboveMedia, true); XCTAssertEqual(loaded?.mediaSpoiler, true)
+        }
+    }
+
+    func testSingleFileRestoreRejectsBatchBeforeExportingAnyItem() async throws {
+        let box = try await open(root()), repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        var storageCalls = 0
+        let session = TelegramPendingUploadSession(repository: repository, files: {
+            storageCalls += 1; throw TelegramUploadFileError.unavailable
+        })
+        do {
+            _ = try await session.restoreFile(draft: pendingUploadBatchFixture())
+            XCTFail("An unwired single-file consumer must never export only the first batch item")
+        } catch {}
+        XCTAssertEqual(storageCalls, 0)
+    }
+
+    func testOrderedBatchReopensExactEncryptedS3FilesAndCoverWithoutDuplicateRetryObjects() async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configPath = try XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: configPath))
+        let path = try root(), archiveRoot = try root()
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x58, count: 32) })
+        let a = archiveRoot.appendingPathComponent("a.txt"), b = archiveRoot.appendingPathComponent("b.txt")
+        try Data("First preserved bytes".utf8).write(to: a); try Data("Second preserved bytes".utf8).write(to: b)
+        let videoURL = archiveRoot.appendingPathComponent("portrait.mov"), imageURL = archiveRoot.appendingPathComponent("cover.jpg")
+        try await writeUploadVideoFixture(videoURL); try writeUploadVideoCoverFixture(imageURL)
+        let first = try await TelegramUploadFileIO.stage(a, mode: .file), second = try await TelegramUploadFileIO.stage(b, mode: .file)
+        let rawVideo = try await TelegramUploadFileIO.stage(videoURL, mode: .video)
+        let cover = try await TelegramUploadVideoCoverIO.stage(imageURL, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let video = TelegramUploadFile(id: rawVideo.id, name: rawVideo.name, size: rawVideo.size, mode: .video,
+            pixelWidth: rawVideo.pixelWidth, pixelHeight: rawVideo.pixelHeight, url: rawVideo.url, directory: rawVideo.directory,
+            video: rawVideo.video, videoCover: cover)
+        let items = [first, video, second].map { TelegramUploadBatchItem(id: $0.id, file: $0) }
+        addTeardownBlock { for item in items { try TelegramUploadFileIO.discard(item.file) } }
+        let expected = try items.map { try Data(contentsOf: $0.file.url) }, coverBytes = try Data(contentsOf: cover.url)
+        let preparationID = UUID(), input = try pendingUploadFixture().captionInput
+        let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic ordered set")
+        var saved: TelegramPendingUploadDraft?
+        do {
+            let box = try await open(path); previousBox = box
+            let session = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+                files: { TelegramPendingUploadFiles(repository: archive) })
+            try await session.prepare(preparationID: preparationID, items: items, isGrouped: true, target: target,
+                captionInput: input, originalDraft: nil)
+            saved = try await session.load(chatID: 42)
+            try await session.prepare(preparationID: preparationID, items: items, isGrouped: true, target: target,
+                captionInput: input, originalDraft: nil)
+            let retried = try await session.load(chatID: 42)
+            XCTAssertEqual(retried?.items, saved?.items, "A committed pointer retry must reuse every S3 object")
+            try Data("Xirst preserved bytes".utf8).write(to: a)
+            let substituted = try await TelegramUploadFileIO.stage(a, mode: .file)
+            defer { try? TelegramUploadFileIO.discard(substituted) }
+            let changed = [TelegramUploadBatchItem(id: first.id, file: substituted), items[1], items[2]]
+            do {
+                try await session.prepare(preparationID: preparationID, items: changed, isGrouped: true, target: target,
+                    captionInput: input, originalDraft: nil)
+                XCTFail("Same name and byte count cannot authorize replacement of a committed payload")
+            } catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .conflict) }
+            do {
+                try await session.prepare(preparationID: preparationID, items: Array(items.reversed()), isGrouped: true, target: target,
+                    captionInput: input, originalDraft: nil)
+                XCTFail("An initial-write retry cannot substitute a different order")
+            } catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .conflict) }
+        }
+        for item in items { try TelegramUploadFileIO.discard(item.file) }
+        for _ in 0..<100 where previousBox != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previousBox)
+        let box = try await open(path), repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let session = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: archive) })
+        let loaded = try await session.load(chatID: 42), draft = try XCTUnwrap(loaded)
+        XCTAssertEqual(draft.items, saved?.items); XCTAssertEqual(draft.isGrouped, true)
+        XCTAssertEqual(draft.captionInput, input); XCTAssertEqual(draft.items.map(\.id), items.map(\.id))
+        let restored = try await session.restoreItems(draft: draft)
+        addTeardownBlock { for item in restored { try TelegramUploadFileIO.discard(item.file) } }
+        XCTAssertEqual(restored.map(\.id), items.map(\.id))
+        XCTAssertEqual(restored.map { $0.file.name }, ["a.txt", "portrait.mov", "b.txt"])
+        XCTAssertEqual(try restored.map { try Data(contentsOf: $0.file.url) }, expected)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored[1].file.videoCover).url), coverBytes)
+        let beforeFailure = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { $0.hasPrefix("makosh-upload-") })
+        let forged = try pendingUploadMutating(draft) {
+            var values = $0["items"] as! [[String: Any]], last = values[2]["file"] as! [String: Any]
+            last["plaintextSHA256"] = String(repeating: "0", count: 64); values[2]["file"] = last; $0["items"] = values
+        }
+        XCTAssertTrue(forged.isValid, "Structurally valid metadata still needs authenticated archive verification")
+        do { _ = try await session.restoreItems(draft: forged); XCTFail("A forged later resource cannot restore a partial batch") } catch {}
+        let afterFailure = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { $0.hasPrefix("makosh-upload-") })
+        XCTAssertEqual(afterFailure, beforeFailure, "Later-item failure releases every newly restored file and video cover")
+        for item in draft.items {
+            let retained = try await archive.files(identity: item.file.identity, attachmentID: item.file.attachment.id)
+            XCTAssertEqual(retained, [item.file])
+        }
+        try await session.save(preparationID: draft.id, chatID: 42, captionInput: input, disposition: .cancelled)
+        let cancelled = try await session.load(chatID: 42)
+        XCTAssertEqual(cancelled?.items, draft.items); XCTAssertEqual(cancelled?.disposition, .cancelled)
+    }
+
+    func testFailureAfterFirstS3UploadPreservesPreviousPointerAndRetainsOriginalBytes() async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let archiveRoot = try root(), box = try await open(root())
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x59, count: 32) })
+        let source = archiveRoot.appendingPathComponent("first.txt")
+        let bytes = Data("Retained even after a later file fails".utf8)
+        try bytes.write(to: source)
+        let first = try await TelegramUploadFileIO.stage(source, mode: .file)
+        let last = try await TelegramUploadFileIO.stage(source, mode: .file)
+        defer { try? TelegramUploadFileIO.discard(first); try? TelegramUploadFileIO.discard(last) }
+        let invalidPhoto = TelegramUploadFile(id: last.id, name: last.name, size: last.size, mode: .photo,
+            pixelWidth: 40, pixelHeight: 20, url: last.url, directory: last.directory)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let previous = try pendingUploadFixture(disposition: .cancelled)
+        try await save(previous, expected: nil, repository: repository).get()
+        let session = TelegramPendingUploadSession(repository: repository, files: { TelegramPendingUploadFiles(repository: archive) })
+        let preparationID = UUID(), firstID = UUID()
+        do {
+            try await session.prepare(preparationID: preparationID, items: [.init(id: firstID, file: first), .init(id: UUID(), file: invalidPhoto)],
+                isGrouped: true, target: .init(accountID: 1, chatID: 42, title: "Synthetic failure"),
+                captionInput: previous.captionInput, originalDraft: nil)
+            XCTFail("An invalid later image must abort the whole preparation")
+        } catch {}
+        let loaded = try await session.load(chatID: 42)
+        XCTAssertEqual(loaded, previous, "No partial preparation or new revision may replace the old pointer")
+        let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: 1, chatID: 42, preparationID: preparationID)
+        let retained = try await archive.files(identity: identity, attachmentID: "prepared:" + firstID.uuidString.lowercased())
+        XCTAssertEqual(retained.count, 1, "A successfully uploaded original remains archived after the later failure")
+        let restored = try await TelegramPendingUploadFiles(repository: archive).restore(record: XCTUnwrap(retained.first),
+            accountID: 1, chatID: 42, preparationID: preparationID, itemID: firstID)
+        defer { try? TelegramUploadFileIO.discard(restored) }
+        XCTAssertEqual(try Data(contentsOf: restored.url), bytes)
+    }
+
+    func testLegacyRetryRejectsSameNameAndSizeWithDifferentBytesWithoutChangingStoredPreparation() async throws {
+        let database = try PendingFilesTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        let configPath = try XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: configPath))
+        let archiveRoot = try root()
+        let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
+            configuration: configuration, spoolDirectory: archiveRoot.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x59, count: 32) })
+        let source = archiveRoot.appendingPathComponent("same.txt")
+        try Data("Original bytes".utf8).write(to: source)
+        let original = try await TelegramUploadFileIO.stage(source, mode: .file)
+        addTeardownBlock { try TelegramUploadFileIO.discard(original) }
+        let box = try await open(root())
+        let session = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+            files: { TelegramPendingUploadFiles(repository: archive) })
+        let preparationID = UUID(), target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic legacy retry")
+        let input = try pendingUploadFixture().captionInput
+        try await session.prepare(preparationID: preparationID, file: original, target: target,
+            captionInput: input, originalDraft: nil)
+        let edited = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "Verified retry"))
+        try await session.prepare(preparationID: preparationID, file: original, target: target,
+            captionInput: edited, originalDraft: nil)
+        let loaded = try await session.load(chatID: 42), committed = try XCTUnwrap(loaded)
+        XCTAssertEqual(committed.captionInput, edited)
+        try Data("Replaced bytes".utf8).write(to: source)
+        let substituted = try await TelegramUploadFileIO.stage(source, mode: .file)
+        addTeardownBlock { try TelegramUploadFileIO.discard(substituted) }
+        XCTAssertEqual(substituted.name, original.name); XCTAssertEqual(substituted.size, original.size)
+        do {
+            try await session.prepare(preparationID: preparationID, file: substituted, target: target,
+                captionInput: input, originalDraft: nil)
+            XCTFail("A retry must verify archived payload bytes before accepting caption changes")
+        } catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .conflict) }
+        let after = try await session.load(chatID: 42)
+        XCTAssertEqual(after, committed)
+        let retained = try await archive.files(identity: committed.file.identity, attachmentID: "prepared")
+        XCTAssertEqual(retained, [committed.file])
+        let restored = try await session.restoreFile(draft: committed)
+        addTeardownBlock { try TelegramUploadFileIO.discard(restored) }
+        XCTAssertEqual(try Data(contentsOf: restored.url), Data("Original bytes".utf8))
+    }
+
     func testVideoSessionReopensWithExactS3BytesAndDoesNotChangePreparationOnRetry() async throws {
         let configPath = try XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])
         let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath: configPath))

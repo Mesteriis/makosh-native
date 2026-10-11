@@ -48,6 +48,7 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
     public var requestID: UUID? { request?.id }
     var request: TelegramSavedMessagesForwardRequest?
     var didQueue: ((TelegramSavedMessagesForwardRequest) -> Void)?
+    var didRecoverAcceptance: ((TelegramSavedMessagesForwardRequest) -> Void)?
     var didChange: (() -> Void)?
     private var provider: (any TelegramSavedMessagesForwardProvider)?
     private var token: UUID?
@@ -66,6 +67,7 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
             case let .success(record?):
                 guard record.isValid, record.request.accountID == accountID else { self.complete(.uncertain); return }
                 self.request = record.request
+                if record.acceptedIDs != nil { self.didRecoverAcceptance?(record.request) }
                 self.complete(record.acceptedIDs == nil ? .uncertain : .queued)
             }
         }

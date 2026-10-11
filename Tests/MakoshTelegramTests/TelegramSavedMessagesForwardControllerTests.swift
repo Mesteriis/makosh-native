@@ -53,7 +53,13 @@ import XCTest
         for accepted in [false, true] {
             let provider = Provider(), controller = TelegramSavedMessagesForwardController(), value = request()
             provider.restored = .init(request: value, acceptedIDs: accepted ? [.init(peerID: 1, namespace: 1, messageID: 1), .init(peerID: 1, namespace: 1, messageID: 2)] : nil)
+            var recovered: [TelegramSavedMessagesForwardRequest] = []
+            controller.didRecoverAcceptance = {
+                XCTAssertEqual(controller.phase, .validating, "Reconcile before releasing the recovery lock")
+                recovered.append($0)
+            }
             controller.bind(provider); XCTAssertEqual(controller.phase, accepted ? .queued : .uncertain)
+            XCTAssertEqual(recovered, accepted ? [value] : [])
             XCTAssertEqual(controller.requestID, value.id); XCTAssertTrue(provider.events.isEmpty)
         }
         let provider = Provider(), controller = TelegramSavedMessagesForwardController()

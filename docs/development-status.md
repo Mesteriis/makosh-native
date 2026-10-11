@@ -1,6 +1,6 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram accessory re-targeting to Saved Messages
+## Current stage: Telegram accessory Saved forwarding and reconnect recovery
 
 Telegram remains in the shared service-selector/list/conversation window.
 **Другой получатель…** now pins **Избранное** first and accepts a full-row click
@@ -14,8 +14,8 @@ retains its existing options, with exhaustive option parity still open. Picker
 Cancel before dispatch retains the origin, a documented adaptation of the
 reference's early forward-ID clearing. Archive PostgreSQL/S3 data is unchanged.
 
-Final `scripts/test.sh` exits 0: **534 XCTest (471 Telegram + 63 core), zero
-failures; 30 Python regressions**. Saved-focused 24 cases pass. Final
+Final `scripts/test.sh` exits 0: **536 XCTest (473 Telegram + 63 core), zero
+failures; 30 Python regressions**. The earlier Saved-focused run passes 25 cases; the final full run also covers newer-origin recovery. Final
 `scripts/build-app.sh` exits 0; the earlier unchanged dev PostgreSQL/S3 gate
 exits 0. Logs retain 124 upstream t19 teardown diagnostics without failure/trap.
 The initial model red reproduced missing accessory Saved behavior. Postbox
@@ -41,17 +41,30 @@ is claimed. Personal accounts, Keychain and Telegram network were not used.
 
 Reference source confirms fresh ForwardMessagesObject, own-peer default options
 and forward-only clearing. No outer GPLv2 UI/assets were copied. Pins, recipe 8
-and PostgreSQL schemas remain unchanged. Root source/integration review uses no
-new workers or quorum claim. Picker comments, album selection, normal option
-parity, special/topic/secret/paid behavior and live-account acceptance remain
+and PostgreSQL schemas remain unchanged. Scoped read-only review found a same-model reconnect gap after lost ACK: accepted
+recovery unlocked a stale cached forward. A red regression reproduced it before
+an accepted-recovery callback was added ahead of unlock. Exact account/origin
+revision/intent/sources guard memory-only clearing, including offscreen; recovery
+does not save or enqueue. Final regressions verify zero recovery writes, unchanged
+durable snapshot, input/reply retention and a newer origin surviving. The reviewer
+found no further defect in the amended source/tests; worker runtime gates were
+SKIP, observed model/provider/usage remain unknown, and no quorum is claimed.
+Root ran final integration gates. Album selection, normal option parity, special/topic/secret/paid behavior and live-account acceptance remain
 open. Later channels, backups and standalone packaging remain open; the full
-sequential migration goal stays active. Final index/publication evidence follows
-the frozen source, independently of the prior published-head CI results.
+sequential migration goal stays active. Final index/publication evidence covers the frozen reconnect fix; hosted CI
+is tracked separately for each published commit.
+The reference forward picker hides its caption field through multipleSelection
+→ presentation → hasCaptionView; its generic perform(comment:) API does not
+establish visible picker comments. The earlier picker-comment gap is corrected;
+comments remain in the chosen recipient composer. Real-account reconnect and
+concurrent multi-window reconciliation are still unverified.
 Final XERJ refresh exits 0: 287 files, 257/257 classified code; project,
 TelegramSwift and engine fingerprints pass. Active origin-CAS, native enqueue
 and reference searches were confirmed against source. Strict deep signatures
-and unsigned built/QA payload comparison pass; the final executable repeats
-restored comment/reply and one-click accessory Saved behavior. Publication audit
+and unsigned built/QA payload comparison pass; the reconnect-fix executable repeats
+restored comment/reply and one-click accessory Saved behavior in the shared window.
+There is no native synthetic same-model rebind control; the regression establishes
+that lifecycle path, and no live reconnect is claimed. Publication audit
 checks 292 publishable files and the PR body against five selected credential
 fields, with zero matches. Machine configuration, QA data and indexes stay ignored.
 

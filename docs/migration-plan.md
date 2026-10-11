@@ -149,7 +149,8 @@ receipt и storage-only consume защищают от автоматическо
 сразу пересылает в «Избранное» через отдельный durable intent/receipt, сохраняя
 ordinary Saved input/reply/forward и текущий чат. Accessory «Другой получатель…»
 тоже поддерживает immediate Saved с exact origin CAS, сохраняя старый comment/reply
-и блокируя unknown без resend. Picker comment, остальные selection actions, темы, paid/secret и
+и блокируя unknown без resend. Accepted recovery очищает matching cached forward
+до unlock без save/enqueue, включая rebind в том же Model. Остальные selection actions, темы, paid/secret и
 live-account acceptance остаются впереди.
 Окончание этого участка не завершает Telegram или общий последовательный перенос.
 
@@ -177,5 +178,7 @@ wholebatch revalidation, explicit scope и atomic native delete admission (recip
 `development-status.md`; initial Saved branch добавлен с wholebatch native admission,
 отдельным receipt и restart без resend. Accessory Saved переносит только forward,
 сохраняя rich input/selection/reply; Cancel до dispatch удерживает forward как
-явная адаптация. Оставшиеся picker comments и normal option parity открыты.
+явная адаптация. Normal option parity остаётся открытой. Forward picker референса
+скрывает comment input; комментарий вводится в recipient composer, поэтому ранее
+записанный picker-comment gap снят после source-проверки видимости.
 Общий порядок переноса сохранён.

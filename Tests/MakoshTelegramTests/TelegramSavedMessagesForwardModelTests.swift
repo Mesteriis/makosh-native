@@ -1,9 +1,21 @@
 #if DEBUG
 import XCTest
+import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramSavedMessagesForwardModelTests: XCTestCase {
     private final class Lease: TelegramComposerForwardLease { func cancel() {} }
+    private final class Repository: TelegramComposerDraftRepository {
+        let accountID: Int64 = -1
+        var saved: [Int64: TelegramComposerDraft] = [:]
+        var writes = 0
+        func load(chatID: Int64, completion: @escaping @MainActor (Result<TelegramComposerDraft?, TelegramComposerDraftPersistenceError>) -> Void) -> Disposable {
+            completion(.success(saved[chatID])); return EmptyDisposable
+        }
+        func save(_ draft: TelegramComposerDraft, completion: @escaping @MainActor (Result<Void, TelegramComposerDraftPersistenceError>) -> Void) {
+            writes += 1; saved[draft.chatID] = draft; completion(.success(()))
+        }
+    }
     private final class Provider: TelegramSavedMessagesForwardProvider {
         let accountID: Int64 = -1
         var events: [@MainActor (TelegramMessageActionEvent) -> Void] = []
@@ -103,6 +115,51 @@ import XCTest
         model.selectedChatID = 10003; model.draft = "another ordinary input"
         XCTAssertFalse(model.isForwardComposerLocked); XCTAssertTrue(model.composerCanSend)
         XCTAssertTrue(provider.requests.isEmpty)
+    }
+    func testAcceptedRecoveryReconcilesCachedOriginBeforeUnlockWithoutResubmitting() throws {
+        let model = fixture(), provider = Provider(), repository = Repository(), source = try XCTUnwrap(model.messages.last.flatMap(model.actionSource))
+        model.bindComposerDraftRepository(repository)
+        model.savedMessagesForward.bind(provider)
+        XCTAssertTrue(model.stageMessageForwards(sources: [source], destinationChatID: 10002, contextID: model.messageActionContextID))
+        model.draft = "origin comment survives reconnect"
+        XCTAssertTrue(model.beginReply(to: try XCTUnwrap(model.messages.last), contextID: model.messageActionContextID))
+        let reply = model.composerReply.resolved, intent = try XCTUnwrap(model.composerForwardIntent)
+        XCTAssertTrue(model.moveComposerForward(to: -1, intentID: intent.id, contextID: model.messageActionContextID))
+        let request = try XCTUnwrap(provider.requests.first)
+        provider.events[0](.uncertain)
+        let origin = try XCTUnwrap(repository.saved[10002])
+        let durableCleared = TelegramComposerDraft(accountID: -1, chatID: 10002, input: origin.input, replyTarget: origin.replyTarget)
+        repository.saved[10002] = durableCleared // The accepted queue transaction already cleared it.
+        model.selectedChatID = 10003; model.draft = "other chat remains"
+        let writes = repository.writes
+        provider.recovery = .success(.init(request: request, acceptedIDs: [.init(peerID: request.destinationChatID, namespace: 1, messageID: 1)]))
+        model.savedMessagesForward.bind(nil)
+        model.savedMessagesForward.bind(provider)
+        XCTAssertEqual(model.savedMessagesForward.phase, .queued)
+        XCTAssertEqual(repository.writes, writes, "Recovery must not overwrite the durable accepted draft")
+        XCTAssertEqual(repository.saved[10002], durableCleared)
+        XCTAssertEqual(model.selectedChatID, 10003); XCTAssertEqual(model.draft, "other chat remains")
+        model.selectedChatID = 10002
+        XCTAssertNil(model.composerForwardIntent, "Accepted recovery must reconcile the cached origin before it can be edited or sent")
+        XCTAssertEqual(model.draft, "origin comment survives reconnect"); XCTAssertEqual(model.composerReply.resolved, reply)
+        model.draft = "new ordinary comment after reconnect"
+        XCTAssertNil(model.composerForwardIntent)
+        XCTAssertEqual(provider.requests.count, 1, "Recovery must not submit again")
+    }
+    func testAcceptedRecoveryCannotConsumeANewerOriginRevision() throws {
+        let model = fixture(), provider = Provider(), source = try XCTUnwrap(model.messages.last.flatMap(model.actionSource))
+        model.savedMessagesForward.bind(provider)
+        XCTAssertTrue(model.stageMessageForwards(sources: [source], destinationChatID: 10002, contextID: model.messageActionContextID))
+        let intent = try XCTUnwrap(model.composerForwardIntent)
+        XCTAssertTrue(model.moveComposerForward(to: -1, intentID: intent.id, contextID: model.messageActionContextID))
+        let request = try XCTUnwrap(provider.requests.first)
+        provider.events[0](.uncertain); model.savedMessagesForward.bind(nil)
+        model.draft = "newer independently prepared origin"
+        let revision = model.composerForwardRevision
+        provider.recovery = .success(.init(request: request, acceptedIDs: [.init(peerID: request.destinationChatID, namespace: 1, messageID: 1)]))
+        model.savedMessagesForward.bind(provider)
+        XCTAssertEqual(model.composerForwardRevision, revision); XCTAssertEqual(model.composerForwardIntent?.id, intent.id)
+        XCTAssertEqual(model.draft, "newer independently prepared origin"); XCTAssertEqual(provider.requests.count, 1)
     }
     func testProtectedAndStaleSelectionRefuseWholeBatch() throws {
         let model = fixture(), provider = Provider(); model.savedMessagesForward.bind(provider)

@@ -894,8 +894,8 @@ Reference evidence: ShareModalController.swift:1296-1359; ChatInputAccessory.swi
 227-302; ChatInterfaceState.swift:1172-1180,1304-1320; SenderController.swift:492-523.
 No outer GPLv2 serializer/UI was copied. Makosh's atomic batch/receipt is an owned
 adaptation; the reference chains comment and forward separately. The initial history/selection picker's Saved Messages branch is described below.
-Saved Messages accessory re-targeting is described below. Picker comments,
-remaining selection actions, topics, paid/secret-chat forwarding and live-account
+Saved Messages accessory re-targeting is described below. Remaining selection
+actions, topics, paid/secret-chat forwarding and live-account
 acceptance remain open. A new attachment cannot be
 combined with a staged forward yet; its attach button is disabled explicitly.
 
@@ -1028,8 +1028,8 @@ Reference evidence: `ShareModalController.swift:1232–1234` explicitly limits t
 forward object to one recipient; `1296–1314` directly forwards to
 the own peer and clears selection; `1315–1335` stages an ordinary recipient. Its
 delayed success animation does not establish server delivery. No outer GPLv2 UI
-source or assets were copied. Remaining parity includes the picker's optional
-comment workflow, album selection, special/topic/secret/paid behavior and
+source or assets were copied. Remaining parity includes album selection,
+special/topic/secret/paid behavior and
 live-account acceptance. The whole Telegram/sequential migration remains open.
 
 ## Re-targeting a staged forward to Saved Messages
@@ -1068,6 +1068,24 @@ removes forward IDs while retaining input/reply. Native synthetic AX/screenshots
 verify cancellation, full-row Saved forwarding, ordinary re-targeting, unknown
 outcome locks, Mail → Telegram state and accepted-receipt restart. Encrypted
 Postbox regressions establish queue/receipt/origin atomicity and genuine reopen;
-DEBUG UI simulation is not live Telegram server acceptance. Picker comments,
-album and special/topic/secret/paid behavior, remaining Telegram parity and all
+DEBUG UI simulation is not live Telegram server acceptance. Album selection,
+normal option and special/topic/secret/paid behavior, remaining Telegram parity and all
 later channels remain open.
+
+Accepted Saved recovery also reconciles the matching cached origin before the
+controller releases its validating lock. The current provider binding validates
+the account; the operation's old context is not reused as the new session guard.
+Exact origin revision/intent/sources are required, including for an offscreen
+chat. This clears only the memory forward, without saving or enqueueing: the
+accepted queue transaction already wrote the durable removal. Same-model rebind
+regressions verify preserved input/reply, unchanged durable snapshot, zero
+recovery writes/submissions and protection of a newer origin revision. Process
+restart alone did not establish this lifecycle behavior.
+
+The generic ShareModal API accepts an optional comment, but the selected
+ForwardMessagesObject picker does not expose that field. Its multipleSelection
+is false (`ShareModalController.swift:1232–1234`), passed into presentation at
+`2015–2027`; notify hides the caption at `1611`, whose setter hides the text
+container at `239–244`. The forward comment is entered in the chosen recipient's
+composer. Earlier documents listed picker comments as missing forward parity;
+this source check corrects that interpretation rather than adding a new picker UI.

@@ -322,6 +322,17 @@ public final class TelegramModel: ObservableObject {
             self.acknowledgeComposerDraft(formatted: formatted, submitted: submitted.draft)
         }
         savedMessagesForward.didChange = { [weak self] in self?.objectWillChange.send() }
+        savedMessagesForward.didRecoverAcceptance = { [weak self] request in
+            // Recovery is guarded by the current provider binding, not the old
+            // operation's context. Durable acceptance already removed this forward.
+            guard let self, self.draftAccountID == request.accountID, let origin = request.origin,
+                  let current = self.drafts.snapshot(accountID: request.accountID, chatID: origin.chatID),
+                  current.revision == origin.revision, current.forwardIntent?.id == origin.intentID,
+                  current.forwardIntent?.sources == request.sources,
+                  self.drafts.setForwardIntent(nil, accountID: request.accountID, chatID: origin.chatID) != nil else { return }
+            if self.savedForwardSelection?.requestID == request.id { self.savedForwardSelection = nil }
+            if self.selectedChatID == origin.chatID { self.refreshComposerForward() }
+        }
         savedMessagesForward.didQueue = { [weak self] request in
             guard let self, self.accountGeneration == request.contextID, self.draftAccountID == request.accountID,
                   let captured = self.savedForwardSelection, captured.requestID == request.id else { return }

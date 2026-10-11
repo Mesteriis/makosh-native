@@ -1,9 +1,10 @@
 # Independent file storage
 
-File payloads belong in S3, not PostgreSQL. The first connected producer is a
-completed explicit Telegram full-file download. Other channels should use this
-same boundary as they are migrated; outgoing staging and other channels are not
-yet connected. Preview images and unrequested media are not automatically fetched.
+Archived file payloads belong in S3, not PostgreSQL. Connected producers are
+completed explicit Telegram full-file downloads and durable outgoing preparation.
+When a chat disables S3, outgoing preparation remains encrypted locally instead.
+Other channels should use this boundary as they are migrated. Preview images
+and unrequested media are not automatically fetched.
 
 ## Development services
 
@@ -45,10 +46,44 @@ Endpoint credentials, path prefixes, queries and fragments are rejected; HTTP
 redirects are never followed. Configuration errors do not print decoder payloads
 or credentials. Missing S3 configuration does not prevent using the contact book.
 
+## Per-chat S3 choice
+
+The conversation header exposes **Сохранять файлы в S3**. Personal Telegram
+cloud chats default to enabled; basic groups, supergroups and channels default
+to disabled. An explicit choice applies to the whole service/account/chat,
+survives restart and does not follow the currently selected message or leak
+into another account. PostgreSQL stores an authenticated encrypted override
+and a keyed scope token, without plaintext chat identifiers.
+
+Completed full downloads check this choice before creating a durable archive
+receipt and before uploading queued work. Disabling leaves existing S3 objects
+and message text intact. A previously queued encrypted archive copy pauses
+until re-enabled and explicitly retried through **Проверить очередь файлов**.
+A PUT already started before disabling may finish. Older untagged receipts
+require an explicit conversation resolver; unresolved receipts remain queued.
+Telegram resolves old preparation receipts through the same chat policy: an
+outgoing-shaped message ID grants no exemption. Once that chat is enabled,
+retry preserves the authenticated legacy metadata and exact file bytes.
+
+Disabling prohibits every new S3 copy, including outgoing files, normalized
+photos, raw originals and video covers. Outgoing preparation instead keeps an
+encrypted local envelope and authenticated `.local` receipt in the private
+spool. Its explicit `local` state, domain-separated key binding/storage identity
+and object key distinguish it from an S3 receipt. The encrypted Postbox pointer
+contains metadata only. Local receipts never enter S3 resume, even after the
+chat is enabled later. Recovery checks the exact receipt, encrypted size/hash
+and authenticated envelope before creating a temporary plaintext stage.
+No payload bytes are stored in PostgreSQL. Older tagged and untagged preparation
+queue receipts require the same service-specific policy resolver as other old
+copies. Existing S3 objects remain readable regardless of the current choice.
+Local preparation is retained on cancellation/acceptance; automatic collection
+and portable backup/restore are unfinished.
+
 ## Capture, storage and recovery
 
 ```text
-complete full download → frozen read-only FD → encrypted durable queue
+complete full download → frozen read-only FD → per-chat archive choice
+  → encrypted durable queue
   → PostgreSQL pending metadata → conditional S3 PUT / HEAD reconciliation
   → PostgreSQL stored receipt → remove acknowledged local queue item
 archive export → S3 GET → hash + authenticated decryption → native Save panel
@@ -101,7 +136,7 @@ Those not-yet-encrypted captures do not survive process exit. Abrupt termination
 before receipt publication can leave an orphan encrypted envelope; no automatic
 destructive orphan cleanup is performed. These boundaries, disk exhaustion and
 missing/unavailable keys prevent an absolute promise to retain unseen or not
-successfully captured bytes. Existing untouched cache, outgoing uploads and
+successfully captured bytes. Existing untouched cache, delivered outgoing files and
 historical media require further work. Permanent recovery also needs coordinated
 PostgreSQL, S3 and Keychain backups; portable backup/restore is unfinished.
 
@@ -113,6 +148,9 @@ reopen/export, no file payloads in PostgreSQL, append-only guards, exact account
 scope, S3 conditional conflicts, integrity/tamper/framing, pre-queue failure and
 retry, uncertain receipt-directory sync, and S3 success followed by PostgreSQL
 rollback/restart reconciliation.
+Conversation-policy regressions cover defaults, encrypted overrides after
+reopen, exact service/account/chat scope, stale UI context, disabled admission,
+queue pause/re-enable, retained export and unchanged text retention.
 Preview regressions also cover a source unlink/deletion event followed by a new
 repository instance, forged metadata rejection, private modes, hostile file
 labels, independent leases, and failure/cancellation cleanup.

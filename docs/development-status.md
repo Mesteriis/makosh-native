@@ -1,6 +1,54 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram raw photo originals
+## Current stage: Telegram per-chat S3 choice verified; media/file mode next
+
+The common conversation header exposes **Сохранять файлы в S3**. Personal cloud
+chats default on; groups and channels default off. Exact service/account/chat
+choices persist encrypted in PostgreSQL. Off prohibits every new S3 admission,
+including prepared files, normalized photos, raw originals and video covers.
+Outgoing preparation uses encrypted local envelopes and authenticated receipts;
+these never join S3 resume, even after re-enabling. Existing objects and append-only
+message text remain retained. Queued old copies recheck the resolved chat policy;
+a PUT already admitted before disabling may still finish.
+
+Real PostgreSQL/S3/Postbox RED reproduced the preparation bypass, stored-only
+recovery validation and group/channel default bypass. Independent review found
+that local capture skipped metadata limits; its real regression failed with one
+test/seven failures before shared admission validation fixed it. One worker test
+fixture was corrected to compare the latest revision after intentional retry.
+The final focused gate passes **24 tests (9 Telegram +15 core), zero failures**.
+It covers exact restart recovery of all five batch resources, enabled-group S3,
+local receipt permissions/symlink/tamper, payload tamper, foreign pointers, invalid
+metadata before queue creation, and tagged/untagged old receipt policy checks.
+
+`scripts/dev-db.sh up`, `scripts/test.sh` and `scripts/build-app.sh` exit0.
+The full gate passes **784 XCTest (708 Telegram +76 core), zero failures;
+32 Python regressions**, no compile warnings, and236 upstream t19 teardown
+diagnostics. Current native owned synthetic QA verifies persisted off, file
+preparation, source removal, SIGTERM/relaunch, recovered ready preview, synthetic
+native acceptance and no preview resurrection after another restart. Real
+Postbox/S3 readback before/after acceptance verifies the same preparation/object,
+exact56 bytes, `local` state, empty S3 archive metadata and HTTP404 under both
+local and conventional S3 keys. Mail→Telegram retains the selected chat and off.
+Strict signatures/raw unsigned built–QA payload equality pass. No personal
+account or Telegram network was exercised; group/channel defaults are integration
+coverage rather than native UI fixtures.
+
+Independent frozen source review plus the five-file fix addendum found no
+remaining concrete defect. Root verifies all16 current source/test hashes against
+the reviewed snapshot; worker runtime is SKIP, observed model/provider/usage
+unknown. Current project XERJ refresh/check/query exit0:358 files,327/327 code;
+retrieval is source-confirmed. License/engine pins and the reference-free build
+boundary are unchanged. Local preparation collection and portable backup/restore
+remain unfinished.
+
+Next: rebase the private exact media/file checkpoint over local preparation
+support, then fix its two source-review P2 findings: mixed Media caption/spoiler
+controls and detached failed mode-save retry. Its earlier gates describe that
+parked snapshot only. The sequential migration goal remains active; Telegram and
+the remaining communication/storage/backup/package work are not complete.
+
+## Historical Telegram raw photo originals (8850d55)
 
 Picker photos now retain the raw source separately from the prepared JPEG,
 including single selection. The frozen source produces the JPEG; both resources

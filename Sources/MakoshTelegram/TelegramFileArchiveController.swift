@@ -3,7 +3,11 @@ import Combine
 import MakoshCore
 
 @MainActor public final class TelegramFileArchiveController: ObservableObject {
-    @Published public private(set) var status = "Полностью загруженные файлы сохраняются в S3"
+    public lazy var policy = TelegramConversationFilePolicyController { [weak self] in
+        guard let self else { throw MessageArchiveError.invalid }
+        return try self.open()
+    }
+    @Published public private(set) var status = "Сохранение файлов в S3 настраивается отдельно для каждого чата"
     @Published public private(set) var error: String?
     @Published public private(set) var isBusy = false
     @Published public private(set) var revision = 0
@@ -59,10 +63,11 @@ import MakoshCore
             active.insert(lookup); isBusy = true; status = "Сохранение зашифрованной копии файла в S3…"
             Task { [weak self] in
                 do {
-                    _ = try await repository.capture(capture,identity: pending.identity,attachment: pending.attachment)
+                    let saved = try await repository.captureConversationFile(capture,identity: pending.identity,attachment: pending.attachment,
+                        defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: pending.identity))
                     guard let self else { return }
                     self.pending.removeValue(forKey: lookup)
-                    self.status = "Файл сохранён в S3 отдельно от кеша Telegram"
+                    self.status = saved == nil ? "Сохранение файлов для этого чата отключено" : "Файл сохранён в S3 отдельно от кеша Telegram"
                     if self.pending.isEmpty { self.error = nil }
                     self.finished(lookup)
                 } catch {
@@ -86,7 +91,7 @@ import MakoshCore
             for lookup in pending.keys { start(lookup) }
             Task { [weak self] in
                 do {
-                    _ = try await repository.resume()
+                    _ = try await repository.resume(legacyConversationDefault: TelegramConversationFilePolicyController.legacyDefault)
                     if let self, self.pending.isEmpty, self.active.isEmpty { self.error = nil; self.status = "Очередь сохранения файлов в S3 проверена" }
                 } catch { self?.error = "Очередь файлов ещё не записана полностью. Проверьте хранилища и ключ архива; неподтверждённые копии сохранены." }
                 guard let self else { return }

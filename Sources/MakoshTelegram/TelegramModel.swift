@@ -181,6 +181,7 @@ public final class TelegramModel: ObservableObject {
             restorePendingUpload()
             search.selectChat(selectedChatID)
             peerStatus.selectPeer(selectedChatID)
+            refreshConversationFilePolicy()
             loadHistory()
         }
     }
@@ -294,6 +295,9 @@ public final class TelegramModel: ObservableObject {
     private var draftAccountID: Int64? {
         if isSyntheticPreview { return -1 }
         return account?.peerId.toInt64()
+    }
+    private func refreshConversationFilePolicy() {
+        archive.files.policy.select(accountID: draftAccountID, chatID: selectedChatID)
     }
     private let session = MetaDisposable()
     private let authState = MetaDisposable()
@@ -484,6 +488,7 @@ public final class TelegramModel: ObservableObject {
         composerDraftRecoveryError = nil
         composerDraftLoad.set(nil)
         composerDraftRepository = repository
+        refreshConversationFilePolicy()
         retryComposerDraftPersistence()
         restoreComposerDraft()
     }

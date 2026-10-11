@@ -58,6 +58,7 @@ extension TelegramModel {
         guard ProcessInfo.processInfo.arguments.contains("--telegram-pending-upload-qa"), isSyntheticPreview, schema.hasPrefix("qa_telegram_dossier_"),
               let postbox = syntheticPendingPostbox else { throw MessageArchiveError.invalid }
         try archive.files.configureSynthetic(connectionString: connectionString, schema: schema, configurationFile: configurationFile, spoolDirectory: spoolDirectory)
+        archive.files.policy.select(accountID: -1, chatID: selectedChatID)
         let store = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: postbox, accountID: -1), files: { [weak self] in
             guard let self else { throw TelegramUploadFileError.unavailable }
             return try self.archive.files.pendingUploadFiles()

@@ -167,6 +167,7 @@ struct TelegramDetailView: View {
                     }.buttonStyle(.plain).help("Открыть карточку собеседника")
                         .accessibilityIdentifier("telegram.profile.open")
                     Spacer()
+                    TelegramConversationFilePolicyMenu(files: model.archive.files, chatID: chat.id)
                     Button {
                         if messageSearchPresented { closeMessageSearch() }
                         else { openMessageSearch() }

@@ -42,8 +42,13 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
         }
     }
 
+    static func isDurable(_ file: ArchiveFileRecord) -> Bool {
+        if file.state == .stored { return true }
+        guard file.state == .local, case .some(.outgoing) = file.purpose else { return false }
+        return true
+    }
     private static func validRecord(_ file: ArchiveFileRecord, identity: MessageArchiveIdentity, attachmentID: String) -> Bool {
-        file.state == .stored && file.id != TelegramPendingUploadDraft.zeroUUID && file.identity == identity &&
+        isDurable(file) && file.id != TelegramPendingUploadDraft.zeroUUID && file.identity == identity &&
             file.attachment.id == attachmentID &&
             ["file", "photo", "video"].contains(file.attachment.kind) &&
             !file.attachment.name.isEmpty && file.attachment.name.utf8.count <= 1024 &&

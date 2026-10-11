@@ -16,9 +16,11 @@ actor TelegramPendingUploadFiles {
     func saveCover(_ cover: TelegramUploadVideoCover, accountID: Int64, chatID: Int64, preparationID: UUID,
                    itemID: UUID? = nil, capture: ArchiveFileCapture? = nil) async throws -> TelegramPendingUploadVideoCover {
         let frozen = try capture ?? Self.captureCover(cover)
+        let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
         let record = try await repository.capture(frozen,
-            identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
-            attachment: MessageArchiveAttachment(id: itemID.map(TelegramPendingUploadItem.coverAttachmentID) ?? "video-cover", kind: "photo", name: cover.name, size: cover.size))
+            identity: identity,
+            attachment: MessageArchiveAttachment(id: itemID.map(TelegramPendingUploadItem.coverAttachmentID) ?? "video-cover", kind: "photo", name: cover.name, size: cover.size),
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
         guard record.plaintextSHA256 == cover.sha256, record.plaintextByteCount == cover.size else {
             throw TelegramUploadFileError.unavailable
         }
@@ -70,9 +72,11 @@ actor TelegramPendingUploadFiles {
             }
         }
         try Task.checkCancellation()
+        let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
         return try await repository.capture(capture,
-            identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
-            attachment: MessageArchiveAttachment(id: itemID.map(TelegramPendingUploadItem.attachmentID) ?? "prepared", kind: file.mode.rawValue, name: file.name, size: file.size))
+            identity: identity,
+            attachment: MessageArchiveAttachment(id: itemID.map(TelegramPendingUploadItem.attachmentID) ?? "prepared", kind: file.mode.rawValue, name: file.name, size: file.size),
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
     }
 
     func restore(record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID, video: TelegramUploadVideoMetadata? = nil, itemID: UUID? = nil) async throws -> TelegramUploadFile {
@@ -84,9 +88,11 @@ actor TelegramPendingUploadFiles {
                       itemID: UUID, capture: ArchiveFileCapture) async throws -> ArchiveFileRecord {
         guard file.mode == .file, file.size <= 20 * 1024 * 1024 else { throw TelegramUploadFileError.unavailable }
         try Task.checkCancellation()
+        let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
         return try await repository.capture(capture,
-            identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
-            attachment: .init(id: TelegramPendingUploadItem.originalAttachmentID(itemID), kind: "file", name: file.name, size: file.size))
+            identity: identity,
+            attachment: .init(id: TelegramPendingUploadItem.originalAttachmentID(itemID), kind: "file", name: file.name, size: file.size),
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
     }
 
     func restoreOriginal(_ record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID, itemID: UUID) async throws -> TelegramUploadFile {
@@ -99,7 +105,7 @@ actor TelegramPendingUploadFiles {
                                 video: TelegramUploadVideoMetadata?, attachmentID: String) async throws -> TelegramUploadFile {
         try Task.checkCancellation()
         guard record.identity == TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID),
-              record.state == .stored, record.attachment.id == attachmentID,
+              TelegramPendingUploadItem.isDurable(record), record.attachment.id == attachmentID,
               let mode = TelegramUploadMode(rawValue: record.attachment.kind),
               (mode == .video) == (video != nil),
               record.attachment.size == record.plaintextByteCount,

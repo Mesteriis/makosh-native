@@ -336,7 +336,14 @@ Current boundaries:
   create deletion markers. Author IDs and plain text are retained; resolved
   author names and rich-text entities are not yet archived.
 - Completed explicit **full-file downloads** now receive independent encrypted
-  copies in S3. An open file descriptor is captured synchronously before the
+  copies in S3 when **Сохранять файлы в S3** is enabled for that chat. Personal
+  cloud chats default on; groups and channels default off. The choice is scoped
+  to account/chat and persists in PostgreSQL; disabling preserves message text
+  and existing objects. Off also prohibits new outgoing preparation copies in
+  S3, including photo originals and video covers. These resources recover from
+  encrypted local receipts/envelopes and never enter S3 retry after re-enabling.
+  Older tagged/untagged preparation queues use the same resolved chat policy.
+  An open file descriptor is captured synchronously before the
   first suspension; subsequent Telegram cache unlink does not remove its bytes.
   PostgreSQL stores encrypted metadata/object references only. Preview-only or
   never-downloaded media remain metadata. Opening the archive never fetches

@@ -43,6 +43,7 @@ public final class MessageArchiveStore {
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_events (sequence BIGSERIAL PRIMARY KEY, observation UUID NOT NULL UNIQUE, account_token TEXT NOT NULL, stream_token TEXT NOT NULL, message_token TEXT NOT NULL, event_digest TEXT NOT NULL, ciphertext TEXT NOT NULL)")
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_receipts (observation UUID PRIMARY KEY, digest TEXT NOT NULL)")
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_file_events (sequence BIGSERIAL PRIMARY KEY, object UUID NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','stored')), attachment_token TEXT NOT NULL, ciphertext TEXT NOT NULL, UNIQUE(object,state))")
+                _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_conversation_file_policy (stream_token TEXT PRIMARY KEY, ciphertext TEXT NOT NULL)")
                 let populated = try query("SELECT 1 FROM \(prefix)archive_events LIMIT 1")
                 let mayCreate = !inserted.isEmpty && meta[2].isEmpty && populated.isEmpty
                 let raw: Data
@@ -70,6 +71,48 @@ public final class MessageArchiveStore {
     }
     deinit { if let db { PQfinish(db) } }
 
+    private struct ConversationFilePolicy: Codable {
+        let service: String
+        let accountID: String
+        let conversationID: String
+        let enabled: Bool
+    }
+    private func conversationPolicyToken(_ identity: MessageArchiveIdentity) throws -> String {
+        let scope = [identity.service,identity.accountID,identity.conversationID]
+        guard scope.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1024 }) else { throw MessageArchiveError.invalid }
+        return token(scope)
+    }
+    public func conversationFileSavingEnabled(identity: MessageArchiveIdentity, defaultEnabled: Bool) throws -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let stream = try conversationPolicyToken(identity)
+            let rows = try query("SELECT ciphertext FROM \(prefix)archive_conversation_file_policy WHERE stream_token=$1", [stream])
+            guard let row = rows.first else { return defaultEnabled }
+            let policy: ConversationFilePolicy
+            do {
+                policy = try JSONDecoder().decode(ConversationFilePolicy.self,
+                    from: open(row[0],aad: binding("conversation-file-policy-\(stream)",0)))
+            } catch { throw MessageArchiveError.integrity }
+            guard policy.service.utf8.elementsEqual(identity.service.utf8),
+                  policy.accountID.utf8.elementsEqual(identity.accountID.utf8),
+                  policy.conversationID.utf8.elementsEqual(identity.conversationID.utf8) else { throw MessageArchiveError.integrity }
+            return policy.enabled
+        }
+    }
+    public func setConversationFileSavingEnabled(identity: MessageArchiveIdentity, enabled: Bool) throws {
+        lock.lock(); defer { lock.unlock() }
+        try transaction {
+            _ = try metadata()
+            let stream = try conversationPolicyToken(identity)
+            let payload = try encode(ConversationFilePolicy(service: identity.service,accountID: identity.accountID,
+                conversationID: identity.conversationID,enabled: enabled))
+            guard payload.count <= 16384 else { throw MessageArchiveError.invalid }
+            _ = try query("INSERT INTO \(prefix)archive_conversation_file_policy(stream_token,ciphertext) VALUES($1,$2) ON CONFLICT(stream_token) DO UPDATE SET ciphertext=EXCLUDED.ciphertext",
+                [stream,try seal(payload,aad: binding("conversation-file-policy-\(stream)",0))])
+        }
+    }
+
     public func fileVault() throws -> ArchiveFileVault {
         lock.lock(); defer { lock.unlock() }
         return try transaction {
@@ -83,10 +126,9 @@ public final class MessageArchiveStore {
         lock.lock(); defer { lock.unlock() }
         return try transaction {
             _ = try metadata()
+            try ArchiveFileRecord.validateMetadata(identity: record.identity,attachment: record.attachment)
             let i = record.identity
-            guard [i.service,i.accountID,i.conversationID,i.messageID,record.attachment.id].allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1024 }),
-                  record.attachment.name.utf8.count <= 1024, record.attachment.kind.utf8.count <= 64,
-                  record.capturedAt.timeIntervalSince1970.isFinite,
+            guard record.capturedAt.timeIntervalSince1970.isFinite,
                   record.plaintextByteCount >= 0, record.plaintextByteCount <= 4 * 1024 * 1024 * 1024,
                   record.byteCount > record.plaintextByteCount, record.byteCount <= 4 * 1024 * 1024 * 1024 + 1024 * 1024,
                   [record.sha256,record.plaintextSHA256,record.storageID].allSatisfy({ $0.utf8.count == 64 && $0.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) }),

@@ -12,9 +12,20 @@ public struct TelegramUploadVideoCoverTransform: Equatable, Sendable {
         quarterTurns.isMultiple(of: 2) ? original : CGSize(width: original.height, height: original.width)
     }
 
+    public func sourcePoint(from transformedPoint: CGPoint) -> CGPoint {
+        let x = isHorizontallyFlipped ? 1 - transformedPoint.x : transformedPoint.x
+        let y = transformedPoint.y
+        switch quarterTurns {
+        case 1: return CGPoint(x: 1 - y, y: x)
+        case 2: return CGPoint(x: 1 - x, y: 1 - y)
+        case 3: return CGPoint(x: y, y: 1 - x)
+        default: return CGPoint(x: x, y: y)
+        }
+    }
+
     /// Crop coordinates start at the transformed image's top-left. Draw directly
     /// into the bounded cover, without allocating a second full-size bitmap.
-    func render(_ image: CGImage, crop: CGRect) throws -> CGImage {
+    func render(_ image: CGImage, crop: CGRect, painting: TelegramUploadVideoCoverPainting = .init()) throws -> CGImage {
         let original = CGSize(width: image.width, height: image.height)
         let transformed = imageSize(original)
         let x = floor(crop.minX * transformed.width), y = floor(crop.minY * transformed.height)
@@ -38,6 +49,9 @@ public struct TelegramUploadVideoCoverTransform: Equatable, Sendable {
         context.rotate(by: CGFloat(quarterTurns) * .pi / 2)
         context.translateBy(x: -original.width / 2, y: -original.height / 2)
         context.draw(image, in: CGRect(origin: .zero, size: original))
+        context.translateBy(x: 0, y: original.height)
+        context.scaleBy(x: 1, y: -1)
+        painting.draw(in: context, imageSize: original)
         guard let output = context.makeImage() else { throw TelegramUploadFileError.invalidImage }
         return output
     }

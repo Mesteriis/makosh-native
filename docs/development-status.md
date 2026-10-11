@@ -1,6 +1,61 @@
 # Development status — 2026-10-11
 
-## Current stage: original cover source, rotation and horizontal mirror
+## Current stage: video-cover drawing, arrows, eraser and stroke history
+
+Telegram stays inside the common Makosh service sidebar/dialog/conversation/
+dossier window. The cover editor now opens a separate drawing sheet over the
+full transformed source without enlarging small images, following the selected TelegramSwift workflow. Cancel
+leaves accepted paint unchanged; Done accepts a value copy. Reopening keeps
+accepted strokes undoable and clears redo. Undo/redo operate on whole strokes;
+a new stroke clears redo. Brush/arrow toggle, eraser, Cmd+Z/Shift+Cmd+Z, physical
+A/E/L, Cmd+D, Return and Escape are available. A small sheet-local AppKit first
+responder fixes bare tool-key delivery observed failing with SwiftUI alone;
+it has no global event monitor and detaches on close.
+
+The continuous nine-stop reference palette keeps color/weight preferences.
+Initial weight0.22 produces5pt; pressing the strip produces4pt, and pulling
+up increases thickness to18pt. Paint keeps original-oriented normalized points,
+capture canvas dimensions and width. Export scales width by mean(sx,sy), applies
+round caps/joins, first-to-last arrows with the strict per-axis length threshold,
+and clear blending within a separate paint layer. Erasing reveals original
+pixels. Drawing remains registered through later rotation/mirror/crop. Final
+paint renders directly in the bounded320px output; no extra full-size paint or
+transformed bitmap is allocated. Original image/video and prior S3 objects
+remain unchanged. No archive schema or credential/config format changed.
+
+scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh exit0:
+**698 XCTest (635 Telegram +63 core), zero failures;32 Python regressions**.
+Focused10 drawing/brush regressions pass. Meaningful behavior reds cover paint/
+history/geometry (6 tests/37 failures), brush gestures (2/10), and physical tool
+keys (1/7). Review behavior red (10 tests/5 failures) covers Retina half-point precision
+and computed-width overflow rejection. Missing-API compilation failures are
+retained separately. The full
+log retains160 upstream t19 teardown diagnostics without test failure.
+
+Owned native CUA verifies palette/18pt black brush, actual stroke/arrow/eraser,
+Cmd+Z/Shift+Cmd+Z, A/E/L, Return/Escape, save/reopen/cancel, rotation of accepted
+paint and clearing redo after a new stroke. Restart restores the final cover
+and exact caption. Read-only Postbox/S3 checks for prepared and accepted states
+both exit0:320×160 JPEG, four independently known color samples plus two black
+stroke samples, unchanged original video, retained cover digest and matching
+receipt. After synthetic acceptance, restart does not reopen the preparation.
+Strict built/QA signatures and unsigned executable equality pass. This uses
+isolated synthetic Postbox/PostgreSQL/S3, with no personal account, Keychain,
+Telegram network or server-delivery claim.
+
+Reference research checked11 frozen file hashes and exact pin with fresh XERJ;
+root confirmed current source. Final review identified five issues: Cmd+D,
+small-image fitting, computed-width overflow, Retina knob precision and
+conditional near-white outline; all were corrected and rechecked privately;
+root owns all runtime gates. Provider/model/usage metadata remains unknown.
+Parent e219c21 PR38119331552 and push38119329063 CI are terminal success for
+that exact SHA. New-head publication/CI/index evidence is recorded privately.
+Remaining editor gaps include fitted-point rounding/40pt constraint, double-click
+full bounds and inserted-image editing. Complete Telegram parity, albums,
+MMail/Aether, WhatsApp, Teams, Telemost, backups and standalone packaging remain
+open; the full sequential migration goal stays active.
+
+## Historical original cover source, rotation and horizontal mirror (e219c21)
 
 Telegram remains in the shared service sidebar/dialog/conversation/dossier
 window. The existing video-cover editor now retains original image bytes and

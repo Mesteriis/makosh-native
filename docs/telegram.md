@@ -1571,5 +1571,40 @@ not eight; eight controls belong to inserted image overlays. The reference's
 200-square aspectFitted call may upscale to the smaller fitted canvas dimension;
 it is not a literal200pt initial crop. Makosh already matches its main normalized
 initial geometry. Reference point rounding,40pt resize constraints, double-click
-full bounds, drawing/eraser/undo and inserted-image editing remain open. This is
+full bounds and inserted-image editing remain open. Drawing/eraser/undo are
+implemented below. This is
 progress toward complete reference editor/Telegram parity, not its completion.
+
+
+### Drawing and stroke history for video covers
+
+Draw opens a separate native sheet over the full transformed source before
+crop. Its own value copy owns accepted strokes and local undo/redo; Cancel
+cannot mutate the parent painting, while Done returns the accepted list.
+Reopen clears redo and keeps existing strokes undoable. Brush/arrow toggle,
+eraser, Cmd+D, Cmd+Z/Shift+Cmd+Z, physical A/E/L, Return and Escape follow the reference.
+A narrow AppKit first responder fixes native bare-key delivery in nested sheets;
+there are no event monitors or retained window globals.
+
+The continuous reference palette persists color location and brush weight.
+Default0.22 gives5pt; pressing the strip resets thickness to4pt and dragging
+up increases it to18pt. Every stroke freezes tool/color/width/capture canvas
+geometry. Normalized original-oriented top-left points are mapped from the
+current transform; rendering scales width by the average of the two axis
+ratios. Arrows use first/last points, a strict per-axis threshold and round
+45-degree heads. A separate transparent paint layer confines erasing to paint,
+so original image pixels remain visible. Both preview and final export use the
+same independent renderer, with final painting performed directly into the
+at-most320px crop output. The original source and ordinary photo path are
+unchanged; final JPEG bytes use the existing encrypted S3 cover pointer/receipt
+workflow without a new schema.
+
+Ten drawing/brush regressions cover whole-stroke history/cancel, erasing,
+arrow geometry/threshold, pointer mapping across eight orientations, cropped
+JPEG export, brush gestures, Retina knob precision, computed-width overflow
+rejection and physical tool keys. Owned native QA checks
+actual pixels, tool keys and save/cancel/reopen/rotation. Prepared and accepted
+Postbox/S3 readbacks verify final320×160 pixels, caption, original video and
+receipt; restart restores the cover and does not reopen an accepted preparation.
+Account/network/server delivery and complete reference-editor parity remain
+unverified/open as recorded in development status.

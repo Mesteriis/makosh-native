@@ -33,6 +33,8 @@ struct TelegramVideoCoverEditorView: View {
     @ObservedObject var upload: TelegramUploadController
     let close: () -> Void
     @State private var crop: TelegramUploadVideoCoverCrop
+    @State private var painting = TelegramUploadVideoCoverPainting()
+    @State private var drawingEditor = false
     @State private var applying = false
     @State private var error: String?
     @State private var applyTask: Task<Void, Never>?
@@ -42,7 +44,7 @@ struct TelegramVideoCoverEditorView: View {
     }
     var body: some View {
         VStack(spacing: 12) {
-            TelegramVideoCoverCropCanvas(preview: presentation.selection.preview, crop: $crop)
+            TelegramVideoCoverCropCanvas(preview: presentation.selection.preview, painting: painting, crop: $crop)
                 .frame(height: 360).disabled(applying)
             if let error { Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.videoCoverEditor.error") }
             HStack {
@@ -60,6 +62,10 @@ struct TelegramVideoCoverEditorView: View {
                     .accessibilityLabel("Отразить обложку по горизонтали")
                     .accessibilityValue(crop.transform.isHorizontallyFlipped ? "Включено" : "Выключено")
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.flip")
+                Button { drawingEditor = true } label: { Image(systemName: "pencil.tip.crop.circle") }
+                    .keyboardShortcut("d", modifiers: .command).disabled(applying)
+                    .help("Рисовать на обложке (⌘D)").accessibilityLabel("Рисовать на обложке")
+                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.draw")
                 Spacer()
                 if applying { ProgressView().controlSize(.small) }
                 Button("Готово", action: apply).keyboardShortcut(.defaultAction).disabled(applying)
@@ -71,15 +77,20 @@ struct TelegramVideoCoverEditorView: View {
         .accessibilityIdentifier("telegram.upload.videoCoverEditor")
         .interactiveDismissDisabled(applying)
         .onDisappear { applyTask?.cancel() }
+        .sheet(isPresented: $drawingEditor) {
+            TelegramVideoCoverPaintingView(preview: presentation.selection.preview, transform: crop.transform,
+                painting: painting, save: { painting = $0 }, close: { drawingEditor = false })
+        }
     }
     private func apply() {
         guard !applying, upload.videoCoverEditingID == presentation.id else { return }
         applying = true; error = nil
         let selection = presentation.selection, rect = crop.rect, transform = crop.transform, id = presentation.id
+        let painting = painting
         applyTask = Task { @MainActor in
             defer { applying = false; applyTask = nil }
             do {
-                let cover = try await TelegramUploadVideoCoverIO.stage(selection, crop: rect, transform: transform)
+                let cover = try await TelegramUploadVideoCoverIO.stage(selection, crop: rect, transform: transform, painting: painting)
                 guard !Task.isCancelled else { try? TelegramUploadVideoCoverIO.discardCover(cover); return }
                 if upload.commitVideoCover(cover, editID: id) { close() }
                 else {
@@ -96,6 +107,7 @@ struct TelegramVideoCoverEditorView: View {
 
 private struct TelegramVideoCoverCropCanvas: View {
     let preview: TelegramImagePreview
+    let painting: TelegramUploadVideoCoverPainting
     @Binding var crop: TelegramUploadVideoCoverCrop
     @State private var gestureStart: TelegramUploadVideoCoverCrop?
     @FocusState private var focused: Bool
@@ -111,7 +123,7 @@ private struct TelegramVideoCoverCropCanvas: View {
             let selection = CGRect(x: fitted.minX + crop.rect.minX * fitted.width, y: fitted.minY + crop.rect.minY * fitted.height,
                 width: crop.rect.width * fitted.width, height: crop.rect.height * fitted.height)
             ZStack(alignment: .topLeading) {
-                Image(preview.image, scale: 1, label: Text("Изображение для обложки")).resizable()
+                TelegramVideoCoverPaintedImage(preview: preview, painting: painting)
                     .frame(width: original.width * scale, height: original.height * scale)
                     .rotationEffect(.degrees(-90 * Double(crop.transform.quarterTurns)))
                     .scaleEffect(x: crop.transform.isHorizontallyFlipped ? -1 : 1, y: 1)

@@ -356,6 +356,42 @@ EditImageModalController.swift:1068–1113/Extensions.swift:1882–1926. Это 
 увеличивает квадрат до floor(min(canvas.width,canvas.height)), а не ограничивает
 его200pt. Текущая нормализованная начальная геометрия уже совпадает с основной
 формулой референса. Открыты fitted-point rounding,40pt resize constraint,
-double-click full bounds, отдельный draw/eraser/undo редактор и inserted images.
+double-click full bounds и inserted images. Draw/eraser/undo перенесены ниже.
 Outer GPLv2 UI/asset не копируется; общий sidebar и подготовка сохраняют прежнее
 окно. Account/network/server delivery остаётся непроверенным.
+
+
+## Рисование на обложке видео
+
+EditImageModalController.swift:880–935 открывает отдельный canvas по полному
+повёрнутому/отражённому изображению без crop, принимает список штрихов только
+при Save и сохраняет прежний рисунок при Cancel. Эти переходы перенесены в
+существующий cover editor Макоша. Снизу: «Отмена», undo/redo, переключаемые
+кисть/стрелка, ластик, «Готово»; над ними непрерывная палитра с круглым индикатором.
+Рисунок можно отменять целыми штрихами, включая принятые до повторного открытия.
+Новый штрих очищает redo; цвет и толщина не меняют прежние штрихи.
+
+EditImageCanvasController.swift:52–103 задаёт round cap/join, mean(sx,sy) для
+толщины, clear только в отдельном paint layer, прямую стрелку first→last с
+width×0.7, порогом abs(dx)>width×1.5 OR abs(dy)>width×1.5 и головкой2.5×width/45°.
+Одиночный клик остаётся undoable действием без отдельной dot/erase primitive.
+Собственный renderer сохраняет эти свойства; normalized original coordinates
+и inverse transform удерживают рисунок при последующих поворотах/отражениях.
+
+EditImageCanvasColorPicker.swift:151–169,235–299,342–403,430–452 задаёт девять
+RGB-опор градиента, случайный первый цвет с последующим сохранением, weight0.22
+(5pt), strip click (4pt), увеличение до18pt движением вверх, zoom knob и
+округление толщины. UI повторяет эту палитру и жест, включая половину pt
+у zoom knob на Retina и обводку только почти белого цвета. Маленькие исходники
+в draw canvas не увеличиваются. ⌘D открывает Draw, как EditImageModalController.swift:933–943.
+A/E/L используют физические
+клавиши, как reference controller:488–512; Cmd+Z/Shift+Cmd+Z, Return/Escape
+проверены в собственном окне. AppKit bridge ограничен этим sheet и не ставит
+глобальных event monitors. Outer GPLv2 code/assets не копировались.
+
+Native CUA подтвердила инструменты и отмену/принятие/поворот; отдельный readback
+из encrypted S3 проверил320×160 JPEG с четырьмя цветными и двумя чёрными samples,
+точную подпись, исходное видео и receipt после restart/local synthetic acceptance.
+Это не runtime-проверка upstream UI или Telegram Account/network delivery.
+Открыты fitted-point rounding/40pt resize, double-click full bounds, inserted
+images, album/multiple selection и остальные Telegram flows.

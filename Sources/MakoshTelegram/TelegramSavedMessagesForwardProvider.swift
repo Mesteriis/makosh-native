@@ -17,7 +17,8 @@ nonisolated func telegramSavedForwardAdmission(transaction: Transaction, account
                                                request: TelegramSavedMessagesForwardRequest) -> Bool {
     guard request.accountID == accountID, request.isValid,
           case let .success(record?) = telegramSavedForwardRead(transaction: transaction, accountID: accountID),
-          record.request == request, record.acceptedIDs == nil else { return false }
+          record.request == request, record.acceptedIDs == nil,
+          telegramSavedForwardOriginIsCurrent(transaction: transaction, request: request) else { return false }
     return telegramForwardBatch(transaction: transaction, accountID: accountID, draft: request.draft) != nil
 }
 private nonisolated func savedForwardBegin(postbox: Postbox, accountID: Int64, request: TelegramSavedMessagesForwardRequest) -> Signal<SavedForwardBegin, NoError> {
@@ -25,7 +26,8 @@ private nonisolated func savedForwardBegin(postbox: Postbox, accountID: Int64, r
         guard request.accountID == accountID, request.isValid else { return .rejected }
         guard case let .success(current) = telegramSavedForwardRead(transaction: transaction, accountID: accountID),
               current == nil || (current?.acceptedIDs != nil && current?.request.id != request.id) else { return .uncertain }
-        guard telegramForwardBatch(transaction: transaction, accountID: accountID, draft: request.draft) != nil else { return .rejected }
+        guard telegramForwardBatch(transaction: transaction, accountID: accountID, draft: request.draft) != nil,
+              telegramSavedForwardOriginIsCurrent(transaction: transaction, request: request) else { return .rejected }
         return telegramSavedForwardBegin(transaction: transaction, accountID: accountID, request: request) ? .started : .uncertain
     }
 }

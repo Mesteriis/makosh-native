@@ -1,6 +1,61 @@
 # Development status — 2026-10-11
 
-## Current stage: Telegram initial picker Saved Messages forwarding
+## Current stage: Telegram accessory re-targeting to Saved Messages
+
+Telegram remains in the shared service-selector/list/conversation window.
+**Другой получатель…** now pins **Избранное** first and accepts a full-row click
+without navigating or sending the old comment/reply. The picker freezes the
+account context, origin chat/revision and intent. Optional origin metadata keeps
+schema-1 originless receipts compatible. Fresh native admission requires the
+exact prepared origin; the queue transaction records the unique Local receipt
+and clears only that forward together. Rich input/UTF16 selection/reply survive.
+Saved re-targeting uses default visible author/caption options; ordinary re-target
+retains its existing options, with exhaustive option parity still open. Picker
+Cancel before dispatch retains the origin, a documented adaptation of the
+reference's early forward-ID clearing. Archive PostgreSQL/S3 data is unchanged.
+
+Final `scripts/test.sh` exits 0: **534 XCTest (471 Telegram + 63 core), zero
+failures; 30 Python regressions**. Saved-focused 24 cases pass. Final
+`scripts/build-app.sh` exits 0; the earlier unchanged dev PostgreSQL/S3 gate
+exits 0. Logs retain 124 upstream t19 teardown diagnostics without failure/trap.
+The initial model red reproduced missing accessory Saved behavior. Postbox
+fixture compile errors were corrected before the runtime red demonstrated
+stale-origin admission and missing origin removal. New encrypted regressions
+cover invalid receipts, changed/unknown origins, genuine reopen, lost ACK and
+literal legacy schema-1 receipt recovery.
+
+Root review found a separate unsafe recovery gap: unreadable Saved records left
+an unidentified prepared forward editable/sendable. A new red regression failed
+four assertions before the model lock was extended to unknown recovery with no
+request. Final tests verify prepared-forward blocking and independent ordinary
+input in another chat. No automatic resend is introduced.
+
+Actual native AX/screenshots verify restored comment/reply/forward, picker
+Cancel, one-click Saved without navigation, ordinary re-targeting, unknown-result
+resubmission/input/forward-cancel blocking, another chat's editable input,
+Mail → Telegram preservation and accepted-receipt restart without a new modal.
+QA uses the same owned encrypted synthetic Postbox and isolated PostgreSQL/S3;
+DEBUG queue simulation is not a live Account/server operation. The final recovery
+lock is established by regressions; no unreadable-record native fault injection
+is claimed. Personal accounts, Keychain and Telegram network were not used.
+
+Reference source confirms fresh ForwardMessagesObject, own-peer default options
+and forward-only clearing. No outer GPLv2 UI/assets were copied. Pins, recipe 8
+and PostgreSQL schemas remain unchanged. Root source/integration review uses no
+new workers or quorum claim. Picker comments, album selection, normal option
+parity, special/topic/secret/paid behavior and live-account acceptance remain
+open. Later channels, backups and standalone packaging remain open; the full
+sequential migration goal stays active. Final index/publication evidence follows
+the frozen source, independently of the prior published-head CI results.
+Final XERJ refresh exits 0: 287 files, 257/257 classified code; project,
+TelegramSwift and engine fingerprints pass. Active origin-CAS, native enqueue
+and reference searches were confirmed against source. Strict deep signatures
+and unsigned built/QA payload comparison pass; the final executable repeats
+restored comment/reply and one-click accessory Saved behavior. Publication audit
+checks 292 publishable files and the PR body against five selected credential
+fields, with zero matches. Machine configuration, QA data and indexes stay ignored.
+
+## Historical Telegram initial picker Saved Messages forwarding
 
 Telegram remains inside the shared service-selector/list/conversation window.
 The initial history/selection recipient picker pins **Избранное** first; one

@@ -147,8 +147,9 @@ receipt и storage-only consume защищают от автоматическо
 Неизвестный исход и недоступный источник сохраняют черновик. Новое вложение при
 активной пересылке пока явно недоступно. Initial history/selection picker теперь
 сразу пересылает в «Избранное» через отдельный durable intent/receipt, сохраняя
-ordinary Saved input/reply/forward и текущий чат. Picker comment,
-Saved accessory re-targeting, остальные selection actions, темы, paid/secret и
+ordinary Saved input/reply/forward и текущий чат. Accessory «Другой получатель…»
+тоже поддерживает immediate Saved с exact origin CAS, сохраняя старый comment/reply
+и блокируя unknown без resend. Picker comment, остальные selection actions, темы, paid/secret и
 live-account acceptance остаются впереди.
 Окончание этого участка не завершает Telegram или общий последовательный перенос.
 
@@ -174,5 +175,7 @@ Copy/delete выбранных сообщений добавлены в общи
 wholebatch revalidation, explicit scope и atomic native delete admission (recipe 8).
 Сохранённые версии и S3 остаются. Gate/native acceptance записываются в
 `development-status.md`; initial Saved branch добавлен с wholebatch native admission,
-отдельным receipt и restart без resend. Оставшаяся picker/accessory parity открыта.
+отдельным receipt и restart без resend. Accessory Saved переносит только forward,
+сохраняя rich input/selection/reply; Cancel до dispatch удерживает forward как
+явная адаптация. Оставшиеся picker comments и normal option parity открыты.
 Общий порядок переноса сохранён.

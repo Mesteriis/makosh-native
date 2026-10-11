@@ -36,11 +36,26 @@ nonisolated func telegramComposerDraftRead(transaction: Transaction, accountID: 
     guard let value = decodeComposerDraft(entry, accountID: accountID, chatID: chatID) else { return .failure(.incompatibleData) }
     return .success(value)
 }
+private nonisolated func composerDraftEntry(_ draft: TelegramComposerDraft) -> PreferencesEntry? {
+    guard draft.isValid, let encoded = try? JSONEncoder().encode(draft), encoded.count <= 512 * 1024 - composerDraftMarker.count else { return nil }
+    return PreferencesEntry(data: composerDraftMarker + encoded)
+}
 private nonisolated func writeComposerDraft(transaction: Transaction, draft: TelegramComposerDraft) -> Bool {
-    guard draft.isValid, let encoded = try? JSONEncoder().encode(draft), encoded.count <= 512 * 1024 - composerDraftMarker.count else { return false }
+    guard let entry = composerDraftEntry(draft) else { return false }
     transaction.setPreferencesEntry(key: PreferencesKeys.persistentChatInterfaceData(peerId: PeerId(draft.chatID)),
-        value: PreferencesEntry(data: composerDraftMarker + encoded))
+        value: entry)
     return true
+}
+/// Prepare both CAS validation and bytes without writing. The caller commits
+/// this alongside its queue receipt; ordinary input, selection and reply survive.
+nonisolated func telegramPreparedForwardRemoval(transaction: Transaction, accountID: Int64, chatID: Int64,
+                                                revision: UUID, intentID: UUID, sources: [TelegramComposerForwardSource]) -> (key: ValueBoxKey, entry: PreferencesEntry)? {
+    guard case let .success(current?) = telegramComposerDraftRead(transaction: transaction, accountID: accountID, chatID: chatID),
+          current.revision == revision, current.forwardDisposition == .prepared,
+          current.forwardIntent?.id == intentID, current.forwardIntent?.sources == sources else { return nil }
+    let cleared = TelegramComposerDraft(accountID: accountID, chatID: chatID, input: current.input, replyTarget: current.replyTarget)
+    guard let entry = composerDraftEntry(cleared) else { return nil }
+    return (PreferencesKeys.persistentChatInterfaceData(peerId: PeerId(chatID)), entry)
 }
 private nonisolated func composerDraftLoad(postbox: Postbox, accountID: Int64, chatID: Int64) -> Signal<Result<TelegramComposerDraft?, TelegramComposerDraftPersistenceError>, NoError> {
     postbox.transaction { telegramComposerDraftRead(transaction: $0, accountID: accountID, chatID: chatID) }

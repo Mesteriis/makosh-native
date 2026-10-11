@@ -200,7 +200,17 @@ public final class TelegramModel: ObservableObject {
     }
     public var composerSupportsAttachments: Bool { composerInput.formattedText.isEditable && composerForwardIntent == nil }
     public var isForwardComposerLocked: Bool {
-        composerForwardIntent != nil && (composerForwardDisposition != .prepared || composerForward.phase == .committing || composerForward.phase == .uncertain)
+        guard let intent = composerForwardIntent else { return false }
+        let saved = savedMessagesForward.request
+        let recoveringSaved = saved == nil && (savedMessagesForward.isBusy || savedMessagesForward.phase == .uncertain)
+        let retargetingSaved = saved?.accountID == draftAccountID && saved?.origin?.chatID == selectedChatID &&
+            saved?.origin?.intentID == intent.id && (savedMessagesForward.isBusy || savedMessagesForward.phase == .uncertain)
+        return recoveringSaved || retargetingSaved || composerForwardDisposition != .prepared ||
+            composerForward.phase == .committing || composerForward.phase == .uncertain
+    }
+    public var composerForwardRevision: UUID? {
+        guard let accountID = draftAccountID, let chatID = selectedChatID, composerForwardIntent != nil else { return nil }
+        return drafts.snapshot(accountID: accountID, chatID: chatID)?.revision
     }
     @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
@@ -311,10 +321,18 @@ public final class TelegramModel: ObservableObject {
             self.replyComposerSubmission = nil
             self.acknowledgeComposerDraft(formatted: formatted, submitted: submitted.draft)
         }
+        savedMessagesForward.didChange = { [weak self] in self?.objectWillChange.send() }
         savedMessagesForward.didQueue = { [weak self] request in
             guard let self, self.accountGeneration == request.contextID, self.draftAccountID == request.accountID,
                   let captured = self.savedForwardSelection, captured.requestID == request.id else { return }
             self.savedForwardSelection = nil
+            if let origin = request.origin,
+               let current = self.drafts.snapshot(accountID: request.accountID, chatID: origin.chatID),
+               current.revision == origin.revision, current.forwardIntent?.id == origin.intentID,
+               let cleared = self.drafts.setForwardIntent(nil, accountID: request.accountID, chatID: origin.chatID) {
+                self.persistComposerDraft(cleared)
+                if self.selectedChatID == origin.chatID { self.refreshComposerForward() }
+            }
             if let selected = captured.selection, let current = self.messageSelection.session,
                current.id == selected.id, current.revision == selected.revision, current.contextID == selected.contextID,
                current.accountID == selected.accountID, current.chatID == selected.chatID {
@@ -792,10 +810,24 @@ public final class TelegramModel: ObservableObject {
     }
 
     @discardableResult
-    public func moveComposerForward(to destinationChatID: Int64, intentID: UUID, contextID: UUID) -> Bool {
+    public func moveComposerForward(to destinationChatID: Int64, intentID: UUID, contextID: UUID,
+                                    expectedRevision: UUID? = nil, expectedOriginChatID: Int64? = nil) -> Bool {
         guard contextID == accountGeneration, !isForwardComposerLocked,
-              let intent = composerForwardIntent, intent.id == intentID,
-              let destination = forwardDestinations.first(where: { $0.id == destinationChatID }) else { return false }
+              expectedRevision == nil || expectedRevision == composerForwardRevision,
+              expectedOriginChatID == nil || expectedOriginChatID == selectedChatID,
+              let intent = composerForwardIntent, intent.id == intentID else { return false }
+        if destinationChatID == savedMessagesChatID {
+            guard canChangeMessageSelection, messageSelection.session == nil,
+                  let accountID = draftAccountID, let chatID = selectedChatID, let revision = composerForwardRevision,
+                  !savedMessagesForward.isBusy, savedMessagesForward.phase != .uncertain,
+                  (isSyntheticPreview && composerDraftRepository == nil) || unsavedComposerDrafts[ComposerDraftKey(accountID: accountID, chatID: chatID)] == nil else { return false }
+            let request = TelegramSavedMessagesForwardRequest(contextID: contextID, accountID: accountID, sources: intent.sources,
+                origin: .init(chatID: chatID, revision: revision, intentID: intent.id))
+            guard request.isValid else { return false }
+            savedForwardSelection = (request.id, nil)
+            return savedMessagesForward.perform(request)
+        }
+        guard let destination = forwardDestinations.first(where: { $0.id == destinationChatID }) else { return false }
         guard destinationChatID != selectedChatID else { return true }
         // Another recipient keeps the old chat's ordinary comment/reply.
         guard let originChat = selectedChatID else { return false }

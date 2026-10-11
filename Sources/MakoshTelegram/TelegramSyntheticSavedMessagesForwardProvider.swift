@@ -49,7 +49,8 @@ import SwiftSignalKit
 nonisolated func syntheticSavedForwardCommit(postbox: Postbox, request: TelegramSavedMessagesForwardRequest,
                                              previews: [TelegramComposerForwardPreview]) -> Signal<Result<Bool, TelegramComposerDraftPersistenceError>, NoError> {
     postbox.transaction { transaction in
-        guard request.accountID == -1, request.isValid, previews.count == request.sources.count else { return .success(false) }
+        guard request.accountID == -1, request.isValid, previews.count == request.sources.count,
+              telegramSavedForwardOriginIsCurrent(transaction: transaction, request: request) else { return .success(false) }
         guard telegramSavedForwardBegin(transaction: transaction, accountID: -1, request: request) else { return .failure(.incompatibleData) }
         var ids: [TelegramForwardQueueID] = []
         for preview in previews {

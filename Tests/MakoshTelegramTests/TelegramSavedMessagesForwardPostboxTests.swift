@@ -127,6 +127,105 @@ private func savedForwardObservation(_ box: Postbox) -> Signal<SavedForwardObser
         defer { lease.dispose() }
         await fulfillment(of: [ready], timeout: 20); return try XCTUnwrap(result)
     }
+    private func saveOrigin(_ draft: TelegramComposerDraft, box: Postbox) async throws {
+        let ready = expectation(description: "Persist origin composer"), repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: draft.accountID)
+        var result: Result<Void, TelegramComposerDraftPersistenceError>?
+        repository.save(draft) { result = $0; ready.fulfill() }
+        await fulfillment(of: [ready], timeout: 20); try XCTUnwrap(result).get()
+    }
+    private func originDraft(sources: [TelegramComposerForwardSource]) throws -> TelegramComposerDraft {
+        .init(accountID: 1, chatID: 8,
+            input: try TelegramComposerInput(formattedText: TelegramFormattedText(text: "old recipient comment 😀", entities: [.init(offset: 0, length: 3, kind: .bold)]), selection: .init(location: 4, length: 9)),
+            replyTarget: .init(peerID: 8, namespace: 0, messageID: 33),
+            forwardIntent: .init(sources: sources, hideNames: true, hideCaptions: true))
+    }
+    func testRetargetReceiptClearsOnlyOriginForwardAndSurvivesGenuineReopen() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-retarget-reopen-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        addTeardownBlock { try FileManager.default.removeItem(at: root) }
+        weak var previous: Postbox?
+        let expectedInput = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "old recipient comment 😀", entities: [.init(offset: 0, length: 3, kind: .bold)]), selection: .init(location: 4, length: 9))
+        do {
+            let box = try await open(at: root); previous = box
+            let _: Void = try await value(savedForwardSeed(box))
+            let base = try await value(savedForwardRequest(box)), origin = try originDraft(sources: base.sources)
+            try await saveOrigin(origin, box: box)
+            let request = TelegramSavedMessagesForwardRequest(contextID: base.contextID, accountID: 1, sources: base.sources,
+                origin: .init(chatID: 8, revision: origin.revision, intentID: try XCTUnwrap(origin.forwardIntent?.id)))
+            let began = try await value(savedForwardTransaction(box) { telegramSavedForwardBegin(transaction: $0, accountID: 1, request: request) })
+            XCTAssertTrue(began)
+            let invalidReceipt = try await value(savedForwardTransaction(box) { telegramSavedForwardRecordAcceptance(transaction: $0, accountID: 1, request: request, ids: [.init(peerID: 1, namespace: 1, messageID: 999)]) })
+            XCTAssertFalse(invalidReceipt)
+            let unchanged = try await value(savedForwardTransaction(box) { (try? telegramComposerDraftRead(transaction: $0, accountID: 1, chatID: 8).get()) == origin })
+            XCTAssertTrue(unchanged, "An invalid receipt must not consume the origin forward")
+            let accepted = try await value(savedForwardSyntheticAccept(box, request: request)); XCTAssertTrue(accepted)
+            let current = try await value(savedForwardTransaction(box) { try? telegramComposerDraftRead(transaction: $0, accountID: 1, chatID: 8).get() })
+            XCTAssertNil(current?.forwardIntent); XCTAssertEqual(current?.input, expectedInput)
+            XCTAssertEqual(current?.replyTarget?.messageID, 33); XCTAssertNotEqual(current?.revision, origin.revision)
+        }
+        for _ in 0..<100 where previous != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(previous); guard previous == nil else { return }
+        let box = try await open(at: root)
+        let current = try await value(savedForwardTransaction(box) { try? telegramComposerDraftRead(transaction: $0, accountID: 1, chatID: 8).get() })
+        XCTAssertNil(current?.forwardIntent); XCTAssertEqual(current?.input, expectedInput); XCTAssertEqual(current?.replyTarget?.messageID, 33)
+        let observed = try await value(savedForwardObservation(box)), state = try XCTUnwrap(observed)
+        XCTAssertEqual(state.queuedCount, 2); XCTAssertEqual(state.record?.acceptedIDs?.count, 2)
+    }
+    func testRetargetAdmissionRefusesChangedAndUnknownOriginWithoutQueue() async throws {
+        for unknown in [false, true] {
+            let box = try await open(); let _: Void = try await value(savedForwardSeed(box))
+            let base = try await value(savedForwardRequest(box)), origin = try originDraft(sources: base.sources)
+            try await saveOrigin(origin, box: box)
+            let request = TelegramSavedMessagesForwardRequest(contextID: base.contextID, accountID: 1, sources: base.sources,
+                origin: .init(chatID: 8, revision: origin.revision, intentID: try XCTUnwrap(origin.forwardIntent?.id)))
+            let began = try await value(savedForwardTransaction(box) { telegramSavedForwardBegin(transaction: $0, accountID: 1, request: request) }); XCTAssertTrue(began)
+            let changed = TelegramComposerDraft(accountID: 1, chatID: 8, text: "newer comment", replyTarget: origin.replyTarget, forwardIntent: origin.forwardIntent)
+            if unknown {
+                let _: Void = try await value(savedForwardTransaction(box) { $0.setPreferencesEntry(key: PreferencesKeys.persistentChatInterfaceData(peerId: PeerId(8)), value: PreferencesEntry(data: Data("future origin format".utf8))) })
+            } else { try await saveOrigin(changed, box: box) }
+            let admitted = try await value(savedForwardTransaction(box) { telegramSavedForwardAdmission(transaction: $0, accountID: 1, request: request) })
+            XCTAssertFalse(admitted)
+            let accepted = try await value(savedForwardSyntheticAccept(box, request: request)); XCTAssertFalse(accepted)
+            let state = try await value(savedForwardObservation(box)); XCTAssertNil(state?.record?.acceptedIDs)
+            let preserved = try await value(savedForwardTransaction(box) { transaction in
+                if unknown { return transaction.getPreferencesEntry(key: PreferencesKeys.persistentChatInterfaceData(peerId: PeerId(8)))?.data == Data("future origin format".utf8) }
+                return (try? telegramComposerDraftRead(transaction: transaction, accountID: 1, chatID: 8).get()) == changed
+            })
+            XCTAssertTrue(preserved)
+        }
+    }
+    #if DEBUG
+    func testRealSyntheticRetargetLostAckKeepsOrdinaryOriginAndDurableRemoval() async throws {
+        let box = try await open(), model = TelegramModel.syntheticPreview()
+        model.selectedChatID = 10001
+        let source = try XCTUnwrap(model.messages.last.flatMap(model.actionSource))
+        XCTAssertTrue(model.stageMessageForwards(sources: [source], destinationChatID: 10002, contextID: model.messageActionContextID))
+        model.draft = "origin comment survives lost ACK"
+        let intent = try XCTUnwrap(model.composerForwardIntent)
+        let origin = TelegramComposerDraft(accountID: -1, chatID: 10002, input: model.composerInput,
+            replyTarget: .init(peerID: 10002, namespace: 0, messageID: 130), forwardIntent: intent)
+        try await saveOrigin(origin, box: box)
+        let request = TelegramSavedMessagesForwardRequest(contextID: model.messageActionContextID, accountID: -1, sources: intent.sources,
+            origin: .init(chatID: 10002, revision: origin.revision, intentID: intent.id))
+        let provider = TelegramSyntheticSavedMessagesForwardProvider(postbox: box, loseAcknowledgement: true)
+        let uncertain = expectation(description: "Receipt committed before lost ACK")
+        let lease = provider.submit(request: request) { if $0 == .uncertain { uncertain.fulfill() } }; defer { lease.cancel() }
+        await fulfillment(of: [uncertain], timeout: 20)
+        let receipt = try await value(telegramSavedForwardRecover(postbox: box, accountID: -1)).get()
+        XCTAssertEqual(receipt?.acceptedIDs?.count, 1); XCTAssertEqual(receipt?.request.origin?.intentID, intent.id)
+        let current = try await value(savedForwardTransaction(box) { try? telegramComposerDraftRead(transaction: $0, accountID: -1, chatID: 10002).get() })
+        XCTAssertNil(current?.forwardIntent); XCTAssertEqual(current?.input, origin.input); XCTAssertEqual(current?.replyTarget?.messageID, 130)
+    }
+    #endif
+    func testLegacyOriginlessReceiptStillRecoversWithoutSubmission() async throws {
+        let box = try await open()
+        let bytes = Data(("Makosh.SavedForward.JSON.v1\n" + #"{"schemaVersion":1,"request":{"id":"00000000-0000-0000-0000-000000000001","contextID":"00000000-0000-0000-0000-000000000002","accountID":1,"sources":[{"chatID":7,"peerID":7,"namespace":0,"messageID":1,"fingerprint":"old-source"}]},"acceptedIDs":[{"peerID":1,"namespace":1,"messageID":8}]}"#).utf8)
+        let _: Void = try await value(savedForwardTransaction(box) { $0.setPreferencesEntry(key: telegramSavedForwardKey(accountID: 1), value: PreferencesEntry(data: bytes)) })
+        let loaded = try await value(telegramSavedForwardRecover(postbox: box, accountID: 1)).get()
+        XCTAssertNil(loaded?.request.origin); XCTAssertEqual(loaded?.acceptedIDs?.first?.messageID, 8)
+        let preserved = try await value(savedForwardTransaction(box) { $0.getPreferencesEntry(key: telegramSavedForwardKey(accountID: 1))?.data == bytes })
+        XCTAssertTrue(preserved)
+    }
     private func open(at existingRoot: URL? = nil) async throws -> Postbox {
         initializeAccountManagement()
         let root = existingRoot ?? FileManager.default.temporaryDirectory.appendingPathComponent("makosh-saved-forward-" + UUID().uuidString)

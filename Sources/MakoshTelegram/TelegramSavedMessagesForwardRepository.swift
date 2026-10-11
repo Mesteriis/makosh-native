@@ -27,13 +27,26 @@ nonisolated func telegramSavedForwardRead(transaction: Transaction, accountID: I
           record.isValid, record.request.accountID == accountID else { return .failure(.incompatibleData) }
     return .success(record)
 }
+private nonisolated func savedForwardEntry(_ record: TelegramSavedMessagesForwardRecord) -> PreferencesEntry? {
+    guard record.isValid, let encoded = try? JSONEncoder().encode(record), encoded.count <= 512 * 1024 - savedForwardMarker.count else { return nil }
+    return PreferencesEntry(data: savedForwardMarker + encoded)
+}
 private nonisolated func writeSavedForward(transaction: Transaction, record: TelegramSavedMessagesForwardRecord) -> Bool {
-    guard record.isValid, let encoded = try? JSONEncoder().encode(record), encoded.count <= 512 * 1024 - savedForwardMarker.count else { return false }
-    transaction.setPreferencesEntry(key: telegramSavedForwardKey(accountID: record.request.accountID), value: PreferencesEntry(data: savedForwardMarker + encoded))
+    guard let entry = savedForwardEntry(record) else { return false }
+    transaction.setPreferencesEntry(key: telegramSavedForwardKey(accountID: record.request.accountID), value: entry)
     return true
+}
+private nonisolated func savedForwardOriginRemoval(transaction: Transaction, request: TelegramSavedMessagesForwardRequest) -> (key: ValueBoxKey, entry: PreferencesEntry)? {
+    guard let origin = request.origin else { return nil }
+    return telegramPreparedForwardRemoval(transaction: transaction, accountID: request.accountID, chatID: origin.chatID,
+        revision: origin.revision, intentID: origin.intentID, sources: request.sources)
+}
+nonisolated func telegramSavedForwardOriginIsCurrent(transaction: Transaction, request: TelegramSavedMessagesForwardRequest) -> Bool {
+    request.origin == nil || savedForwardOriginRemoval(transaction: transaction, request: request) != nil
 }
 nonisolated func telegramSavedForwardBegin(transaction: Transaction, accountID: Int64, request: TelegramSavedMessagesForwardRequest) -> Bool {
     guard request.accountID == accountID, request.isValid,
+          telegramSavedForwardOriginIsCurrent(transaction: transaction, request: request),
           case let .success(current) = telegramSavedForwardRead(transaction: transaction, accountID: accountID),
           current == nil || (current?.acceptedIDs != nil && current?.request.id != request.id) else { return false }
     return writeSavedForward(transaction: transaction, record: .init(request: request))
@@ -42,7 +55,14 @@ nonisolated func telegramSavedForwardRecordAcceptance(transaction: Transaction, 
                                                      request: TelegramSavedMessagesForwardRequest, ids: [TelegramForwardQueueID]) -> Bool {
     guard case let .success(current?) = telegramSavedForwardRead(transaction: transaction, accountID: accountID),
           current.request == request, current.acceptedIDs == nil else { return false }
-    return writeSavedForward(transaction: transaction, record: .init(request: request, acceptedIDs: ids))
+    guard let entry = savedForwardEntry(.init(request: request, acceptedIDs: ids)) else { return false }
+    let originRemoval = savedForwardOriginRemoval(transaction: transaction, request: request)
+    guard request.origin == nil || originRemoval != nil else { return false }
+    // Prepare every payload before writing either preference. Both mutations
+    // are committed by the native enqueue transaction alongside the messages.
+    transaction.setPreferencesEntry(key: telegramSavedForwardKey(accountID: accountID), value: entry)
+    if let originRemoval { transaction.setPreferencesEntry(key: originRemoval.key, value: originRemoval.entry) }
+    return true
 }
 /// Called only after an explicit zero-queue refusal, never on cancellation/timeout.
 nonisolated func telegramSavedForwardReject(transaction: Transaction, accountID: Int64,

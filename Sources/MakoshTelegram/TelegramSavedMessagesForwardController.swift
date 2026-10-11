@@ -1,13 +1,20 @@
 import Foundation
 import Combine
 
+struct TelegramSavedMessagesForwardOrigin: Codable, Equatable, Sendable {
+    let chatID: Int64
+    let revision: UUID
+    let intentID: UUID
+}
 struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
     let id: UUID
     let contextID: UUID
     let accountID: Int64
     let sources: [TelegramComposerForwardSource]
-    init(contextID: UUID, accountID: Int64, sources: [TelegramComposerForwardSource]) {
+    let origin: TelegramSavedMessagesForwardOrigin?
+    init(contextID: UUID, accountID: Int64, sources: [TelegramComposerForwardSource], origin: TelegramSavedMessagesForwardOrigin? = nil) {
         id = UUID(); self.contextID = contextID; self.accountID = accountID; self.sources = sources
+        self.origin = origin
     }
     var destinationChatID: Int64 {
         #if DEBUG
@@ -22,7 +29,7 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
               forwardIntent: .init(id: id, sources: sources))
     }
     var isValid: Bool {
-        draft.isValid && sources.allSatisfy { $0.chatID == sources.first?.chatID }
+        draft.isValid && sources.allSatisfy { $0.chatID == sources.first?.chatID } && (origin.map { $0.chatID > 0 } ?? true)
     }
 }
 
@@ -35,12 +42,13 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
 
 /// Separate from the ordinary Saved Messages composer and its pending forward.
 @MainActor public final class TelegramSavedMessagesForwardController: ObservableObject {
-    @Published public private(set) var phase: TelegramMessageActionPhase = .idle
+    @Published public private(set) var phase: TelegramMessageActionPhase = .idle { didSet { didChange?() } }
     @Published public private(set) var error: String?
     public var isBusy: Bool { phase == .validating || phase == .committing }
     public var requestID: UUID? { request?.id }
     var request: TelegramSavedMessagesForwardRequest?
     var didQueue: ((TelegramSavedMessagesForwardRequest) -> Void)?
+    var didChange: (() -> Void)?
     private var provider: (any TelegramSavedMessagesForwardProvider)?
     private var token: UUID?
     private var lease: (any TelegramComposerForwardLease)?

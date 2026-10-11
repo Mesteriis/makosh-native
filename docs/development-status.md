@@ -37,6 +37,8 @@ removal and SIGTERM. Restored File preparation accepts one native queue ID;
 another restart has no preparation resurrection. Mail→Telegram retains chat/off.
 Screenshots were inspected; strict signatures and raw unsigned built–QA equality
 pass. No personal account, microphone or Telegram network was used.
+The verified native QA host is macOS27.0.1; actual runtime on the product's
+minimum macOS26 is not established by this host run.
 
 Private real Postbox/PostgreSQL/S3 readbacks before/after acceptance pass one test
 each: same preparation/local record, exact original bytes/hash, typed metadata,

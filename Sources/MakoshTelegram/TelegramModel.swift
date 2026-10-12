@@ -216,6 +216,7 @@ public final class TelegramModel: ObservableObject {
         }
     }
     @Published public private(set) var composerInput: TelegramComposerInput = .empty
+    @Published public private(set) var uploadCaptionMaximumUTF16Count = 1024
     /// Compatibility for plain input callers. Native rich input updates the
     /// complete value atomically, including its UTF16 selection.
     public var draft: String {
@@ -336,6 +337,7 @@ public final class TelegramModel: ObservableObject {
     private let history = MetaDisposable()
     private let connection = MetaDisposable()
     private let outgoing = MetaDisposable()
+    private let uploadCaptionLimit = MetaDisposable()
     private let contactProfileSubscription = MetaDisposable()
 
     public init() {
@@ -1222,13 +1224,15 @@ public final class TelegramModel: ObservableObject {
     public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID,
                               photoSize: TelegramUploadPhotoSize = .standard) {
         guard canPrepareUpload(target: target, contextID: contextID) else { return }
-        upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput, photoSize: photoSize)
+        upload.prepare(sources: [.init(source: source, mode: mode)], isGrouped: false, target: target, captionInput: captionInput,
+            photoSize: photoSize, captionPolicy: try? .init(maximumUTF16Count: uploadCaptionMaximumUTF16Count))
     }
 
     public func prepareUpload(sources: [TelegramUploadSelection], isGrouped: Bool, target: TelegramUploadTarget,
                               captionInput: TelegramComposerInput, contextID: UUID, photoSize: TelegramUploadPhotoSize = .standard) {
         guard canPrepareUpload(target: target, contextID: contextID) else { return }
-        upload.prepare(sources: sources, isGrouped: isGrouped, target: target, captionInput: captionInput, photoSize: photoSize)
+        upload.prepare(sources: sources, isGrouped: isGrouped, target: target, captionInput: captionInput, photoSize: photoSize,
+            captionPolicy: try? .init(maximumUTF16Count: uploadCaptionMaximumUTF16Count))
     }
 
     private func canPrepareUpload(target: TelegramUploadTarget, contextID: UUID) -> Bool {
@@ -1416,7 +1420,7 @@ public final class TelegramModel: ObservableObject {
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
         account?.network.shouldKeepConnection.set(.single(false))
-        for disposable in [session, authState, action, chatList, history, connection, outgoing, contactProfileSubscription, composerDraftLoad] { disposable.dispose() }
+        for disposable in [session, authState, action, chatList, history, connection, outgoing, uploadCaptionLimit, contactProfileSubscription, composerDraftLoad] { disposable.dispose() }
     }
 
     public func connect(apiID: String, apiHash: String) {
@@ -1648,6 +1652,11 @@ public final class TelegramModel: ObservableObject {
         search.bind(account: account)
         search.setFolder(chatFolder)
         let accountToken = accountGeneration
+        uploadCaptionLimit.set((telegramUploadCaptionLimit(postbox: account.postbox, accountID: account.peerId.toInt64())
+            |> deliverOnMainQueue).start(next: { [weak self] limit in
+                guard let self, self.generation == token, self.accountGeneration == accountToken else { return }
+                self.uploadCaptionMaximumUTF16Count = limit
+            }))
         self.authState.set(nil); self.isBusy = false; self.phase = .ready
         account.shouldBeServiceTaskMaster.set(.single(.always))
         account.shouldKeepOnlinePresence.set(.single(false))
@@ -1666,6 +1675,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        uploadCaptionLimit.set(nil); uploadCaptionMaximumUTF16Count = 1024
         cancelVoiceRecording()
         bindMessageSelectionRangeProvider(nil)
         cancelContactProfile()

@@ -4,6 +4,9 @@ import Foundation
 /// after UI cancellation or account replacement. It never submits to Telegram.
 @MainActor protocol TelegramUploadRecoveryStore: AnyObject {
     var accountID: Int64 { get }
+    func captureAppend(snapshot: TelegramPendingUploadDraft, additions: [TelegramUploadBatchItem],
+                       target: TelegramUploadTarget) async throws -> TelegramUploadAppendCapture
+    func installAppend(_ capture: TelegramUploadAppendCapture, target: TelegramUploadTarget) async throws -> TelegramPendingUploadDraft
     func loadArchiveCapture(chatID: Int64) async throws -> TelegramPendingUploadArchiveCapture?
     func installArchive(preparationID: UUID, expectedRevision: UUID, archive: TelegramPendingUploadArchive,
                         target: TelegramUploadTarget, admission: TelegramPendingUploadArchiveAdmission) async throws -> TelegramPendingUploadDraft
@@ -20,6 +23,9 @@ import Foundation
     func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, presentation: TelegramUploadPresentation,
                  target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool,
                  mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws
+    func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, presentation: TelegramUploadPresentation,
+                 target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool,
+                 mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?, captionPolicy: TelegramUploadCaptionPolicy?) async throws
     func restoreItems(draft: TelegramPendingUploadDraft) async throws -> [TelegramUploadBatchItem]
     func restoreBundle(draft: TelegramPendingUploadDraft) async throws -> TelegramRecoveredUploadBundle
     func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],
@@ -35,6 +41,21 @@ import Foundation
 }
 
 extension TelegramUploadRecoveryStore {
+    func captureAppend(snapshot: TelegramPendingUploadDraft, additions: [TelegramUploadBatchItem],
+                       target: TelegramUploadTarget) async throws -> TelegramUploadAppendCapture {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
+    func installAppend(_ capture: TelegramUploadAppendCapture, target: TelegramUploadTarget) async throws -> TelegramPendingUploadDraft {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
+    func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, presentation: TelegramUploadPresentation,
+                 target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool = false,
+                 mediaSpoiler: Bool = false, originalDraft: TelegramComposerDraft?, captionPolicy: TelegramUploadCaptionPolicy?) async throws {
+        guard captionPolicy == nil else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        try await prepare(preparationID: preparationID, items: items, isGrouped: isGrouped, presentation: presentation,
+            target: target, captionInput: captionInput, captionAboveMedia: captionAboveMedia,
+            mediaSpoiler: mediaSpoiler, originalDraft: originalDraft)
+    }
     func loadArchiveCapture(chatID: Int64) async throws -> TelegramPendingUploadArchiveCapture? {
         throw TelegramPendingUploadPersistenceError.incompatibleData
     }

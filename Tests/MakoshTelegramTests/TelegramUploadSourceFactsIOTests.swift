@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import CryptoKit
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
@@ -63,6 +64,74 @@ final class TelegramUploadSourceFactsIOTests: XCTestCase {
             ("opaque.unknownmakosh", "application/octet-stream"), ("noextension", "application/octet-stream")
         ]
         for (name, want) in cases { XCTAssertEqual(TelegramUploadSourceFactsIO.selectionMIME(for: name), want, name) }
+    }
+
+    // Catches host UTType aliases incorrectly adding/removing Media for the complete selected list.
+    func testReferenceSelectionAliasesDetermineWholeListMediaOrFile() async throws {
+        let bytes = try image(64, 64)
+        let png = try await stage(bytes, name: "ordinary.png")
+        let ordinary = try await TelegramUploadSourceFactsIO.inspect(itemID: UUID(), raw: png, role: .prepared)
+        let cases: [(String, String, TelegramUploadSourceFacts.ImageProbe, [TelegramUploadPresentation])] = [
+            ("selected.PSD", "application/octet-stream", .notImage, [.file, .media]),
+            ("selected.DCR", "application/x-director", .notImage, [.file, .media]),
+            ("selected.BM", "image/bmp", .decoded(width: 64, height: 64), [.media]),
+            ("selected.ICNS", "image/icns", .decoded(width: 64, height: 64), [.media])
+        ]
+        for (name, mime, probe, options) in cases {
+            let raw = try await stage(bytes, name: name)
+            let facts = try await TelegramUploadSourceFactsIO.inspect(itemID: UUID(), raw: raw, role: .prepared)
+            XCTAssertEqual(facts.selectionMIME, mime, name)
+            XCTAssertEqual(facts.image, probe, name)
+            XCTAssertEqual(TelegramUploadSourceClassifier.options(for: [facts, ordinary]), options, name)
+            XCTAssertEqual(TelegramUploadSourceClassifier.initialPresentation(for: [facts, ordinary], asMedia: true),
+                name == "selected.PSD" || name == "selected.DCR" ? .file : .media, name)
+            XCTAssertEqual(try Data(contentsOf: raw.url), bytes)
+        }
+    }
+
+    // Catches reclassifying previously frozen facts when the bounded reference aliases change.
+    func testPriorSelectionAliasesRemainByteVerifiedForRetainedItems() async throws {
+        let bytes = try image(64, 64)
+        let cases: [(String, String, TelegramUploadSourceFacts.ImageProbe)] = [
+            ("retained.PSD", "image/vnd.adobe.photoshop", .decoded(width: 64, height: 64)),
+            ("retained.DCR", "image/x-kodak-dcr", .decoded(width: 64, height: 64)),
+            ("retained.BM", "application/octet-stream", .notImage),
+            ("retained.ICNS", "application/octet-stream", .notImage)
+        ]
+        for (name, mime, probe) in cases {
+            let raw = try await stage(bytes, name: name)
+            let facts = TelegramUploadSourceFacts(itemID: raw.id, role: .prepared, name: name, byteCount: raw.size,
+                plaintextSHA256: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(),
+                selectionMIME: mime, image: probe, grouping: .ordinary)
+            let item = TelegramUploadBatchItem(id: raw.id, file: raw, sourceFacts: facts)
+            do { try await item.verifySourceFacts() }
+            catch { XCTFail("Frozen reviewed alias must remain restorable: \(name): \(error)") }
+        }
+    }
+
+    // Catches accepting arbitrary frozen MIME/probe values or skipping the held-byte digest during compatibility.
+    func testRetainedAliasCompatibilityRejectsForgedMIMEProbeAndMutatedBytes() async throws {
+        let bytes = try image(64, 64)
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let cases: [(String, String, TelegramUploadSourceFacts.ImageProbe, Bool)] = [
+            ("forged.PSD", "image/png", .decoded(width: 64, height: 64), false),
+            ("forged.png", "application/octet-stream", .notImage, false),
+            ("forged.PSD", "image/vnd.adobe.photoshop", .decoded(width: 60, height: 64), false),
+            ("changed.PSD", "image/vnd.adobe.photoshop", .decoded(width: 64, height: 64), true)
+        ]
+        for (name, mime, probe, mutate) in cases {
+            let raw = try await stage(bytes, name: name)
+            let facts = TelegramUploadSourceFacts(itemID: raw.id, role: .prepared, name: name, byteCount: raw.size,
+                plaintextSHA256: digest, selectionMIME: mime, image: probe, grouping: .ordinary)
+            if mutate {
+                var changed = bytes; changed[changed.count - 1] ^= 1
+                try changed.write(to: raw.url)
+            }
+            do {
+                try await TelegramUploadBatchItem(id: raw.id, file: raw, sourceFacts: facts).verifySourceFacts()
+                XCTFail("Retained facts must reject forged type/probe or changed bytes: \(name)")
+            } catch {}
+        }
     }
 
     // Catches applying source thresholds to pixels or normalized output instead of bounded native logical size.

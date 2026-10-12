@@ -6,9 +6,49 @@ this is a workflow migration, with independently authored native views.
 
 ## Current boundary
 
-New picker preparations now use schema15 source facts plus versioned caption
-projection; legacy1–14 keep their send semantics. See the caption/Archive
-continuation at the end for verified behavior and remaining work.
+New picker preparations use schema19 with frozen account caption limits and
+ordered native File-caption capabilities. Schemas1–18 retain their original
+semantics. The media-block continuation below supersedes older progress notes;
+the status ledger records actual gates and runtime acceptance.
+
+### Media block — 2026-10-12
+
+Current captions project Markdown and cloud hashtags with UTF16-safe ranges.
+The own-user tier/config observer supplies the preparation limit; native enqueue
+checks the current account limit again. The default limits are1024/2048. Reorder,
+removal, covers, File/Media/Archive, native receipts and restart retain the frozen
+policy. Legacy projections are not reinterpreted.
+
+Selected JPEG/image MIME with actual WebP bytes follows ordinary photo staging,
+including the first animation frame, and retains the exact File original.
+Selected image/webp remains a document. New PSD/DCR/BM/ICNS MIME aliases match
+the reference; exact previously retained aliases remain supported. Ordinary
+File graphics/PDF use70pt thumbnails, music a40pt play row, and typed static
+WebP a transparent208pt aspect fit. Decoders are bounded; full animated sticker
+rendering remains in the later sticker block.
+
+File/Media destinations appear during a chat file drag. The open preparation
+accepts additional files through the same owned staging pipeline. Every provider
+must complete as a local URL before staging; loading is cancellable and bounded
+to30s. Account/chat/input and preparation revisions are rechecked after loading.
+Repeated picker URLs are deduplicated within the active preparation; picker paths
+are not persisted across restart.
+
+Append captures only new immutable resources, retains the exact old prefix and
+rebuilds an active ZIP from authenticated durable sources. Inactive ZIP caches
+are invalidated. A single Postbox transaction compares the complete predecessor
+bytes before installing the complete candidate; revision UUID reuse cannot admit
+a stale write. A lost install ACK retries that exact candidate, never capture.
+Until verified installation/readback, the existing UI set stays visible and Send
+is blocked. Failure before install preserves the previous restart preparation;
+an uninstalled append itself is not restart-recoverable. Both storage policies
+apply to all new records and ZIPs; local-only records never promote after enable.
+
+Recorder controls follow the350ms/2pt hold, strict100pt lock drag and floating
+120pt control, with outside-cancel confirmation and prepared round poster.
+At the duration cap Makosh prepares and still requires explicit Send. No drop,
+append, preview or recorder cap automatically sends. Physical pointer gestures,
+hardware capture and actual Account/server delivery require separate acceptance.
 
 Ordered schema6 Postbox/S3 storage and all-or-cleanup restoration are implemented.
 The native batch provider now prepares every resource, verifies original payload

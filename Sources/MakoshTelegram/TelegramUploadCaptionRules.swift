@@ -3,22 +3,24 @@ import Foundation
 /// Schema15 changes the send projection, never the durable editor input.
 /// Earlier preparations retain their original caption and receipt semantics.
 enum TelegramUploadCaptionRules: Sendable {
-    case legacy, reference
+    case legacy, reference, current
 
     /// PreviewSenderController uses preview entries, not outgoing message count.
     static func usesCaptionPlaceholder(items: [TelegramUploadBatchItem], presentation: TelegramUploadPresentation,
-                                      isGrouped: Bool) -> Bool {
+                                      isGrouped: Bool, captionPolicy: TelegramUploadCaptionPolicy? = nil) -> Bool {
         guard !items.isEmpty else { return false }
         if presentation == .archive { return true }
         if presentation == .media && isGrouped { return items.count <= 10 }
         guard items.count == 1, let item = items.first?.presented(as: presentation),
               item.file.metadata?.voice == nil, item.file.metadata?.roundVideo == nil else { return false }
+        if let captionPolicy { return captionPolicy.canHaveCaption(itemID: item.id, mode: item.file.mode) }
         return canHaveCaption(kind: item.file.mode.rawValue, metadata: item.file.metadata,
                               selectionMIME: item.sourceFacts?.selectionMIME)
     }
 
     func projection(_ value: TelegramFormattedText) throws -> TelegramFormattedText {
-        guard self == .reference else { return value }
+        if self == .current { return try TelegramUploadCaptionProjection.project(value) }
+        guard self != .legacy else { return value }
         guard value.isEditable, !value.entities.contains(where: {
             if case .customEmoji = $0.kind { return true }; return false
         }) else { throw TelegramFormattedTextError.invalid }
@@ -48,14 +50,16 @@ enum TelegramUploadCaptionRules: Sendable {
     }
 
     func validationUTF16Count(_ value: TelegramFormattedText) -> Int {
-        guard self == .reference else { return value.text.utf16.count }
+        guard self != .legacy else { return value.text.utf16.count }
         return value.text.replacingOccurrences(of: "\u{2028}", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines).utf16.count
     }
 
-    func canSend(_ value: TelegramFormattedText) -> Bool {
-        guard validationUTF16Count(value) <= 1024, let projected = try? projection(value) else { return false }
-        return telegramFormattedCaptionCanSend(projected)
+    func canSend(_ value: TelegramFormattedText, maximumUTF16Count: Int = 1024) -> Bool {
+        guard TelegramUploadCaptionLimit.isValid(maximumUTF16Count),
+              validationUTF16Count(value) <= maximumUTF16Count,
+              let projected = try? projection(value) else { return false }
+        return telegramFormattedCaptionCanSend(projected, maximumUTF16Count: maximumUTF16Count)
     }
 
     static func canHaveCaption(kind: String?, metadata: TelegramUploadMetadata?, selectionMIME: String?) -> Bool {
@@ -68,6 +72,6 @@ enum TelegramUploadCaptionRules: Sendable {
     func hasLeadingText(itemCount: Int, isGrouped: Bool, singleItemCanHaveCaption: Bool,
                         projectedCaption: TelegramFormattedText) -> Bool {
         !isGrouped && !projectedCaption.text.isEmpty &&
-            (itemCount > 1 || (self == .reference && itemCount == 1 && !singleItemCanHaveCaption))
+            (itemCount > 1 || (self != .legacy && itemCount == 1 && !singleItemCanHaveCaption))
     }
 }

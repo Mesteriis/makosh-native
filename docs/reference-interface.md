@@ -10,6 +10,33 @@
 GPLv3-приложение. Компоновка и сценарии воспроизводятся собственным SwiftUI/AppKit
 кодом. Research checkout нужен только для сверки; build/run/test от него не зависят.
 
+Текущий медиаблок (2026-10-12) заменяет прежние отметки об открытых premium
+limits, Markdown, drag/drop и предпросмотре файлов. Подтверждены
+`PreviewSenderController.swift:1091–1107,1171–1187,1213–1238,1261–1280,1824–1837,2001–2010`,
+`SenderController.swift:327–369,455–474,610–617`, `ChatInterfaceState.swift:590–851`
+и `PremiumLimitConfig.swift:110–111`. Новые подготовки имеют schema19: лимит
+текущего пользователя и native caption-capability каждого File заморожены;
+Markdown/cloud hashtags преобразуются перед отправкой. Старые схемы не меняются.
+
+Во время drag в переписке появляются зоны «Файлы/Медиа», в открытом modal —
+«Добавить файлы». Асинхронная загрузка проверяет прежний account/chat/input и
+revision; Send остаётся явным действием. Добавление сохраняет исходные ресурсы,
+при активном Archive пересобирает ZIP до атомарного подтверждения всего набора.
+Вместо reference Shift-autosend сохраняется явная Send — адаптация Макоша.
+
+FileContent/MusicContent и `ChatLayoutUtils.swift:157–175` задают отдельные
+строки: graphic/PDF70pt, music40pt, static typed WebP208pt aspect fit. WebP с
+выбранным JPEG MIME в File остаётся обычной graphic-строкой. Музыка играет только
+по нажатию из отдельной локальной копии, которую отмена/таймаут освобождают.
+Полная анимация стикеров и смешанный reference collage остаются различиями.
+
+Floating recorder повторяет120pt/80pt круг,350ms/2pt hold и strict100pt lock,
+контур замка и outside-cancel confirmation. Prepared round preview сохраняет
+постер после остановки capture session. Собственный gradient заменяет GPLv2 UI
+assets; на лимите длительности требуется явная Send. Автоматические проверки
+жестов и синтетическое AX-действие не доказывают физический timed hold или
+запись камерой/микрофоном. Фактические UI/gate результаты — в development-status.
+
 Для отправки нескольких вложений подтверждены
 `PreviewSenderController.swift:1823–1832,1890–1898` и
 `SenderController.swift:647–704`: отдельная отправка переносит подпись в первое
@@ -18,7 +45,7 @@ GPLv3-приложение. Компоновка и сценарии воспр�
 Собственный batch provider повторяет этот план, готовит все ресурсы и сохраняет
 полный список native Local IDs одной транзакцией. Пустые подписи получают пустой
 список entities вместо reference ranges вне текста — намеренная адаптация.
-Multi-picker, batch controller/recovery и интерфейс подготовки ещё не подключены;
+Multi-picker, batch controller/recovery и интерфейс подготовки подключены;
 реальная доставка Account/network и runtime референса не проверены.
 
 Подготовка вложения по-прежнему следует modal-сценарию

@@ -1,6 +1,92 @@
 # Development status — 2026-10-12
 
-## Current stage: pinned primary Mozjpeg photo encoding
+## Current stage: Telegram media block
+
+The first media block is implemented against the locked TelegramSwift reference
+inside the common Makosh window. New preparations use schema19; schemas1–18
+retain their original policies and bytes. No new third-party source/dependency
+or research-checkout build dependency is introduced.
+
+- Selected JPEG/image MIME with actual WebP bytes follows ordinary photo staging,
+  including the first animation frame, retains the exact File original and can
+  group. Typed image/webp remains a document. New PSD/DCR/BM/ICNS aliases match the
+  reference; exact old aliases stay recoverable. Real native queue/recovery
+  covers both S3 choices.
+- Account tier/config supplies the caption limit (default1024/2048), frozen with
+  ordered native File-caption capability. Current Markdown/cloud hashtags use
+  UTF16-safe ranges. Native enqueue checks the current account limit again;
+  reorder/remove, cover edits, Archive, receipts and restart preserve the policy.
+- Native chat File/Media drop zones and append into the open modal use the same
+  owned staging pipeline. All providers must yield local URLs, with cancellation
+  and a30s deadline. Account/chat/input/preparation revisions reject stale results;
+  active URL deduplication releases removed entries for re-addition.
+- Append retains the old prefix, rebuilds an active ZIP and authenticates the
+  complete candidate before whole-byte Postbox compare-and-swap. A lost ACK retries
+  the exact immutable candidate; no recapture or automatic Send. Pending install
+  freezes editor/options and blocks Send. Pre-install failure preserves the old
+  restart preparation; an uninstalled append is not itself restart-recoverable.
+- File graphics/PDF use70pt thumbnails, music a40pt play row and typed static
+  WebP a transparent208pt aspect fit. Owned bounded decoders use generic fallback.
+  Music starts only on Play from an independent private copy; cancel/deadline stop
+  an in-flight preparation and discard late copies. PDF parser peak CPU/memory is
+  not established beyond the input/page/pixel bounds. Full animated stickers
+  remain in the later sticker block.
+- Recorder controls use the floating120pt circle/80pt center, strict100pt lock
+  drag,350ms stationary hold within2pt, outside-cancel confirmation and prepared
+  round poster. Own gradient/shadow replaces reference assets. Duration cap still
+  requires explicit Send. Both S3 policies apply to every new resource and ZIP;
+  OFF forbids all new S3 copies and local records never promote after enable.
+
+Focused validation retains compiled REDs and repaired results separately:
+38 XCTest/50 Python photo/drop/recorder;36/50 MIME aliases;75/50 caption/native
+policy;129/50 append persistence/native boundaries;53/50 integrated Controller,
+drop-provider and document-preview cases;27/50 composer compatibility and current
+batch cancellation. All listed GREEN runs exit0; counts overlap. Review fixes
+cover pending-append edits, removed-URL deduplication, stale drop errors,
+JPEG-selected WebP File semantics and cancelled audio preparation. Root verifies
+five frozen final append-review fingerprints against current source. These are
+recorded source reviews, not an external runtime approval gate.
+
+Required `scripts/dev-db.sh up`, `scripts/test.sh` and `scripts/build-app.sh`
+exit0. Final isolated full suite: **1,432 XCTest (1,353 Telegram +79 core),
+1 microphone-authorization precondition skip,0 failures;50 Python tests**.
+Incremental compilation and app build have no compiler warnings. Strict deep
+signatures and normalized built/QA executable payload equality pass. No UI upload
+work runs concurrently with the final successful attempt.
+The first full attempt fails14 assertions in three legacy composer fixtures after
+Model moves new single selections onto the batch path. The fixtures now directly
+exercise the retained single-provider adapter; current Model batch transfer and
+rich-input cancellation have real owned-file coverage. Focused27/50 passes.
+The second full attempt has one global temporary-directory inventory assertion
+failure while native QA creates stages concurrently (one extra directory).
+No cleanup assertion is relaxed. The owned QA process is then identity-checked
+and stopped with SIGTERM before the isolated final attempt. Raw failures remain.
+
+Actual native QA uses an isolated synthetic PostgreSQL schema/Postbox and S3
+configuration. In the final signed build the common service sidebar remains,
+the same two-photo preparation IDs and emoji/Markdown caption restore after
+restart, Archive becomes one ZIP, Cancel returns the exact original caption,
+and PDF shows its graphic thumbnail/name/size. Earlier same-block UI observes
+transparent static WebP, PNG File/Media transitions and explicit music Play →
+Pause. Repeating music picker QA in the final build stalls in the OS open panel;
+PDF completes. The external coordinate-input tool returns `noWindowsAvailable`.
+No physical drag/drop/timed-hold PASS is claimed; drop and recorder state/gesture
+logic have automatic coverage, and synthetic AX-start was observed. No personal
+account, server send, camera/microphone capture or new permission grant occurs.
+The owned synthetic runtime is stopped and its recoverable preparations retained.
+Full live Account/hardware acceptance remains the later acceptance block.
+
+Final project XERJ refresh indexes520 files,476/476 classified code, exit0;
+freshness and source-confirmed append/drop queries pass. Locked TelegramSwift
+freshness passes. The earlier bounded three-file integration snapshot was used
+before Controller edits and is not represented as the final fresh index.
+The final full run retains751 SQL-prefixed Postbox t19 teardown diagnostics
+and170 system CoreData/contactsd connection-failure diagnostic lines (including
+10 runtime warnings). No personal-contact read API is added or successful
+account/contact access inferred from them. Earlier failed attempts remain
+separate from the final exit0; new-head hosted CI is tracked separately.
+
+## Previous stage: pinned primary Mozjpeg photo encoding
 
 The next photo slice integrates independently pinned Mozjpeg4.1.4 portable C
 from the selected Telegram-iOS tree.92 unchanged source/provenance files produce

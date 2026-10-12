@@ -40,7 +40,7 @@ let package = Package(
         .target(name: "MakoshJPEGFaultFixture", dependencies: [.product(name: "CMozjpeg", package: "MakoshMozjpeg")],
             path: "Tests/MakoshJPEGFaultFixture",
             cSettings: [.headerSearchPath("../../Sources/MakoshJPEGControl/include")]),
-        .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshTelegram", "MakoshCore", "CPostgres", "MakoshJPEGControl", "MakoshJPEGFaultFixture",
+        .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshApp", "MakoshTelegram", "MakoshCore", "CPostgres", "MakoshJPEGControl", "MakoshJPEGFaultFixture",
             .product(name: "COpus", package: "MakoshOpus"),
             .product(name: "Postbox", package: "Postbox"),
             .product(name: "TelegramCore", package: "TelegramCore"),

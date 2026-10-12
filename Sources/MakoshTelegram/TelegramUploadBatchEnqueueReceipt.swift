@@ -34,7 +34,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, (6...18).contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, (6...19).contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
@@ -57,12 +57,12 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             ids.append(resource.resourceID)
-            plan = try TelegramUploadBatchPlan(archiveID: archive.id, caption: draft.captionInput.formattedText)
+            plan = try TelegramUploadBatchPlan(archiveID: archive.id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy)
         } else {
             guard resources.count == draft.items.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
             plan = try TelegramUploadBatchPlan(items: resources.map(\.item), isGrouped: draft.isGrouped,
                 caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules)
+                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)
             for (stored, resource) in zip(draft.items, resources) {
                 let file = resource.item.file
                 let filePresentation = draft.schemaVersion >= 8 && draft.presentation == .file
@@ -74,6 +74,12 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
                       telegramPendingUploadCoverMatches(filePresentation ? nil : stored.videoCover, file.videoCover),
                       stored.matchesOriginal(resource.item.originalFile), resource.reference != nil else {
                     throw TelegramPendingUploadPersistenceError.incompatibleData
+                }
+                if let policy = draft.captionPolicy, file.mode == .file {
+                    guard let media = resource.reference?.media,
+                          policy.canHaveCaption(itemID: stored.id, mode: .file) == telegramUploadMediaCanHaveCaption(media) else {
+                        throw TelegramPendingUploadPersistenceError.incompatibleData
+                    }
                 }
                 ids.append(resource.resourceID)
                 if let thumbnail = resource.videoThumbnail { ids.append(thumbnail.id) }
@@ -101,7 +107,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             } else { reference = nil }
             guard let message = telegramUploadMessage(caption: entry.caption, reference: reference, target: target,
                 replySource: replySource, captionAboveMedia: entry.captionAboveMedia, mediaSpoiler: entry.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil,
+                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, maximumUTF16Count: draft.captionPolicy?.maximumUTF16Count ?? 1024,
                 isOneTime: entry.itemID.flatMap { byID[$0]?.item.file.metadata?.voice?.isOneTime ?? byID[$0]?.item.file.metadata?.roundVideo?.isOneTime } ?? false) else { return nil }
             result.append(message.withUpdatedGroupingKey { _ in entry.groupIndex.map { groupKeys[$0] } })
         }
@@ -130,10 +136,14 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
                 cachedData: transaction.getPeerCachedData(peerId: peerID), accountID: target.accountID,
                 now: 0, kind: kind) == .allowed else { return false }
         }
+        if draft.captionPolicy != nil {
+            guard let maximum = telegramUploadCaptionLimit(transaction: transaction, accountID: target.accountID),
+                  draft.captionRules.canSend(draft.captionInput.formattedText, maximumUTF16Count: maximum) else { return false }
+        }
         for entry in plan.messages {
             if entry.itemID == nil {
                 guard telegramFormattedTextCanSend(entry.caption, transaction: transaction) else { return false }
-            } else if !telegramFormattedCaptionCanSend(entry.caption, transaction: transaction) { return false }
+            } else if !telegramFormattedCaptionCanSend(entry.caption, transaction: transaction, maximumUTF16Count: draft.captionPolicy?.maximumUTF16Count ?? 1024) { return false }
         }
         if let source = target.replySource {
             let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)

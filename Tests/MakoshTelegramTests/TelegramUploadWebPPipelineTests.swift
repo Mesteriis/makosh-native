@@ -5,8 +5,8 @@ import TelegramCore
 @testable import MakoshTelegram
 
 final class TelegramUploadWebPPipelineTests: XCTestCase {
-    // Catches suffix/photo classification running before the content WebP path.
-    @MainActor func testControllerKeepsWebPOriginalAcrossMisleadingNamesAndPhotoChoice() async throws {
+    // Catches losing original bytes or overriding selected image MIME with the decoder's WebP type.
+    @MainActor func testControllerUsesSelectedPhotoMIMEAndRetainsWebPOriginals() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -23,14 +23,19 @@ final class TelegramUploadWebPPipelineTests: XCTestCase {
                 for _ in 0..<1000 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
                 XCTAssertEqual(controller.phase, .ready)
                 let item = try XCTUnwrap(controller.items.first)
-                XCTAssertEqual(item.file.metadata, expected); XCTAssertEqual(item.file.mode, .file)
-                XCTAssertEqual(item.file.name, name); XCTAssertNil(item.originalFile)
-                XCTAssertEqual(try Data(contentsOf: item.file.url), fixture.data)
-                // The original .jpg name contributes Media; content still stays an unchanged WebP document.
+                if name == "Picture.jpg" {
+                    XCTAssertEqual(item.file.mode, .photo); XCTAssertNil(item.file.metadata)
+                    XCTAssertEqual(item.file.pixelWidth, 320); XCTAssertEqual(item.file.pixelHeight, 160)
+                    XCTAssertEqual(try Data(contentsOf: XCTUnwrap(item.originalFile).url), fixture.data)
+                    XCTAssertTrue(controller.canGroupItems); XCTAssertTrue(controller.isGrouped)
+                } else {
+                    XCTAssertEqual(item.file.metadata, expected); XCTAssertEqual(item.file.mode, .file)
+                    XCTAssertEqual(item.file.name, name); XCTAssertNil(item.originalFile)
+                    XCTAssertEqual(try Data(contentsOf: item.file.url), fixture.data)
+                    XCTAssertFalse(controller.canGroupItems); XCTAssertFalse(controller.isGrouped)
+                }
                 XCTAssertEqual(controller.presentation, name == "Picture.jpg" ? .media : .file)
                 XCTAssertEqual(controller.canSwitchPresentation, name == "Picture.jpg")
-                XCTAssertFalse(controller.canGroupItems)
-                XCTAssertFalse(controller.isGrouped)
                 controller.clear()
             }
         }

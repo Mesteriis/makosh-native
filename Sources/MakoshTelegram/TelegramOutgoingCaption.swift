@@ -3,13 +3,14 @@ import Postbox
 import SwiftSignalKit
 
 /// Empty and whitespace captions are meaningful; never trim their source text.
-func telegramFormattedCaptionCanSend(_ value: TelegramFormattedText) -> Bool {
-    guard value.isEditable, value.text.utf16.count <= 1024 else { return false }
+func telegramFormattedCaptionCanSend(_ value: TelegramFormattedText, maximumUTF16Count: Int = 1024) -> Bool {
+    guard TelegramUploadCaptionLimit.isValid(maximumUTF16Count),
+          value.isEditable, value.text.utf16.count <= maximumUTF16Count else { return false }
     return !value.entities.contains { if case .customEmoji = $0.kind { return true }; return false }
 }
 
-func telegramFormattedCaptionCanSend(_ value: TelegramFormattedText, transaction: Transaction) -> Bool {
-    guard telegramFormattedCaptionCanSend(value) else { return false }
+func telegramFormattedCaptionCanSend(_ value: TelegramFormattedText, transaction: Transaction, maximumUTF16Count: Int = 1024) -> Bool {
+    guard telegramFormattedCaptionCanSend(value, maximumUTF16Count: maximumUTF16Count) else { return false }
     for entity in value.entities {
         if case let .textMention(peerID) = entity.kind {
             guard let user = transaction.getPeer(PeerId(peerID)) as? TelegramUser,
@@ -20,8 +21,8 @@ func telegramFormattedCaptionCanSend(_ value: TelegramFormattedText, transaction
 }
 
 /// Construct the queue callback outside MainActor, including for empty captions.
-nonisolated func telegramValidateOutgoingCaption(postbox: Postbox, formatted: TelegramFormattedText) -> Signal<Bool, NoError> {
+nonisolated func telegramValidateOutgoingCaption(postbox: Postbox, formatted: TelegramFormattedText, maximumUTF16Count: Int = 1024) -> Signal<Bool, NoError> {
     postbox.transaction { transaction in
-        telegramFormattedCaptionCanSend(formatted, transaction: transaction)
+        telegramFormattedCaptionCanSend(formatted, transaction: transaction, maximumUTF16Count: maximumUTF16Count)
     }
 }

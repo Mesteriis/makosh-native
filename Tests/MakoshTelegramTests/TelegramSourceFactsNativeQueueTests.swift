@@ -53,6 +53,74 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
 }
 
 @MainActor final class TelegramSourceFactsNativeQueueTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches dropping WebP originals during photo normalization or reinterpreting frozen derivatives on restore.
+    func testSelectedWebPPhotoAndFileModesRestoreAndQueueUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] {
+            for presentation in [TelegramUploadPresentation.media, .file] {
+                let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+                try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: enabled)
+                let source = fixture.root.appendingPathComponent("selected.jpg")
+                let other = fixture.root.appendingPathComponent("other.png")
+                try writeUploadWebPFixture(source); try writeUploadVideoCoverFixture(other)
+                let rawBytes = try Data(contentsOf: source)
+                let controller = TelegramUploadController(); controller.bind(provider: SourceFactsPickerProvider())
+                defer { controller.clear() }
+                controller.prepare(sources: [source, other].map { .init(source: $0, mode: .photo) }, isGrouped: true,
+                    target: fixture.target, captionInput: .empty)
+                for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+                XCTAssertEqual(controller.phase, .ready); XCTAssertTrue(controller.isGrouped)
+                let items = controller.items
+                guard items.count == 2, items[0].file.mode == .photo else {
+                    XCTFail("Selected JPEG MIME must produce a grouped photo from bounded WebP bytes"); continue
+                }
+                let jpegBytes = try Data(contentsOf: items[0].file.url), store = fixture.session(box), id = UUID()
+                let input = try TelegramComposerInput(formattedText: .init(text: "WebP 😀"))
+                try await store.prepare(preparationID: id, items: items, isGrouped: true, presentation: presentation,
+                    target: fixture.target, captionInput: input, originalDraft: nil)
+                let prepared = try await sourceFactsLoad(store)
+                controller.clear(); try FileManager.default.removeItem(at: source); try FileManager.default.removeItem(at: other)
+                let restored = try await fixture.session(box).restoreItems(draft: prepared)
+                defer { restored.forEach { try? $0.discard() } }
+                XCTAssertEqual(restored.map(\.id), items.map(\.id))
+                XCTAssertEqual(try Data(contentsOf: restored[0].file.url), jpegBytes)
+                XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored[0].originalFile).url), rawBytes)
+                guard let (accepted, messages) = try await submit(fixture, box: box, items: restored,
+                    presentation: presentation, grouped: true, caption: "WebP 😀", existingPreparationID: id) else { continue }
+                XCTAssertEqual(accepted.items, prepared.items); XCTAssertEqual(messages.count, 2)
+                XCTAssertNotNil(messages.first?.groupingKey)
+                XCTAssertEqual(messages.first?.groupingKey, messages.last?.groupingKey)
+                if presentation == .media {
+                    let image = try XCTUnwrap(messages[0].media.first as? TelegramMediaImage)
+                    let representation = try XCTUnwrap(image.representations.first)
+                    XCTAssertEqual(representation.dimensions.width, 320); XCTAssertEqual(representation.dimensions.height, 160)
+                    let cached = try await cachedBytes(box, resource: representation.resource)
+                    XCTAssertEqual(cached, jpegBytes); XCTAssertEqual(messages[0].text, "WebP 😀")
+                } else {
+                    let document = try XCTUnwrap(messages[0].media.first as? TelegramMediaFile)
+                    XCTAssertEqual(document.mimeType, "image/jpeg")
+                    XCTAssertFalse(document.attributes.contains { if case .Sticker = $0 { true } else { false } })
+                    let cached = try await cachedBytes(box, resource: document.resource)
+                    XCTAssertEqual(cached, rawBytes); XCTAssertEqual(messages[1].text, "WebP 😀")
+                }
+                let records = prepared.items.flatMap { [$0.file] + ($0.originalFile.map { [$0] } ?? []) }
+                XCTAssertEqual(records.count, 4)
+                for record in records {
+                    let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: record.objectKey)
+                    XCTAssertEqual(object != nil, enabled)
+                }
+                if !enabled {
+                    XCTAssertEqual(try fixture.localRecords().count, 4)
+                    try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: true)
+                    let resumed = try await fixture.archive.resume(); XCTAssertEqual(resumed, 0)
+                    for record in records {
+                        let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: record.objectKey)
+                        XCTAssertNil(object)
+                    }
+                }
+            }
+        }
+    }
+
     // Catches losing the selected photo recipe during durable restore/native mapping, or creating S3 copies with OFF.
     func testSelectedPhotoSizeKeepsItsPreparedBytesThroughRestoreAndNativeQueueUnderBothPolicies() async throws {
         for enabled in [false, true] {

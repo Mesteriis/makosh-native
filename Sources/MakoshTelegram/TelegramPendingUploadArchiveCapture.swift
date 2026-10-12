@@ -38,7 +38,7 @@ private func archiveCaptureMatches(_ capture: TelegramPendingUploadArchiveCaptur
           let expected = try? TelegramPendingUploadDraft(id: current.id, revision: candidate.revision,
             accountID: accountID, chatID: chatID, title: current.title, captionInput: current.captionInput,
             originalDraft: current.originalDraft, replyTarget: current.replyTarget, items: current.items,
-            isGrouped: false, presentation: .archive, captionRules: current.captionRules, mediaRules: current.mediaRules, archive: archive),
+            isGrouped: false, presentation: .archive, captionRules: current.captionRules, mediaRules: current.mediaRules, archive: archive, captionPolicy: current.captionPolicy),
           let expectedBytes = archiveCaptureEncoding(expected), let candidateBytes = archiveCaptureEncoding(candidate) else { return false }
     return expectedBytes == candidateBytes
 }

@@ -104,7 +104,7 @@ enum TelegramUploadBatchAdmission {
                       return member.itemID == item.id && member.sourceName.utf8.elementsEqual(facts.name.utf8) &&
                           member.byteCount == facts.byteCount && member.plaintextSHA256 == facts.plaintextSHA256
                   }),
-                  (try? TelegramUploadBatchPlan(archiveID: descriptor.id, caption: draft.captionInput.formattedText)) != nil else {
+                  (try? TelegramUploadBatchPlan(archiveID: descriptor.id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy)) != nil else {
                 finish(.rejected); return
             }
             validation = Task { [weak self] in
@@ -120,11 +120,11 @@ enum TelegramUploadBatchAdmission {
             }
             return
         }
-        guard (draft.archive == nil) == (archive == nil), (6...18).contains(draft.schemaVersion),
+        guard (draft.archive == nil) == (archive == nil), (6...19).contains(draft.schemaVersion),
               self.items.count == items.count,
               (try? TelegramUploadBatchPlan(items: self.items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
                 captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules)) != nil else {
+                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)) != nil else {
             finish(.rejected); return
         }
         if let archive {
@@ -189,10 +189,10 @@ enum TelegramUploadBatchAdmission {
     private func commit() {
         guard !stopped, !committing else { return }
         do {
-            let plan = try archive != nil ? TelegramUploadBatchPlan(archiveID: items[0].id, caption: draft.captionInput.formattedText)
+            let plan = try archive != nil ? TelegramUploadBatchPlan(archiveID: items[0].id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy)
                 : TelegramUploadBatchPlan(items: items, isGrouped: draft.isGrouped,
                 caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules)
+                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)
             var keys: [Int64] = []
             while keys.count < plan.groupCount {
                 let key = Int64.random(in: Int64.min...Int64.max)

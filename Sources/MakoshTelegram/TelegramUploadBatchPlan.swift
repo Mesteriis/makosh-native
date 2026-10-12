@@ -25,13 +25,15 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
     let groupCount: Int
 
     /// Archive is one document, independent of the number of canonical sources.
-    init(archiveID: UUID, caption: TelegramFormattedText) throws {
+    init(archiveID: UUID, caption: TelegramFormattedText, captionPolicy: TelegramUploadCaptionPolicy? = nil) throws {
+        let rules: TelegramUploadCaptionRules = captionPolicy == nil ? .reference : .current
+        let maximum = captionPolicy?.maximumUTF16Count ?? 1024
         guard archiveID != TelegramPendingUploadDraft.zeroUUID,
-              TelegramUploadCaptionRules.reference.canSend(caption) else {
+              rules.canSend(caption, maximumUTF16Count: maximum) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
-        let projected = try TelegramUploadCaptionRules.reference.projection(caption)
-        guard telegramFormattedCaptionCanSend(projected) else {
+        let projected = try rules.projection(caption)
+        guard telegramFormattedCaptionCanSend(projected, maximumUTF16Count: maximum) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         messages = [.init(itemID: archiveID, caption: projected, groupIndex: nil,
@@ -41,7 +43,11 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
 
     init(items: [TelegramUploadBatchItem], isGrouped: Bool, caption: TelegramFormattedText,
          captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil,
-         captionRules: TelegramUploadCaptionRules = .reference) throws {
+         captionRules: TelegramUploadCaptionRules = .reference, captionPolicy: TelegramUploadCaptionPolicy? = nil) throws {
+        let maximum = captionPolicy?.maximumUTF16Count ?? 1024
+        guard captionPolicy == nil || (captionRules == .current && captionPolicy!.isValid(for: items.map(\.id))) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
         guard presentation != .archive else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         if items.contains(where: { $0.file.metadata?.roundVideo != nil }) {
             guard items.count == 1, !isGrouped, caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
@@ -55,11 +61,11 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
         }
-        guard captionRules.canSend(caption) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        guard captionRules.canSend(caption, maximumUTF16Count: maximum) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         let caption = try captionRules.projection(caption)
         guard !items.isEmpty, Set(items.map(\.id)).count == items.count,
               items.allSatisfy({ $0.id != TelegramPendingUploadDraft.zeroUUID }),
-              telegramFormattedCaptionCanSend(caption),
+              telegramFormattedCaptionCanSend(caption, maximumUTF16Count: maximum),
               presentation != nil || items.allSatisfy({ $0.file.mode == .file }) || items.allSatisfy({ $0.file.mode != .file }),
               presentation != nil || (!captionAboveMedia && !mediaSpoiler) || items.allSatisfy({ $0.file.mode != .file }),
               presentation == nil || !isGrouped || presentation!.allowsGrouping(items) else {
@@ -70,7 +76,7 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
         groupCount = grouped ? (items.count + 9) / 10 : 0
         var result: [Message] = []
         let leadingText = captionRules.hasLeadingText(itemCount: items.count, isGrouped: isGrouped,
-            singleItemCanHaveCaption: TelegramUploadCaptionRules.canHaveCaption(kind: items.first?.file.mode.rawValue,
+            singleItemCanHaveCaption: items.first.flatMap { captionPolicy?.canHaveCaption(itemID: $0.id, mode: $0.file.mode) } ?? TelegramUploadCaptionRules.canHaveCaption(kind: items.first?.file.mode.rawValue,
                 metadata: items.first?.file.metadata, selectionMIME: items.first?.sourceFacts?.selectionMIME), projectedCaption: caption)
         if leadingText {
             result.append(.init(itemID: nil, caption: caption, groupIndex: nil, captionAboveMedia: false, mediaSpoiler: false))

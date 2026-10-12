@@ -221,7 +221,8 @@ public struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
     func verifySourceFacts() async throws {
         guard let facts = sourceFacts else { return }
         guard facts.isValid, facts.itemID == id, facts.role == (originalFile == nil ? .prepared : .original),
-              try await TelegramUploadSourceFactsIO.inspect(itemID: id, raw: rawSource, role: facts.role, metadata: file.metadata) == facts else {
+              try await TelegramUploadSourceFactsIO.inspectRetained(itemID: id, raw: rawSource, role: facts.role,
+                  metadata: file.metadata, frozenMIME: facts.selectionMIME) == facts else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
     }

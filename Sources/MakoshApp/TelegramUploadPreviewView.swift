@@ -87,8 +87,8 @@ struct TelegramUploadPreviewView: View {
                     accessibilityLabel: usesCaption ? "Подпись к вложению" : "Комментарий к вложениям", inputChanged: { input in
                         _ = upload.updateCaptionInput(input, contextID: captionContext)
                     }, submit: send)
-                    .id(captionContext).disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving)
-                Text("\(usesCaption ? "Подпись" : "Комментарий"): \(upload.captionValidationUTF16Count)/1024")
+                    .id(captionContext).disabled(upload.phase != .ready || upload.isAppendingItems || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving)
+                Text("\(usesCaption ? "Подпись" : "Комментарий"): \(upload.captionValidationUTF16Count)/\(upload.captionMaximumUTF16Count)")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let error = upload.error {
@@ -131,6 +131,7 @@ struct TelegramUploadPreviewView: View {
             }
         }
         .padding(20).frame(width: 520)
+        .modifier(TelegramUploadAppendDropModifier(model: model))
         .interactiveDismissDisabled(!canDismiss)
         .sheet(item: $coverEditor, onDismiss: {
             if let coverChoiceID { upload.cancelVideoCoverEdit(coverChoiceID) }
@@ -287,15 +288,18 @@ private struct TelegramUploadFilePreview: View {
                     } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
                 }.clipped()
             } else {
-                Image(systemName: "doc.fill").font(.system(size: 48)).foregroundStyle(.secondary).padding(18)
+                TelegramUploadDocumentPreview(file: file, isActive: upload.phase == .ready && upload.videoCoverEditingID == nil && !upload.isVideoCoverSaving)
             }
-            Text("\(file.name) • \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
+            if file.mode != .file {
+                Text("\(file.name) • \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
                 .font(.callout).lineLimit(2).accessibilityIdentifier("telegram.upload.file")
+            }
             if file.mode == .photo {
                 Text("JPEG без исходных метаданных").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .padding(12).frame(maxWidth: .infinity).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .padding(12).frame(maxWidth: .infinity)
+        .background { if file.mode != .file { RoundedRectangle(cornerRadius: 8).fill(.quaternary) } }
         .task(id: previewKey) {
             guard file.mode == .photo || file.mode == .video else { return }
             preview = nil; failed = false

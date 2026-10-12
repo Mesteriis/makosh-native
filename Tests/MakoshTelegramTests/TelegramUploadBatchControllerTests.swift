@@ -5,6 +5,34 @@ import ImageIO
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadBatchControllerTests: XCTestCase {
+    // Catches content sniffing overriding the reference's selected image MIME before photo generation.
+    func testWebPWithJPEGSelectionUsesPhotoPayloadAndRetainsTheExactOriginalForFileMode() async throws {
+        let root = try makeSources()[0].deletingLastPathComponent()
+        let first = root.appendingPathComponent("first.jpg"), second = root.appendingPathComponent("second.png")
+        try writeUploadWebPFixture(first); try writeUploadVideoCoverFixture(second)
+        let original = try Data(contentsOf: first)
+        let controller = TelegramUploadController(); controller.bind(provider: BatchStagingProvider())
+        defer { controller.clear() }
+        controller.prepare(sources: [first, second].map { .init(source: $0, mode: .photo) }, isGrouped: true,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic WebP selection"), captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(controller.presentation, .media)
+        XCTAssertTrue(controller.isGrouped); XCTAssertTrue(controller.canGroupItems)
+        let item = try XCTUnwrap(controller.items.first)
+        XCTAssertEqual(item.file.mode, .photo); XCTAssertNil(item.file.metadata)
+        XCTAssertEqual(item.sourceFacts?.selectionMIME, "image/jpeg")
+        XCTAssertEqual(item.sourceFacts?.role, .original)
+        XCTAssertEqual(item.file.pixelWidth, 320); XCTAssertEqual(item.file.pixelHeight, 160)
+        guard let raw = item.originalFile else { XCTFail("Photo mode must retain original WebP bytes"); return }
+        XCTAssertEqual(try Data(contentsOf: raw.url), original)
+        let photoBytes = try Data(contentsOf: item.file.url)
+        XCTAssertEqual(CGImageSourceGetType(try XCTUnwrap(CGImageSourceCreateWithData(photoBytes as CFData, nil))) as String?, "public.jpeg")
+        let projected = try XCTUnwrap(item.presented(as: .file))
+        XCTAssertEqual(projected.file.name, "first.jpg"); XCTAssertEqual(projected.file.mode, .file)
+        XCTAssertEqual(try Data(contentsOf: projected.file.url), original)
+        XCTAssertEqual(item.presented(as: .media)?.file, item.file)
+    }
+
     // Catches losing the per-preparation size at the controller boundary.
     func testPickerUsesTheExplicitPhotoSize() async throws {
         let root = try makeSources()[0].deletingLastPathComponent()

@@ -343,7 +343,7 @@ import SwiftSignalKit
             callback = receive; return UploadLease()
         }
     }
-    private func prepareTransfer(_ model: TelegramModel, input: TelegramComposerInput) async throws -> UploadProvider {
+    private func prepareLegacyTransfer(_ model: TelegramModel, input: TelegramComposerInput) async throws -> UploadProvider {
         let provider = UploadProvider()
         model.upload.bind(provider: provider)
         model.upload.stage = { _, _ in
@@ -353,8 +353,10 @@ import SwiftSignalKit
         }
         model.upload.discard = { _ in }
         let target = try XCTUnwrap(model.uploadTarget(replyTo: model.composerReply.resolved?.source, contextID: model.uploadContextID))
-        model.prepareUpload(source: URL(fileURLWithPath: "/synthetic/source"), mode: .file,
-            target: target, captionInput: input, contextID: model.uploadContextID)
+        // This single-provider fixture exercises retained legacy transfer/ACK hooks.
+        // Current Model batch staging and rich-input cancellation use real owned files in TelegramUploadDropTests.
+        model.upload.prepare(source: URL(fileURLWithPath: "/synthetic/source"), mode: .file,
+            target: target, captionInput: input)
         for _ in 0..<100 where model.upload.phase == .preparing { await Task.yield() }
         XCTAssertEqual(model.upload.phase, .ready)
         return provider
@@ -366,7 +368,7 @@ import SwiftSignalKit
         let input = try richInput(selection: .init(location: 0, length: 2))
         XCTAssertTrue(model.updateComposerInput(input, contextID: model.messageActionContextID, chatID: 10001))
         let saved = try XCTUnwrap(repository.writes.last?.0)
-        _ = try await prepareTransfer(model, input: input)
+        _ = try await prepareLegacyTransfer(model, input: input)
         XCTAssertTrue(model.isComposerSuspended); XCTAssertEqual(model.composerInput, .empty)
         XCTAssertNil(model.composerReply.resolved)
         XCTAssertEqual(repository.writes.last?.0, saved)
@@ -384,7 +386,7 @@ import SwiftSignalKit
             let (model, repository) = fixture()
             let input = try richInput()
             XCTAssertTrue(model.updateComposerInput(input, contextID: model.messageActionContextID, chatID: 10001))
-            let provider = try await prepareTransfer(model, input: input)
+            let provider = try await prepareLegacyTransfer(model, input: input)
             model.upload.caption = "edited attachment caption"
             if newer { model.draft = "new ordinary revision" }
             model.upload.send()
@@ -398,14 +400,14 @@ import SwiftSignalKit
         let (model, _) = fixture()
         let old = try richInput()
         model.draft = "newer while picker open"
-        let provider = try await prepareTransfer(model, input: old)
+        let provider = try await prepareLegacyTransfer(model, input: old)
         XCTAssertFalse(model.isComposerSuspended)
         model.upload.caption = model.draft
         model.upload.send(); provider.callback?(.committing); provider.callback?(.accepted("synthetic-only"))
         XCTAssertEqual(model.draft, "newer while picker open")
         model.upload.clear()
         let input = model.composerInput
-        _ = try await prepareTransfer(model, input: input)
+        _ = try await prepareLegacyTransfer(model, input: input)
         model.upload.didFinishPreparation?(UUID())
         XCTAssertTrue(model.isComposerSuspended)
         model.disconnect()

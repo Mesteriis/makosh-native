@@ -14,13 +14,13 @@ actor TelegramPendingUploadFiles {
     }
 
     func saveCover(_ cover: TelegramUploadVideoCover, accountID: Int64, chatID: Int64, preparationID: UUID,
-                   itemID: UUID? = nil, capture: ArchiveFileCapture? = nil) async throws -> TelegramPendingUploadVideoCover {
+                   itemID: UUID? = nil, capture: ArchiveFileCapture? = nil, reservedID: UUID? = nil) async throws -> TelegramPendingUploadVideoCover {
         let frozen = try capture ?? Self.captureCover(cover)
         let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
         let record = try await repository.capture(frozen,
             identity: identity,
             attachment: MessageArchiveAttachment(id: itemID.map(TelegramPendingUploadItem.coverAttachmentID) ?? "video-cover", kind: "photo", name: cover.name, size: cover.size),
-            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity), reservedID: reservedID)
         guard record.plaintextSHA256 == cover.sha256, record.plaintextByteCount == cover.size else {
             throw TelegramUploadFileError.unavailable
         }
@@ -125,7 +125,7 @@ actor TelegramPendingUploadFiles {
     }
 
     func save(file: TelegramUploadFile, accountID: Int64, chatID: Int64, preparationID: UUID,
-              itemID: UUID? = nil, capture frozen: ArchiveFileCapture? = nil) async throws -> ArchiveFileRecord {
+              itemID: UUID? = nil, capture frozen: ArchiveFileCapture? = nil, reservedID: UUID? = nil) async throws -> ArchiveFileRecord {
         try Task.checkCancellation()
         // A batch freezes every owned inode before starting the first upload.
         let capture = try frozen ?? Self.captureFile(file)
@@ -142,7 +142,7 @@ actor TelegramPendingUploadFiles {
         return try await repository.capture(capture,
             identity: identity,
             attachment: MessageArchiveAttachment(id: itemID.map(TelegramPendingUploadItem.attachmentID) ?? "prepared", kind: file.mode.rawValue, name: file.name, size: file.size),
-            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity), reservedID: reservedID)
     }
 
     func restore(record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID, video: TelegramUploadVideoMetadata? = nil,
@@ -152,14 +152,14 @@ actor TelegramPendingUploadFiles {
     }
 
     func saveOriginal(_ file: TelegramUploadFile, accountID: Int64, chatID: Int64, preparationID: UUID,
-                      itemID: UUID, capture: ArchiveFileCapture) async throws -> ArchiveFileRecord {
+                      itemID: UUID, capture: ArchiveFileCapture, reservedID: UUID? = nil) async throws -> ArchiveFileRecord {
         guard file.mode == .file, file.metadata == nil, file.size <= 20 * 1024 * 1024 else { throw TelegramUploadFileError.unavailable }
         try Task.checkCancellation()
         let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
         return try await repository.capture(capture,
             identity: identity,
             attachment: .init(id: TelegramPendingUploadItem.originalAttachmentID(itemID), kind: "file", name: file.name, size: file.size),
-            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity), reservedID: reservedID)
     }
 
     func restoreOriginal(_ record: ArchiveFileRecord, accountID: Int64, chatID: Int64, preparationID: UUID, itemID: UUID) async throws -> TelegramUploadFile {

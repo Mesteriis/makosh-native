@@ -73,6 +73,7 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.media.saved")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
+            .modifier(TelegramUploadDropModifier(model: model))
             .overlay {
                 TelegramRoundVideoRecorderView(recording: model.voiceRecording, upload: upload,
                     selectedChatID: model.selectedChatID, synthetic: model.isSyntheticPreview)

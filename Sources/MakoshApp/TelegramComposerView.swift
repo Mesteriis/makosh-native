@@ -78,17 +78,6 @@ struct TelegramComposerView: View {
             Text(voice.phase == .authorizing ? "Проверка доступа…" : voice.phase == .finishing ? "Сохранение записи…" : voice.phase == .locked ? "Запись закреплена" : "Вверх — закрепить · вне кнопки — отменить")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 .accessibilityIdentifier("telegram.voice.state")
-            if voice.phase == .locked && voice.canUseOneTime {
-                Button { voice.setOneTime(!voice.isOneTime) } label: {
-                    Image(systemName: voice.isOneTime ? "1.circle.fill" : "1.circle")
-                        .font(.system(size: 24)).frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain).foregroundStyle(voice.isOneTime ? Color.accentColor : Color.secondary)
-                .accessibilityLabel(voice.selectedKind == .roundVideo ? "Одноразовое круглое видео" : "Одноразовое голосовое сообщение")
-                .accessibilityValue(voice.isOneTime ? "Включено" : "Выключено")
-                .accessibilityIdentifier("telegram.voice.oneTime")
-                .help(voice.selectedKind == .roundVideo ? (voice.isOneTime ? "Отключить одноразовый просмотр" : "Разрешить собеседнику только один просмотр") : (voice.isOneTime ? "Отключить одноразовое прослушивание" : "Разрешить собеседнику только одно прослушивание"))
-            }
             Button(action: voice.requestCancel) { Image(systemName: "trash") }
                 .buttonStyle(.plain).accessibilityLabel("Отменить запись").accessibilityIdentifier("telegram.voice.cancel")
         }.frame(height: 32).accessibilityElement(children: .contain)

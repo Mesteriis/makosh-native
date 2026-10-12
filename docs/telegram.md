@@ -97,6 +97,19 @@ Destroying the model also shuts down subscriptions through isolated deinit.
 
 ## Implemented surface and limits
 
+The current Telegram media preparation contract is described in
+`telegram-album-migration.md` (Media block,2026-10-12). New ordinary picker
+preparations use schema19 with account-derived caption limits, current Markdown
+and cloud-hashtag projection, and final native File-caption capabilities.
+Earlier1024-only and unfinished-preview notes below describe historical slices;
+schemas1–18 retain those frozen rules. File/Media chat drops and append into the
+open preview use cancellable local-URL loading and the ordinary staging pipeline.
+Append preserves old immutable resources and installs a verified complete
+candidate with full-byte Postbox CAS; only installation can be retried after
+capture. File/music/PDF/static-WebP previews read owned local files and never
+autoplay or fetch from the network. Full animated stickers, image editing,
+hardware capture and live Account/server acceptance remain separate work.
+
 - Existing-account phone → code → optional password authorization calls real
   TelegramCore APIs. Code/password requests time out after 30 seconds; local
   session opening reports a problem after 45 seconds. There is no automatic

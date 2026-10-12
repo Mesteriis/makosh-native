@@ -6,15 +6,19 @@ import UniformTypeIdentifiers
 
 enum TelegramUploadPhotoEligibility {
     /// SenderController's payload decision uses transformed photo pixels. Source options use separate logical facts.
-    static func canPrepare(_ raw: TelegramUploadFile, photoSize: TelegramUploadPhotoSize = .standard) async throws -> Bool {
+    static func canPrepare(_ raw: TelegramUploadFile, photoSize: TelegramUploadPhotoSize = .standard,
+                           allowsSelectedWebPPhoto: Bool = false) async throws -> Bool {
         try Task.checkCancellation()
-        let worker = Task.detached(priority: .utility) { try inspect(raw, photoSize: photoSize) }
+        let worker = Task.detached(priority: .utility) {
+            try inspect(raw, photoSize: photoSize, allowsSelectedWebPPhoto: allowsSelectedWebPPhoto)
+        }
         let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
         try Task.checkCancellation()
         return result
     }
 
-    private static func inspect(_ raw: TelegramUploadFile, photoSize: TelegramUploadPhotoSize) throws -> Bool {
+    private static func inspect(_ raw: TelegramUploadFile, photoSize: TelegramUploadPhotoSize,
+                                allowsSelectedWebPPhoto: Bool) throws -> Bool {
         try Task.checkCancellation()
         guard raw.mode == .file else { throw TelegramUploadFileError.unavailable }
         try TelegramUploadFileIO.validateOwnedStage(raw)
@@ -37,7 +41,7 @@ enum TelegramUploadPhotoEligibility {
                 offset += count
             }
         }
-        let result = try eligibleImage(data, photoSize: photoSize)
+        let result = try eligibleImage(data, photoSize: photoSize, allowsSelectedWebPPhoto: allowsSelectedWebPPhoto)
         try TelegramUploadFileIO.validateOwnedStage(raw)
         var final = stat(), current = stat()
         guard fstat(fd, &final) == 0, lstat(raw.url.path, &current) == 0,
@@ -54,13 +58,16 @@ enum TelegramUploadPhotoEligibility {
         return result
     }
 
-    private static func eligibleImage(_ data: Data, photoSize: TelegramUploadPhotoSize) throws -> Bool {
+    private static func eligibleImage(_ data: Data, photoSize: TelegramUploadPhotoSize,
+                                      allowsSelectedWebPPhoto: Bool) throws -> Bool {
         try Task.checkCancellation()
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               let identifier = CGImageSourceGetType(source), let type = UTType(identifier as String),
               type.conforms(to: .image), !type.conforms(to: .gif),
-              !(UTType(filenameExtension: "webp").map { type.conforms(to: $0) } ?? false),
-              CGImageSourceGetCount(source) == 1, CGImageSourceGetStatus(source) == .statusComplete,
+              allowsSelectedWebPPhoto || !(UTType(filenameExtension: "webp").map { type.conforms(to: $0) } ?? false),
+              CGImageSourceGetCount(source) == 1 || (allowsSelectedWebPPhoto &&
+                  (UTType(filenameExtension: "webp").map { type.conforms(to: $0) } ?? false) && CGImageSourceGetCount(source) > 0),
+              CGImageSourceGetStatus(source) == .statusComplete,
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int64Value,
               let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int64Value,

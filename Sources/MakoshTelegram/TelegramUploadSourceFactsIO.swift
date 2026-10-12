@@ -8,9 +8,31 @@ import AppKit
 enum TelegramUploadSourceFactsIO {
     static func inspect(itemID: UUID, raw: TelegramUploadFile, role: TelegramUploadSourceFacts.Role,
                         metadata: TelegramUploadMetadata? = nil) async throws -> TelegramUploadSourceFacts {
+        try await inspect(itemID: itemID, raw: raw, role: role, metadata: metadata, mime: selectionMIME(for: raw.name))
+    }
+
+    /// Retained preparations keep only reviewed previous aliases, with their bytes and probes revalidated.
+    static func inspectRetained(itemID: UUID, raw: TelegramUploadFile, role: TelegramUploadSourceFacts.Role,
+                                metadata: TelegramUploadMetadata? = nil, frozenMIME: String) async throws -> TelegramUploadSourceFacts {
+        if frozenMIME != selectionMIME(for: raw.name) {
+            let suffix = (telegramAttachmentName(raw.name) as NSString).pathExtension.lowercased()
+            let previous: String?
+            switch suffix {
+            case "psd": previous = "image/vnd.adobe.photoshop"
+            case "dcr": previous = "image/x-kodak-dcr"
+            case "bm", "icns": previous = "application/octet-stream"
+            default: previous = nil
+            }
+            guard frozenMIME == previous else { throw TelegramUploadFileError.unavailable }
+        }
+        return try await inspect(itemID: itemID, raw: raw, role: role, metadata: metadata, mime: frozenMIME)
+    }
+
+    private static func inspect(itemID: UUID, raw: TelegramUploadFile, role: TelegramUploadSourceFacts.Role,
+                                metadata: TelegramUploadMetadata?, mime: String) async throws -> TelegramUploadSourceFacts {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
-            try await inspectOwned(itemID: itemID, raw: raw, role: role, metadata: metadata)
+            try await inspectOwned(itemID: itemID, raw: raw, role: role, metadata: metadata, mime: mime)
         }
         return try await withTaskCancellationHandler {
             let result = try await worker.value
@@ -31,6 +53,10 @@ enum TelegramUploadSourceFactsIO {
         case "mp3": return "audio/mpeg3"
         case "webp": return "image/webp"
         case "bin": return "application/x-macbinary"
+        case "psd": return "application/octet-stream"
+        case "dcr": return "application/x-director"
+        case "bm": return "image/bmp"
+        case "icns": return "image/icns"
         default:
             guard let mime = UTType(filenameExtension: suffix)?.preferredMIMEType?.lowercased(),
                   TelegramUploadSourceFacts.isValidMIME(mime) else { return "application/octet-stream" }
@@ -39,7 +65,7 @@ enum TelegramUploadSourceFactsIO {
     }
 
     private static func inspectOwned(itemID: UUID, raw: TelegramUploadFile, role: TelegramUploadSourceFacts.Role,
-                                     metadata: TelegramUploadMetadata?) async throws -> TelegramUploadSourceFacts {
+                                     metadata: TelegramUploadMetadata?, mime: String) async throws -> TelegramUploadSourceFacts {
         try Task.checkCancellation()
         guard raw.mode == .file, raw.metadata == nil, raw.video == nil, raw.videoCover == nil,
               raw.pixelWidth == nil, raw.pixelHeight == nil, raw.name == telegramAttachmentName(raw.name),
@@ -54,7 +80,6 @@ enum TelegramUploadSourceFactsIO {
               original.st_uid == getuid(), original.st_mode & 0o777 == 0o600,
               original.st_size == raw.size else { throw TelegramUploadFileError.unavailable }
         let digest = try hash(fd: fd, size: raw.size)
-        let mime = selectionMIME(for: raw.name)
         let image: TelegramUploadSourceFacts.ImageProbe
         if mime.hasPrefix("image") {
             image = raw.size > 0 && raw.size <= 20 * 1024 * 1024

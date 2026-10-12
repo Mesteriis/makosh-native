@@ -40,6 +40,7 @@ enum TelegramUploadEvent {
     @Published public private(set) var messageIDs: [String] = []
     private var usesBatchRecovery = false
     private var captionRules: TelegramUploadCaptionRules = .legacy
+    private var captionPolicy: TelegramUploadCaptionPolicy?
     private var mediaRules: TelegramUploadMediaRules = .legacy
     private var preparingRecordedVoice = false
     private var preparingRecordedRoundVideo = false
@@ -67,7 +68,7 @@ enum TelegramUploadEvent {
             items.allSatisfy { $0.file.mode != .photo || $0.originalFile != nil }
     }
     public var canUseArchivePresentation: Bool {
-        usesBatchRecovery && captionRules == .reference && !containsRecordedMedia && (2...TelegramUploadArchiveLimits.members).contains(items.count) &&
+        usesBatchRecovery && captionRules != .legacy && !containsRecordedMedia && (2...TelegramUploadArchiveLimits.members).contains(items.count) &&
             items.allSatisfy { $0.sourceFacts != nil }
     }
     public var canEditPresentation: Bool {
@@ -99,7 +100,7 @@ enum TelegramUploadEvent {
         guard let store = recoveryStore, let id = preparationID, let target else { return }
         writePresentation(.init(store: store, id: id, target: target, binding: bindingID, revision: itemsRevision,
             previousIDs: nil, orderedIDs: items.map(\.id), previousPresentation: previousPresentation, previousGrouping: previousGrouping,
-            presentation: presentation, isGrouped: isGrouped, cachedArchive: archiveDescriptor,
+            presentation: presentation, isGrouped: isGrouped, cachedArchive: archiveDescriptor, captionPolicy: captionPolicy,
             input: captionInput, above: captionAboveMedia, spoiler: mediaSpoiler))
     }
     private struct PresentationWrite {
@@ -115,6 +116,7 @@ enum TelegramUploadEvent {
         let presentation: TelegramUploadPresentation
         let isGrouped: Bool
         let cachedArchive: TelegramPendingUploadArchive?
+        let captionPolicy: TelegramUploadCaptionPolicy?
         var input: TelegramComposerInput
         var above: Bool
         var spoiler: Bool
@@ -146,6 +148,15 @@ enum TelegramUploadEvent {
                     try await write.store.updatePresentation(preparationID: write.id, orderedIDs: write.orderedIDs,
                         previousPresentation: write.previousPresentation, previousGrouping: write.previousGrouping,
                         presentation: write.presentation, isGrouped: write.isGrouped, target: write.target)
+                }
+                if let policy = write.captionPolicy {
+                    guard let saved = try await write.store.load(chatID: write.target.chatID), saved.isValid,
+                          saved.id == write.id, saved.accountID == write.target.accountID,
+                          saved.chatID == write.target.chatID, saved.disposition == .prepared,
+                          saved.items.map(\.id) == write.orderedIDs, saved.presentation == write.presentation,
+                          saved.isGrouped == write.isGrouped, saved.captionPolicy == policy else {
+                        throw TelegramPendingUploadPersistenceError.conflict
+                    }
                 }
                 if write.presentation == .archive || write.previousPresentation == .archive || write.cachedArchive != nil {
                     let invalidated = write.previousIDs.map { $0 != write.orderedIDs } ?? false
@@ -220,16 +231,103 @@ enum TelegramUploadEvent {
             }
         }
     }
+    private static func stageSelections(_ selected: [TelegramUploadSelection], photoSize: TelegramUploadPhotoSize,
+                                        stage: (URL, TelegramUploadMode) async throws -> TelegramUploadFile,
+                                        staged: inout [TelegramUploadBatchItem], isCurrent: () -> Bool) async throws {
+        for source in selected {
+            try Task.checkCancellation()
+            if source.mode == .video {
+                let file = try await stage(source.source, .video)
+                staged.append(.init(id: file.id, file: file))
+            } else {
+                let original = source.mode == .photo
+                    ? try await TelegramUploadFileIO.stage(source.source, mode: .file)
+                    : try await stage(source.source, .file)
+                // Own the raw copy before classification or derivative generation can suspend.
+                staged.append(.init(id: original.id, file: original))
+                let type = UTType(filenameExtension: (original.name as NSString).pathExtension)
+                let photoCandidate = source.mode == .photo || type?.conforms(to: .image) == true
+                let oggCandidate = try TelegramUploadAudioIO.hasOggSignature(original)
+                do {
+                    let webP = try await TelegramUploadWebPIO.inspect(original)
+                    let selectedMIME = TelegramUploadSourceFactsIO.selectionMIME(for: original.name)
+                    var selectedWebPPhoto = false
+                    if webP != nil, selectedMIME.hasPrefix("image/"),
+                       selectedMIME != "image/webp", !selectedMIME.hasSuffix("gif") {
+                        selectedWebPPhoto = try await TelegramUploadPhotoEligibility.canPrepare(original,
+                            photoSize: photoSize, allowsSelectedWebPPhoto: true)
+                    }
+                    if let webP, !selectedWebPPhoto {
+                        let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
+                            mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
+                            directory: original.directory, metadata: .webP(webP))
+                        staged[staged.count - 1] = .init(id: original.id, file: file)
+                    } else if let gif = try await TelegramUploadGIFIO.inspect(original) {
+                        let capture = try TelegramPendingUploadFiles.captureFile(original)
+                        let digest = try capture.plaintextSHA256()
+                        let converted = try await TelegramUploadGIFIO.convert(original, expected: gif, expectedPlaintextSHA256: digest)
+                        let file = TelegramUploadFile(id: converted.id, name: converted.name, size: converted.size,
+                            mode: .video, pixelWidth: converted.pixelWidth, pixelHeight: converted.pixelHeight,
+                            url: converted.url, directory: converted.directory, video: converted.video,
+                            metadata: .gif(.init(width: gif.width, height: gif.height,
+                                frameDurations: gif.frameDurations, sourceSHA256: digest)))
+                        staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
+                    } else if photoCandidate && !oggCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original,
+                        photoSize: photoSize, allowsSelectedWebPPhoto: selectedWebPPhoto) {
+                        let jpeg = try await stage(original.url, .photo)
+                        let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
+                        let file = TelegramUploadFile(id: jpeg.id, name: name, size: jpeg.size, mode: jpeg.mode,
+                            pixelWidth: jpeg.pixelWidth, pixelHeight: jpeg.pixelHeight, url: jpeg.url,
+                            directory: jpeg.directory, video: jpeg.video, videoCover: jpeg.videoCover)
+                        staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
+                    } else if !oggCandidate && type?.preferredMIMEType?.hasPrefix("video/") == true {
+                        do {
+                            let info = try await TelegramUploadVideoIO.inspect(original)
+                            let metadata = TelegramUploadVideoMetadata(width: info.width, height: info.height,
+                                duration: info.duration, hasAudio: info.hasAudio, inCollage: true)
+                            let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
+                                mode: .video, pixelWidth: info.width, pixelHeight: info.height,
+                                url: original.url, directory: original.directory, video: metadata)
+                            staged[staged.count - 1] = .init(id: original.id, file: file)
+                        } catch TelegramUploadFileError.invalidVideo {
+                            // An ordinary file choice remains usable when its video suffix is misleading.
+                        }
+                    } else if oggCandidate || type?.conforms(to: .audio) == true || type?.preferredMIMEType?.hasPrefix("audio/") == true {
+                        do {
+                            let audio = try await TelegramUploadAudioIO.inspect(original)
+                            let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
+                                mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
+                                directory: original.directory, metadata: .audio(audio))
+                            staged[staged.count - 1] = .init(id: original.id, file: file)
+                        } catch TelegramUploadFileError.invalidAudio {
+                            // Unsupported or misleading containers retain their unchanged generic file.
+                        }
+                    }
+                } catch TelegramUploadFileError.invalidWebP {
+                    // Recognizable unsafe WebP remains an unchanged generic file, without suffix reinterpretation.
+                } catch TelegramUploadGIFError.invalidGIF {
+                    // Recognizable unsafe GIF retains the unchanged document, without suffix reinterpretation.
+                }
+            }
+            let item = staged[staged.count - 1]
+            let facts = try await TelegramUploadSourceFactsIO.inspect(itemID: item.id, raw: item.rawSource,
+                role: item.originalFile == nil ? .prepared : .original, metadata: item.file.metadata)
+            staged[staged.count - 1] = .init(id: item.id, file: item.file, originalFile: item.originalFile, sourceFacts: facts)
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
+        }
+    }
     public func prepare(sources: [TelegramUploadSelection], isGrouped: Bool, target: TelegramUploadTarget, captionInput: TelegramComposerInput,
-                        photoSize: TelegramUploadPhotoSize = .standard) {
+                        photoSize: TelegramUploadPhotoSize = .standard, captionPolicy: TelegramUploadCaptionPolicy? = nil) {
         guard preparation == nil, phase == .idle || phase == .cancelled || phase == .failed || phase == .rejected,
               provider is any TelegramUploadBatchProvider, provider?.accountID == target.accountID, target.hasValidReplySource else { return }
         var seen: Set<URL> = []
-        let selected = sources.filter { seen.insert($0.source).inserted }
+        let selected = sources.filter { seen.insert($0.source.standardizedFileURL).inserted }
         guard !selected.isEmpty else { return }
         clear(); resetCancellationPresentation()
         guard items.isEmpty, recoveredArchive == nil else { phase = .failed; return }
-        usesBatchRecovery = true; captionRules = .reference; mediaRules = .reference
+        usesBatchRecovery = true; captionRules = captionPolicy == nil ? .reference : .current; mediaRules = .reference
+        self.captionPolicy = captionPolicy
         self.target = target; self.captionInput = captionInput; phase = .preparing
         let request = token, bound = bindingID, discard = self.discard, store = recoveryStore
         let stage = self.stage ?? { source, mode in try await TelegramUploadFileIO.stage(source, mode: mode, photoSize: photoSize) }
@@ -239,84 +337,14 @@ enum TelegramUploadEvent {
         preparation = Task { [weak self] in
             var staged: [TelegramUploadBatchItem] = []
             do {
-                for source in selected {
-                    try Task.checkCancellation()
-                    if source.mode == .video {
-                        let file = try await stage(source.source, .video)
-                        staged.append(.init(id: file.id, file: file))
-                    } else {
-                        let original = source.mode == .photo
-                            ? try await TelegramUploadFileIO.stage(source.source, mode: .file)
-                            : try await stage(source.source, .file)
-                        // Own the raw copy before classification or derivative generation can suspend.
-                        staged.append(.init(id: original.id, file: original))
-                        let type = UTType(filenameExtension: (original.name as NSString).pathExtension)
-                        let photoCandidate = source.mode == .photo || type?.conforms(to: .image) == true
-                        let oggCandidate = try TelegramUploadAudioIO.hasOggSignature(original)
-                        do {
-                            if let webP = try await TelegramUploadWebPIO.inspect(original) {
-                                let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
-                                    mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
-                                    directory: original.directory, metadata: .webP(webP))
-                                staged[staged.count - 1] = .init(id: original.id, file: file)
-                            } else if let gif = try await TelegramUploadGIFIO.inspect(original) {
-                                let capture = try TelegramPendingUploadFiles.captureFile(original)
-                                let digest = try capture.plaintextSHA256()
-                                let converted = try await TelegramUploadGIFIO.convert(original, expected: gif, expectedPlaintextSHA256: digest)
-                                let file = TelegramUploadFile(id: converted.id, name: converted.name, size: converted.size,
-                                    mode: .video, pixelWidth: converted.pixelWidth, pixelHeight: converted.pixelHeight,
-                                    url: converted.url, directory: converted.directory, video: converted.video,
-                                    metadata: .gif(.init(width: gif.width, height: gif.height,
-                                        frameDurations: gif.frameDurations, sourceSHA256: digest)))
-                                staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
-                            } else if photoCandidate && !oggCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original, photoSize: photoSize) {
-                                let jpeg = try await stage(original.url, .photo)
-                                let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
-                                let file = TelegramUploadFile(id: jpeg.id, name: name, size: jpeg.size, mode: jpeg.mode,
-                                    pixelWidth: jpeg.pixelWidth, pixelHeight: jpeg.pixelHeight, url: jpeg.url,
-                                    directory: jpeg.directory, video: jpeg.video, videoCover: jpeg.videoCover)
-                                staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
-                            } else if !oggCandidate && type?.preferredMIMEType?.hasPrefix("video/") == true {
-                                do {
-                                    let info = try await TelegramUploadVideoIO.inspect(original)
-                                    let metadata = TelegramUploadVideoMetadata(width: info.width, height: info.height,
-                                        duration: info.duration, hasAudio: info.hasAudio, inCollage: true)
-                                    let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
-                                        mode: .video, pixelWidth: info.width, pixelHeight: info.height,
-                                        url: original.url, directory: original.directory, video: metadata)
-                                    staged[staged.count - 1] = .init(id: original.id, file: file)
-                                } catch TelegramUploadFileError.invalidVideo {
-                                    // An ordinary file choice remains usable when its video suffix is misleading.
-                                }
-                            } else if oggCandidate || type?.conforms(to: .audio) == true || type?.preferredMIMEType?.hasPrefix("audio/") == true {
-                                do {
-                                    let audio = try await TelegramUploadAudioIO.inspect(original)
-                                    let file = TelegramUploadFile(id: original.id, name: original.name, size: original.size,
-                                        mode: .file, pixelWidth: nil, pixelHeight: nil, url: original.url,
-                                        directory: original.directory, metadata: .audio(audio))
-                                    staged[staged.count - 1] = .init(id: original.id, file: file)
-                                } catch TelegramUploadFileError.invalidAudio {
-                                    // Unsupported or misleading containers retain their unchanged generic file.
-                                }
-                            }
-                        } catch TelegramUploadFileError.invalidWebP {
-                            // Recognizable unsafe WebP remains an unchanged generic file, without suffix reinterpretation.
-                        } catch TelegramUploadGIFError.invalidGIF {
-                            // Recognizable unsafe GIF retains the unchanged document, without suffix reinterpretation.
-                        }
-                    }
-                    let item = staged[staged.count - 1]
-                    let facts = try await TelegramUploadSourceFactsIO.inspect(itemID: item.id, raw: item.rawSource,
-                        role: item.originalFile == nil ? .prepared : .original, metadata: item.file.metadata)
-                    staged[staged.count - 1] = .init(id: item.id, file: item.file, originalFile: item.originalFile, sourceFacts: facts)
-                    try Task.checkCancellation()
-                    guard self?.token == request else { throw CancellationError() }
-                }
+                try await Self.stageSelections(selected, photoSize: photoSize, stage: stage, staged: &staged,
+                    isCurrent: { [weak self] in self?.token == request })
                 guard let self, self.token == request else { throw CancellationError() }
                 var presentation = TelegramUploadSourceClassifier.initialPresentation(for: staged.compactMap(\.sourceFacts),
                     asMedia: selected.allSatisfy { $0.mode != .file })
                 if presentation == .media && !TelegramUploadBatchItem.allowsMedia(staged, rules: self.mediaRules) { presentation = .file }
                 let grouped = isGrouped && presentation.allowsGrouping(staged)
+                self.sourceURLsByItemID = Dictionary(uniqueKeysWithValues: zip(staged, selected).map { ($0.0.id, $0.1.source.standardizedFileURL) })
                 self.preparation = nil; self.items = staged; self.selectedItemID = staged[0].id
                 self.presentation = presentation; self.isGrouped = grouped
                 self.itemsRevision = UUID(); self.phase = .ready
@@ -338,6 +366,151 @@ enum TelegramUploadEvent {
             }
         }
     }
+    private var sourceURLsByItemID: [UUID: URL] = [:]
+    public var isAppendingItems: Bool { appendOperationID != nil }
+    private var appendOperationID: UUID?
+    public var canAppendItems: Bool {
+        usesBatchRecovery && mediaRules == .reference && !containsRecordedMedia && !items.isEmpty &&
+            items.allSatisfy { $0.sourceFacts != nil } && phase == .ready && recoveryPrepared && !isRecoveryBusy &&
+            videoCoverEditingID == nil && !isVideoCoverSaving && recoveryStore?.accountID == target?.accountID
+    }
+    private struct AppendWrite {
+        let operation: UUID
+        let store: any TelegramUploadRecoveryStore
+        let id: UUID
+        let target: TelegramUploadTarget
+        let binding: UUID
+        let token: UUID
+        let revision: UUID
+        let previousIDs: [UUID]
+        let input: TelegramComposerInput
+        let above: Bool
+        let spoiler: Bool
+        let presentation: TelegramUploadPresentation
+        let grouped: Bool
+        let policy: TelegramUploadCaptionPolicy?
+        let sources: [URL]
+    }
+    private func isCurrent(_ write: AppendWrite) -> Bool {
+        appendOperationID == write.operation && bindingID == write.binding && token == write.token && preparationID == write.id &&
+            itemsRevision == write.revision && items.map(\.id) == write.previousIDs && target == write.target &&
+            captionInput == write.input && captionAboveMedia == write.above && mediaSpoiler == write.spoiler &&
+            presentation == write.presentation && isGrouped == write.grouped && captionPolicy == write.policy &&
+            (phase == .preparing || phase == .ready)
+    }
+    /// Adds to the durable preparation; never replaces its existing resources or submits it.
+    @discardableResult public func append(sources: [TelegramUploadSelection], contextID: UUID, revision: UUID,
+                                         photoSize: TelegramUploadPhotoSize = .standard) -> Bool {
+        guard preparationID == contextID, itemsRevision == revision, canAppendItems, preparation == nil,
+              let target, let store = recoveryStore, provider?.accountID == target.accountID, target.hasValidReplySource,
+              !sources.isEmpty, sources.allSatisfy({ $0.source.isFileURL &&
+                  ($0.source.host == nil || $0.source.host == "" || $0.source.host == "localhost") }) else { return false }
+        var seen = Set(sourceURLsByItemID.values)
+        let selected = sources.filter { seen.insert($0.source.standardizedFileURL).inserted }
+        guard !selected.isEmpty else { return false }
+        let write = AppendWrite(operation: UUID(), store: store, id: contextID, target: target, binding: bindingID, token: token,
+            revision: revision, previousIDs: items.map(\.id), input: captionInput, above: captionAboveMedia,
+            spoiler: mediaSpoiler, presentation: presentation, grouped: isGrouped, policy: captionPolicy, sources: selected.map { $0.source.standardizedFileURL })
+        let stage = self.stage ?? { source, mode in try await TelegramUploadFileIO.stage(source, mode: mode, photoSize: photoSize) }
+        let discard = self.discard
+        appendOperationID = write.operation
+        phase = .preparing; isRecoveryBusy = true; error = nil; recoveryRetry = nil
+        recoveryStatus = "Добавляем файлы…"; videoPlayback.stop()
+        preparation = Task { [weak self] in
+            var staged: [TelegramUploadBatchItem] = []
+            var capture: TelegramUploadAppendCapture?
+            do {
+                // Complete the entire new selection before touching the old pointer.
+                try await Self.stageSelections(selected, photoSize: photoSize, stage: stage, staged: &staged,
+                    isCurrent: { [weak self] in self?.isCurrent(write) == true })
+                guard self?.isCurrent(write) == true else { throw CancellationError() }
+                try await store.save(preparationID: write.id, chatID: target.chatID, captionInput: write.input,
+                    captionAboveMedia: write.above, mediaSpoiler: write.spoiler, disposition: .prepared)
+                try Task.checkCancellation()
+                guard self?.isCurrent(write) == true,
+                      let snapshot = try await store.load(chatID: target.chatID), snapshot.isValid,
+                      snapshot.id == write.id, snapshot.accountID == target.accountID, snapshot.chatID == target.chatID,
+                      [17, 18, 19].contains(snapshot.schemaVersion), snapshot.disposition == .prepared,
+                      snapshot.items.map(\.id) == write.previousIDs, snapshot.captionInput == write.input,
+                      snapshot.captionAboveMedia == write.above, snapshot.mediaSpoiler == write.spoiler,
+                      snapshot.presentation == write.presentation, snapshot.isGrouped == write.grouped,
+                      snapshot.captionPolicy == write.policy else { throw TelegramPendingUploadPersistenceError.conflict }
+                capture = try await store.captureAppend(snapshot: snapshot, additions: staged, target: target)
+                // The immutable candidate now owns durable bytes; retry never needs these picker stages.
+                for item in staged { try item.discard(using: discard) }
+                staged = []
+                try Task.checkCancellation()
+                guard let self, self.isCurrent(write), let capture else { throw CancellationError() }
+                try await self.installAppended(capture, write: write)
+            } catch {
+                var failed: [TelegramUploadBatchItem] = []
+                for item in staged { do { try item.discard(using: discard) } catch { failed.append(item) } }
+                guard let self else { return }
+                if self.appendOperationID == write.operation { self.preparation = nil }
+                self.retiredItems.append(contentsOf: failed)
+                guard self.isCurrent(write) else { return }
+                self.isRecoveryBusy = false; self.phase = .ready
+                if let capture {
+                    self.recoveryPrepared = false
+                    self.recoveryStatus = "Не удалось подтвердить добавление файлов. Повторите сохранение или закройте подготовку."
+                    self.recoveryRetry = { [weak self] in self?.retryAppend(capture, write: write) }
+                } else {
+                    self.appendOperationID = nil
+                    self.recoveryStatus = nil
+                    self.error = "Не удалось добавить файлы. Предыдущий набор сохранён."
+                }
+                if !failed.isEmpty { self.error = "Не удалось удалить временные файлы." }
+            }
+        }
+        return true
+    }
+    private func retryAppend(_ capture: TelegramUploadAppendCapture, write: AppendWrite) {
+        guard isCurrent(write), phase == .ready, !isRecoveryBusy, preparation == nil else { return }
+        phase = .preparing; isRecoveryBusy = true; recoveryRetry = nil
+        preparation = Task { [weak self] in
+            guard let self else { return }
+            do { try await self.installAppended(capture, write: write) }
+            catch {
+                guard self.isCurrent(write) else { return }
+                self.preparation = nil; self.phase = .ready; self.isRecoveryBusy = false; self.recoveryPrepared = false
+                self.recoveryStatus = "Не удалось подтвердить добавление файлов. Повторите сохранение или закройте подготовку."
+                self.recoveryRetry = { [weak self] in self?.retryAppend(capture, write: write) }
+            }
+        }
+    }
+    private func installAppended(_ capture: TelegramUploadAppendCapture, write: AppendWrite) async throws {
+        try Task.checkCancellation()
+        guard isCurrent(write) else { throw CancellationError() }
+        let saved = try await write.store.installAppend(capture, target: write.target)
+        guard try telegramUploadAppendBytes(saved) == capture.candidateBytes else {
+            throw TelegramPendingUploadPersistenceError.conflict
+        }
+        let bundle = try await write.store.restoreBundle(draft: saved)
+        do {
+            try Task.checkCancellation()
+            guard isCurrent(write), Self.matchesItems(bundle.items, draft: saved),
+                  saved.archive == nil ? bundle.archive == nil : Self.matchesArchive(bundle.archive, draft: saved) else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            let old = items + retiredItems, oldArchive = recoveredArchive
+            items = bundle.items; retiredItems = []; recoveredArchive = bundle.archive; archiveDescriptor = saved.archive
+            selectedItemID = bundle.items.last?.id
+            for (item, source) in zip(bundle.items.suffix(write.sources.count), write.sources) { sourceURLsByItemID[item.id] = source }
+            captionPolicy = saved.captionPolicy; captionRules = saved.captionRules; mediaRules = saved.mediaRules
+            presentation = saved.presentation; isGrouped = saved.isGrouped
+            itemsRevision = UUID(); captionRevision = UUID(); videoCoverRevision = UUID()
+            appendOperationID = nil; preparation = nil; phase = .ready; isRecoveryBusy = false; recoveryPrepared = true
+            recoveryStatus = nil; recoveryRetry = nil; error = nil
+            for item in old {
+                do { try item.discard(using: discard) }
+                catch { retiredItems.append(item); self.error = "Не удалось удалить временные файлы." }
+            }
+            if let oldArchive {
+                do { try discard(oldArchive.file) }
+                catch { retiredItems.append(.init(id: oldArchive.file.id, file: oldArchive.file)); self.error = "Не удалось удалить временный файл." }
+            }
+        } catch { try? bundle.discard(); throw error }
+    }
     @discardableResult public func moveItem(id: UUID, to index: Int, contextID: UUID, revision: UUID) -> Bool {
         guard preparationID == contextID, itemsRevision == revision, canEditItems,
               items.indices.contains(index), let oldIndex = items.firstIndex(where: { $0.id == id }) else { return false }
@@ -353,6 +526,7 @@ enum TelegramUploadEvent {
               let index = items.firstIndex(where: { $0.id == id }) else { return false }
         if items.count == 1 { cancelPreparation(); return true }
         let oldIDs = items.map(\.id), oldGrouping = isGrouped, oldPresentation = presentation
+        sourceURLsByItemID.removeValue(forKey: id)
         retiredItems.append(items.remove(at: index)); videoPlayback.stop()
         if selectedItemID == id { selectedItemID = items[min(index, items.count - 1)].id; videoCoverRevision = UUID() }
         normalizePresentationAfterItemEdit()
@@ -360,6 +534,7 @@ enum TelegramUploadEvent {
         return true
     }
     private func normalizePresentationAfterItemEdit() {
+        if let captionPolicy { self.captionPolicy = try? captionPolicy.reordered(items.map(\.id)) }
         if presentation == .media && !TelegramUploadBatchItem.allowsMedia(items, rules: mediaRules) {
             presentation = .file; captionRevision = UUID(); videoCoverRevision = UUID()
         }
@@ -382,7 +557,7 @@ enum TelegramUploadEvent {
         guard let store = recoveryStore, let id = preparationID, let target else { return }
         writePresentation(.init(store: store, id: id, target: target, binding: bindingID, revision: itemsRevision,
             previousIDs: previousIDs, orderedIDs: items.map(\.id), previousPresentation: previousPresentation,
-            previousGrouping: previousGrouping, presentation: presentation, isGrouped: isGrouped, cachedArchive: archiveDescriptor,
+            previousGrouping: previousGrouping, presentation: presentation, isGrouped: isGrouped, cachedArchive: archiveDescriptor, captionPolicy: captionPolicy,
             input: captionInput, above: captionAboveMedia, spoiler: mediaSpoiler))
     }
     @Published public private(set) var videoCoverRevision = UUID()
@@ -502,7 +677,7 @@ enum TelegramUploadEvent {
     @Published public private(set) var mediaSpoiler = false
     @discardableResult
     public func updateMediaSpoiler(_ spoiler: Bool, contextID: UUID, revision: UUID) -> Bool {
-        guard token == contextID, captionRevision == revision, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving,
+        guard appendOperationID == nil, token == contextID, captionRevision == revision, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving,
               canUseMediaOptions else { return false }
         if mediaSpoiler != spoiler {
             if spoiler { videoPlayback.stop() }
@@ -514,7 +689,7 @@ enum TelegramUploadEvent {
     @Published public private(set) var captionRevision = UUID()
     @discardableResult
     public func updateCaptionPlacement(_ above: Bool, contextID: UUID, revision: UUID) -> Bool {
-        guard token == contextID, captionRevision == revision, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving,
+        guard appendOperationID == nil, token == contextID, captionRevision == revision, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving,
               canUseMediaOptions else { return false }
         if captionAboveMedia != above {
             captionAboveMedia = above; captionRevision = UUID(); persistCaption()
@@ -524,7 +699,7 @@ enum TelegramUploadEvent {
     public var caption: String {
         get { captionInput.formattedText.text }
         set {
-            guard videoCoverEditingID == nil, !isVideoCoverSaving else { return }
+            guard appendOperationID == nil, videoCoverEditingID == nil, !isVideoCoverSaving else { return }
             guard !containsRecordedMedia || newValue.isEmpty else { return }
             guard !newValue.utf8.elementsEqual(caption.utf8) else { return }
             guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: newValue)) else {
@@ -676,11 +851,12 @@ enum TelegramUploadEvent {
         }
         return true
     }
+    public var captionMaximumUTF16Count: Int { captionPolicy?.maximumUTF16Count ?? 1024 }
     public var captionValidationUTF16Count: Int { captionRules.validationUTF16Count(captionInput.formattedText) }
     public var usesCaptionPlaceholder: Bool {
-        TelegramUploadCaptionRules.usesCaptionPlaceholder(items: items, presentation: presentation, isGrouped: isGrouped)
+        TelegramUploadCaptionRules.usesCaptionPlaceholder(items: items, presentation: presentation, isGrouped: isGrouped, captionPolicy: captionPolicy)
     }
-    public var canSend: Bool { phase == .ready && videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy && ((!usesBatchRecovery && !requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && captionRules.canSend(captionInput.formattedText) }
+    public var canSend: Bool { phase == .ready && videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy && ((!usesBatchRecovery && !requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && captionRules.canSend(captionInput.formattedText, maximumUTF16Count: captionMaximumUTF16Count) }
     public var canCancel: Bool { phase == .preparing || phase == .ready || phase == .storing }
     public var captionContextID: UUID { token }
     public var preparationContextID: UUID? { preparationID }
@@ -713,7 +889,7 @@ enum TelegramUploadEvent {
 
     @discardableResult
     public func updateCaptionInput(_ input: TelegramComposerInput, contextID: UUID) -> Bool {
-        guard token == contextID, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving else { return false }
+        guard appendOperationID == nil, token == contextID, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving else { return false }
         guard !containsRecordedMedia || input == .empty else { return false }
         if captionInput != input { captionInput = input; captionRevision = UUID() }
         error = nil; persistCaption(); return true
@@ -780,14 +956,14 @@ enum TelegramUploadEvent {
     public func send() { send(spoilerOverride: nil) }
 
     private func send(spoilerOverride: Bool?) {
-        guard captionRules.canSend(captionInput.formattedText) else {
-            error = "Подпись или её форматирование не поддерживаются. Максимум — 1024 знака UTF16."; return
+        guard captionRules.canSend(captionInput.formattedText, maximumUTF16Count: captionMaximumUTF16Count) else {
+            error = "Подпись или её форматирование не поддерживаются. Максимум — \(captionMaximumUTF16Count) знака UTF16."; return
         }
         guard canSend, let provider, let file, let target else { return }
         videoPlayback.stop()
         let frozen = captionInput, frozenAbove = captionAboveMedia, frozenSpoiler = spoilerOverride ?? mediaSpoiler
         let bundle = usesBatchRecovery ? TelegramRecoveredUploadBundle(items: items, archive: recoveredArchive) : nil
-        let grouped = isGrouped, presentation = self.presentation, descriptor = archiveDescriptor, rules = captionRules, frozenMediaRules = mediaRules
+        let grouped = isGrouped, presentation = self.presentation, descriptor = archiveDescriptor, rules = captionRules, frozenPolicy = captionPolicy, frozenMediaRules = mediaRules
         if let store = recoveryStore, let id = preparationID {
             let bound = bindingID
             isRecoveryBusy = true; recoveryRetry = nil
@@ -799,7 +975,7 @@ enum TelegramUploadEvent {
                     if let bundle {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
                               let draft = try await store.load(chatID: target.chatID), draft.isValid,
-                              (6...18).contains(draft.schemaVersion), draft.archive == descriptor, draft.captionRules == rules, draft.mediaRules == frozenMediaRules,
+                              (6...19).contains(draft.schemaVersion), draft.archive == descriptor, draft.captionRules == rules, draft.captionPolicy == frozenPolicy, draft.mediaRules == frozenMediaRules,
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == bundle.items.map(\.id), draft.isGrouped == grouped, draft.presentation == presentation,
                               draft.items.map(\.sourceFacts) == bundle.items.map(\.sourceFacts),
@@ -869,6 +1045,7 @@ enum TelegramUploadEvent {
                       accepted.title == draft.title, accepted.items == draft.items, accepted.isGrouped == draft.isGrouped,
                       try encoder.encode(accepted.archive) == encoder.encode(draft.archive),
                       accepted.presentation == draft.presentation, accepted.captionRules == draft.captionRules,
+                      accepted.captionPolicy == draft.captionPolicy, accepted.mediaRules == draft.mediaRules,
                       accepted.captionInput == draft.captionInput, accepted.captionAboveMedia == draft.captionAboveMedia,
                       accepted.mediaSpoiler == draft.mediaSpoiler, accepted.originalDraft == draft.originalDraft,
                       accepted.replyTarget == draft.replyTarget, accepted.disposition == .acceptedBatch(messageIDs: ids) else {
@@ -921,6 +1098,8 @@ enum TelegramUploadEvent {
     }
 
     private func resetObservation() {
+        if appendOperationID != nil { preparation?.cancel(); preparation = nil; appendOperationID = nil }
+        sourceURLsByItemID = [:]
         recoveryRestoreEpoch = UUID()
         videoCoverEditingID = nil; videoCoverWriteRevision = nil; videoCoverRevision = UUID()
         // Rebinding detaches UI observation, not the user's latest preparation.
@@ -948,7 +1127,7 @@ enum TelegramUploadEvent {
         token = UUID(); preparation?.cancel(); deadline?.cancel(); deadline = nil
         let old = lease; lease = nil; old?.stop()
         let cleaned = releaseStage(); target = nil; captionInput = .empty; messageID = nil; messageIDs = []; committed = false
-        usesBatchRecovery = false; captionRules = .legacy; mediaRules = .legacy; preparingRecordedVoice = false; preparingRecordedRoundVideo = false
+        usesBatchRecovery = false; captionRules = .legacy; captionPolicy = nil; mediaRules = .legacy; preparingRecordedVoice = false; preparingRecordedRoundVideo = false
         isGrouped = false; presentation = .media; itemsRevision = UUID()
         captionAboveMedia = false; mediaSpoiler = false; captionRevision = UUID()
         phase = .idle; acceptancePending = false; recoveryPrepared = false
@@ -1007,7 +1186,7 @@ enum TelegramUploadEvent {
 
     private func persistInitial(file: TelegramUploadFile, target: TelegramUploadTarget, input: TelegramComposerInput,
                                 original: TelegramComposerDraft?, id: UUID, bound: UUID, store: (any TelegramUploadRecoveryStore)?, above: Bool, spoiler: Bool,
-                                batchItems: [TelegramUploadBatchItem]? = nil, grouped: Bool = false) {
+                                batchItems: [TelegramUploadBatchItem]? = nil, grouped: Bool = false, frozenPolicy: TelegramUploadCaptionPolicy? = nil) {
         guard let store, store.accountID == target.accountID else {
             recoveryPrepared = false; recoveryStatus = "Настройте хранилище вложений для сохранения перед отправкой."
             recoveryRetry = nil
@@ -1016,19 +1195,31 @@ enum TelegramUploadEvent {
         isRecoveryBusy = true; recoveryInitialInFlight = true; recoveryRetry = nil
         let discard = self.discard, cancellationPresentation = cancellationPresentationID, batchPresentation = presentation
         let staged = batchItems ?? [.init(id: file.id, file: file)]
+        let policy = frozenPolicy ?? captionPolicy
         Task { [weak self] in
             do {
                 if let batchItems {
                     try await store.prepare(preparationID: id, items: batchItems, isGrouped: grouped, presentation: batchPresentation, target: target,
-                        captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, originalDraft: original)
+                        captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, originalDraft: original, captionPolicy: policy)
                 } else {
                     try await store.prepare(preparationID: id, file: file, target: target, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, originalDraft: original)
+                }
+                var boundPolicy: TelegramUploadCaptionPolicy?
+                if let policy {
+                    guard let saved = try await store.load(chatID: target.chatID), saved.isValid, saved.id == id,
+                          saved.accountID == target.accountID, saved.chatID == target.chatID,
+                          saved.captionRules == .current, saved.items.map(\.id) == staged.map(\.id),
+                          saved.captionPolicy == (try policy.binding(staged)) else {
+                        throw TelegramPendingUploadPersistenceError.conflict
+                    }
+                    boundPolicy = saved.captionPolicy
                 }
                 if let cancelled = self?.cancelledRecoveryContents.removeValue(forKey: id) {
                     self?.persistCancellation(store: store, id: id, chatID: target.chatID, input: cancelled.input, bound: bound, above: cancelled.above, spoiler: cancelled.spoiler, presentation: cancellationPresentation)
                 }
                 self?.persistDetachedInitialIfNeeded(store: store, id: id, chatID: target.chatID)
                 guard let self, self.bindingID == bound, self.preparationID == id else { for item in staged { try? item.discard(using: discard) }; return }
+                self.captionPolicy = boundPolicy
                 self.recoveryInitialInFlight = false; self.isRecoveryBusy = false; self.recoveryPrepared = true; self.recoveryStatus = nil
                 if self.captionInput != input || self.captionAboveMedia != above || self.mediaSpoiler != spoiler { self.persistCaption() }
             } catch {
@@ -1039,21 +1230,21 @@ enum TelegramUploadEvent {
                 guard let self, self.bindingID == bound, self.preparationID == id else { for item in staged { try? item.discard(using: discard) }; return }
                 self.recoveryInitialInFlight = false; self.isRecoveryBusy = false; self.recoveryPrepared = false
                 self.recoveryStatus = "Не удалось сохранить вложение. Отправка заблокирована."
-                self.recoveryRetry = { [weak self] in self?.persistInitial(file: file, target: target, input: input, original: original, id: id, bound: bound, store: store, above: above, spoiler: spoiler, batchItems: batchItems, grouped: grouped) }
+                self.recoveryRetry = { [weak self] in self?.persistInitial(file: file, target: target, input: input, original: original, id: id, bound: bound, store: store, above: above, spoiler: spoiler, batchItems: batchItems, grouped: grouped, frozenPolicy: policy) }
             }
         }
     }
     private func persistCaption() {
-        guard let store = recoveryStore, recoveryPrepared, let id = preparationID, let target, phase == .ready else { return }
+        guard appendOperationID == nil, let store = recoveryStore, recoveryPrepared, let id = preparationID, let target, phase == .ready else { return }
         let bound = bindingID, input = captionInput, above = captionAboveMedia, spoiler = mediaSpoiler, coverRevision = videoCoverRevision, itemRevision = itemsRevision
         Task { [weak self] in
-            guard self?.bindingID == bound, self?.preparationID == id, self?.phase == .ready, self?.itemsRevision == itemRevision, self?.captionInput == input, self?.captionAboveMedia == above, self?.mediaSpoiler == spoiler else { return }
+            guard self?.appendOperationID == nil, self?.bindingID == bound, self?.preparationID == id, self?.phase == .ready, self?.itemsRevision == itemRevision, self?.captionInput == input, self?.captionAboveMedia == above, self?.mediaSpoiler == spoiler else { return }
             do {
                 try await store.save(preparationID: id, chatID: target.chatID, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .prepared)
-                guard let self, self.bindingID == bound, self.preparationID == id, self.itemsRevision == itemRevision, self.videoCoverRevision == coverRevision, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
+                guard let self, self.appendOperationID == nil, self.bindingID == bound, self.preparationID == id, self.itemsRevision == itemRevision, self.videoCoverRevision == coverRevision, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
                 self.recoveryStatus = nil; self.recoveryRetry = nil
             } catch {
-                guard let self, self.bindingID == bound, self.preparationID == id, self.itemsRevision == itemRevision, self.videoCoverRevision == coverRevision, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
+                guard let self, self.appendOperationID == nil, self.bindingID == bound, self.preparationID == id, self.itemsRevision == itemRevision, self.videoCoverRevision == coverRevision, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
                 self.recoveryStatus = "Не удалось сохранить подпись. Повторите сохранение перед отправкой."
                 self.recoveryRetry = { [weak self] in self?.persistCaption() }
             }
@@ -1168,20 +1359,12 @@ enum TelegramUploadEvent {
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
         guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, self.items.isEmpty, recoveredArchive == nil,
-              (6...18).contains(draft.schemaVersion),
+              (6...19).contains(draft.schemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,
               !detachedRecoveryWrites.contains(draft.id), detachedRecoveryRetries[draft.id] == nil,
-              items.count == draft.items.count, zip(items, draft.items).allSatisfy({ staged, saved in
-                  staged.id == saved.id && staged.file.name.utf8.elementsEqual(saved.file.attachment.name.utf8) &&
-                  staged.file.size == saved.file.plaintextByteCount && staged.file.mode.rawValue == saved.file.attachment.kind &&
-                  staged.file.video == saved.video && telegramPendingUploadCoverMatches(saved.videoCover, staged.file.videoCover) &&
-                  staged.file.metadata == saved.metadata && staged.sourceFacts == saved.sourceFacts &&
-                  saved.matchesOriginal(staged.originalFile) &&
-                  (try? TelegramUploadFileIO.validateOwnedStage(staged.file)) != nil &&
-                  (staged.file.videoCover == nil || (try? TelegramUploadVideoCoverIO.validatedBytes(staged.file.videoCover!)) != nil)
-              }) else { return false }
+              Self.matchesItems(items, draft: draft) else { return false }
         if draft.archive != nil {
             guard Self.matchesArchive(bundle.archive, draft: draft) else { return false }
         } else {
@@ -1195,7 +1378,7 @@ enum TelegramUploadEvent {
         }
         token = UUID(); preparationID = draft.id; self.items = items; selectedItemID = items[0].id
         recoveredArchive = bundle.archive; archiveDescriptor = draft.archive
-        usesBatchRecovery = true; captionRules = draft.captionRules; mediaRules = draft.mediaRules
+        usesBatchRecovery = true; captionRules = draft.captionRules; captionPolicy = draft.captionPolicy; mediaRules = draft.mediaRules
         isGrouped = draft.isGrouped; presentation = draft.presentation; itemsRevision = UUID()
         self.target = target; captionInput = draft.captionInput; captionAboveMedia = draft.captionAboveMedia
         mediaSpoiler = draft.mediaSpoiler; captionRevision = UUID()
@@ -1205,6 +1388,17 @@ enum TelegramUploadEvent {
         phase = committed ? .uncertain : .ready
         didRestore?(target, draft.originalDraft, draft.id)
         return true
+    }
+    private static func matchesItems(_ items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft) -> Bool {
+        items.count == draft.items.count && zip(items, draft.items).allSatisfy({ staged, saved in
+                  staged.id == saved.id && staged.file.name.utf8.elementsEqual(saved.file.attachment.name.utf8) &&
+                  staged.file.size == saved.file.plaintextByteCount && staged.file.mode.rawValue == saved.file.attachment.kind &&
+                  staged.file.video == saved.video && telegramPendingUploadCoverMatches(saved.videoCover, staged.file.videoCover) &&
+                  staged.file.metadata == saved.metadata && staged.sourceFacts == saved.sourceFacts &&
+                  saved.matchesOriginal(staged.originalFile) &&
+                  (try? TelegramUploadFileIO.validateOwnedStage(staged.file)) != nil &&
+                  (staged.file.videoCover == nil || (try? TelegramUploadVideoCoverIO.validatedBytes(staged.file.videoCover!)) != nil)
+              })
     }
     private static func matchesArchive(_ value: TelegramUploadArchiveIO.Archive?, draft: TelegramPendingUploadDraft) -> Bool {
             guard draft.hasArchiveSchema, let descriptor = draft.archive, let archive = value,

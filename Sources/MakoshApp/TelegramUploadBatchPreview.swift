@@ -28,28 +28,28 @@ struct TelegramUploadBatchPreview: View {
             .accessibilityIdentifier("telegram.upload.items")
     }
 
+    @ViewBuilder private func itemContent(_ item: TelegramUploadBatchItem, compact: Bool) -> some View {
+        if item.file.mode == .file {
+            TelegramUploadDocumentPreview(file: item.file,
+                isActive: upload.phase == .ready && upload.videoCoverEditingID == nil && !upload.isVideoCoverSaving)
+                .padding(10).contentShape(Rectangle())
+                .onTapGesture { upload.selectItem(id: item.id, contextID: contextID) }
+                .accessibilityAction(named: "Выбрать вложение") { upload.selectItem(id: item.id, contextID: contextID) }
+        } else {
+            Button { upload.selectItem(id: item.id, contextID: contextID) } label: {
+                TelegramUploadBatchTile(item: item, spoiler: upload.mediaSpoiler, compact: compact)
+            }.buttonStyle(.plain)
+        }
+    }
+
     private func itemView(_ item: TelegramUploadBatchItem, compact: Bool) -> some View {
         let revision = upload.itemsRevision
         let position = upload.items.firstIndex(where: { $0.id == item.id }) ?? 0
         return HStack(spacing: 8) {
-            Button { upload.selectItem(id: item.id, contextID: contextID) } label: {
-                if item.file.mode == .file {
-                    HStack(spacing: 10) {
-                        Image(systemName: "doc.fill").font(.title2).foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.file.name).lineLimit(1)
-                            Text(ByteCountFormatter.string(fromByteCount: item.file.size, countStyle: .file))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 0)
-                    }.padding(10)
-                } else {
-                    TelegramUploadBatchTile(item: item, spoiler: upload.mediaSpoiler, compact: compact)
-                }
-            }.buttonStyle(.plain)
-                .accessibilityLabel("Вложение \(position + 1): \(item.file.name)")
-                .accessibilityValue(upload.selectedItemID == item.id ? "Выбрано" : "")
-                .accessibilityIdentifier("telegram.upload.item." + item.id.uuidString.lowercased())
+            itemContent(item, compact: compact)
+            .accessibilityLabel("Вложение \(position + 1): \(item.file.name)")
+            .accessibilityValue(upload.selectedItemID == item.id ? "Выбрано" : "")
+            .accessibilityIdentifier("telegram.upload.item." + item.id.uuidString.lowercased())
             if !compact {
                 Menu { actions(item, position: position, revision: revision) } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton).fixedSize().padding(.trailing, 8)
@@ -57,17 +57,19 @@ struct TelegramUploadBatchPreview: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: compact ? .infinity : nil)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+        .background { if item.file.mode != .file { RoundedRectangle(cornerRadius: 6).fill(.quaternary) } }
         .overlay { if upload.selectedItemID == item.id { RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2) } }
         .contextMenu { actions(item, position: position, revision: revision) }
         .draggable(contextID.uuidString + ":" + revision.uuidString + ":" + item.id.uuidString)
-        .dropDestination(for: String.self) { values, _ in
-            guard values.count == 1 else { return false }
-            let parts = values[0].split(separator: ":")
-            guard parts.count == 3, let context = UUID(uuidString: String(parts[0])),
-                  let sourceRevision = UUID(uuidString: String(parts[1])), let id = UUID(uuidString: String(parts[2])) else { return false }
-            return upload.moveItem(id: id, to: position, contextID: context, revision: sourceRevision)
-        }
+        .dropDestination(for: String.self) { values, _ in return moveDroppedItems(values, to: position) }
+    }
+
+    private func moveDroppedItems(_ values: [String], to position: Int) -> Bool {
+        guard values.count == 1 else { return false }
+        let parts = values[0].split(separator: ":")
+        guard parts.count == 3, let context = UUID(uuidString: String(parts[0])),
+              let sourceRevision = UUID(uuidString: String(parts[1])), let id = UUID(uuidString: String(parts[2])) else { return false }
+        return upload.moveItem(id: id, to: position, contextID: context, revision: sourceRevision)
     }
 
     @ViewBuilder private func actions(_ item: TelegramUploadBatchItem, position: Int, revision: UUID) -> some View {

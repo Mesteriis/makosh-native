@@ -23,6 +23,22 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
     }
     let messages: [Message]
     let groupCount: Int
+
+    /// Archive is one document, independent of the number of canonical sources.
+    init(archiveID: UUID, caption: TelegramFormattedText) throws {
+        guard archiveID != TelegramPendingUploadDraft.zeroUUID,
+              TelegramUploadCaptionRules.reference.canSend(caption) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        let projected = try TelegramUploadCaptionRules.reference.projection(caption)
+        guard telegramFormattedCaptionCanSend(projected) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        messages = [.init(itemID: archiveID, caption: projected, groupIndex: nil,
+            captionAboveMedia: false, mediaSpoiler: false)]
+        groupCount = 0
+    }
+
     init(items: [TelegramUploadBatchItem], isGrouped: Bool, caption: TelegramFormattedText,
          captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil,
          captionRules: TelegramUploadCaptionRules = .reference) throws {

@@ -34,35 +34,56 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].contains(draft.schemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
-              draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
-              resources.count == draft.items.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
-        let plan = try TelegramUploadBatchPlan(items: resources.map(\.item), isGrouped: draft.isGrouped,
-            caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-            presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules)
-        guard groupKeys.count == plan.groupCount, Set(groupKeys).count == groupKeys.count else {
+              draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
+        let plan: TelegramUploadBatchPlan
         var ids: [Int64] = []
-        for (stored, resource) in zip(draft.items, resources) {
+        if draft.schemaVersion == 16 {
+            guard draft.presentation == .archive, let archive = draft.archive, resources.count == 1,
+                  let resource = resources.first else { throw TelegramPendingUploadPersistenceError.incompatibleData }
             let file = resource.item.file
-            let filePresentation = draft.schemaVersion >= 8 && draft.presentation == .file
-            guard let payload = filePresentation ? stored.payload(for: .file) : stored.file,
-                  stored.id == resource.item.id, payload.attachment.name.utf8.elementsEqual(file.name.utf8),
-                  (filePresentation ? "file" : payload.attachment.kind) == file.mode.rawValue, payload.plaintextByteCount == file.size,
-                  payload.plaintextSHA256 == resource.plaintextSHA256, (filePresentation ? nil : stored.video) == file.video,
-                  stored.metadata == file.metadata, stored.sourceFacts == resource.item.sourceFacts,
-                  telegramPendingUploadCoverMatches(filePresentation ? nil : stored.videoCover, file.videoCover),
-                  stored.matchesOriginal(resource.item.originalFile), resource.reference != nil else {
+            guard resource.item.id == archive.id,
+                  archive.file.attachment.name.utf8.elementsEqual(file.name.utf8),
+                  file.size == archive.file.plaintextByteCount, resource.plaintextSHA256 == archive.file.plaintextSHA256,
+                  file.mode == .file, file.metadata == nil, file.video == nil, file.videoCover == nil,
+                  file.pixelWidth == nil, file.pixelHeight == nil,
+                  resource.item.originalFile == nil, resource.item.sourceFacts == nil,
+                  resource.videoThumbnail == nil, resource.videoCover == nil,
+                  resource.webPPreview == nil, resource.gifPreview == nil, resource.reference != nil else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             ids.append(resource.resourceID)
-            if let thumbnail = resource.videoThumbnail { ids.append(thumbnail.id) }
-            if let cover = resource.videoCover { ids.append(cover.id) }
-            if let preview = resource.webPPreview { ids.append(preview.id) }
-            if let preview = resource.gifPreview { ids.append(preview.id) }
+            plan = try TelegramUploadBatchPlan(archiveID: archive.id, caption: draft.captionInput.formattedText)
+        } else {
+            guard resources.count == draft.items.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+            plan = try TelegramUploadBatchPlan(items: resources.map(\.item), isGrouped: draft.isGrouped,
+                caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
+                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules)
+            for (stored, resource) in zip(draft.items, resources) {
+                let file = resource.item.file
+                let filePresentation = draft.schemaVersion >= 8 && draft.presentation == .file
+                guard let payload = filePresentation ? stored.payload(for: .file) : stored.file,
+                      stored.id == resource.item.id, payload.attachment.name.utf8.elementsEqual(file.name.utf8),
+                      (filePresentation ? "file" : payload.attachment.kind) == file.mode.rawValue, payload.plaintextByteCount == file.size,
+                      payload.plaintextSHA256 == resource.plaintextSHA256, (filePresentation ? nil : stored.video) == file.video,
+                      stored.metadata == file.metadata, stored.sourceFacts == resource.item.sourceFacts,
+                      telegramPendingUploadCoverMatches(filePresentation ? nil : stored.videoCover, file.videoCover),
+                      stored.matchesOriginal(resource.item.originalFile), resource.reference != nil else {
+                    throw TelegramPendingUploadPersistenceError.incompatibleData
+                }
+                ids.append(resource.resourceID)
+                if let thumbnail = resource.videoThumbnail { ids.append(thumbnail.id) }
+                if let cover = resource.videoCover { ids.append(cover.id) }
+                if let preview = resource.webPPreview { ids.append(preview.id) }
+                if let preview = resource.gifPreview { ids.append(preview.id) }
+            }
+        }
+        guard groupKeys.count == plan.groupCount, Set(groupKeys).count == groupKeys.count else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         guard Set(ids).count == ids.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         self.draft = draft; self.target = target; self.resources = resources; self.plan = plan; self.groupKeys = groupKeys
@@ -150,6 +171,9 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             if let itemID = entry.itemID {
                 guard queued.media.count == 1, let resource = byID[itemID], let expected = resource.reference?.media,
                       expected.isEqual(to: queued.media[0]) else { return false }
+                if draft.presentation == .archive {
+                    guard queued.attributes.allSatisfy({ !($0 is AutoclearTimeoutMessageAttribute) }) else { return false }
+                }
                 if let once = resource.item.file.metadata?.voice?.isOneTime ?? resource.item.file.metadata?.roundVideo?.isOneTime {
                     // Ordinary chat auto-delete is a separate Autoremove
                     // attribute. Native enqueue normalizes explicit media TTL

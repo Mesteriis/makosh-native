@@ -1931,9 +1931,21 @@ an exact retained candidate, including its revision and encoded JSON, while its
 token remains active. A fresh Session call after a lost ACK is not that retry.
 Completion means engine transaction completion, not an fsync promise.
 
-Controller/model adoption, capture-receipt retention across pointer failure,
-one native ZIP resource/complete receipt and existing-window Archive UI remain
-open; ordinary preparations still use schema15. Capture and pointer installation
+An active schema16 Archive now has a dedicated one-document plan and native
+enqueue receipt. The receipt requires exactly one plain ZIP resource bound to
+the descriptor ID/name/size/digest, without raw-source facts, originals, media
+metadata or previews. It projects one caption and forbids grouping/placement/
+spoiler. Native admission compares the entire frozen pointer; the same queue
+transaction validates the inserted ZIP and records exactly one accepted ID,
+retaining all canonical resources and raw editor input. A lost ACK leaves the
+accepted pointer durable; replay refuses another insertion. These operations
+write no archive records or S3 objects. A queued ZIP cannot acquire explicit
+media TTL/view-once attributes. Ordinary chat auto-delete is a separate native
+attribute and remains supported; neither mechanism purges Makosh's archive.
+
+Controller/model and provider adoption, capture-receipt retention across pointer
+failure and existing-window Archive UI remain open; ordinary preparations still
+use schema15. Capture and pointer installation
 are separate transactions; failed installation never purges immutable records.
 
 ### Versioned caption projection

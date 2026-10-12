@@ -1,6 +1,61 @@
 # Development status — 2026-10-12
 
-## Current stage: authenticated Archive pointer installation
+## Current stage: one-ZIP native enqueue receipt
+
+Active schema16 Archive now produces one plain ZIP message with one normalized
+caption and one complete native receipt. Descriptor ID/name/size/digest are
+bound separately from the N retained canonical resources. Admission compares
+the entire frozen pointer; native insertion and acceptedBatch acknowledgement
+share a transaction. Canonical records and raw editor/selection remain retained.
+Lost ACK replay refuses another insertion. No archive capture or S3 write occurs.
+
+Compiled RED:3 tests,4 expected assertion failures,0 unexpected, after a separate
+test-only compile failure (async autoclosure and wrong reference property).
+Focused GREEN19 XCTest,0 failures;45 Python tests. Initial full suite passes
+1,286 XCTest,1 skipped,0 failures and45 Python tests. This precedes the review fix.
+
+Bounded review found an Archive-only gap in queued media-TTL verification. A real
+native corruption regression compiles RED:1 test,1 expected failure,0 unexpected.
+The Archive receipt now vetoes Autoclear/view-once attributes while allowing
+ordinary chat Autoremove. Focused regression/voice/boundary/receipt GREEN:
+39 XCTest,0 failures;45 Python tests.
+
+Required `scripts/dev-db.sh up`, final `scripts/test.sh` and
+`scripts/build-app.sh` exit0: **1,287 XCTest (1,211 Telegram +76 core),1 skipped,
+0 failures;45 Python tests**. Final strict deep signature passes. No compile
+warnings;495 existing upstream t19 diagnostics remain without test failures.
+The microphone-authorization skip is separate. The453-file/7-copy final freeze
+matches after full tests and build.
+
+Final source freeze has453 source/test/dependency/script/license/reference-lock
+files and7 review copies. Project v6 refresh/check exit0:470 files,432/432
+classified code. A broad final query retrieved unrelated archive helpers; the
+focused query retrieves the new veto and is source-confirmed. Reference
+PreviewSender creates one ArchiverSenderContainer and SenderController fixes
+its isOneTime=false; both are source-confirmed. Unchanged reference check passes.
+Both hosted0ebd369 CI runs now pass; new-head CI remains separate.
+
+The original bounded review's P2 is independently reproduced and fixed above.
+Delta source review reports no new actionable findings. Root verifies the
+original contract/copies/artifacts and all34 original invocations, including
+3 nonzero executions and4 explicit skips:319 integrity checks,146 artifacts.
+The first grouped summary omitted nested original attempts; the corrected
+original-execution verification retains both compiled/setup RED runs separately.
+The original current-source verification predates the intentional TTL fix;
+root checks frozen copies and raw historical checks without claiming it as
+current verification. Final delta contract verification passes637 checks:
+17 original invocations,1 nonzero compiled TTL RED,4 unrun checks and75 artifact
+files. The unrelated broad query retains process exit0 and a separate coverage
+SKIP. The parent's initial verifier rejected that explicit distinction; the
+corrected verification preserves its original failure and the coverage skip.
+Requested worker route is inherited; observed provider/model/usage/internal
+execution remain unknown, with no quorum. Runtime gates belong to root.
+
+No visible screen changes or Account/server sends. Controller/model/provider
+bundle adoption, capture-receipt retention/fresh Session lost-ACK recovery and
+the existing-window Archive UI remain open. Full migration stays active.
+
+## Previous stage: authenticated Archive pointer installation
 
 The dedicated native Postbox operation binds cancellation/scope/revision to the
 same synchronous compare/set admission. It preserves canonical metadata by

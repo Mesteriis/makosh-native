@@ -146,6 +146,32 @@ ledger in `development-status.md`.
   remain unsupported. Paid-media access/price is displayed without a purchase or
   media-fetch grant. Balance purchase and paid-media purchase are not implemented.
 
+Extended search adds separate account-bound global and conversation requests.
+The existing sidebar searches messages with media categories, all/private/group/
+channel scopes and an optional selected chat. Local chat suggestions retain the
+cached-list boundary. Conversation search adds sender suggestions, older/newer
+navigation across pages, return to results and a calendar jump to local midnight.
+Opening a result retains the query and the destination's separate draft; stale
+result contexts cannot activate another account/chat/topic. Media sources are
+retained only for current results/history. Requests retain300ms debounce and30s
+deadlines; failed pagination preserves prior results and permits retry.
+Calendar and result navigation cancel an older pending selection independently
+of pagination. Only actual forum peers use a positive exact Int32 navigation
+topic: ordinary channel thread1 and Saved/monoforum sub-peer threads open the
+supported all-messages history. Saved sub-peer navigation is not implemented.
+Chat-restricted global matches retain the selected modern conversation even
+when the native result index belongs to its migrated group's older history.
+
+Preparation recipe18 rejects unresolved authors, inexact ordinary topic IDs and
+invalid Saved/monoforum sub-peer identities before native RPC flags or PeerId
+construction. Global local-Secret merging excludes group/channel scopes and
+filters native tags before counting. Postbox's empty global FTS query cannot
+enumerate Secret media: this limitation is visible, and scoped Secret searches
+with an author or empty text+media fail explicitly. Full Secret media search,
+Saved-tag suggestions, complete participant directories, remote peer/hashtag/
+Stars discovery and the specialized reference result/calendar renderers remain
+open. These additions do not establish real-account network acceptance.
+
 Playback supports a deliberately narrow SDR8-bit420 WebM profile: at most8MiB,
 512px canvas,9s and3240 blocks. Explicit projection/content-encoding/mapping or
 stereo profiles use Unicode fallback. These input/output limits do not establish

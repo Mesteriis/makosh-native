@@ -1,0 +1,82 @@
+import SwiftUI
+import MakoshTelegram
+
+struct TelegramGlobalSearchResultsView: View {
+    @ObservedObject var model: TelegramModel
+    @ObservedObject private var messages: TelegramSearchModel
+    @ObservedObject private var chats: TelegramSearchModel
+    @State private var allChats = false
+    init(model: TelegramModel) {
+        self.model = model; messages = model.globalSearch; chats = model.search
+    }
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if chats.hasChatQuery && messages.scopedChat == nil {
+                    Text("Диалоги").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(12)
+                    TelegramSearchStatusView(status: chats.chatStatus, retry: chats.retryChats).padding(.horizontal, 12)
+                    ForEach(Array(chats.chats.prefix(allChats ? chats.chats.count : 5))) { chat in
+                        HStack(spacing: 8) {
+                            Button { model.selectedChatID = chat.id } label: {
+                                HStack(spacing: 10) {
+                                    TelegramChatListAvatar(chat: chat, store: model.avatars, isSelected: model.selectedChatID == chat.id)
+                                    Text(chat.title).font(.callout.weight(.semibold)).lineLimit(2)
+                                    Spacer(minLength: 0)
+                                }.frame(minHeight: 60).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityIdentifier("telegram.globalSearch.chat.\(chat.id)")
+                            Button { messages.scopedChat = chat } label: { Image(systemName: "magnifyingglass") }
+                                .buttonStyle(.plain).help("Искать сообщения в этом диалоге")
+                                .accessibilityLabel("Искать в \(chat.title)")
+                                .accessibilityIdentifier("telegram.globalSearch.inChat.\(chat.id)")
+                        }.padding(.horizontal, 10)
+                    }
+                    if !allChats && chats.chats.count > 5 {
+                        Button("Ещё диалоги") { allChats = true }.padding(12)
+                    }
+                    Divider()
+                }
+                if messages.hasMessageQuery {
+                    HStack {
+                        Text("Сообщения").font(.caption.weight(.semibold))
+                        Spacer()
+                        Text("\(messages.totalMessages)").font(.caption.monospacedDigit())
+                    }.foregroundStyle(.secondary).padding(12)
+                    if let reason = messages.unavailableReason {
+                        Text(reason).font(.caption).foregroundStyle(.secondary).padding(12)
+                    } else {
+                        TelegramSearchStatusView(status: messages.messageStatus, retry: messages.retryMessages).padding(.horizontal, 12)
+                    }
+                    if messages.scopedChat == nil && (messages.scope == .all || messages.scope == .privateChats)
+                        && messages.messageQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && messages.mediaFilter != .all {
+                        Text("Вложения секретных чатов доступны при поиске по тексту.")
+                            .font(.caption).foregroundStyle(.secondary).padding(12)
+                    }
+                    ForEach(messages.messages) { message in
+                        let context = messages.resultContextID
+                        Button { model.openGlobalSearchMessage(id: message.id, contextID: context) } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(messages.resultChatTitle(id: message.id) ?? message.author).font(.callout.weight(.semibold)).lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    Text(message.date, format: .dateTime.day().month()).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Text(TelegramMessagePresentation.selectionLabel(for: message))
+                                    .font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                            }.frame(maxWidth: .infinity, minHeight: 64, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityIdentifier("telegram.globalSearch.result.\(message.id)")
+                        Divider().padding(.leading, 12)
+                    }
+                    if messages.messageStatus == .ready && messages.messages.isEmpty {
+                        Text("Сообщения не найдены").font(.callout).foregroundStyle(.secondary).padding(12)
+                    }
+                    if messages.canLoadMoreMessages {
+                        Button("Ещё результаты", action: messages.loadMoreMessages).padding(12)
+                            .accessibilityIdentifier("telegram.globalSearch.more")
+                    }
+                }
+            }
+        }.accessibilityIdentifier("telegram.globalSearch.results")
+            .onChange(of: chats.chatQuery) { _, _ in allChats = false }
+    }
+}

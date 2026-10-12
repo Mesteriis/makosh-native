@@ -50,6 +50,28 @@ class SearchAdaptationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _replace(text, "anchor", "replacement")
 
+    def testRejectsUnreviewedLocalSecretLookupChanges(self):
+        # Output authentication must also protect the actual scope hook/lookup,
+        # rather than accepting a modified result merely because it is adapted.
+        mutations = [
+            ("guard bits >> 59 == 0 else { return nil }", ""),
+            ("guard makoshSearchInputIsValid(peer: peer,", "guard unreviewedSearchInput(peer: peer,"),
+            ("guard let subPeerId = makoshSearchSubPeerId(threadId) else { return nil }",
+             "let subPeerId = PeerId(threadId)"),
+            ("case .channels, .groups:", "case .channels:"),
+            ("let messages = transaction.searchMessages(peerId: nil, query: query, tags: tags)",
+             "let messages: [Message] = []"),
+            ("return messages.filter { !$0.tags.intersection(tags).isEmpty }", "return messages"),
+            ("let secretMessages = makoshSearchLocalSecretMessages(transaction: transaction,",
+             "let secretMessages = unreviewedSecretLookup(transaction: transaction,")
+        ]
+        for original, replacement in mutations:
+            with self.subTest(replacement=replacement):
+                tampered = self.adapted.replace(original, replacement)
+                self.assertNotEqual(tampered, self.adapted)
+                with self.assertRaises(ValueError):
+                    adapt_search_source(tampered)
+
     def testOnlyMainSearchCatchBoundariesChange(self):
         marker = "func _internal_searchHashtagPosts("
         suffix = self.adapted.split(marker)[1]

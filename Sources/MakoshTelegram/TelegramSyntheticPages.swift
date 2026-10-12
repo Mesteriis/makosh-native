@@ -145,12 +145,59 @@ struct TelegramSyntheticPages {
             result.append(contentsOf: page.items.reversed())
             anchor = page.previous
         } while anchor != nil
-        result = result.filter { $0.text.localizedCaseInsensitiveContains(query) && (threadID == nil || $0.actionMetadata?.threadID == threadID) }
+        result = result.filter { (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query)) && (threadID == nil || $0.actionMetadata?.threadID == threadID) }
         let indexes = Dictionary(uniqueKeysWithValues: result.compactMap { item -> (String, MessageIndex)? in
             guard let id = item.id.split(separator: ":").last.flatMap({ Int($0) }) else { return nil }
             return (item.id, messageIndex(chatID: chatID, id: id))
         })
         return (result, indexes)
+    }
+
+    func searchMessages(criteria: TelegramSearchCriteria) ->
+        (items: [TelegramMessage], indexes: [String: MessageIndex], destinations: [String: TelegramChat]) {
+        // Explicit synthetic scope labels; none of these fixtures opens an account.
+        let global: [(Int64, TelegramSearchScope)] = [(10001, .groups), (10002, .privateChats),
+            (10003, .privateChats), (10005, .channels), (10125, .groups), (20065, .privateChats)]
+        let ids = criteria.chatID.map { [$0] } ?? global.filter { criteria.scope == .all || $0.1 == criteria.scope }.map(\.0)
+        var items: [TelegramMessage] = [], indexes: [String: MessageIndex] = [:], destinations: [String: TelegramChat] = [:]
+        for id in ids {
+            let page = searchMessages(chatID: id, query: criteria.query, threadID: criteria.threadID)
+            let matches = page.items.filter { message in
+                (criteria.senderID == nil || criteria.senderID == (message.isOutgoing ? 1 : 999))
+                    && syntheticMediaMatches(message, filter: criteria.media)
+            }
+            items.append(contentsOf: matches)
+            for message in matches {
+                indexes[message.id] = page.indexes[message.id]
+                destinations[message.id] = TelegramChat(id: id,
+                    title: id == 10001 && forum ? "Форум · Макош QA" : "Тестовый диалог \(id % 10000)", preview: "", unreadCount: 0)
+            }
+        }
+        items.sort { $0.date != $1.date ? $0.date > $1.date : $0.id < $1.id }
+        return (items, indexes, destinations)
+    }
+
+    private func syntheticMediaMatches(_ message: TelegramMessage, filter: TelegramSearchMediaFilter) -> Bool {
+        switch filter {
+        case .all: return true
+        case .links: return message.formattedTextForDisplay?.entities.contains { entity in
+            switch entity.kind { case .url, .textURL, .email: true; default: false }
+        } == true
+        default: return message.attachments.contains { attachment in
+            switch filter {
+            case .photos: attachment.kind == .photo
+            case .videos: attachment.playback == .video
+            case .photoVideo: attachment.kind == .photo || attachment.playback == .video
+            case .music: attachment.playback == .audio
+            case .voiceOrVideo: attachment.playback == .voice || attachment.playback == .roundVideo
+            case .voice: attachment.playback == .voice
+            case .roundVideo: attachment.playback == .roundVideo
+            case .files: attachment.kind == .file && attachment.playback == nil
+            case .gifs: attachment.mimeType == "image/gif"
+            case .all, .links: false
+            }
+        }
+        }
     }
 }
 #endif

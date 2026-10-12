@@ -4,11 +4,14 @@ import MakoshTelegram
 struct TelegramSidebarView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var search: TelegramSearchModel
+    @ObservedObject private var globalSearch: TelegramSearchModel
     @ObservedObject private var forumTopics: TelegramForumTopicsController
     @State private var connectionPresented = false
-    init(model: TelegramModel) { self.model = model; self.search = model.search; self.forumTopics = model.forumTopics }
+    @FocusState private var searchFocused: Bool
+    init(model: TelegramModel) { self.model = model; self.search = model.search; self.globalSearch = model.globalSearch; self.forumTopics = model.forumTopics }
+    private var searching: Bool { search.hasChatQuery || globalSearch.hasMessageQuery }
     private var showsForum: Bool {
-        model.isForumTopicsListPresented && model.phase == .ready && forumTopics.snapshot?.chatID == model.selectedChatID
+        !searching && model.isForumTopicsListPresented && model.phase == .ready && forumTopics.snapshot?.chatID == model.selectedChatID
     }
     private var visibleChats: [TelegramChat] { search.hasChatQuery ? search.chats : model.chats }
     private var showsArchiveEntry: Bool { model.phase == .ready && model.chatFolder == .inbox && !search.hasChatQuery }
@@ -36,16 +39,34 @@ struct TelegramSidebarView: View {
             }.padding(.horizontal, 12).frame(height: 50)
             Divider()
             if model.phase == .ready && !showsForum {
-                TextField("Найти диалог", text: $search.chatQuery).textFieldStyle(.roundedBorder)
+                TextField("Поиск", text: $search.chatQuery).textFieldStyle(.roundedBorder).focused($searchFocused)
                     .padding(.horizontal, 10).frame(height: 40).accessibilityIdentifier("telegram.chatSearch")
-                if search.hasChatQuery {
-                    Text("Поиск по диалогам в локальном кэше выбранного списка.")
-                        .font(.caption).foregroundStyle(.secondary).padding(12)
-                    TelegramSearchStatusView(status: search.chatStatus, retry: search.retryChats)
-                        .padding(.horizontal, 12)
+                    .onChange(of: search.chatQuery) { _, query in globalSearch.messageQuery = query }
+                if searchFocused || searching {
+                    TelegramSearchMediaTabs(selection: $globalSearch.mediaFilter)
+                    HStack {
+                        Picker("Диалоги", selection: $globalSearch.scope) {
+                            ForEach(TelegramSearchScope.allCases) { scope in Text(scope.title).tag(scope) }
+                        }.labelsHidden().accessibilityIdentifier("telegram.globalSearch.scope")
+                        Spacer(minLength: 4)
+                        Button("Отмена") {
+                            search.chatQuery = ""; globalSearch.clearMessageSearch(); searchFocused = false
+                        }.buttonStyle(.plain).accessibilityIdentifier("telegram.globalSearch.close")
+                    }.padding(.horizontal, 10).padding(.bottom, 8)
+                    if let chat = globalSearch.scopedChat {
+                        HStack {
+                            Text("В: \(chat.title)").font(.caption).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Button { globalSearch.scopedChat = nil } label: { Image(systemName: "xmark.circle.fill") }
+                                .buttonStyle(.plain).accessibilityLabel("Сбросить диалог поиска")
+                                .accessibilityIdentifier("telegram.globalSearch.inChat.clear")
+                        }.padding(.horizontal, 12).padding(.bottom, 8)
+                    }
                 }
             }
-            if showsForum {
+            if searching {
+                TelegramGlobalSearchResultsView(model: model)
+            } else if showsForum {
                 TelegramForumTopicsListView(model: model, topics: forumTopics)
             } else if visibleChats.isEmpty {
                 if showsArchiveEntry { archiveEntry }
@@ -79,7 +100,7 @@ struct TelegramSidebarView: View {
                     }
                 }.listStyle(.inset).accessibilityIdentifier("telegram.chats")
             }
-            if model.phase == .ready && !search.hasChatQuery && !showsForum {
+            if model.phase == .ready && !searching && !showsForum {
                 TelegramPaginationBar(page: model.chatPage, prefix: "telegram.chatPage",
                     previous: model.loadOlderChats, next: model.loadNewerChats,
                     latest: model.showLatestChats, retry: model.retryChatPage)

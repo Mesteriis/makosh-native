@@ -1,6 +1,6 @@
 # Development status — 2026-10-12
 
-## Pre-merge CI repair and next stage: extended search
+## CI repairs for the preceding integration
 
 Both hosted runs for block2 head8cbf794 failed before compilation because
 Gitiles regenerated libvpx tar/PAX timestamps. Two fresh downloads and the
@@ -17,7 +17,7 @@ reviewed135-file output. `scripts/dev-db.sh up` and `scripts/build-app.sh` exit0
 A full local suite exits0:1,714 XCTest (1,635 Telegram +79 core),1 microphone
 precondition skip,0 failures;77 Python tests. A read-only worker review finds
 no material VPX boundary defect; it does not establish hosted CI success.
-The existing PR remains unmerged until its repaired commit passes hosted CI.
+The merge gate requires hosted success on the exact repaired PR commit.
 The repaired hosted builds pass preparation/compilation, then fail on timing
 assumptions in three test classes (13 and5 assertions respectively). Positive
 deadline tests now wait for the actual state with a5s bound; the upload fixture
@@ -31,9 +31,78 @@ network timeouts at most3 times, with250/500ms backoff. Permanent HTTP errors,
 size/content/parser failures still fail closed. The valid regression RED has
 13 tests/11 ordinary failures; the final13 Python tests and an actual uncached
 HTTP preparation pass. The prepared135-file fingerprint remains unchanged.
-Extended search continues separately.
+Both subsequent hosted builds pass preparation and compilation but fail on
+another fixed-sleep ordering assumption (1 and6 assertions): recorder hold
+start and forwarding/Saved forwarding post-consent deadlines. Positive checks
+now wait for the actual transition with a5s bound. Real350ms/40ms timers,
+negative no-start/human-wait checks and late-ACK/lease assertions remain. The
+focused24 XCTest pass; commit a9ee000 is published for hosted verification in
+[PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
+separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram extended messages (block 2, locally verified)
+## Current stage: Telegram extended search (block 3)
+
+Reference-led search stays in the existing common service/sidebar workspace.
+Global media tabs and all/private/group/channel scopes can search without text;
+an optional selected chat restricts message results. Conversation search adds
+native sender suggestions, older/newer navigation across50-message pages,
+return to the result list and local-calendar timestamp jumps. Opening a result
+keeps the query and separate destination/topic drafts. Request/context tokens
+reject stale account/chat/topic/filter callbacks and UI activation.
+
+Engine recipe18 validates exact sender/sub-peer resolution and positive ordinary
+Int32 topic IDs. Raw packed peers are bounded before legacy PeerId assertions.
+Local Secret results are excluded from group/channel searches and filtered by
+native tags before merging/counting. Empty Secret media FTS and sender-filtered
+Secret searches remain explicitly unsupported. Global navigation distinguishes
+real forum flags from ordinary channel thread1 and Saved/monoforum packed peer
+threads; the latter open supported all-messages history, without inventing a
+forum topic. Full Saved sub-peer navigation is outside this slice.
+
+Valid REDs retain the original criteria/model/native boundary failures. The
+first combined42-test candidate exits1 with107 ordinary assertions, then42/0
+passes. Calendar/sender coverage initially fails on a test fixture's unobserved
+forum list; observing that fixture repairs4/0, including23/25-hour DST days.
+An additional packed high-bit fixture produces native SIGTRAP/exit1, not an
+ordinary assertion-only run; the preconstruction guard repairs it within the
+46/0 focused run. Read-only review then finds two navigation races and ordinary
+native channel/Saved thread handling: the former reproduces2 tests/5 ordinary
+failures, followed by2/0; native destination fixtures reproduce6 tests/21
+ordinary failures, followed by6/0. A final migrated-group regression reproduces2
+assertions: a chat-restricted global result must retain the modern conversation
+and its exact old native MessageIndex. The repaired regression passes1/0.
+The first whole candidate passes1,755 XCTest (1,676 Telegram +79 core),1
+microphone precondition skip,0 failures;83 Python tests across17 suites. After
+the migration repair, the whole suite passes1,756 XCTest (1,677 Telegram +79
+core),1 microphone precondition skip,0 failures and83 Python tests across17
+suites. All609 frozen source/test/dependency fingerprints match afterward.
+The final mandatory whole suite after the CI-only fixture repair also exits0:
+**1,756 XCTest (1,677 Telegram +79 core),1 microphone precondition skip,0
+failures;83 Python tests across17 suites**. All609 frozen source/test/dependency
+fingerprints match after this run. The final incremental app build emits no
+compiler warnings. Upstream Postbox teardown and macOS Contacts service
+diagnostics remain in test output; they are not assertion failures or evidence
+of personal-contact access.
+
+Final XERJ project refresh exits0:651 files,600/600 classified code. Engine
+recipe18 and the locked TelegramSwift reference are fresh. All three content
+checks and actual source-confirmed search/navigation queries pass. The earlier
+check during an unfinished refresh returned STALE/exit1 and is retained as a
+failed attempt; it is superseded by the completed refresh and final checks.
+
+An isolated native QA bundle with explicit synthetic PostgreSQL/Postbox confirms
+the common shell,44pt search header,130 results→history with retained query,
+older navigation, sender selection65/50, calendar15.11.2023, global6 photos→1
+channel→2 groups, exact forum topic opening and an optional chat restriction.
+The final reviewed `scripts/build-app.sh` exits0. Strict deep QA signing and
+unsigned executable payload equality pass. Rechecking the rebuilt bundle
+confirms query→history, the separate visible draft and repeated Cmd-F refocus
+without clearing the query. No real account, Telegram network delivery,
+private contacts or payments are used. Reference renderer/calendar details,
+full participant directories and Secret media parity remain listed in
+`reference-interface.md` and `telegram.md`.
+
+## Previous stage: Telegram extended messages (block 2, locally verified)
 
 The authorized sequence remains: (1) media polish; (2) selected reply quotes,
 server drafts, custom emoji, code highlighting, forum topics and special

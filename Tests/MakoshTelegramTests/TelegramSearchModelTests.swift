@@ -62,8 +62,8 @@ final class TelegramSearchModelTests: XCTestCase {
         XCTAssertTrue(model.messages.contains { $0.id == result.id })
         XCTAssertEqual(model.historyFocusID, result.id)
         XCTAssertEqual(model.draft, "Сохранить несохранённый текст")
-        XCTAssertEqual(model.search.messageQuery, "")
-        XCTAssertEqual(model.search.messageStatus, .idle)
+        XCTAssertEqual(model.search.messageQuery, "сообщение 125 ", "History navigation must preserve the reference search session")
+        XCTAssertEqual(model.search.messageStatus, .ready)
     }
 
     func testMessageSearchAccumulatesFiftyOneHundredAndOneHundredThirtyWithoutDuplicates() async throws {

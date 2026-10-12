@@ -20,7 +20,7 @@ struct TelegramDetailView: View {
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
     @State private var messageSearchPresented = false
-    @FocusState private var messageSearchFocused: Bool
+    @State private var messageSearchFocusRequest = UUID()
     private let dossier: WorkspaceModel?
     private let openDossier: (UUID) -> Void
     init(model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in }) {
@@ -213,18 +213,10 @@ struct TelegramDetailView: View {
                 }
                 Divider()
                 if messageSearchPresented {
-                    HStack(spacing: 12) {
-                        TextField("Поиск сообщений в диалоге", text: $search.messageQuery)
-                            .textFieldStyle(.roundedBorder).focused($messageSearchFocused)
-                            .accessibilityIdentifier("telegram.messageSearch")
-                            .onExitCommand(perform: closeMessageSearch)
-                        Button(action: closeMessageSearch) { Image(systemName: "xmark").frame(width: 24, height: 24) }
-                            .buttonStyle(.plain).help("Закрыть поиск")
-                            .accessibilityLabel("Закрыть поиск").accessibilityIdentifier("telegram.messageSearch.close")
-                    }.padding(.horizontal, 16).frame(height: 44)
+                    TelegramMessageSearchHeader(search: search, initialDate: model.messages.last?.date ?? Date(), focusRequest: messageSearchFocusRequest, close: closeMessageSearch)
                     Divider()
                 }
-                if search.hasMessageQuery {
+                if search.hasMessageQuery && search.showsResults {
                     messageSearchResults
                 } else {
                     TelegramPaginationBar(page: model.historyPage, prefix: "telegram.historyPage",
@@ -368,7 +360,11 @@ struct TelegramDetailView: View {
                 Text("Найдено: \(search.totalMessages). Показано: \(search.messages.count)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }.padding(.horizontal, 16).padding(.top, 12)
-            TelegramSearchStatusView(status: search.messageStatus, retry: search.retryMessages).padding(.horizontal, 16)
+            if let reason = search.unavailableReason {
+                Text(reason).font(.callout).foregroundStyle(.secondary).padding(.horizontal, 16)
+            } else {
+                TelegramSearchStatusView(status: search.messageStatus, retry: search.retryMessages).padding(.horizontal, 16)
+            }
             if search.messages.isEmpty {
                 ContentUnavailableView(search.messageStatus == .ready ? "Сообщения не найдены" : "Поиск сообщений", systemImage: "magnifyingglass", description: Text(search.messageStatus == .ready ? "Попробуйте другой запрос." : "Ожидаем результат запроса Telegram.")).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -391,7 +387,8 @@ struct TelegramDetailView: View {
                                     }
                                     if !item.captionAboveMedia { messageCaption(item, lineLimit: 4) }
                                 }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
-                                Button("В истории") { model.openSearchMessage(id: item.id) }
+                                let context = search.resultContextID
+                                Button("В истории") { model.openSearchMessage(id: item.id, contextID: context) }
                                     .buttonStyle(.bordered).controlSize(.small)
                                     .accessibilityIdentifier("telegram.searchResult.\(item.id)")
                             }.accessibilityElement(children: .contain)
@@ -425,13 +422,12 @@ struct TelegramDetailView: View {
     private func openMessageSearch() {
         closeMessageSelection()
         messageSearchPresented = true
-        messageSearchFocused = true
+        messageSearchFocusRequest = UUID()
     }
 
     private func closeMessageSearch() {
-        messageSearchFocused = false
         messageSearchPresented = false
-        search.messageQuery = ""
+        search.clearMessageSearch()
     }
 
     private func closeMessageSelection() {

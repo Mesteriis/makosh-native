@@ -44,6 +44,11 @@ Build adaptations in the generated copy:
 - Distinguish message-search RPC failure from an empty/completed result, preserving
   both search cursors on failure. The bounded GPL adaptation is tracked in
   `scripts/telegram_search_adaptation.py`; preparation verifies input and output hashes.
+  Recipe18 also validates sender/topic/sub-peer identities before RPC or packed
+  PeerId construction, excludes local Secret messages from group/channel scopes
+  and applies media tags before global result merging. These bounded GPL engine
+  adaptations retain upstream source/authorship; no outer TelegramSwift UI or
+  embedded API credentials are copied.
 - Record message snapshots before overwrite/removal and after central history
   writes in the same Postbox transaction. Recipe 4 adds the durable journal in
   `scripts/telegram-retention/MakoshMessageJournal.swift` through the hash-checked

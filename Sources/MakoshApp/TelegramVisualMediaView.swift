@@ -10,6 +10,7 @@ struct TelegramVisualMediaView<MenuContent: View>: View {
     @ObservedObject var playback: TelegramPlaybackController
     var identifierPrefix = "telegram.album"
     var contentMode: ContentMode = .fill
+    var openPhoto: (() -> Void)? = nil
     @ViewBuilder let menu: () -> MenuContent
     @State private var thumbnail: TelegramImagePreview?
     @State private var decodeFailed = false
@@ -33,7 +34,9 @@ struct TelegramVisualMediaView<MenuContent: View>: View {
             Color.secondary.opacity(0.15)
             if let thumbnail {
                 if attachment.kind == .photo, !isHidden {
-                    Button { actions.showPreview(media: media, key: key) } label: {
+                    Button {
+                        if let openPhoto { openPhoto() } else { actions.showPreview(media: media, key: key) }
+                    } label: {
                         Image(decorative: thumbnail.image, scale: 1).resizable().aspectRatio(contentMode: contentMode)
                             .frame(maxWidth: .infinity, maxHeight: .infinity).clipped().contentShape(Rectangle())
                     }.buttonStyle(.plain).disabled(actions.isBusy || playback.isBusy)

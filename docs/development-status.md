@@ -40,7 +40,78 @@ focused24 XCTest pass; commit a9ee000 is published for hosted verification in
 [PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
 separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram extended search (block 3)
+## Current stage: Telegram profiles/admin/shared media (block 4)
+
+The existing common service/sidebar workspace now contains profile title/about
+editing, member/admin directories, member restrictions/removal, group default
+permissions and a separate shared-media search/gallery. Native role/membership
+and cached-data checks determine available controls.64-member channel pages
+retain raw offsets; basic groups use cached participants and boolean admin
+rights. Exact actor/participant/basis checks run before bounded RPCs; confirmed
+basic-admin updates preserve unrelated cached participants and their provenance.
+Self/owner edits and implicit administrator demotion through bans are refused.
+Finite restrictions use60seconds…365days, with a separate explicit forever
+choice. Uncertain writes require explicit refresh and are never auto-resent.
+
+Shared media keeps independent search/resources and opens the exact source
+thread/index in the existing conversation. It reuses file borrowing, bounded
+image decoding, playback, spoiler reveal and Save panel. The current per-chat
+S3 prohibition and permanent PostgreSQL/S3 archive are unchanged. Engine
+recipe19 exposes only the existing addUpdates wrapper; its body and native
+state implementation are unchanged. Pins/license provenance remain reviewed;
+build/test do not depend on research references.
+
+Valid assertion REDs cover permissions/controller/native member admission,
+gallery activation, basic groups, uncertain RPCs, wire flags, ACK cache CAS,
+default permissions and finite bans/invalid member IDs. The final focused run
+passes18 XCTest/0 failures. Earlier compiler errors are retained separately
+and are not assertion REDs. One native Postbox fixture produced SIGTRAP on an
+inherited MainActor transaction closure; moving fixture transactions into
+nonisolated helpers resolves that harness failure. The production backend
+already uses off-actor transactions.2 adaptation regressions pass. Required
+`scripts/dev-db.sh up` and the final `scripts/build-app.sh` exit0. The mandatory
+whole suite exits0:1,774 XCTest (1,695 Telegram +79 core),1 microphone
+precondition skip,0 failures;85 Python tests across18 suites. Final review
+then preserves scam/fake description suppression after an info ACK and routes
+GIFs through the existing file row instead of an unsupported visual spinner.
+After those display-only changes, the final build and native QA pass. The final
+mandatory whole run also exits0: **1,774 XCTest (1,695 Telegram +79 core),1
+microphone precondition skip,0 failures;85 Python tests across18 suites**.
+All623 frozen source/test/script/dependency fingerprints match afterward. The
+final incremental app build emits no compiler warnings. Existing upstream
+Postbox teardown and macOS Contacts-service diagnostics remain in test output;
+they are not assertion failures or evidence of private contact retrieval.
+
+An explicit isolated synthetic PostgreSQL QA bundle confirms the common shell,
+group profile, member search, immutable admin confirmation, updated rank,
+default permission confirmation and title editing. Shared media shows50pt tabs
+and3-column tiles; a decoded synthetic photo advances to video, and «В переписке»
+opens visible message127 in the original chat. The final rebuilt bundle passes
+strict deep signing and unsigned executable payload equality; its name edit
+appears in the profile overview. CUA reports AXError/noWindowsAvailable when
+rebinding or scrolling some modal sheets; rebinding plus AX controls permits
+the checks above. Actual native member-list page2 scrolling is not established;
+controller pagination has automated regression coverage.
+
+Final display review also confirms a scam warning with description hidden after
+saving a nonempty synthetic about value. The final rebuilt gallery decodes the
+photo again; files and voice/round-video categories show their existing rows.
+The synthetic GIF category is empty, so no animated-GIF renderer acceptance is
+claimed. The owned QA process is stopped and its isolated data retained. Native
+recording/playback devices and real account administration remain untested.
+
+Project XERJ refresh exits0:665 files,614/614 classified code. The locked
+TelegramSwift reference and recipe19 engine checks pass. A check after docs
+changed returned STALE/exit1; a completed refresh supersedes it. Actual current
+controller/reference-permission/native-title searches are source-confirmed.
+
+No real account, private contact, Telegram network mutation or payment is used.
+Real delivery/reconnect/admin acceptance remains block6. Invitation/member-add,
+join-request/admin-log/ownership/statistics/avatar-edit/stories flows and full
+borderless/zoom/thumbstrip/media-calendar gallery parity remain open; see
+`reference-interface.md`. This slice does not establish full Telegram parity.
+
+## Previous stage: Telegram extended search (block 3)
 
 Reference-led search stays in the existing common service/sidebar workspace.
 Global media tabs and all/private/group/channel scopes can search without text;

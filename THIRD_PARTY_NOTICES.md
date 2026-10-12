@@ -38,6 +38,13 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe19 exposes the existing `AccountStateManager.addUpdates` wrapper so
+  bounded Makosh administration RPCs can replay acknowledged native updates.
+  `scripts/telegram_peer_management_adaptation.py` requires one exact pinned
+  context and changes only public visibility; the upstream wrapper body and
+  internal state implementation remain unchanged. The adapter is
+  GPL-3.0-or-later. Makosh's independently authored UI/DTO/RPC integration
+  retains MIT; no outer GPLv2 UI, assets or credentials are copied.
 - Correct ManagedFile's relative SSignalKit dependency.
 - Prevent Postbox from deleting the session database after an open failure.
 - Disable iCloud login-token reads and future-login-token storage.

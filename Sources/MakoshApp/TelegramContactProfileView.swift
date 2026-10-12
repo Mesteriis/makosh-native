@@ -6,21 +6,35 @@ struct TelegramContactProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: TelegramModel
     @ObservedObject private var peerStatus: TelegramPeerStatusController
+    @ObservedObject private var management: TelegramPeerManagementController
     let dossier: WorkspaceModel?
     let contextID: UUID
     let openDossier: (UUID) -> Void
+    private enum Page { case overview, edit, members, media, permissions }
+    @State private var page = Page.overview
     @State private var photoGallery: TelegramProfilePhotosPresentation?
 
     init(model: TelegramModel, dossier: WorkspaceModel?, contextID: UUID, openDossier: @escaping (UUID) -> Void) {
-        self.model = model; self.peerStatus = model.peerStatus
+        self.model = model; self.peerStatus = model.peerStatus; self.management = model.peerManagement
         self.dossier = dossier; self.contextID = contextID; self.openDossier = openDossier
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Информация").font(.headline)
+                if page != .overview {
+                    Button("Назад") { page = .overview }.disabled(management.mutationStatus == .saving)
+                        .accessibilityIdentifier("telegram.profile.back")
+                }
+                Text(page == .media ? "Общие медиа" : page == .members ? "Участники" : page == .edit ? "Редактирование" : page == .permissions ? "Разрешения" : "Информация").font(.headline)
                 Spacer()
+                if page != .overview && page != .media {
+                    Button("Обновить", action: management.refresh).disabled(management.mutationStatus == .saving)
+                        .accessibilityIdentifier("telegram.profile.management.refresh")
+                }
+                if page == .overview, management.snapshot?.canEditInfo == true {
+                    Button("Изменить") { page = .edit }.accessibilityIdentifier("telegram.profile.edit")
+                }
                 Button("Закрыть") { dismiss() }.keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("telegram.profile.close")
             }.padding(16)
@@ -36,15 +50,24 @@ struct TelegramContactProfileView: View {
                     Button("Повторить", action: model.loadContactProfile)
                 }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             case let .ready(profile):
+                let current = management.snapshot.flatMap { $0.accountID == profile.accountID && $0.peerID == profile.peerID ? $0 : nil }
+                let displayName = current?.title ?? profile.displayName
+                let displayAbout = profile.isScam || profile.isFake ? nil : (current.map(\.about) ?? profile.about)
+                if page == .permissions { TelegramPeerPermissionsView(controller: management) }
+                else if page == .edit { TelegramPeerInfoEditor(controller: management) }
+                else if page == .members { TelegramPeerMembersView(controller: management, avatars: model.avatars) }
+                else if page == .media {
+                    TelegramSharedMediaView(model: model, profileContextID: contextID) { dismiss() }
+                } else {
                 Form {
                     Section {
                         VStack(spacing: 10) {
                             Button {
                                 if model.openProfilePhotos(profile, contextID: contextID) {
-                                    photoGallery = TelegramProfilePhotosPresentation(title: profile.displayName)
+                                    photoGallery = TelegramProfilePhotosPresentation(title: displayName)
                                 }
                             } label: {
-                                TelegramChatAvatar(title: profile.displayName, peerID: profile.peerID, store: model.avatars, size: 72)
+                                TelegramChatAvatar(title: displayName, peerID: profile.peerID, store: model.avatars, size: 72)
                             }.buttonStyle(.plain).help("Открыть фотографии профиля")
                                 .accessibilityLabel("Фотографии профиля").accessibilityIdentifier("telegram.profile.photos")
                                 .background {
@@ -52,7 +75,7 @@ struct TelegramContactProfileView: View {
                                         if photoGallery?.id == id { photoGallery = nil }
                                     }
                                 }
-                            Text(profile.displayName.isEmpty ? "Имя не опубликовано" : profile.displayName)
+                            Text(displayName.isEmpty ? "Имя не опубликовано" : displayName)
                                 .font(.title2.weight(.semibold)).textSelection(.enabled)
                             Text(profile.kind.profileTitle).foregroundStyle(.secondary)
                                 .accessibilityIdentifier("telegram.profile.kind")
@@ -81,10 +104,29 @@ struct TelegramContactProfileView: View {
                             LabeledContent("Имя пользователя") { Text("@" + username).textSelection(.enabled) }
                         }
                     }
-                    if let about = profile.about, !about.isEmpty {
+                    if let about = displayAbout, !about.isEmpty {
                         Section {
                             Text(about).textSelection(.enabled).accessibilityIdentifier("telegram.profile.about")
                         } header: { Text("Описание") }
+                    }
+                    Section {
+                        Button("Общие медиа") {
+                            if model.openSharedMedia(profile, contextID: contextID) { page = .media }
+                        }.accessibilityIdentifier("telegram.profile.sharedMedia")
+                        if management.snapshot?.canViewMembers == true {
+                            Button("Участники") { management.show(.members); page = .members }
+                                .accessibilityIdentifier("telegram.profile.members")
+                        }
+                        if management.snapshot?.canViewAdministrators == true {
+                            Button("Администраторы") { management.show(.administrators); page = .members }
+                                .accessibilityIdentifier("telegram.profile.administrators")
+                        }
+                        if management.snapshot?.canRestrict == true, management.snapshot?.defaultBannedRights != nil {
+                            Button("Разрешения участников") { page = .permissions }.accessibilityIdentifier("telegram.profile.permissions")
+                        }
+                        if management.status == .failed || management.status == .timedOut, !profile.isPerson, !profile.isBot {
+                            Button("Обновить сведения об управлении", action: management.refresh)
+                        }
                     }
                     Section {
                         if !profile.isPerson {
@@ -104,10 +146,11 @@ struct TelegramContactProfileView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }.formStyle(.grouped)
+                }
             }
-        }.frame(width: 480, height: 620)
-            .onChange(of: model.selectedChatID) { _, _ in photoGallery = nil }
-            .onChange(of: model.contactProfileContextID) { _, _ in photoGallery = nil }
+        }.frame(width: page == .media || page == .members ? 620 : 480, height: 680)
+            .onChange(of: model.selectedChatID) { _, _ in photoGallery = nil; page = .overview }
+            .onChange(of: model.contactProfileContextID) { _, _ in photoGallery = nil; page = .overview }
     }
 }
 

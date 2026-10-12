@@ -173,21 +173,43 @@ final class TelegramUploadFileIOTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: restored.url), original)
     }
 
-    // Catches encoding at the former .85 quality: JPEG quantization records expose the actual encoder setting.
-    func testOrdinaryPhotoUsesReferenceJPEGQuality() async throws {
+    // Catches falling back to sequential ImageIO or changing the primary quality75 quantization.
+    func testOrdinaryPhotoUsesProgressiveJPEGAtQuality75() async throws {
         let source = try directory().appendingPathComponent("quality.jpg")
         try image(at: source, orientation: 1)
-        let decoded = try XCTUnwrap(CGImageSourceCreateWithURL(source as CFURL, nil))
-        let pixels = try XCTUnwrap(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
-        let reference = NSMutableData()
-        let encoder = try XCTUnwrap(CGImageDestinationCreateWithData(reference, "public.jpeg" as CFString, 1, nil))
-        CGImageDestinationAddImage(encoder, pixels, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
-        XCTAssertTrue(CGImageDestinationFinalize(encoder))
+        // Standard luminance table, quality75 scaling, in JPEG zigzag order.
+        let expected = Data([8,6,6,7,6,5,8,7,7,7,9,9,8,10,12,20,13,12,11,11,12,25,
+            18,19,15,20,29,26,31,30,29,26,28,28,32,36,46,39,32,34,44,35,28,28,40,
+            55,41,44,48,49,52,52,52,31,39,57,61,56,50,60,46,51,52,50])
         for size in [TelegramUploadPhotoSize.standard, .large] {
             let photo = try await TelegramUploadFileIO.stage(source, mode: .photo, photoSize: size)
             defer { try? TelegramUploadFileIO.discard(photo) }
-            XCTAssertEqual(try jpegLuminanceQuantization(Data(contentsOf: photo.url)), try jpegLuminanceQuantization(reference as Data))
+            let bytes = try Data(contentsOf: photo.url)
+            XCTAssertEqual(try jpegLuminanceQuantization(bytes), expected)
+            let decoded = try XCTUnwrap(CGImageSourceCreateWithData(bytes as CFData, nil))
+            let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(decoded, 0, nil) as? [CFString: Any])
+            let jfif = try XCTUnwrap(properties[kCGImagePropertyJFIFDictionary] as? [CFString: Any])
+            XCTAssertEqual((jfif[kCGImagePropertyJFIFIsProgressive] as? NSNumber)?.boolValue, true)
         }
+    }
+
+    // Catches dropping the reference's white compositing background for transparent source pixels.
+    func testPhotoCompositesTransparentPixelsOnWhite() async throws {
+        let source = try directory().appendingPathComponent("transparent.png")
+        let context = try XCTUnwrap(CGContext(data: nil, width: 60, height: 60, bitsPerComponent: 8,
+            bytesPerRow: 240, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let photo = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        defer { try? TelegramUploadFileIO.discard(photo) }
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(photo.url as CFURL, nil))
+        let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(imageSource, 0, nil))
+        let pixel = try XCTUnwrap(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        pixel.draw(decoded, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let bytes = try XCTUnwrap(pixel.data).assumingMemoryBound(to: UInt8.self)
+        for channel in 0..<3 { XCTAssertGreaterThanOrEqual(bytes[channel], 250) }
     }
 
     private func jpegLuminanceQuantization(_ data: Data) throws -> Data {

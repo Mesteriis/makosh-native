@@ -595,15 +595,19 @@ options. Он включён только в новых schema17/18; прежн�
 переходы15→18 и17→16 через guarded install/capture запрещены. Default1280/large2560
 setting теперь следует `FastSettings.swift:301–315` и SenderController; ImageIO
 получает quality.75. `ImageCompression.swift:53–75` сначала использует Mozjpeg75,
-затем ImageIO fallback. Основной codec ещё не перенесён; encoder/byte parity не
-утверждается и требует отдельной dependency/license/build интеграции.
+затем ImageIO fallback. Основной codec теперь закреплён отдельно: Mozjpeg4.1.4,
+portable scalar C, FASTEST defaults, integer DCT, optimized Huffman, quality75,
+simple progression. Собственный CGContext с белым фоном и RGBX/C boundary
+заменяет не скопированную ObjC обёртку. ImageIO fallback и cover path сохранены.
+Универсальная побайтная эквивалентность native builds не утверждается; source/
+license/preparation provenance записаны в THIRD_PARTY_NOTICES.md.
 Один preference доступен в существующих Settings и Media-preview menu, как в
 `GeneralSettingsViewController.swift:198–201,402` и `PreviewSenderController.swift:404–411`.
 Reference handler не перегенерирует текущие media; Makosh также меняет только
 параметр новых подготовок. Старые2560/.85 ресурсы восстанавливаются побайтно.
 Native Settings адаптирует switch к SwiftUI Form; reference modal-text feedback
 заменён подсказкой о следующих подготовках. Полная Settings parity ещё открыта.
-Native picker QA2026-10-12 подтверждает общий ON/OFF в меню и Settings и его
+Предыдущий native picker QA размера2026-10-12 подтверждает общий ON/OFF в меню и Settings и его
 сохранение после перезапуска. При S3 OFF новый PNG3000×1500 даёт large2560×1280/.75
 и standard1280×640/.75. После удаления исходного picker path final app показывает
 фото и emoji captions; readback сохраняет точные прежние2560/.85 и large pointer/
@@ -611,6 +615,13 @@ payload/UUID. Все шесть текущих photo/raw ресурсов local,
 без receipt/pending/S3 objects и promotion после enable/resume. AX predicate
 наличия menu control воспроизводит RED→GREEN; checked state подтверждён Settings
 AX и screenshot. Это подготовка/восстановление, не отправка на сервер Telegram.
+Native picker QA основного Mozjpeg2026-10-12 при S3 OFF даёт progressive
+quality75 JPEG1280×640 из того же PNG3000×1500. После удаления picker path
+restart показывает фото и emoji caption. Три прежних ImageIO preparation
+сохраняют точные pointer/payload/UUID; восемь текущих photo/raw ресурсов local,
+34 retained encrypted records, без receipt/pending/S3 objects и promotion
+после enable/resume. Кодировщик не меняет layout; universal byte parity с
+native reference build остаётся не подтверждена.
 Typed WebP под исходным .jpg теперь сохраняет Media с unchanged document bytes;
 его grouping всё ещё запрещён и требует отдельной сверки с reference workflows.
 

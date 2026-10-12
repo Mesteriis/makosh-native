@@ -5,6 +5,7 @@ source scripts/libpq-env.sh
 python3 scripts/prepare-telegram.py
 python3 scripts/prepare-opus.py
 python3 scripts/prepare-opusfile.py
+python3 scripts/prepare-mozjpeg.py
 swift build --product Makosh -j 4
 makosh_bin_dir="$(swift build --show-bin-path)"
 makosh_bundle="$PWD/.build/Makosh.app"

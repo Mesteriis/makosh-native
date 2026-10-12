@@ -1,6 +1,83 @@
 # Development status — 2026-10-12
 
-## Current stage: reference photo size and ImageIO quality setting
+## Current stage: pinned primary Mozjpeg photo encoding
+
+The next photo slice integrates independently pinned Mozjpeg4.1.4 portable C
+from the selected Telegram-iOS tree.92 unchanged source/provenance files produce
+an authenticated98-file package without upstream build scripts or research
+checkouts. An own quiet C error/ownership boundary and white RGBX rasterization
+use FASTEST defaults, integer DCT, optimized Huffman, quality75 and simple
+progression. ImageIO.75 remains fallback; covers and frozen retained photos stay.
+Source/notice review and exact grants are in THIRD_PARTY_NOTICES.md.
+
+Compiled RED2 tests/4 failures exposes sequential ImageIO and different DQT;
+white compositing already passes. Python preparation RED fails on the missing
+artifact; GREEN5 tests covers exact committed bytes/notices, offline reuse,
+tamper/extra/missing/symlink refusal, changed pins and unsafe source paths/modes.
+First integration compilation exposes missing C standard prerequisites in the
+module umbrella. The next exposes6 included C fragments omitted from the
+compilation-unit list. A full literal-include closure review and RED fragment
+fixture fix the selection; those fragments remain included, not compiled twice.
+FileIO GREEN15 tests passes. Initial C compilation emits15 upstream decoder
+precision warnings plus3 existing test warnings; these are retained as actual
+diagnostics, not rewritten into a pristine build claim.
+
+A strict pure-primary-colour staging fixture initially fails2 assumptions:
+host ColorSync conversion produces extra channel components. Bounded raw-pixel
+diagnostics confirm that expectation is wrong. An explicit RGBX C-boundary test
+replaces it and verifies decoded channels independently of host profile; white
+compositing, progressive/DQT, invalid buffer/shape/overflow/output ownership and
+real native queue/recovery under both S3 policies pass in focused coverage.
+Frozen source review identifies a stale jpeg_mem_dest caller pointer after a
+successful growth followed by a fatal allocation error. The test-only allocator
+fixture first exposes a duplicate internal vendor symbol at link time; renaming
+that test symbol yields a compiled RED: allocation3 reports both double-free and
+leak. An own destination manager publishes current heap ownership after every
+successful realloc. GREEN3 C-boundary tests verifies success, initial allocation
+failure and growth failures, cleared outputs and no leaked/double-freed buffer.
+The fixture is reachable only from the test target; no allocator hook is added
+to production. Original failed review and remediation evidence remain separate.
+Final database startup, full tests and app build exit0: **1,362 XCTest (1,283
+Telegram +79 core),1 microphone-authorization precondition skip,0 failures;
+50 Python tests**. This full incremental compilation/build emits no warnings;
+671 SQL-prefixed Postbox t19 teardown diagnostics remain, with no bare line.
+The built app contains the primary boundary and no test allocator fixture.
+
+Native picker QA with S3 OFF prepares a progressive quality75 JPEG1280×640
+from the same synthetic3000×1500 PNG. After retaining the source elsewhere and
+removing its picker path, restart restores the photo and emoji caption. Three
+pre-primary preparations retain exact pointer/payload/UUID fingerprints:
+2560×1280/.85,2560×1280/.75 and1280×640/.75. Baseline, post and reopened readbacks
+each pass1 XCTest/50 Python tests; eight current photo/raw resources remain
+local,34 encrypted records include earlier preparations, no receipt/pending/S3
+objects and no promotion after enable/resume. The post readback rebuild reports
+the same3 existing test warnings; baseline/reopened report none. A transient
+ScreenCaptureKit-3811 error resolves on rebind; actual AX and screenshots confirm
+preparation/recovery. Strict deep signatures and normalized built/QA payload
+comparison pass. Owned runtime is stopped; temporary QA source removed.
+No personal Account, server send, hardware or new permission grant.
+
+Root validates116 frozen fingerprints,9 base/patch reconstructions and13
+original readonly review argv/exits. Remediation validates16 frozen entries,
+7 live source files and6 original commands, retaining one failed discovery
+followed by corrected reads. No new findings; the original P1 report remains
+failed and separate from its source-resolved addendum/root RED-GREEN. Worker
+runtime gates remain skipped, route/usage unknown. This is manual recorded
+consistency; no helper/route authenticity/runtime approval is inferred.
+Final XERJ project refresh/freshness/query exits0:496 files,452/452 classified
+code. New destination-manager and existing picker hits are source-confirmed;
+locked TelegramSwift freshness passes. The Mozjpeg JSON fields cause the
+previous v6 frozen dataset to refuse schema evolution (exit1); v7 succeeds,
+with the original diagnostic retained. Source-index scope still excludes
+reference submodules; pinned C source inspection/review is separate.
+Hosted CI for preceding9c88567 succeeds in both
+[PR run38207929581](https://github.com/Mesteriis/makosh-native/actions/runs/38207929581)
+and [push run38207926426](https://github.com/Mesteriis/makosh-native/actions/runs/38207926426).
+New-head CI remains separate.
+Full migration remains active; typed WebP grouping and later workflows/services
+remain open. No universal reference-build byte equivalence is claimed.
+
+## Previous stage: reference photo size and ImageIO quality setting
 
 New ordinary photos default to1280px; an explicit large-photo preference selects
 2560px. Both use ImageIO JPEG quality.75. Probe and staging capture the same per-preparation

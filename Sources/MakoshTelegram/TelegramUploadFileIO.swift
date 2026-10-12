@@ -345,12 +345,16 @@ public enum TelegramUploadFileIO {
                 image = try coverTransform.render(image, crop: coverCrop, painting: coverPainting, images: coverImages)
             }
             let encoded = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(encoded, "public.jpeg" as CFString, 1, nil) else {
-                throw TelegramUploadFileError.stagingFailed
+            if coverCrop == nil, let primary = TelegramUploadJPEGEncoder.encode(image) {
+                encoded.append(primary)
+            } else {
+                guard let destination = CGImageDestinationCreateWithData(encoded, "public.jpeg" as CFString, 1, nil) else {
+                    throw TelegramUploadFileError.stagingFailed
+                }
+                // Only decoded pixels and explicit quality; covers retain their existing encoder.
+                CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: coverCrop == nil ? 0.75 : 1.0] as CFDictionary)
+                guard CGImageDestinationFinalize(destination), encoded.length > 0 else { throw TelegramUploadFileError.invalidImage }
             }
-            // Add only decoded pixels and explicit encoding quality, never source metadata.
-            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: coverCrop == nil ? 0.75 : 1.0] as CFDictionary)
-            guard CGImageDestinationFinalize(destination), encoded.length > 0 else { throw TelegramUploadFileError.invalidImage }
             try Task.checkCancellation()
             try writeAll(output, bytes: encoded.bytes, count: encoded.length)
             size = Int64(encoded.length)

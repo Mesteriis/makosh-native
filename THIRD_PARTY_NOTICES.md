@@ -125,6 +125,36 @@ dependencies are excluded. Prepared sources are authenticated on every warm use,
 without the archive cache, network or research checkouts. The callback facade,
 strict page admission and ordinary music policy are independently authored.
 
+## Portable Mozjpeg provenance
+
+`Dependencies/Mozjpeg.lock.json` pins Mozjpeg4.1.4 inside the same exact
+Telegram-iOS revision/tree above, at `third-party/mozjpeg/mozjpeg`. The selected
+92 committed regular files match the research source byte for byte:53 C
+compilation units,6 included C fragments,25 unchanged headers,3 configuration
+templates, the CMake source-list provenance and4 notice/provenance files.
+`scripts/prepare-mozjpeg.py` checks every source hash and the complete98-file
+prepared aggregate. It generates an own SwiftPM manifest/module umbrella and
+headers from the unchanged templates for64-bit macOS, JPEG8 ABI,8-bit samples,
+arithmetic support and portable scalar routines. No upstream CMake, Bazel,
+installer or prebuilt library executes. Warm reuse authenticates the exact
+recipe, lock, marker and file set without source-cache/network/research access.
+
+This software is based in part on the work of the Independent JPEG Group.
+The unchanged IJG README, libjpeg-turbo license, Mozilla provenance and SIMD
+zlib notice are retained below, together with86 unchanged leading source
+copyright/license blocks. `jpeg_nbits_table.h` has no leading notice and remains
+unchanged under the package's applicable grants. The source selection/notice
+review is not a vulnerability audit.
+
+Makosh's fixed-signature, quiet C error/ownership boundary and Swift white-
+background RGBX rasterization are independently authored. Ordinary photos use
+FASTEST defaults, integer DCT, optimized Huffman coding, quality75 and simple
+progression. ImageIO.75 remains the reference-compatible fallback; video covers
+keep their existing encoder. The outer macOS Mozjpeg Objective-C wrapper is not
+copied or linked. Architecture-specific SIMD and upstream command-line programs
+are excluded from the app. Parameter alignment does not assert universal byte
+equivalence with the reference's native builds.
+
 ## System ZIP compression
 
 Makosh's independently authored ZIP32 writer and streaming verifier use the
@@ -144,6 +174,7 @@ This internal codec layer does not yet enable Archive sending in the UI.
 
 | Component | License / retained notice |
 | --- | --- |
+| Mozjpeg4.1.4 portable C source and scalar stubs | IJG, BSD3 and zlib-style grants; [unchanged license](LICENSES/Mozjpeg-4.1.4-LICENSE.md), [IJG README](LICENSES/Mozjpeg-4.1.4-README.ijg), [Mozilla provenance](LICENSES/Mozjpeg-4.1.4-README-mozilla.txt), [SIMD notice](LICENSES/Mozjpeg-4.1.4-jsimdext.inc), [selected source headers](LICENSES/Mozjpeg-4.1.4-source-notices.txt) |
 | Telegram-iOS general engine source and Makosh engine adaptations | GPL v2-or-later, GPL v3 elected; [GPL v3 text](LICENSES/GPL-3.0.txt) |
 | Google FlatBuffers, including local build tool | [Apache 2.0](LICENSES/Apache-2.0.txt), [source copyright header](LICENSES/FlatBuffers-Google-Apache-header.notice) |
 | Swift RangeSet, Apple Inc. and Swift project authors | [Apache 2.0 with Runtime Library Exception](LICENSES/Swift-Apache-2.0-with-Runtime-Library-Exception.txt), [source header](LICENSES/RangeSet-source-header.notice) |

@@ -1861,9 +1861,15 @@ by retry, caption/mode/list/cover edits or restore. Native payload kinds and byt
 remain independent. New typed WebP with an original .jpg name may likewise retain
 Media while sending the unchanged document; its grouping remains disabled.
 New ordinary photo preparation now follows the reference's default1280px or
-explicit large2560px and ImageIO fallback quality.75. The reference helper
-ImageCompression.swift:53–75 first tries Mozjpeg75; that primary codec remains
-open pending dependency/license/build integration. No encoder-byte parity is claimed.
+explicit large2560px. The reference helper ImageCompression.swift:53–75 first
+tries Mozjpeg75, then ImageIO.75. Makosh now prepares pinned portable Mozjpeg4.1.4
+independently of research checkouts and uses FASTEST defaults, integer DCT,
+optimized Huffman coding, quality75 and simple progression. An own white RGBX
+rasterization and quiet C error/ownership boundary replace the uncopied macOS
+wrapper. ImageIO.75 remains fallback; covers keep their existing quality1 encoder.
+Exact dependency,98-file preparation and license review are in
+Dependencies/Mozjpeg.lock.json and THIRD_PARTY_NOTICES.md. Scalar routines are
+compiled; universal reference-build byte equivalence is not claimed.
 Settings and the existing Media-preview
 menu share the preference; its value is passed explicitly and frozen at preparation.
 Changing the preference does not transcode already retained resources. Restoration

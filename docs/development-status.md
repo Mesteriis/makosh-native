@@ -40,7 +40,61 @@ focused24 XCTest pass; commit a9ee000 is published for hosted verification in
 [PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
 separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram profiles/admin/shared media (block 4)
+## Current stage: Telegram settings, devices and local themes (block 5)
+
+Telegram settings now open General, Appearance and Devices inside the existing
+common workspace. Local system/classic/day/night palettes and four accents
+persist in app preferences. Selected-account devices use current/pending/other
+groups, application/IP/location details, calls/secret-chat acceptance, single/
+all-other termination and reference7/31/93/186day TTL choices. Current-device
+termination is refused. Every server mutation captures account/context/basis,
+re-reads authorizations and checks the confirmed identity/set before a typed
+pinned RPC.30s deadlines and a retained uncertain-account barrier prevent another
+application write before explicit reconciliation. Empty responses and Bool false
+are not ACKs.406 is a fresh-login rejection only for termination, not TTL or
+acceptance settings. Message retention and S3 policies are unchanged. No engine
+pin/preparation/dependency/schema change or third-party UI code is used.
+
+Valid assertion REDs: session/controller9 tests/16 failures; native RPC3/3;
+workspace integration1/1; empty ACK1/2; appearance2/6; mutation-error1/3.
+The final17 focused XCTest pass. An intermediate app build fails on a missing
+MainActor annotation in the extracted status helper; the corrected build passes.
+Required `scripts/dev-db.sh up` and final `scripts/build-app.sh` exit0, with no
+compiler warnings. The final mandatory `scripts/test.sh` exits0: **1,791 XCTest
+(1,712 Telegram +79 core),1 microphone precondition skip,0 failures;85 Python
+tests across18 suites**. Earlier whole runs (1,788 and1,790 XCTest) preceded the
+final appearance/error fixes and do not replace this final result. Existing
+upstream Postbox teardown and macOS Contacts-service diagnostics remain in test
+output; they are not assertion failures or evidence of private contact retrieval.
+
+Actual native UI in a separately signed synthetic bundle/explicit isolated
+PostgreSQL schema verifies classic/night themes, persisted purple accent after
+restart, existing send-key/photo-size controls, current/pending/other devices,
+cancel/confirmed calls, single termination, TTL cancel/confirmed93days and
+terminate-all leaving only the current device. Review finds a picker alert that
+macOS never presents; a distinct Apply button plus confirmation resolves it.
+It also finds preferredColorScheme(nil) retaining light mode after leaving
+Telegram while the system is dark. The AppKit observer/resolver repair passes
+native initial/change regressions. Actual UI verifies Telegram classic light →
+Contacts system dark → Telegram classic light, preserving the accent and common
+service sidebar. The final rebuilt bundle passes strict deep signing and unsigned
+executable payload equality; its settings/device groups are verified again.
+The owned QA process is stopped and its isolated data retained. No personal
+account, real device mutation, private conversation, system Contacts contents,
+Telegram delivery or payment is tested.
+
+All677 frozen source/test/script/dependency fingerprints match after validation.
+Project, locked TelegramSwift reference and recipe19 engine XERJ checks are fresh;
+actual scoped searches are source-confirmed. This ledger records local validation.
+Hosted build/test and integration results are recorded on the attached PR; merging
+requires hosted success on its exact head commit.
+
+Cloud/custom themes, wallpapers, scheduled night mode, exact reference palettes,
+font size/bubble mode, privacy/2FA/notifications/proxy/storage/download settings,
+QR linking, web sessions and real-account acceptance remain open; see the
+reference-interface and Telegram ledgers. Block4 parity gaps below also remain.
+
+## Previous stage: Telegram profiles/admin/shared media (block 4)
 
 The existing common service/sidebar workspace now contains profile title/about
 editing, member/admin directories, member restrictions/removal, group default

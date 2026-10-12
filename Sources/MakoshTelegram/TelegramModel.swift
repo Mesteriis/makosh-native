@@ -1213,20 +1213,22 @@ public final class TelegramModel: ObservableObject {
         return accepted
     }
 
-    public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String, contextID: UUID) {
+    public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String, contextID: UUID,
+                              photoSize: TelegramUploadPhotoSize = .standard) {
         guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: caption)) else { return }
-        prepareUpload(source: source,mode: mode,target: target,captionInput: input,contextID: contextID)
+        prepareUpload(source: source,mode: mode,target: target,captionInput: input,contextID: contextID,photoSize: photoSize)
     }
 
-    public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID) {
+    public func prepareUpload(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput, contextID: UUID,
+                              photoSize: TelegramUploadPhotoSize = .standard) {
         guard canPrepareUpload(target: target, contextID: contextID) else { return }
-        upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput)
+        upload.prepare(source: source, mode: mode, target: target, captionInput: captionInput, photoSize: photoSize)
     }
 
     public func prepareUpload(sources: [TelegramUploadSelection], isGrouped: Bool, target: TelegramUploadTarget,
-                              captionInput: TelegramComposerInput, contextID: UUID) {
+                              captionInput: TelegramComposerInput, contextID: UUID, photoSize: TelegramUploadPhotoSize = .standard) {
         guard canPrepareUpload(target: target, contextID: contextID) else { return }
-        upload.prepare(sources: sources, isGrouped: isGrouped, target: target, captionInput: captionInput)
+        upload.prepare(sources: sources, isGrouped: isGrouped, target: target, captionInput: captionInput, photoSize: photoSize)
     }
 
     private func canPrepareUpload(target: TelegramUploadTarget, contextID: UUID) -> Bool {

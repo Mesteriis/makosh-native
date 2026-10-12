@@ -1860,8 +1860,15 @@ ZIP. Schemas1–16 keep their visual-payload requirement; no old pointer is upgr
 by retry, caption/mode/list/cover edits or restore. Native payload kinds and bytes
 remain independent. New typed WebP with an original .jpg name may likewise retain
 Media while sending the unchanged document; its grouping remains disabled.
-The current2560/.85 staging recipe still differs from the reference's
-default1280/.75 and optional large-photo setting. Typed WebP grouping under
+New ordinary photo preparation now follows the reference's default1280px or
+explicit large2560px and ImageIO fallback quality.75. The reference helper
+ImageCompression.swift:53–75 first tries Mozjpeg75; that primary codec remains
+open pending dependency/license/build integration. No encoder-byte parity is claimed.
+Settings and the existing Media-preview
+menu share the preference; its value is passed explicitly and frozen at preparation.
+Changing the preference does not transcode already retained resources. Restoration
+keeps the2560px bound for existing large photos and accepts their original encoder
+bytes. Covers and raw documents retain their own paths. Typed WebP grouping under
 misleading names and exhaustive MIME/recorder parity remain separate gaps.
 Existing frozen preparations retain their kind, raw roles, facts and bytes;
 restore never reruns new photo eligibility. Both representations survive source

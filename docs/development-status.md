@@ -1,6 +1,70 @@
 # Development status — 2026-10-12
 
-## Current stage: versioned source-only Media preparation
+## Current stage: reference photo size and ImageIO quality setting
+
+New ordinary photos default to1280px; an explicit large-photo preference selects
+2560px. Both use ImageIO JPEG quality.75. Probe and staging capture the same per-preparation
+value. The preference is exposed in the existing Settings and Media-preview menu,
+following FastSettings.swift:301–315, GeneralSettingsViewController.swift:198–201,
+402 and PreviewSenderController.swift:404–411. Its menu handler changes the shared
+preference without regenerating current media; Makosh likewise applies it to new
+preparations and retains already prepared bytes. No hidden defaults read occurs
+inside the engine. Raw File bytes, covers, schemas and dependency pins are unchanged.
+Restoration still admits prior2560px photos without transcoding.
+
+Additional XERJ/source inspection of ImageCompression.swift:53–75 establishes
+that reference compressImageToJPEG tries Mozjpeg75 first, then ImageIO.75 as a
+fallback. This slice retains the existing ImageIO encoder and does not establish
+primary encoder/quantization/byte parity. Reviewed Mozjpeg dependency/pin/license/
+build integration is the next remaining photo task.
+
+Compiled RED2 tests/3 expected failures reproduces the2560 default and.85 encoder.
+The first focused run exposes four invalid mode-edit assertions in a fixture
+without a durable recovery store. Those assertions move to the real native store
+regression. The next run exposes two obsolete2560 expectations in the orientation
+test; explicit1280 standard and2560 large cases replace them. Final focused41
+XCTest/45 Python tests pass, including both sizes through real PostgreSQL/Postbox/
+S3 capture, exact retry, mode edits, restoration after source removal and native
+local queue bytes/dimensions/caption/complete receipt under both storage policies.
+OFF resources never promote after enable/resume.
+
+Native preceding-build picker QA retains a2560×1280/.85 preparation with S3 OFF;
+readback passes1 XCTest/45 Python tests, records exact pointer/payload fingerprints,
+and confirms28 retained encrypted local records and no S3/receipt/pending copies.
+Reverting just the ImageIO quality to.85 fails the new quantization regression
+twice (both sizes); source is restored byte for byte. Final database startup,
+full tests and app build exit0. Full suite: **1,358 XCTest (1,279 Telegram +79
+core),1 microphone-authorization precondition skip,0 failures;45 Python tests**.
+Full compilation, build and all three UI readbacks have no compiler warnings.
+671 SQL-prefixed t19 teardown diagnostics plus one bare line remain separate.
+
+Actual native picker QA uses the same synthetic3000×1500 PNG with S3 OFF.
+The menu-control AX predicate is RED in the preceding build and GREEN in the
+final app. The menu and Settings share the preference, including persisted
+ON/OFF across restarts. New large preparation is2560×1280/.75; new standard
+preparation is1280×640/.75. The final app restores both and the preceding
+2560×1280/.85 photo after removing the original picker path. Old and large
+pointer/payload/UUID fingerprints remain exact through preference changes.
+Final readback passes1 XCTest/45 Python tests: six current photo/raw resources
+are encrypted local records,32 retained records include earlier preparations,
+no receipt/pending/S3 objects, and no promotion after enable/resume. Strict deep
+signatures and normalized built/QA Mach-O payload comparison pass. Owned runtime
+is stopped and temporary QA source removed; no Account/server send or hardware.
+
+Bounded frozen review finds no actionable issues. Root verifies15 frozen/live
+source/reference hashes,11 base files,11 patch reconstructions and12 original
+worker argv/exits. Manual recorded-consistency validation applies; the portable
+helper is unavailable in the exposed skill tree. Five worker runtime/service/
+index gates remain skipped; observed route/usage are unknown. Final XERJ project
+refresh/freshness/query exit0:482 files,444/444 classified code. Photo-size enum,
+staging and eligibility hits are confirmed against source. Locked-reference
+freshness also exits0. Hosted CI for preceding c733ba1 succeeds in both
+[PR run38206405923](https://github.com/Mesteriis/makosh-native/actions/runs/38206405923)
+and [push run38206402108](https://github.com/Mesteriis/makosh-native/actions/runs/38206402108).
+New-head CI remains separate. Full migration remains active; primary Mozjpeg,
+typed WebP grouping and later reference workflows/services remain open.
+
+## Previous stage: versioned source-only Media preparation
 
 New ordinary picker preparations use schema17; a cached ZIP uses schema18.
 Media follows ordered logical-source options even when every canonical payload

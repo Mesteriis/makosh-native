@@ -5,6 +5,29 @@ import ImageIO
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadBatchControllerTests: XCTestCase {
+    // Catches losing the per-preparation size at the controller boundary.
+    func testPickerUsesTheExplicitPhotoSize() async throws {
+        let root = try makeSources()[0].deletingLastPathComponent()
+        let source = root.appendingPathComponent("large-source.png")
+        let context = try XCTUnwrap(CGContext(data: nil, width: 3000, height: 1500, bitsPerComponent: 8,
+            bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let original = try Data(contentsOf: source)
+        for (size, width, height) in [(TelegramUploadPhotoSize.standard, Int32(1280), Int32(640)), (.large, 2560, 1280)] {
+            let controller = TelegramUploadController(); controller.bind(provider: BatchStagingProvider())
+            defer { controller.clear() }
+            controller.prepare(sources: [.init(source: source, mode: .photo)], isGrouped: false,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic photo size"), captionInput: .empty, photoSize: size)
+            for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(controller.phase, .ready)
+            let item = try XCTUnwrap(controller.items.first)
+            XCTAssertEqual(item.file.pixelWidth, width); XCTAssertEqual(item.file.pixelHeight, height)
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(item.originalFile).url), original)
+        }
+    }
+
     // Catches reducing canonical kinds to a set: WebP removes only Media already seen.
     func testPickerUsesOrderedWebPSourceOptions() async throws {
         let root = try makeSources()[0].deletingLastPathComponent()

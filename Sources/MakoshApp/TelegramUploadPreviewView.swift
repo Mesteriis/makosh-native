@@ -2,6 +2,7 @@ import SwiftUI
 import MakoshTelegram
 
 struct TelegramUploadPreviewView: View {
+    @AppStorage(TelegramUploadPhotoSize.preferenceKey) private var sendLargePhotos = false
     @ObservedObject var model: TelegramModel
     @ObservedObject private var upload: TelegramUploadController
     let contextID: UUID
@@ -42,6 +43,7 @@ struct TelegramUploadPreviewView: View {
                             spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                             placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                         }
+                        photoSizeButton()
                     } label: { Image(systemName: "ellipsis.circle") }
                         .menuStyle(.borderlessButton).fixedSize()
                         .accessibilityLabel(upload.items.count > 1 ? "Действия с вложениями" : upload.file?.mode == .video ? "Действия с видео" : upload.file?.mode == .photo ? "Действия с фото" : "Действия с вложением").accessibilityIdentifier("telegram.upload.actions")
@@ -61,6 +63,7 @@ struct TelegramUploadPreviewView: View {
                     spoilerButton(context: captionContext, revision: captionRevision, spoiler: mediaSpoiler)
                     placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                 }
+                photoSizeButton()
             }
             if let target = upload.target {
                 Label("Получатель: \(target.title)", systemImage: "paperplane").font(.callout)
@@ -143,6 +146,15 @@ struct TelegramUploadPreviewView: View {
             if let coverChoiceID { upload.cancelVideoCoverEdit(coverChoiceID) }
             coverEditor = nil
             upload.dismissPreparation(contextID: contextID)
+        }
+    }
+    @ViewBuilder private func photoSizeButton() -> some View {
+        if upload.presentation == .media, !upload.isRecordedRoundVideo {
+            Divider()
+            Toggle("Отправлять большие фотографии", isOn: $sendLargePhotos)
+                .help("Увеличенный размер применяется к новым подготовкам фотографий.")
+                .accessibilityIdentifier("telegram.upload.sendLargePhotos")
+                .accessibilityValue(sendLargePhotos ? "Включено" : "Выключено")
         }
     }
     @ViewBuilder private func videoCoverButtons(revision: UUID) -> some View {
@@ -280,7 +292,7 @@ private struct TelegramUploadFilePreview: View {
             Text("\(file.name) • \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
                 .font(.callout).lineLimit(2).accessibilityIdentifier("telegram.upload.file")
             if file.mode == .photo {
-                Text("JPEG до 2560 пикселей, без исходных метаданных").font(.caption).foregroundStyle(.secondary)
+                Text("JPEG без исходных метаданных").font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(12).frame(maxWidth: .infinity).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))

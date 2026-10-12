@@ -220,7 +220,8 @@ enum TelegramUploadEvent {
             }
         }
     }
-    public func prepare(sources: [TelegramUploadSelection], isGrouped: Bool, target: TelegramUploadTarget, captionInput: TelegramComposerInput) {
+    public func prepare(sources: [TelegramUploadSelection], isGrouped: Bool, target: TelegramUploadTarget, captionInput: TelegramComposerInput,
+                        photoSize: TelegramUploadPhotoSize = .standard) {
         guard preparation == nil, phase == .idle || phase == .cancelled || phase == .failed || phase == .rejected,
               provider is any TelegramUploadBatchProvider, provider?.accountID == target.accountID, target.hasValidReplySource else { return }
         var seen: Set<URL> = []
@@ -230,7 +231,8 @@ enum TelegramUploadEvent {
         guard items.isEmpty, recoveredArchive == nil else { phase = .failed; return }
         usesBatchRecovery = true; captionRules = .reference; mediaRules = .reference
         self.target = target; self.captionInput = captionInput; phase = .preparing
-        let request = token, bound = bindingID, stage = self.stage, discard = self.discard, store = recoveryStore
+        let request = token, bound = bindingID, discard = self.discard, store = recoveryStore
+        let stage = self.stage ?? { source, mode in try await TelegramUploadFileIO.stage(source, mode: mode, photoSize: photoSize) }
         preparationID = request; didPrepare?(target, captionInput, request)
         guard token == request, phase == .preparing else { return }
         let original = originalDraftForRecovery?(target, request)
@@ -267,7 +269,7 @@ enum TelegramUploadEvent {
                                     metadata: .gif(.init(width: gif.width, height: gif.height,
                                         frameDurations: gif.frameDurations, sourceSHA256: digest)))
                                 staged[staged.count - 1] = .init(id: original.id, file: file, originalFile: original)
-                            } else if photoCandidate && !oggCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original) {
+                            } else if photoCandidate && !oggCandidate, try await TelegramUploadPhotoEligibility.canPrepare(original, photoSize: photoSize) {
                                 let jpeg = try await stage(original.url, .photo)
                                 let name = telegramAttachmentName((original.name as NSString).deletingPathExtension + ".jpg")
                                 let file = TelegramUploadFile(id: jpeg.id, name: name, size: jpeg.size, mode: jpeg.mode,
@@ -577,7 +579,7 @@ enum TelegramUploadEvent {
     var didPrepare: ((TelegramUploadTarget, TelegramComposerInput, UUID) -> Void)?
     var didFinishPreparation: ((UUID) -> Void)?
     // Per-instance deterministic staging seam, with identical ownership semantics.
-    var stage: (URL, TelegramUploadMode) async throws -> TelegramUploadFile = TelegramUploadFileIO.stage
+    var stage: ((URL, TelegramUploadMode) async throws -> TelegramUploadFile)?
     var discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard
 
     public init() {}
@@ -725,21 +727,24 @@ enum TelegramUploadEvent {
         self.provider = provider; self.recoveryStore = recoveryStore; self.requiresRecovery = requiresRecovery
     }
 
-    public func prepare(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String) {
+    public func prepare(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, caption: String,
+                        photoSize: TelegramUploadPhotoSize = .standard) {
         guard let input = try? TelegramComposerInput(formattedText: TelegramFormattedText(text: caption)) else {
             error = "Не удалось подготовить подпись."; return
         }
-        prepare(source: source, mode: mode, target: target, captionInput: input)
+        prepare(source: source, mode: mode, target: target, captionInput: input, photoSize: photoSize)
     }
 
-    public func prepare(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput) {
+    public func prepare(source: URL, mode: TelegramUploadMode, target: TelegramUploadTarget, captionInput: TelegramComposerInput,
+                        photoSize: TelegramUploadPhotoSize = .standard) {
         guard preparation == nil, phase == .idle || phase == .cancelled || phase == .failed || phase == .rejected,
               provider?.accountID == target.accountID, target.hasValidReplySource else { return }
         clear()
         resetCancellationPresentation()
         guard file == nil, recoveredArchive == nil else { phase = .failed; return }
         self.target = target; self.captionInput = captionInput; phase = .preparing
-        let request = token, stage = self.stage, discard = self.discard
+        let request = token, discard = self.discard
+        let stage = self.stage ?? { source, mode in try await TelegramUploadFileIO.stage(source, mode: mode, photoSize: photoSize) }
         let bound = bindingID, store = recoveryStore
         preparationID = request
         didPrepare?(target, captionInput, request)

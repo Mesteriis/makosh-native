@@ -53,6 +53,77 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
 }
 
 @MainActor final class TelegramSourceFactsNativeQueueTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches losing the selected photo recipe during durable restore/native mapping, or creating S3 copies with OFF.
+    func testSelectedPhotoSizeKeepsItsPreparedBytesThroughRestoreAndNativeQueueUnderBothPolicies() async throws {
+        for enabled in [false, true] {
+            for (size, width, height) in [(TelegramUploadPhotoSize.standard, Int32(1280), Int32(640)), (.large, 2560, 1280)] {
+                let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+                try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: enabled)
+                let source = fixture.root.appendingPathComponent("photo-size.png")
+                let context = try XCTUnwrap(CGContext(data: nil, width: 3000, height: 1500, bitsPerComponent: 8,
+                    bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+                let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.png" as CFString, 1, nil))
+                CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+                XCTAssertTrue(CGImageDestinationFinalize(destination))
+                let originalBytes = try Data(contentsOf: source)
+                let controller = TelegramUploadController(); controller.bind(provider: SourceFactsPickerProvider())
+                defer { controller.clear() }
+                controller.prepare(sources: [.init(source: source, mode: .photo)], isGrouped: false,
+                    target: fixture.target, captionInput: .empty, photoSize: size)
+                for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+                XCTAssertEqual(controller.phase, .ready)
+                let items = controller.items, item = try XCTUnwrap(items.first)
+                XCTAssertEqual(item.file.pixelWidth, width); XCTAssertEqual(item.file.pixelHeight, height)
+                XCTAssertEqual(item.sourceFacts?.image, .decoded(width: 3000, height: 1500))
+                let preparedBytes = try Data(contentsOf: item.file.url), store = fixture.session(box), id = UUID()
+                let input = try TelegramComposerInput(formattedText: .init(text: "Photo size 😀"))
+                try await store.prepare(preparationID: id, items: items, isGrouped: false, presentation: .media,
+                    target: fixture.target, captionInput: input, originalDraft: nil)
+                let prepared = try await sourceFactsLoad(store)
+                try await store.prepare(preparationID: id, items: items, isGrouped: false, presentation: .media,
+                    target: fixture.target, captionInput: input, originalDraft: nil)
+                let retried = try await sourceFactsLoad(store); XCTAssertEqual(retried.items, prepared.items)
+                for (from, to) in [(TelegramUploadPresentation.media, TelegramUploadPresentation.file), (.file, .media)] {
+                    try await store.updatePresentation(preparationID: id, orderedIDs: items.map(\.id),
+                        previousPresentation: from, previousGrouping: false, presentation: to, isGrouped: false, target: fixture.target)
+                }
+                let modeChanged = try await sourceFactsLoad(store)
+                XCTAssertEqual(modeChanged.items, prepared.items); XCTAssertEqual(modeChanged.presentation, .media)
+                controller.clear(); try FileManager.default.removeItem(at: source)
+                let restored = try await fixture.session(box).restoreItems(draft: prepared)
+                defer { restored.forEach { try? $0.discard() } }
+                XCTAssertEqual(restored.map(\.id), items.map(\.id))
+                XCTAssertEqual(restored.first?.file.pixelWidth, width); XCTAssertEqual(restored.first?.file.pixelHeight, height)
+                XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored.first).file.url), preparedBytes)
+                XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored.first?.originalFile).url), originalBytes)
+                guard let (saved, messages) = try await submit(fixture, box: box, items: restored, presentation: .media,
+                    grouped: false, caption: "Photo size 😀", existingPreparationID: id) else { continue }
+                XCTAssertEqual(saved.items, prepared.items); XCTAssertEqual(messages.count, 1)
+                XCTAssertEqual(messages.first?.text, "Photo size 😀")
+                let image = try XCTUnwrap(messages.first?.media.first as? TelegramMediaImage)
+                let representation = try XCTUnwrap(image.representations.first)
+                XCTAssertEqual(representation.dimensions.width, width); XCTAssertEqual(representation.dimensions.height, height)
+                let cached = try await cachedBytes(box, resource: representation.resource)
+                XCTAssertEqual(cached, preparedBytes)
+                let records = [prepared.items[0].file, try XCTUnwrap(prepared.items[0].originalFile)]
+                for record in records {
+                    let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: record.objectKey)
+                    XCTAssertEqual(object != nil, enabled)
+                }
+                if !enabled {
+                    XCTAssertEqual(try fixture.localRecords().count, 2)
+                    try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: true)
+                    let resumed = try await fixture.archive.resume(); XCTAssertEqual(resumed, 0)
+                    for record in records {
+                        let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: record.objectKey)
+                        XCTAssertNil(object)
+                    }
+                    XCTAssertEqual(try fixture.database.execute("SELECT count(*) FROM \"\(fixture.database.schema)\".archive_file_events"), [["0"]])
+                }
+            }
+        }
+    }
+
     private func lowDPIItems(_ fixture: SourceFactsTestArchive) async throws -> [TelegramUploadBatchItem] {
         let sources = try ["first.png", "second.png"].map { name in
             let url = fixture.root.appendingPathComponent(name)

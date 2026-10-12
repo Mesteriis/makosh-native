@@ -135,6 +135,85 @@ final class TelegramUploadFileIOTests: XCTestCase {
         await assertStageError(.invalidImage, source: source, mode: .photo)
     }
 
+    // Catches applying the large-photo dimension to a new preparation without an explicit setting.
+    func testOrdinaryPhotoDefaultsToReference1280Pixels() async throws {
+        let source = try directory().appendingPathComponent("default-photo.jpg")
+        try image(at: source, width: 3000, height: 1500, orientation: 1)
+        let original = try Data(contentsOf: source)
+        let photo = try await TelegramUploadFileIO.stage(source, mode: .photo)
+        defer { try? TelegramUploadFileIO.discard(photo) }
+        XCTAssertEqual(photo.pixelWidth, 1280)
+        XCTAssertEqual(photo.pixelHeight, 640)
+        XCTAssertEqual(try Data(contentsOf: source), original)
+    }
+
+    // Catches dropping the explicit large-photo choice or applying it to raw document bytes.
+    func testLargePhotoChoiceUses2560AndDoesNotChangeDocuments() async throws {
+        let source = try directory().appendingPathComponent("large-photo.jpg")
+        try image(at: source, width: 3000, height: 1500, orientation: 1)
+        let original = try Data(contentsOf: source)
+        let photo = try await TelegramUploadFileIO.stage(source, mode: .photo, photoSize: .large)
+        let document = try await TelegramUploadFileIO.stage(source, mode: .file, photoSize: .large)
+        defer { try? TelegramUploadFileIO.discard(photo); try? TelegramUploadFileIO.discard(document) }
+        XCTAssertEqual(photo.pixelWidth, 2560); XCTAssertEqual(photo.pixelHeight, 1280)
+        XCTAssertEqual(try Data(contentsOf: document.url), original)
+        XCTAssertEqual(try Data(contentsOf: source), original)
+    }
+
+    // Catches lowering the restoration bound together with the new-generation default.
+    func testPreviouslyPreparedLargePhotoRestoresWithoutTranscoding() async throws {
+        let source = try directory().appendingPathComponent("retained-photo.jpg")
+        try image(at: source, width: 2560, height: 1280, orientation: 1)
+        let original = try Data(contentsOf: source)
+        let raw = try await TelegramUploadFileIO.stage(source, mode: .file)
+        defer { try? TelegramUploadFileIO.discard(raw) }
+        let restored = try await TelegramUploadFileIO.restoredStage(id: raw.id, name: raw.name, size: raw.size,
+            mode: .photo, url: raw.url, directory: raw.directory)
+        XCTAssertEqual(restored.pixelWidth, 2560); XCTAssertEqual(restored.pixelHeight, 1280)
+        XCTAssertEqual(try Data(contentsOf: restored.url), original)
+    }
+
+    // Catches encoding at the former .85 quality: JPEG quantization records expose the actual encoder setting.
+    func testOrdinaryPhotoUsesReferenceJPEGQuality() async throws {
+        let source = try directory().appendingPathComponent("quality.jpg")
+        try image(at: source, orientation: 1)
+        let decoded = try XCTUnwrap(CGImageSourceCreateWithURL(source as CFURL, nil))
+        let pixels = try XCTUnwrap(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+        let reference = NSMutableData()
+        let encoder = try XCTUnwrap(CGImageDestinationCreateWithData(reference, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(encoder, pixels, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(encoder))
+        for size in [TelegramUploadPhotoSize.standard, .large] {
+            let photo = try await TelegramUploadFileIO.stage(source, mode: .photo, photoSize: size)
+            defer { try? TelegramUploadFileIO.discard(photo) }
+            XCTAssertEqual(try jpegLuminanceQuantization(Data(contentsOf: photo.url)), try jpegLuminanceQuantization(reference as Data))
+        }
+    }
+
+    private func jpegLuminanceQuantization(_ data: Data) throws -> Data {
+        let bytes = [UInt8](data)
+        guard bytes.count > 4, bytes[0] == 0xff, bytes[1] == 0xd8 else { throw CocoaError(.fileReadCorruptFile) }
+        var offset = 2
+        while offset + 4 <= bytes.count {
+            guard bytes[offset] == 0xff else { throw CocoaError(.fileReadCorruptFile) }
+            let marker = bytes[offset + 1]
+            guard marker != 0xda && marker != 0xd9 else { break }
+            let length = Int(bytes[offset + 2]) * 256 + Int(bytes[offset + 3])
+            guard length >= 2, offset + 2 + length <= bytes.count else { throw CocoaError(.fileReadCorruptFile) }
+            if marker == 0xdb {
+                var table = offset + 4
+                while table < offset + 2 + length {
+                    let info = bytes[table], size = (info >> 4 == 0 ? 64 : 128)
+                    guard table + 1 + size <= offset + 2 + length else { throw CocoaError(.fileReadCorruptFile) }
+                    if info & 0x0f == 0 { return Data(bytes[table + 1..<table + 1 + size]) }
+                    table += 1 + size
+                }
+            }
+            offset += 2 + length
+        }
+        throw CocoaError(.fileReadCorruptFile)
+    }
+
     @MainActor func testAlreadyCancelledStagePreservesOriginalWithoutStartingWorker() async throws {
         let source = try directory().appendingPathComponent("original")
         let bytes = Data([1, 2, 3])

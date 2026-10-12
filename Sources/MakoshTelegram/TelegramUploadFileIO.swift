@@ -6,6 +6,13 @@ import CryptoKit
 
 public enum TelegramUploadMode: String, Equatable, Sendable { case file, photo, video }
 
+public enum TelegramUploadPhotoSize: Equatable, Sendable {
+    case standard, large
+    public static let preferenceKey = "telegram.sendLargePhotos"
+    public init(sendLargePhotos: Bool) { self = sendLargePhotos ? .large : .standard }
+    var maximumPixelSize: Int { self == .large ? 2560 : 1280 }
+}
+
 public struct TelegramUploadFile: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let name: String
@@ -47,10 +54,14 @@ public enum TelegramUploadFileError: LocalizedError, Equatable {
 }
 
 public enum TelegramUploadFileIO {
-    /// Shared by static-photo staging and its payload probe; existing prepared bytes remain authoritative.
+    /// Restoration accepts both selected sizes and previously prepared large photos without transcoding.
     static let photoMaximumPixelSize = 2560
     public static func stage(_ source: URL, mode: TelegramUploadMode) async throws -> TelegramUploadFile {
-        try await stage(source, mode: mode, coverCrop: nil)
+        try await stage(source, mode: mode, photoSize: .standard)
+    }
+
+    public static func stage(_ source: URL, mode: TelegramUploadMode, photoSize: TelegramUploadPhotoSize) async throws -> TelegramUploadFile {
+        try await stage(source, mode: mode, coverCrop: nil, photoSize: photoSize)
     }
 
     static func stageImageSource(_ source: URL) async throws -> TelegramUploadFile {
@@ -72,11 +83,12 @@ public enum TelegramUploadFileIO {
     private static func stage(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String? = nil,
                               sourceByteLimit: Int64? = nil, coverTransform: TelegramUploadVideoCoverTransform = .init(),
                               coverPainting: TelegramUploadVideoCoverPainting = .init(),
-                              coverImages: TelegramUploadVideoCoverImages = .init()) async throws -> TelegramUploadFile {
+                              coverImages: TelegramUploadVideoCoverImages = .init(),
+                              photoSize: TelegramUploadPhotoSize = .standard) async throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) {
             let file = try prepare(source, mode: mode, coverCrop: coverCrop, expectedCoverSHA256: expectedCoverSHA256,
-                sourceByteLimit: sourceByteLimit, coverTransform: coverTransform, coverPainting: coverPainting, coverImages: coverImages)
+                sourceByteLimit: sourceByteLimit, coverTransform: coverTransform, coverPainting: coverPainting, coverImages: coverImages, photoSize: photoSize)
             guard mode == .video else { return file }
             do {
                 let info = try await TelegramUploadVideoIO.inspect(file)
@@ -249,7 +261,8 @@ public enum TelegramUploadFileIO {
 
     private static func prepare(_ source: URL, mode: TelegramUploadMode, coverCrop: CGRect?, expectedCoverSHA256: String?,
                                 sourceByteLimit: Int64?, coverTransform: TelegramUploadVideoCoverTransform,
-                                coverPainting: TelegramUploadVideoCoverPainting, coverImages: TelegramUploadVideoCoverImages) throws -> TelegramUploadFile {
+                                coverPainting: TelegramUploadVideoCoverPainting, coverImages: TelegramUploadVideoCoverImages,
+                                photoSize: TelegramUploadPhotoSize) throws -> TelegramUploadFile {
         try Task.checkCancellation()
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
@@ -323,7 +336,7 @@ public enum TelegramUploadFileIO {
             }
             try Task.checkCancellation()
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: coverCrop == nil ? photoMaximumPixelSize : 8192,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: coverCrop == nil ? photoSize.maximumPixelSize : 8192,
                 kCGImageSourceShouldCacheImmediately: true]
             guard var image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
                 throw TelegramUploadFileError.invalidImage
@@ -336,7 +349,7 @@ public enum TelegramUploadFileIO {
                 throw TelegramUploadFileError.stagingFailed
             }
             // Add only decoded pixels and explicit encoding quality, never source metadata.
-            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: coverCrop == nil ? 0.85 : 1.0] as CFDictionary)
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: coverCrop == nil ? 0.75 : 1.0] as CFDictionary)
             guard CGImageDestinationFinalize(destination), encoded.length > 0 else { throw TelegramUploadFileError.invalidImage }
             try Task.checkCancellation()
             try writeAll(output, bytes: encoded.bytes, count: encoded.length)

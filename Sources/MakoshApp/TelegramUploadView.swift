@@ -27,6 +27,7 @@ private enum TelegramUploadPanel {
 }
 
 struct TelegramAttachButtons: View {
+    @AppStorage(TelegramUploadPhotoSize.preferenceKey) private var sendLargePhotos = false
     @ObservedObject var model: TelegramModel
     @ObservedObject private var upload: TelegramUploadController
     private let replySource: TelegramMessageActionSource?
@@ -58,7 +59,8 @@ struct TelegramAttachButtons: View {
         Task { @MainActor in
             defer { choosing = false }
             guard let selected = await TelegramUploadPanel.choose(choice) else { return }
-            model.prepareUpload(sources: selected, isGrouped: selected.count > 1, target: target, captionInput: captionInput, contextID: contextID)
+            model.prepareUpload(sources: selected, isGrouped: selected.count > 1, target: target, captionInput: captionInput,
+                contextID: contextID, photoSize: .init(sendLargePhotos: sendLargePhotos))
         }
     }
 }

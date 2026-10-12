@@ -111,15 +111,15 @@ final class TelegramUploadPhotoEligibilityTests: XCTestCase {
 
     // Catches inspecting untransformed headers or the former 256px validation thumbnail instead of the actual photo pixels.
     func testOrientationAndCanonicalThumbnailDeterminePayload() async throws {
-        for (width, height, orientation, expectedWidth, expectedHeight, expected) in [
-            (40, 401, 6, 401, 40, false), (401, 40, 6, 40, 401, true),
-            (400, 4000, 1, 256, 2560, true)
+        for (width, height, orientation, photoSize, expectedWidth, expectedHeight, expected) in [
+            (40, 401, 6, TelegramUploadPhotoSize.standard, 401, 40, false), (401, 40, 6, .standard, 40, 401, true),
+            (400, 4000, 1, .standard, 128, 1280, true), (400, 4000, 1, .large, 256, 2560, true)
         ] {
             let raw = try await stage(image(width: width, height: height, type: UTType.jpeg.identifier,
                 orientation: orientation))
-            let actual = try await TelegramUploadPhotoEligibility.canPrepare(raw)
+            let actual = try await TelegramUploadPhotoEligibility.canPrepare(raw, photoSize: photoSize)
             XCTAssertEqual(actual, expected, "\(width)×\(height) orientation \(orientation)")
-            let photo = try await TelegramUploadFileIO.stage(raw.url, mode: .photo)
+            let photo = try await TelegramUploadFileIO.stage(raw.url, mode: .photo, photoSize: photoSize)
             defer { try? TelegramUploadFileIO.discard(photo) }
             XCTAssertEqual(photo.pixelWidth, Int32(expectedWidth)); XCTAssertEqual(photo.pixelHeight, Int32(expectedHeight))
         }

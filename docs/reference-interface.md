@@ -585,7 +585,7 @@ source facts; exhaustive MIME/Ogg/Vorbis и полная recorder visual/gesture
 
 Новый static photo/File payload сверяется с `SenderController.swift:333–368`:
 height≥40px и width/10≤height после transformation. Width<40px и tall aspect
-сами по себе не запрещают photo. Probe и staging используют общий2560px maximum;
+сами по себе не запрещают photo. Probe и staging используют один выбранный1280/2560px maximum;
 orientation/non-square DPI проверены по настоящему JPEG. Source options остаются
 симметричными logical40-point/10:1. Существующие frozen File/photo подготовки
 не переклассифицируются. Новый source-only Media допуск соответствует initial
@@ -593,7 +593,24 @@ state в `PreviewSenderController.swift:1744–1745`, который выбир�
 options. Он включён только в новых schema17/18; прежние1–16 сохраняют visual-payload
 требование, включая retry/edits/restore. Cached ZIP сохраняет ту же policy family;
 переходы15→18 и17→16 через guarded install/capture запрещены. Default1280/large2560
-setting и JPEG.75 (`FastSettings.swift:301–308`, SenderController) ещё открыты.
+setting теперь следует `FastSettings.swift:301–315` и SenderController; ImageIO
+получает quality.75. `ImageCompression.swift:53–75` сначала использует Mozjpeg75,
+затем ImageIO fallback. Основной codec ещё не перенесён; encoder/byte parity не
+утверждается и требует отдельной dependency/license/build интеграции.
+Один preference доступен в существующих Settings и Media-preview menu, как в
+`GeneralSettingsViewController.swift:198–201,402` и `PreviewSenderController.swift:404–411`.
+Reference handler не перегенерирует текущие media; Makosh также меняет только
+параметр новых подготовок. Старые2560/.85 ресурсы восстанавливаются побайтно.
+Native Settings адаптирует switch к SwiftUI Form; reference modal-text feedback
+заменён подсказкой о следующих подготовках. Полная Settings parity ещё открыта.
+Native picker QA2026-10-12 подтверждает общий ON/OFF в меню и Settings и его
+сохранение после перезапуска. При S3 OFF новый PNG3000×1500 даёт large2560×1280/.75
+и standard1280×640/.75. После удаления исходного picker path final app показывает
+фото и emoji captions; readback сохраняет точные прежние2560/.85 и large pointer/
+payload/UUID. Все шесть текущих photo/raw ресурсов local,32 retained records,
+без receipt/pending/S3 objects и promotion после enable/resume. AX predicate
+наличия menu control воспроизводит RED→GREEN; checked state подтверждён Settings
+AX и screenshot. Это подготовка/восстановление, не отправка на сервер Telegram.
 Typed WebP под исходным .jpg теперь сохраняет Media с unchanged document bytes;
 его grouping всё ещё запрещён и требует отдельной сверки с reference workflows.
 

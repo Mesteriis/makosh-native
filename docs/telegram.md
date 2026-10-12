@@ -2589,3 +2589,25 @@ actual native-writer append and require admissible retained bytes after stop.
 S3 OFF continues to forbid every new copy; encrypted local recovery never promotes
 after enable. This preview introduces no dependency, schema, engine recipe,
 third-party source/assets, account access or recording permission change.
+
+### ZIP reservation before storage capture
+
+Ordinary Archive mode now reserves the ZIP/object IDs and installation revision
+in encrypted native preferences before capturing storage bytes. The record binds
+the full ordinary predecessor digest, ordered member names, ZIP size and plaintext
+digest. A reopened Session can resolve/authenticate the same local or stored ZIP
+and explicitly retry candidate retention/installation even when the earlier
+candidate receipt never committed. If reservation committed before capture,
+deterministic rebuilding uses the same reserved IDs. No automatic send occurs.
+
+Native retention and installation require that reservation for new mode attempts.
+Changing pointer writes clear it together with existing receipts; restoring an
+old UUID cannot revive it. Exact no-ops preserve it. Corrupt/foreign/predecessor-
+mismatched reservations, damaged storage receipts and orphan payloads refuse
+recapture. Existing unreserved external descriptor paths remain compatible, with
+their earlier handoff limitation. Pointer schemas1–16 stay unchanged.
+
+Pending object recovery rechecks the conversation policy. OFF forbids every new
+S3 copy, including ZIP/outgoing preparation and retry. Encrypted local records
+remain local after enable. Single-Media cover actions follow the reference's
+`totalCount == 1` guard; batch cover controls are not a missing migration feature.

@@ -133,22 +133,24 @@ public actor ArchiveFileRepository {
     }
 
     public func capture(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment,
-                        defaultEnabled: Bool = true) async throws -> ArchiveFileRecord {
+                        defaultEnabled: Bool = true, reservedID: UUID? = nil) async throws -> ArchiveFileRecord {
         let local = try !conversationFileSavingEnabled(identity: identity,defaultEnabled: defaultEnabled)
         guard let record = try await self.capture(capture,identity: identity,attachment: attachment,
-            purpose: .outgoing(defaultEnabled: defaultEnabled),local: local) else {
+            purpose: .outgoing(defaultEnabled: defaultEnabled),local: local,reservedID: reservedID) else {
             throw MessageArchiveError.integrity
         }
         return record
     }
 
     private func capture(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity,
-                         attachment: MessageArchiveAttachment, purpose: ArchiveFilePurpose,local: Bool = false) async throws -> ArchiveFileRecord? {
+                         attachment: MessageArchiveAttachment, purpose: ArchiveFilePurpose,local: Bool = false,
+                         reservedID: UUID? = nil) async throws -> ArchiveFileRecord? {
         var queued = false
         do {
         try ArchiveFileRecord.validateMetadata(identity: identity,attachment: attachment)
         try prepareSpool()
-        let vault = try keys(), id = UUID()
+        let vault = try keys(), id = reservedID ?? UUID()
+        guard id != UUID(uuid: (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)) else { throw MessageArchiveError.invalid }
         let receipt = try capture.seal(to: envelope(id),key: vault.key,objectID: id)
         let record = ArchiveFileRecord(id: id,identity: identity,attachment: attachment,
             objectKey: "\(local ? "local-preparations" : "vaults")/\(vault.id.uuidString.lowercased())/files/\(id.uuidString.lowercased())",
@@ -219,6 +221,38 @@ public actor ArchiveFileRepository {
     public func files(identity: MessageArchiveIdentity,attachmentID: String) throws -> [ArchiveFileRecord] {
         do { return try open().files(identity: identity,attachmentID: attachmentID) }
         catch { store = nil; throw error }
+    }
+
+    /// Resolve one pre-reserved outgoing capture. Local records retain their
+    /// original policy; a missing/corrupt receipt never authorizes recapture.
+    public func recoverOutgoingCapture(id: UUID, identity: MessageArchiveIdentity, attachmentID: String) async throws -> ArchiveFileRecord? {
+        try prepareSpool()
+        let vault = try keys()
+        func matches(_ record: ArchiveFileRecord) -> Bool {
+            guard case .some(.outgoing) = record.purpose else { return false }
+            return record.id == id && record.identity == identity && record.attachment.id.utf8.elementsEqual(attachmentID.utf8)
+        }
+        if FileManager.default.fileExists(atPath: manifest(id,local: true).path) {
+            let record = try load(id,vault: vault,local: true)
+            guard matches(record) else { throw MessageArchiveError.integrity }
+            return record
+        }
+        let pending = try FileManager.default.fileExists(atPath: manifest(id).path) ? load(id,vault: vault) : nil
+        if let pending, !matches(pending) { throw MessageArchiveError.integrity }
+        let records = try files(identity: identity,attachmentID: attachmentID).filter { $0.id == id }
+        if let stored = records.first(where: { $0.state == .stored }) {
+            guard matches(stored), records.allSatisfy({ value in
+                var normalized = value; normalized.state = .stored; return normalized == stored
+            }) else { throw MessageArchiveError.integrity }
+            if var pending { pending.state = .stored; guard pending == stored else { throw MessageArchiveError.integrity } }
+            return stored
+        }
+        if let pending {
+            guard let stored = try await upload(pending) else { throw MessageArchiveError.integrity }
+            return stored
+        }
+        guard records.isEmpty, !FileManager.default.fileExists(atPath: envelope(id).path) else { throw MessageArchiveError.integrity }
+        return nil
     }
 
     public func export(_ record: ArchiveFileRecord,to destination: URL) async throws {

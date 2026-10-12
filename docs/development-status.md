@@ -1,6 +1,62 @@
 # Development status — 2026-10-12
 
-## Current stage: editing with an inactive Archive cache
+## Current stage: reserving ZIP identities before capture
+
+New ordinary Archive mode attempts reserve exact ZIP/storage/candidate IDs and
+raw member names/size/digest in encrypted Postbox before capture. Reopened explicit
+retry resolves and authenticates the same immutable object even when candidate
+retention never committed. Native retention/install require the reservation for
+these attempts. Changing writes invalidate it atomically; old UUID restoration
+cannot revive it. OFF still forbids all new S3 copies, including preparation and
+pending recovery. Local captures never promote after enable. Legacy unreserved
+explicit descriptors retain their earlier handoff limitation. Pointer schemas,
+UI and dependency pins are unchanged.
+
+Compiled initial RED1 test/6 expected failures demonstrates duplicate ZIPs after
+reopen under ON/OFF. Candidate-guard RED1 test/2 expected failures reproduces
+original-UUID restoration; an initial fixture compilation error is retained.
+Initial GREEN2 tests passes, with three pre-existing compiler diagnostics (six
+warning lines). Removing only the install-side guard compiles RED1 test/2
+expected failures; guard restored afterward. Expanded GREEN18 XCTest (5 Telegram
++13 core)/0 failures and45 Python tests covers reservation ACK loss, invalid
+predecessors and pending/local recovery. Its first fixture compile failure is
+retained. The first full suite exits0:1,324 XCTest (1,246 Telegram +78 core),
+1 microphone-precondition skip,0 failures;45 Python tests. No compiler warnings;
+631 upstream SQL-prefixed t19 diagnostics remain separate. A further compiled
+RED1 test/1 expected failure exposes normalized attachment-ID acceptance in
+local reserved lookup. Exact-byte GREEN19 XCTest (5 Telegram +14 core)/0 failures and45 Python tests
+passes. Final required full suite exits0: **1,325 XCTest (1,246 Telegram +79 core),
+1 skipped,0 failures;45 Python tests**. Its fresh test compilation repeats the
+same three pre-existing diagnostics (six warning lines);631 SQL-prefixed t19
+lines plus one bare error line remain separate. Required build and strict deep
+signature exit0. Actual isolated common-window AX/screenshots verify Media→Archive,
+changed caption, exact owned-process restart with the same ZIP ID, and explicit
+synthetic GUI enqueue while the visible S3 flag is OFF. Reopened native readback
+passes1 XCTest/0 failures and45 Python tests:one accepted ZIP, exact caption and
+five local encrypted records, without S3 receipt/pending files. QA payload matches
+the build except signing-related LINKEDIT virtual size. Temporary QA source is
+removed. This is ordinary-path compatibility evidence; the pre-retention fault is
+verified separately in the real native integration tests. No personal Account,
+server send or hardware access.
+
+Fresh reference/source research corrects the previous batch-cover gap:
+PreviewSenderController:315–378 restricts the action to one Media item. This
+slice adds no per-item UI. Final project refresh/freshness and locked reference
+checks exit0:475 files,437/437 classified code. Intent matching and cover queries
+are source-confirmed. Final source freeze passes502 checks after QA removal:
+458 source files and22 frozen review copies. Bounded read-only review reports no
+actionable findings; all22 copied hashes match before/after. Root consistency verification passes900 checks over the
+common report and148 artifacts, including35 recorded worker checks; three worker
+runtime categories and three root gates remain SKIP in the worker report.
+Observed provider/model/internal execution and usage remain unknown. Root owns
+runtime evidence, with no quorum or sandbox attestation. An initial UI artifact
+verifier incorrectly assumes PNG while native CUA returns JPEG; extension correction
+preserves identical image bytes and the corrected evidence verifier exits0.
+Archive-specific held-generation cancel/rebind runtime evidence, legacy unreserved
+handoff, remaining caption/classifier/visual/gesture parity and later services
+remain open. Full migration remains active.
+
+## Previous stage: editing with an inactive Archive cache
 
 Existing File/Media reorder/remove actions now work after leaving Archive. Changed
 ordered members atomically drop only the ZIP descriptor back to schema15; the old
@@ -56,9 +112,10 @@ Publication audit checks478 publishable files and the proposed PR body against
 five selected credential fields:zero matches. Private evidence/configuration
 stays ignored. No schema version, dependency or copied reference code is added.
 
-Cover-cache retention has Session-level regression evidence; batch video-cover
-controls remain absent from the current UI. Process loss before capture-receipt
-commit, Archive-specific held-generation cancel/rebind runtime evidence,
+Cover-cache retention has Session-level regression evidence. Reference source
+subsequently confirmed that cover actions are restricted to one Media item;
+missing batch cover controls are not a migration gap. At this stage process loss
+before capture-receipt commit, Archive-specific held-generation cancel/rebind runtime evidence,
 exhaustive caption/classifier/visual parity and later services remain open.
 Full migration remains active.
 

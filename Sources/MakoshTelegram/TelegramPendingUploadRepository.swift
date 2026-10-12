@@ -17,6 +17,9 @@ internal enum TelegramPendingUploadPersistenceError: Error, LocalizedError, Equa
     var accountID: Int64 { get }
     func load(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable
     func save(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID?, completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void)
+    func loadArchiveIntent(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveIntent?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable
+    func retainArchiveIntent(_ intent: TelegramPendingUploadArchiveIntent, chatID: Int64, admission: TelegramPendingUploadArchiveAdmission,
+                             completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void)
     func loadArchiveCapture(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveCapture?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable
     func retainArchiveCapture(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID,
                               admission: TelegramPendingUploadArchiveAdmission,
@@ -26,6 +29,13 @@ internal enum TelegramPendingUploadPersistenceError: Error, LocalizedError, Equa
                         completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void)
 }
 extension TelegramPendingUploadRepository {
+    func loadArchiveIntent(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveIntent?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
+        completion(.failure(.incompatibleData)); return EmptyDisposable
+    }
+    func retainArchiveIntent(_ intent: TelegramPendingUploadArchiveIntent, chatID: Int64, admission: TelegramPendingUploadArchiveAdmission,
+                             completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
+        completion(.failure(.incompatibleData))
+    }
     func loadArchiveCapture(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveCapture?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
         completion(.failure(.incompatibleData)); return EmptyDisposable
     }
@@ -104,6 +114,10 @@ nonisolated func telegramPendingUploadWrite(transaction: Transaction, accountID:
     if transaction.getPreferencesEntry(key: captureKey) != nil {
         transaction.setPreferencesEntry(key: captureKey, value: nil)
     }
+    let intentKey = telegramPendingUploadArchiveIntentKey(accountID: accountID, chatID: draft.chatID)
+    if transaction.getPreferencesEntry(key: intentKey) != nil {
+        transaction.setPreferencesEntry(key: intentKey, value: nil)
+    }
     return .success(())
 }
 nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, accountID: Int64,
@@ -127,7 +141,9 @@ nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, acc
                 return .success(())
             }
             guard current.schemaVersion == 15, current.disposition == .prepared,
-                  current.revision == expectedRevision, current.id == draft.id else { return .failure(.conflict) }
+                  current.revision == expectedRevision, current.id == draft.id,
+                  telegramPendingUploadArchiveIntentMatches(transaction: transaction, current: current, candidate: draft,
+                    requiredRecordID: admission.archiveIntentRecordID) else { return .failure(.conflict) }
             // Reconstruct from authoritative canonical state. Comparing encoded bytes
             // also preserves opaque UTF8 spellings, selections and record metadata.
             guard let expected = try? TelegramPendingUploadDraft(id: current.id, revision: draft.revision,
@@ -152,6 +168,16 @@ private nonisolated func pendingUploadSave(postbox: Postbox, accountID: Int64, d
 private nonisolated func pendingUploadArchiveCaptureLoad(postbox: Postbox, accountID: Int64, chatID: Int64)
     -> Signal<Result<TelegramPendingUploadArchiveCapture?, TelegramPendingUploadPersistenceError>, NoError> {
     postbox.transaction { telegramPendingUploadArchiveCaptureRead(transaction: $0, accountID: accountID, chatID: chatID) }
+}
+private nonisolated func pendingUploadArchiveIntentLoad(postbox: Postbox, accountID: Int64, chatID: Int64)
+    -> Signal<Result<TelegramPendingUploadArchiveIntent?, TelegramPendingUploadPersistenceError>, NoError> {
+    postbox.transaction { telegramPendingUploadArchiveIntentRead(transaction: $0, accountID: accountID, chatID: chatID) }
+}
+private nonisolated func pendingUploadArchiveIntentSave(postbox: Postbox, accountID: Int64, chatID: Int64,
+    intent: TelegramPendingUploadArchiveIntent, admission: TelegramPendingUploadArchiveAdmission)
+    -> Signal<Result<Void, TelegramPendingUploadPersistenceError>, NoError> {
+    postbox.transaction { telegramPendingUploadArchiveIntentWrite(transaction: $0, accountID: accountID, chatID: chatID,
+        intent: intent, admission: admission) }
 }
 private nonisolated func pendingUploadArchiveCaptureSave(postbox: Postbox, accountID: Int64,
     draft: TelegramPendingUploadDraft, expectedRevision: UUID, admission: TelegramPendingUploadArchiveAdmission)
@@ -178,6 +204,16 @@ private nonisolated func pendingUploadInstallArchive(postbox: Postbox, accountID
         // Completion is engine transaction completion, not an fsync/disk-full promise.
         let _ = (pendingUploadSave(postbox: postbox, accountID: accountID, draft: draft, expectedRevision: expectedRevision)
             |> deliverOnMainQueue).startStandalone(next: { result in MainActor.assumeIsolated { completion(result) } })
+    }
+    func loadArchiveIntent(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveIntent?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
+        (pendingUploadArchiveIntentLoad(postbox: postbox, accountID: accountID, chatID: chatID) |> deliverOnMainQueue)
+            .start(next: { result in MainActor.assumeIsolated { completion(result) } })
+    }
+    func retainArchiveIntent(_ intent: TelegramPendingUploadArchiveIntent, chatID: Int64, admission: TelegramPendingUploadArchiveAdmission,
+                             completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
+        let _ = (pendingUploadArchiveIntentSave(postbox: postbox, accountID: accountID, chatID: chatID, intent: intent,
+            admission: admission) |> deliverOnMainQueue)
+            .startStandalone(next: { result in MainActor.assumeIsolated { completion(result) } })
     }
     func loadArchiveCapture(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveCapture?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
         (pendingUploadArchiveCaptureLoad(postbox: postbox, accountID: accountID, chatID: chatID) |> deliverOnMainQueue)

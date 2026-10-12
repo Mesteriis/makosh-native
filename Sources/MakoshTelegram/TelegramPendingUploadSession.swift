@@ -339,9 +339,10 @@ import SwiftSignalKit
                 guard current.schemaVersion == 15, !isGrouped else {
                     throw TelegramPendingUploadPersistenceError.incompatibleData
                 }
-                let candidate = try await archiveCandidate(current)
+                let captured = try await archiveCandidate(current), candidate = captured.candidate
                 let admission = TelegramPendingUploadArchiveAdmission(accountID: accountID, chatID: target.chatID,
-                    preparationID: preparationID, expectedRevision: current.revision, generation: UUID())
+                    preparationID: preparationID, expectedRevision: current.revision, generation: UUID(),
+                    archiveIntentRecordID: captured.intentRecordID)
                 defer { admission.cancel() }
                 let _: Void = try await awaitResult { [repository] completion in
                     repository.retainArchiveCapture(candidate, expectedRevision: current.revision,
@@ -370,36 +371,63 @@ import SwiftSignalKit
         }
     }
 
-    /// Creates one ZIP from authenticated durable originals, never picker paths.
-    /// A retained candidate is reused after a failed native installation.
-    private func archiveCandidate(_ current: TelegramPendingUploadDraft) async throws -> TelegramPendingUploadDraft {
+    /// Reserves capture identities before storage; retries authenticate the exact
+    /// immutable object even if native candidate retention never committed.
+    private func archiveCandidate(_ current: TelegramPendingUploadDraft) async throws
+        -> (candidate: TelegramPendingUploadDraft, intentRecordID: UUID?) {
         guard current.schemaVersion == 15, current.items.count > 1,
               current.items.count <= TelegramUploadArchiveLimits.members else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
+        var intent: TelegramPendingUploadArchiveIntent? = try await awaitResult { [repository] completion in
+            repository.loadArchiveIntent(chatID: current.chatID, completion: completion)
+        }
         if let retained = try await readArchiveCapture(chatID: current.chatID) {
             let authenticated = try await restoreBundle(draft: retained.candidate)
             try authenticated.discard()
-            return retained.candidate
+            return (retained.candidate, intent?.recordID)
         }
-        let storage = try files(), originals = try await restoreBundle(draft: current)
+        let storage = try files()
+        if let intent, let record = try await storage.recoverArchive(intent, accountID: accountID, chatID: current.chatID) {
+            let candidate = try intent.candidate(current: current, record: record)
+            let authenticated = try await restoreBundle(draft: candidate)
+            try authenticated.discard()
+            return (candidate, intent.recordID)
+        }
+        let originals = try await restoreBundle(draft: current)
         var zip: TelegramUploadArchiveIO.Archive?
         do {
             let sources = originals.items.map { TelegramUploadArchiveIO.Source(itemID: $0.id, file: $0.rawSource) }
             let created = try await TelegramUploadArchiveIO.prepare(sources)
             zip = created
-            let record = try await storage.saveArchive(created, sources: sources, archiveID: created.file.id,
-                accountID: accountID, chatID: current.chatID, preparationID: current.id)
-            let descriptor = TelegramPendingUploadArchive(id: created.file.id, file: record,
-                members: created.members.map { .init(itemID: $0.itemID, entryName: $0.entryName) })
-            let candidate = try TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: current.chatID,
-                title: current.title, captionInput: current.captionInput, originalDraft: current.originalDraft,
-                replyTarget: current.replyTarget, items: current.items, isGrouped: false, presentation: .archive,
-                captionRules: current.captionRules, archive: descriptor)
+            let capture = try TelegramPendingUploadFiles.captureArchive(created.file)
+            let digest = try capture.plaintextSHA256()
+            let members = created.members.map { TelegramPendingUploadArchive.Member(itemID: $0.itemID, entryName: $0.entryName) }
+            if intent == nil {
+                let reserved = TelegramPendingUploadArchiveIntent(preparationID: current.id, expectedRevision: current.revision,
+                    archiveID: created.file.id, recordID: UUID(), candidateRevision: UUID(), byteCount: created.file.size,
+                    plaintextSHA256: digest, members: members)
+                let admission = TelegramPendingUploadArchiveAdmission(accountID: accountID, chatID: current.chatID,
+                    preparationID: current.id, expectedRevision: current.revision, generation: UUID())
+                defer { admission.cancel() }
+                let _: Void = try await awaitResult { [repository] completion in
+                    repository.retainArchiveIntent(reserved, chatID: current.chatID, admission: admission, completion: completion)
+                    return nil
+                }
+                intent = reserved
+            }
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+            guard let intent, intent.isValid(for: current), intent.byteCount == created.file.size,
+                  intent.plaintextSHA256 == digest, try encoder.encode(intent.members) == encoder.encode(members) else {
+                throw TelegramPendingUploadPersistenceError.conflict
+            }
+            let record = try await storage.saveArchive(created, sources: sources, archiveID: intent.archiveID,
+                accountID: accountID, chatID: current.chatID, preparationID: current.id, capture: capture, reservedID: intent.recordID)
+            let candidate = try intent.candidate(current: current, record: record)
             let authenticated = try await restoreBundle(draft: candidate)
             try authenticated.discard()
             try originals.discard(); try TelegramUploadFileIO.discard(created.file)
-            return candidate
+            return (candidate, intent.recordID)
         } catch {
             try? originals.discard()
             if let zip { try? TelegramUploadFileIO.discard(zip.file) }

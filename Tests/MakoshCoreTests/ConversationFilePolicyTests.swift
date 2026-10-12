@@ -196,6 +196,66 @@ final class ConversationFilePolicyTests: XCTestCase {
         XCTAssertTrue(try queueFiles(root).isEmpty)
     }
 
+    // Catches reserved outgoing recovery uploading while OFF, losing its identity, or overwriting an existing immutable capture.
+    func testReservedOutgoingQueueRecoveryRechecksPolicyAndKeepsOneObject() async throws {
+        let config = try config(), db = try database(), root = try directory(), id = UUID()
+        let first = try failedQueueRepository(db, root, config)
+        do {
+            _ = try await first.capture(capture(root), identity: identity, attachment: attachment, reservedID: id)
+            XCTFail("Expected the published receipt directory-sync failure")
+        } catch let failure as ArchiveFileCaptureFailure { XCTAssertTrue(failure.isQueued) }
+        let before = try Dictionary(uniqueKeysWithValues: queueFiles(root).map { ($0.lastPathComponent, try Data(contentsOf: $0)) })
+        let reopened = try repository(db, root, config)
+        try await reopened.setConversationFileSavingEnabled(identity: identity, enabled: false)
+        do {
+            _ = try await reopened.recoverOutgoingCapture(id: id, identity: identity, attachmentID: attachment.id)
+            XCTFail("Disabled recovery must not upload")
+        } catch MessageArchiveError.integrity {}
+        let after = try Dictionary(uniqueKeysWithValues: queueFiles(root).map { ($0.lastPathComponent, try Data(contentsOf: $0)) })
+        XCTAssertEqual(after, before)
+        let vault = try store(db).fileVault()
+        let objectKey = "vaults/\(vault.id.uuidString.lowercased())/files/\(id.uuidString.lowercased())"
+        let remote = try await S3ObjectStore(configuration: config).head(key: objectKey); XCTAssertNil(remote)
+        try await reopened.setConversationFileSavingEnabled(identity: identity, enabled: true)
+        let recovered = try await reopened.recoverOutgoingCapture(id: id, identity: identity, attachmentID: attachment.id)
+        XCTAssertEqual(recovered?.id, id); XCTAssertEqual(recovered?.state, .stored)
+        let again = try await reopened.recoverOutgoingCapture(id: id, identity: identity, attachmentID: attachment.id)
+        XCTAssertEqual(again, recovered)
+        XCTAssertEqual(try db.execute("SELECT count(DISTINCT object),count(*) FROM \"\(db.schema)\".archive_file_events"), [["1", "2"]])
+        XCTAssertTrue(try queueFiles(root).isEmpty)
+    }
+
+    // Catches treating an orphan envelope or damaged local receipt as authorization to create a replacement capture.
+    func testReservedRecoveryRefusesMissingAndCorruptLocalManifest() async throws {
+        for corrupt in [false, true] {
+            let config = try config(), db = try database(), root = try directory(), archive = try repository(db, root, config)
+            try await archive.setConversationFileSavingEnabled(identity: identity, enabled: false)
+            let id = UUID(), record = try await archive.capture(capture(root), identity: identity, attachment: attachment, reservedID: id)
+            let receipt = root.appendingPathComponent("queue/" + id.uuidString.lowercased() + ".local")
+            if corrupt { try Data([1, 2, 3]).write(to: receipt) } else { try FileManager.default.removeItem(at: receipt) }
+            do {
+                _ = try await archive.recoverOutgoingCapture(id: id, identity: identity, attachmentID: attachment.id)
+                XCTFail("Uncertain immutable capture must refuse recapture")
+            } catch MessageArchiveError.integrity {}
+            let remote = try await S3ObjectStore(configuration: config).head(key: record.objectKey); XCTAssertNil(remote)
+            XCTAssertTrue(try queueFiles(root).contains { $0.pathExtension == "envelope" })
+        }
+    }
+
+    // Catches resolving a reserved local object for a different opaque attachment ID with equivalent Unicode spelling.
+    func testReservedLocalRecoveryRequiresExactAttachmentIDBytes() async throws {
+        let config = try config(), db = try database(), root = try directory(), archive = try repository(db, root, config)
+        try await archive.setConversationFileSavingEnabled(identity: identity, enabled: false)
+        let item = MessageArchiveAttachment(id: "é", kind: "file", name: "synthetic.txt", size: nil)
+        let record = try await archive.capture(capture(root), identity: identity, attachment: item, reservedID: UUID())
+        do {
+            _ = try await archive.recoverOutgoingCapture(id: record.id, identity: identity, attachmentID: "e\u{301}")
+            XCTFail("Opaque attachment scope requires exact UTF8 bytes")
+        } catch MessageArchiveError.integrity {}
+        let exact = try await archive.recoverOutgoingCapture(id: record.id, identity: identity, attachmentID: "é")
+        XCTAssertEqual(exact, record)
+    }
+
     // Catches preparation bypassing a disabled chat, or losing local recovery after restart.
     func testDisabledChatPreparationRemainsRecoverableWithoutAnyS3Copy() async throws {
         let config = try config(), db = try database(), root = try directory()

@@ -77,6 +77,8 @@ nonisolated func telegramPendingUploadArchiveCaptureWrite(transaction: Transacti
         case let .success(current):
             let capture = TelegramPendingUploadArchiveCapture(expectedRevision: expectedRevision, candidate: draft)
             guard let current, archiveCaptureMatches(capture, current: current, accountID: accountID, chatID: draft.chatID),
+                  telegramPendingUploadArchiveIntentMatches(transaction: transaction, current: current, candidate: draft,
+                    requiredRecordID: admission.archiveIntentRecordID),
                   let base = archiveCaptureEncoding(current), let candidate = archiveCaptureEncoding(draft) else { return .failure(.conflict) }
             let data = archiveCaptureMarker + Data(expectedRevision.uuidString.utf8) + Data(SHA256.hash(data: base)) + candidate
             let key = telegramPendingUploadArchiveCaptureKey(accountID: accountID, chatID: draft.chatID)

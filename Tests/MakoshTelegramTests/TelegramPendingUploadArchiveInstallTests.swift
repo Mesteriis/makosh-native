@@ -441,6 +441,13 @@ import SwiftSignalKit
               completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
         base.save(draft, expectedRevision: expectedRevision, completion: completion)
     }
+    func loadArchiveIntent(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveIntent?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
+        base.loadArchiveIntent(chatID: chatID, completion: completion)
+    }
+    func retainArchiveIntent(_ intent: TelegramPendingUploadArchiveIntent, chatID: Int64, admission: TelegramPendingUploadArchiveAdmission,
+                             completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
+        base.retainArchiveIntent(intent, chatID: chatID, admission: admission, completion: completion)
+    }
     func loadArchiveCapture(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveCapture?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
         base.loadArchiveCapture(chatID: chatID, completion: completion)
     }

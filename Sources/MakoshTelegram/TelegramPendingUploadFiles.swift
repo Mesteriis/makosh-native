@@ -61,7 +61,7 @@ actor TelegramPendingUploadFiles {
 
     func saveArchive(_ archive: TelegramUploadArchiveIO.Archive, sources: [TelegramUploadArchiveIO.Source],
                      archiveID: UUID, accountID: Int64, chatID: Int64, preparationID: UUID,
-                     capture: ArchiveFileCapture? = nil) async throws -> ArchiveFileRecord {
+                     capture: ArchiveFileCapture? = nil, reservedID: UUID? = nil) async throws -> ArchiveFileRecord {
         try Task.checkCancellation()
         guard archiveID != TelegramPendingUploadDraft.zeroUUID, preparationID != TelegramPendingUploadDraft.zeroUUID,
               !sources.contains(where: { $0.itemID == archiveID || $0.file.id == archiveID }) else {
@@ -79,11 +79,17 @@ actor TelegramPendingUploadFiles {
         let record = try await repository.capture(frozen, identity: identity,
             attachment: .init(id: TelegramPendingUploadArchive.attachmentID(archiveID), kind: "file",
                               name: archive.file.name, size: archive.file.size),
-            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity), reservedID: reservedID)
         guard record.plaintextByteCount == archive.file.size, record.plaintextSHA256 == digest else {
             throw TelegramUploadFileError.unavailable
         }
         return record
+    }
+
+    func recoverArchive(_ intent: TelegramPendingUploadArchiveIntent, accountID: Int64, chatID: Int64) async throws -> ArchiveFileRecord? {
+        try await repository.recoverOutgoingCapture(id: intent.recordID,
+            identity: TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: intent.preparationID),
+            attachmentID: TelegramPendingUploadArchive.attachmentID(intent.archiveID))
     }
 
     func restoreArchive(record: ArchiveFileRecord, archiveID: UUID, accountID: Int64, chatID: Int64,

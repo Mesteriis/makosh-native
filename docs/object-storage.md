@@ -96,6 +96,13 @@ archive export → S3 GET → hash + authenticated decryption → native Save pa
 archive preview → same authenticated S3 path → private plaintext lease → Quick Look
 ```
 
+ZIP mode reserves its object ID in encrypted native preferences before capture.
+Explicit recovery resolves that exact local, pending or stored outgoing record
+using opaque identity/attachment bytes. Pending recovery rechecks the chat flag;
+local records remain local. A missing or corrupt manifest with an existing
+payload fails closed and does not authorize a replacement object. Pre-existing
+captures without a native reservation retain their earlier descriptor boundary.
+
 The identity is the original service/account/typed conversation/message and
 attachment ID; changing visible chat/account does not retarget accepted work.
 Regular files only, exact measured size, no source symlinks/FIFOs, maximum

@@ -447,10 +447,28 @@ or canonical video covers retain the same cache because raw ZIP bytes are
 unchanged. Active Archive stays one noneditable ZIP row, matching the reference.
 Controller confirmation authenticates the resulting bundle and releases its old
 ZIP export only after the pointer edit is confirmed, including lost-ACK retry.
-Next finish the earlier capture handoff and remaining caption/classifier/visual parity.
-PostgreSQL/S3 capture, native receipt retention and active Postbox CAS
-are distinct transactions. Process loss before retention commit still requires
-the caller's descriptor; that earlier handoff remains open. Preserve immutable
+New ordinary Archive mode attempts reserve the ZIP ID, storage object ID, candidate
+revision, exact member names, byte count and digest in an encrypted Postbox
+preference before the first storage capture. The reservation binds the complete
+ordinary predecessor bytes and revision. After reopen, explicit retry resolves
+that one immutable local/pending/stored object, authenticates the entire bundle
+and installs the original candidate without capturing another ZIP. A reservation
+committed before capture allows deterministic rebuilding from retained originals.
+A failed reservation acknowledgement prevents capture; lost committed ACK reuses
+the reserved IDs. Changed pointer writes clear it atomically; exact no-ops retain
+it. Native candidate retention and installation require the reservation for these
+new mode attempts, so original-UUID A→B→A cannot revive an invalidated attempt.
+Legacy explicitly supplied captures remain compatible without a reservation;
+pre-existing unreserved handoffs still need the caller's descriptor.
+
+PostgreSQL/S3 capture, native reservation, candidate receipt and active Postbox
+CAS remain distinct transactions. Missing/corrupt local manifests or orphan
+payloads refuse recapture; immutable files remain retained on refusal. Pending
+recovery rechecks the chat's S3 flag before upload. OFF forbids all new S3 copies,
+including ZIP preparation; records captured locally never promote after enable.
+No schema16 rewrite, new UI, dependency or third-party code is introduced.
+Remaining caption/classifier/visual parity and Archive-specific held-generation
+cancel/rebind runtime evidence remain open. Preserve immutable
 files if pointer installation fails. Native stale CAS/queued cancellation and authenticated install now have
 regression coverage. Controller/model recovery, native resource integrity,
 confirmation-only retry and no automatic resend have integration regressions.

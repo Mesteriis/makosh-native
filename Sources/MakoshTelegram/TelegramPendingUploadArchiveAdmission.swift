@@ -5,10 +5,13 @@ internal final class TelegramPendingUploadArchiveAdmission: @unchecked Sendable 
     private let lock = NSLock()
     private let accountID: Int64, chatID: Int64
     private let preparationID: UUID, expectedRevision: UUID, generation: UUID
+    let archiveIntentRecordID: UUID?
     private var cancelled = false
-    init(accountID: Int64, chatID: Int64, preparationID: UUID, expectedRevision: UUID, generation: UUID) {
+    init(accountID: Int64, chatID: Int64, preparationID: UUID, expectedRevision: UUID, generation: UUID,
+         archiveIntentRecordID: UUID? = nil) {
         self.accountID = accountID; self.chatID = chatID; self.preparationID = preparationID
         self.expectedRevision = expectedRevision; self.generation = generation
+        self.archiveIntentRecordID = archiveIntentRecordID
     }
     func cancel() { lock.withLock { cancelled = true } }
     func check(accountID: Int64, chatID: Int64, preparationID: UUID, expectedRevision: UUID) throws {
@@ -34,6 +37,7 @@ internal final class TelegramPendingUploadArchiveAdmission: @unchecked Sendable 
     private func matches(accountID: Int64, chatID: Int64, preparationID: UUID, expectedRevision: UUID) -> Bool {
         self.accountID != 0 && self.chatID != 0 && self.preparationID != TelegramPendingUploadDraft.zeroUUID &&
         self.expectedRevision != TelegramPendingUploadDraft.zeroUUID && generation != TelegramPendingUploadDraft.zeroUUID &&
+        archiveIntentRecordID != TelegramPendingUploadDraft.zeroUUID &&
         self.accountID == accountID && self.chatID == chatID && self.preparationID == preparationID && self.expectedRevision == expectedRevision
     }
 }

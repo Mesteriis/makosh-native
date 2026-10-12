@@ -40,7 +40,50 @@ focused24 XCTest pass; commit a9ee000 is published for hosted verification in
 [PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
 separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram settings, devices and local themes (block 5)
+## Current stage: Telegram privacy audiences (block 6)
+
+The existing settings sheet now opens the reference privacy list
+and separate audience editors for phone visibility/discovery, presence, profile
+photos, bio, birthday, group invitations, forwarding attribution, calls and P2P.
+All native user/chat/close-friend/Premium/bot/deny-contact exceptions retain their
+exact order; audience changes replace only the recognized base/fallback rules.
+Exception lists are currently read-only. Nonstandard bases remain read-only,
+malformed/bounded-list violations fail closed, and phone discovery refuses Nobody.
+Each confirmed write re-reads that key, checks the account and exact captured
+basis, resolves every user from that fresh response and performs one typed RPC.
+Min/missing/duplicate user identities are not silently dropped or substituted.
+ACKs must preserve the confirmed audience/exceptions; empty or different ACKs
+remain uncertain.30s deadlines and account/context guards require explicit
+refresh after uncertain writes, including closing/reopening. No automatic
+application retry or archive/S3/engine-pin/schema/dependency change is introduced.
+
+Valid assertion REDs: rules6 tests/13 failures; controller/native8/10;
+workspace/native-user integration10/2; category-feedback1/2; unsupported-discovery1/1.
+The final focused17 XCTest pass.
+Required DB startup and final app build exit0 with no compiler warnings. Actual
+native synthetic QA verifies the reference category list, cancellation/ACK with
+exceptions preserved, two-option discovery and independent P2P. It exposes status
+from a different category and a lost parent draft after child ACK; the repairs
+pass category regression and actual final UI. Parent drafts now block child
+navigation until save or explicit discard. Final P2P ACK leaves calls unchanged,
+with confirmation feedback confined to P2P. Strict signing and unsigned executable
+payload equality pass. The owned QA process is stopped and isolated data retained.
+The final mandatory `scripts/test.sh` exits0: **1,808 XCTest (1,729 Telegram +79
+core),1 microphone precondition skip,0 failures;85 Python tests across18 suites**.
+Existing upstream Postbox teardown/macOS Contacts-service diagnostics are not
+assertion failures or evidence of private contact retrieval. All684 source/test/
+script/dependency fingerprints match after validation. Project, locked reference
+and recipe19 engine XERJ checks are fresh; scoped searches are source-confirmed.
+This ledger records local validation. Hosted build/test and integration results
+are recorded on the attached PR; merging requires success on its exact head.
+All test/QA actions use synthetic data;
+real accounts, private contents and real privacy mutations are not authorized.
+
+Exception membership editing, voice-message/Premium/global privacy controls,
+2FA, blocked users, account removal and notifications/storage/proxy/downloads
+remain open. The local permanent-message archive policy is unchanged.
+
+## Previous stage: Telegram settings, devices and local themes (block 5)
 
 Telegram settings now open General, Appearance and Devices inside the existing
 common workspace. Local system/classic/day/night palettes and four accents

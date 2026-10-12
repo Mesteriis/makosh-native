@@ -141,7 +141,11 @@ import XCTest
         XCTAssertEqual(controller.phase, .validating)
         XCTAssertEqual(provider.leases[0].cancellations, 0)
         provider.callbacks[0](.committing)
-        try await Task.sleep(for: .milliseconds(100))
+        let clock = ContinuousClock()
+        let limit = clock.now.advanced(by: .seconds(5))
+        while controller.phase != .uncertain, clock.now < limit {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         XCTAssertEqual(controller.phase, .uncertain)
         XCTAssertEqual(provider.leases[0].cancellations, 1)
         XCTAssertEqual(controller.action, .reply("Paid reply"))

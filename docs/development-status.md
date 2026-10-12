@@ -14,10 +14,18 @@ The original focused regression exits1 (two assertion failures); the repaired
 8 Python tests exit0, including full-inventory tampering, bounded expansion and
 cold HTTP/offline reuse. A real uncached HTTP preparation produces the exact
 reviewed135-file output. `scripts/dev-db.sh up` and `scripts/build-app.sh` exit0.
-A full local suite is in progress at this commit. A read-only worker review finds
+A full local suite exits0:1,714 XCTest (1,635 Telegram +79 core),1 microphone
+precondition skip,0 failures;77 Python tests. A read-only worker review finds
 no material VPX boundary defect; it does not establish hosted CI success.
 The existing PR remains unmerged until its repaired commit passes hosted CI.
-Extended-search implementation follows on the next feature branch.
+The repaired hosted builds pass preparation/compilation, then fail on timing
+assumptions in three test classes (13 and5 assertions respectively). Positive
+deadline tests now wait for the actual state with a5s bound; the upload fixture
+emits its approval handshake synchronously, as the real provider does. Real
+timeouts, negative human-wait checks and late-ACK/receipt assertions remain.
+The focused27 XCTest pass locally on the working search branch; this does not
+establish an isolated block2 or hosted result. Hosted CI must pass the exact
+new PR1 commit before merging. Extended search continues separately.
 
 ## Current stage: Telegram extended messages (block 2, locally verified)
 

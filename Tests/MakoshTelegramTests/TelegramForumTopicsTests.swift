@@ -325,11 +325,15 @@ private nonisolated func forumCorrupt(_ box: Postbox, data: Data = Data([0x7b]))
     }
 
     // An empty loading source cannot leave stale rows indefinitely after navigation.
-    func testControllerDeadlineFailsClosedAndLateSnapshotCannotReviveRequest() async {
+    func testControllerDeadlineFailsClosedAndLateSnapshotCannotReviveRequest() async throws {
         let pipe = ValuePipe<Result<TelegramForumTopicsSnapshot, TelegramForumTopicsError>>()
         let controller = TelegramForumTopicsController(timeout: .milliseconds(20))
         controller.bind(accountID: 1) { _ in pipe.signal() }; controller.selectChat(chat); controller.setVisible(true)
-        try? await Task.sleep(for: .milliseconds(80))
+        let clock = ContinuousClock()
+        let limit = clock.now.advanced(by: .seconds(5))
+        while controller.phase != .failed(.unavailable), clock.now < limit {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         XCTAssertEqual(controller.phase, .failed(.unavailable)); XCTAssertNil(controller.snapshot)
         pipe.putNext(.success(snapshot())); XCTAssertNil(controller.snapshot)
     }

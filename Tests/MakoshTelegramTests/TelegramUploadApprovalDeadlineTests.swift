@@ -29,7 +29,6 @@ import SwiftSignalKit
             let preparationID = try XCTUnwrap(controller.preparationContextID)
             controller.send(contextID: preparationID)
             try await waitUntil { provider.hasReceiver }
-            provider.awaitApproval()
             let before = try await sourceFactsLoad(store)
             XCTAssertEqual(before.disposition, .submissionStarted)
             let frozen = try encoded(before)
@@ -70,7 +69,6 @@ import SwiftSignalKit
             let preparationID = try XCTUnwrap(controller.preparationContextID)
             controller.send(contextID: preparationID)
             try await waitUntil { provider.hasReceiver }
-            provider.awaitApproval()
             let before = try await sourceFactsLoad(store), frozen = try encoded(before)
             try await Task.sleep(for: .milliseconds(140))
             guard controller.phase == .storing else {
@@ -136,14 +134,16 @@ private enum ApprovalDeadlineFailure: Error { case timeout }
     func submit(file: TelegramUploadFile, target: TelegramUploadTarget, preparationID: UUID,
                 caption: TelegramFormattedText, captionAboveMedia: Bool, mediaSpoiler: Bool,
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease {
-        single = receive; return ApprovalDeadlineLease()
+        single = receive; awaitApproval(); return ApprovalDeadlineLease()
     }
     func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
                 receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
-        batchPayload = (items, draft, target); batch = receive; return ApprovalDeadlineLease()
+        batchPayload = (items, draft, target); batch = receive; awaitApproval(); return ApprovalDeadlineLease()
     }
-    func awaitApproval() {
-        single?(.awaitingApproval)
+    private func awaitApproval() {
+        // Complete the provider handshake synchronously; a delayed test poll is
+        // not part of the transport's pre-approval timeout budget.
+        single?(.committing); single?(.awaitingApproval)
         batch?(.committing); batch?(.awaitingApproval)
     }
     func commit() { single?(.committing); batch?(.committing) }

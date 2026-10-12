@@ -6,6 +6,61 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramPendingUploadArchiveAdmissionTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches treating any predecessor revision as the origin of an already installed candidate.
+    func testExactReplayRejectsForeignPredecessorRevision() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let (current, candidate) = try await makeCandidate(fixture, box: box)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let first = await install(repository, candidate, current.revision, admission(current))
+        guard case .success = first else { return XCTFail("First guarded installation must succeed") }
+        let foreign = UUID()
+        let token = TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 42, preparationID: current.id,
+            expectedRevision: foreign, generation: UUID())
+        assertConflict(await install(repository, candidate, foreign, token))
+        let pointer = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(pointer, candidate)
+    }
+
+    // Catches acknowledging a schema16 written by an unrelated generic path without guarded-install provenance.
+    func testExactCandidateWithoutGuardedInstallationReceiptCannotReplay() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let (current, candidate) = try await makeCandidate(fixture, box: box)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        try await save(repository, candidate, current.revision)
+        assertConflict(await install(repository, candidate, current.revision, admission(current)))
+        let pointer = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(pointer, candidate)
+    }
+
+    // Catches replaying A after ordinary writes A→B→A reuse A's original revision UUID.
+    func testOrdinaryWriteInvalidatesReceiptEvenWhenOriginalRevisionIsReused() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let (current, candidate) = try await makeCandidate(fixture, box: box)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let first = await install(repository, candidate, current.revision, admission(current))
+        guard case .success = first else { return XCTFail("First guarded installation must succeed") }
+        let changed = candidate.updating(captionInput: try .init(formattedText: .init(text: "Intermediate edit")),
+            captionAboveMedia: false, mediaSpoiler: false, disposition: .prepared)
+        try await save(repository, changed, candidate.revision)
+        try await save(repository, candidate, changed.revision)
+        let restored = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(restored, candidate)
+        assertConflict(await install(repository, candidate, current.revision, admission(current)))
+        let pointer = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(pointer, candidate)
+    }
+
+    // Catches trusting a missing, damaged or differently scoped receipt for an otherwise exact replay.
+    func testReplayRefusesDeletedCorruptOrForeignScopeReceipt() async throws {
+        for mutation in ["deleted", "corrupt", "foreign"] {
+            let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+            let (current, candidate) = try await makeCandidate(fixture, box: box)
+            let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            let first = await install(repository, candidate, current.revision, admission(current))
+            guard case .success = first else { return XCTFail("First guarded installation must succeed") }
+            let changed = try await sourceFactsValue(archiveInstallCorruptReceipt(box, mutation: mutation))
+            XCTAssertTrue(changed, "The first native transaction must persist its receipt")
+            assertConflict(await install(repository, candidate, current.revision, admission(current)))
+            let pointer = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(pointer, candidate)
+        }
+    }
+
     // Catches a native write dropping canonical state, or a retained retry creating another revision.
     func testNativeInstallPreservesResourcesAndExactRetainedRetry() async throws {
         let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
@@ -22,6 +77,7 @@ import SwiftSignalKit
         XCTAssertEqual(installed.originalDraft, current.originalDraft)
         XCTAssertEqual(installed.replyTarget, current.replyTarget)
         XCTAssertFalse(installed.isGrouped); XCTAssertFalse(installed.captionAboveMedia); XCTAssertFalse(installed.mediaSpoiler)
+        try await save(repository, candidate, current.revision) // An exact no-op must preserve install provenance.
         let retry = await install(repository, candidate, current.revision, token)
         guard case .success = retry else { return XCTFail("An exact retained retry was refused: \(retry)") }
         let repeated = try await sourceFactsLoad(fixture.session(box))
@@ -176,6 +232,24 @@ import SwiftSignalKit
     }
     private func assertConflict(_ result: Result<Void, TelegramPendingUploadPersistenceError>, file: StaticString = #filePath, line: UInt = #line) {
         guard case .failure(.conflict) = result else { return XCTFail("Expected conflict, got \(result)", file: file, line: line) }
+    }
+}
+
+private nonisolated func archiveInstallCorruptReceipt(_ box: Postbox, mutation: String) -> Signal<Bool, NoError> {
+    box.transaction { transaction in
+        let key = telegramPendingUploadArchiveInstallKey(accountID: 1, chatID: 42)
+        guard let entry = transaction.getPreferencesEntry(key: key) else { return false }
+        if mutation == "corrupt" {
+            var data = entry.data; data[data.count - 1] ^= 1
+            transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: data))
+        } else {
+            transaction.setPreferencesEntry(key: key, value: nil)
+            if mutation == "foreign" {
+                transaction.setPreferencesEntry(key: telegramPendingUploadArchiveInstallKey(accountID: 2, chatID: 42), value: entry)
+                transaction.setPreferencesEntry(key: telegramPendingUploadArchiveInstallKey(accountID: 1, chatID: 43), value: entry)
+            }
+        }
+        return true
     }
 }
 

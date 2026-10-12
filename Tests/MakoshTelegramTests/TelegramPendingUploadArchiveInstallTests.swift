@@ -6,6 +6,66 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramPendingUploadArchiveInstallTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches recapturing or refusing the committed ZIP when its ACK was lost and the encrypted Postbox reopened.
+    func testLostAcknowledgementReplaysExactInstallationAfterEncryptedReopenWithoutRecapture() async throws {
+        for enabled in [false, true] {
+            let fixture = try await sourceFactsArchive()
+            try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: enabled)
+            var retained: PreparedArchive?, committed: TelegramPendingUploadDraft?
+            weak var previous: Postbox?
+            do {
+                let box = try await sourceFactsOpen(fixture.postboxPath); previous = box
+                let setup = try await preparedArchive(fixture, box: box); retained = setup
+                let repository = ArchiveInstallGateRepository(box)
+                repository.failNextAcknowledgement = true
+                do { _ = try await install(session(fixture, repository: repository), setup: setup); XCTFail("Lost ACK must be reported") }
+                catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .unavailable) }
+                committed = try await sourceFactsLoad(fixture.session(box))
+                XCTAssertEqual(committed?.schemaVersion, 16)
+            }
+            let setup = try XCTUnwrap(retained)
+            defer { setup.discard() }
+            for _ in 0..<100 where previous != nil { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertNil(previous)
+            let local = try fixture.localRecords(), events = try fileEvents(fixture), stages = try ownedDirectories()
+            let box = try await sourceFactsOpen(fixture.postboxPath), store = fixture.session(box)
+            do {
+                let replayed = try await install(store, setup: setup)
+                let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+                XCTAssertEqual(try encoder.encode(replayed), try encoder.encode(XCTUnwrap(committed)))
+            } catch { XCTFail("Fresh session must confirm its exact committed installation: \(error)") }
+            let pointer = try await sourceFactsLoad(store)
+            XCTAssertEqual(pointer, committed)
+            XCTAssertEqual(try fixture.localRecords(), local); XCTAssertEqual(try fileEvents(fixture), events)
+            XCTAssertEqual(try ownedDirectories(), stages)
+        }
+    }
+
+    // Catches acknowledging a later edit, including A→B→A, merely because the retained ZIP still matches.
+    func testFreshSessionReplayRefusesLaterCaptionRevisionsAndStartedSubmission() async throws {
+        for mutation in ["caption", "roundTrip", "started"] {
+            let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+            let setup = try await preparedArchive(fixture, box: box)
+            defer { setup.discard() }
+            _ = try await install(fixture.session(box), setup: setup)
+            let editor = fixture.session(box)
+            let changed = try TelegramComposerInput(formattedText: .init(text: "Later caption"))
+            try await editor.save(preparationID: setup.draft.id, chatID: 42, captionInput: changed, disposition: .prepared)
+            if mutation == "roundTrip" || mutation == "started" {
+                try await editor.save(preparationID: setup.draft.id, chatID: 42, captionInput: setup.draft.captionInput,
+                    disposition: mutation == "started" ? .submissionStarted : .prepared)
+            }
+            let newer = try await sourceFactsLoad(editor), stages = try ownedDirectories()
+            let local = try fixture.localRecords(), events = try fileEvents(fixture)
+            do { _ = try await install(fixture.session(box), setup: setup); XCTFail("Replay accepted a later \(mutation) revision") }
+            catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .conflict) }
+            let retained = try await sourceFactsLoad(editor)
+            XCTAssertEqual(retained, newer)
+            XCTAssertEqual(try ownedDirectories(), stages)
+            XCTAssertEqual(try fixture.localRecords(), local); XCTAssertEqual(try fileEvents(fixture), events)
+        }
+    }
+
     // Catches replacing canonical/raw editor state, recapturing, or promoting OFF records during installation/reopen.
     func testInstallPreservesAuthenticatedBundleAndRawEditorAcrossEncryptedReopenWithoutRecapture() async throws {
         for enabled in [false, true] {
@@ -315,7 +375,7 @@ import SwiftSignalKit
 @MainActor private final class ArchiveInstallGateRepository: TelegramPendingUploadRepository {
     let accountID: Int64 = 1
     let base: TelegramPostboxPendingUploadRepository
-    var holdNextLoad = false, holdNextInstall = false, holdNextAcknowledgement = false
+    var holdNextLoad = false, holdNextInstall = false, holdNextAcknowledgement = false, failNextAcknowledgement = false
     var heldLoad: (Int64, @MainActor (Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>) -> Void)?
     var heldInstall: (TelegramPendingUploadDraft, UUID, TelegramPendingUploadArchiveAdmission,
                       @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void)?
@@ -335,6 +395,14 @@ import SwiftSignalKit
                         admission: TelegramPendingUploadArchiveAdmission,
                         completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
         if holdNextInstall { holdNextInstall = false; heldInstall = (draft, expectedRevision, admission, completion); return }
+        if failNextAcknowledgement {
+            failNextAcknowledgement = false
+            base.installArchive(draft, expectedRevision: expectedRevision, admission: admission) { result in
+                if case .success = result { completion(.failure(.unavailable)) }
+                else { completion(result) }
+            }
+            return
+        }
         if holdNextAcknowledgement {
             holdNextAcknowledgement = false
             base.installArchive(draft, expectedRevision: expectedRevision, admission: admission) { result in

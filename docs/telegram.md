@@ -1964,8 +1964,22 @@ whole temporary bundle; failed ZIP cleanup retains ownership and blocks a new
 preparation until cleanup succeeds. These paths create no file records or S3
 objects. Ordinary legacy recovery continues through the bundle adapter.
 
-Capture-receipt retention across pointer failure, fresh-Session lost-ACK install
-recovery and Archive generation/mode switching in the existing window remain
+Guarded installation now commits a separate native preference receipt together
+with the schema16 pointer. It binds the predecessor revision and SHA256 of the
+exact sorted encoded candidate, including its new revision and raw editor state.
+A fresh Session can authenticate the existing whole bundle and retry that exact
+installation after encrypted Postbox reopen. Native admission requires the same
+receipt and current candidate; replay writes neither pointer nor files. A later
+edit, including A→B→A, started submission, wrong predecessor, missing/corrupt or
+foreign-scope receipt refuses. Every non-idempotent ordinary pointer write clears
+the old receipt, even if a subsequent write reuses the original UUID. Exact
+ordinary no-ops preserve it; a guarded install sets its new receipt atomically.
+Schemas1–16 are unchanged; older schema16 pointers
+without this receipt remain restorable/sendable, but cannot use this install-replay
+path. No automatic migration, recapture or enqueue occurs.
+
+Capture-receipt retention across pointer failure before native commit and
+Archive generation/mode switching in the existing window remain
 open; ordinary preparations still use schema15. Capture and pointer installation
 are separate transactions; failed installation never purges immutable records.
 

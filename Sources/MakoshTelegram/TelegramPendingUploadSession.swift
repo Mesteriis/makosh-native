@@ -35,16 +35,26 @@ import SwiftSignalKit
                     let current = try await read(chatID: target.chatID)
                     try admission.check(accountID: accountID, chatID: target.chatID,
                         preparationID: preparationID, expectedRevision: expectedRevision)
-                    guard let current, current.id == preparationID, current.revision == expectedRevision,
-                          current.schemaVersion == 15, current.disposition == .prepared,
+                    guard let current, current.id == preparationID, current.disposition == .prepared,
                           current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                         throw TelegramPendingUploadPersistenceError.conflict
                     }
-                    let candidate = try TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: current.chatID,
-                        title: current.title, captionInput: current.captionInput, captionAboveMedia: false, mediaSpoiler: false,
-                        originalDraft: current.originalDraft, replyTarget: current.replyTarget,
-                        items: current.items, isGrouped: false, presentation: .archive,
-                        captionRules: current.captionRules, archive: archive)
+                    let candidate: TelegramPendingUploadDraft
+                    if current.schemaVersion == 15, current.revision == expectedRevision {
+                        candidate = try TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: current.chatID,
+                            title: current.title, captionInput: current.captionInput, captionAboveMedia: false, mediaSpoiler: false,
+                            originalDraft: current.originalDraft, replyTarget: current.replyTarget,
+                            items: current.items, isGrouped: false, presentation: .archive,
+                            captionRules: current.captionRules, archive: archive)
+                    } else if current.schemaVersion == 16, current.presentation == .archive {
+                        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+                        guard try encoder.encode(current.archive) == encoder.encode(archive) else {
+                            throw TelegramPendingUploadPersistenceError.conflict
+                        }
+                        // The native transaction must also match its durable receipt;
+                        // matching the descriptor alone never acknowledges a later edit.
+                        candidate = current
+                    } else { throw TelegramPendingUploadPersistenceError.conflict }
                     guard candidate.isValid else { throw TelegramPendingUploadPersistenceError.incompatibleData }
                     // Reopen every authenticated canonical/raw stream and the ZIP.
                     // This only exports temporary files; it never captures new records.

@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Postbox
 import SwiftSignalKit
 
@@ -39,6 +40,20 @@ nonisolated func telegramPendingUploadKey(accountID: Int64, chatID: Int64) -> Va
     key.setInt64(namespace.count + 8, value: chatID)
     return key
 }
+// Separate from the pending pointer so schemas1–16 remain byte-compatible.
+// The receipt binds one predecessor revision to the exact installed candidate.
+nonisolated func telegramPendingUploadArchiveInstallKey(accountID: Int64, chatID: Int64) -> ValueBoxKey {
+    let namespace = Data("Makosh.PendingUpload.ArchiveInstall.Preference.v1\0".utf8)
+    let key = ValueBoxKey(length: namespace.count + 16)
+    key.setData(0, value: namespace)
+    key.setInt64(namespace.count, value: accountID)
+    key.setInt64(namespace.count + 8, value: chatID)
+    return key
+}
+private func archiveInstallReceipt(expectedRevision: UUID, encoded: Data) -> Data {
+    Data("Makosh.PendingUpload.ArchiveInstall.v1\n".utf8) +
+        Data(expectedRevision.uuidString.utf8) + Data(SHA256.hash(data: encoded))
+}
 private func encodePendingUpload(_ value: TelegramPendingUploadDraft) -> Data? {
     let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
     guard let bytes = try? encoder.encode(value), bytes.count <= 512 * 1024 - pendingUploadMarker.count else { return nil }
@@ -66,6 +81,13 @@ nonisolated func telegramPendingUploadWrite(transaction: Transaction, accountID:
         guard current.revision == expectedRevision, draft.revision != current.revision else { return .failure(.conflict) }
     } else if expectedRevision != nil { return .failure(.conflict) }
     transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: pendingUploadMarker + encoded))
+    // Even restoring an earlier UUID must not revive a prior install receipt.
+    // Exact idempotent writes returned above; guarded installs set a new receipt
+    // after this write, within the same transaction.
+    let receiptKey = telegramPendingUploadArchiveInstallKey(accountID: accountID, chatID: draft.chatID)
+    if transaction.getPreferencesEntry(key: receiptKey) != nil {
+        transaction.setPreferencesEntry(key: receiptKey, value: nil)
+    }
     return .success(())
 }
 nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, accountID: Int64,
@@ -80,9 +102,14 @@ nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, acc
         case let .failure(error): return .failure(error)
         case let .success(current):
             guard let current else { return .failure(.conflict) }
-            // Only an exact retained candidate can replay a lost acknowledgement.
-            // Admission precedes this check, so cancelled or foreign tokens cannot replay it.
-            if encodePendingUpload(current) == encoded { return .success(()) }
+            let receiptKey = telegramPendingUploadArchiveInstallKey(accountID: accountID, chatID: draft.chatID)
+            let receipt = archiveInstallReceipt(expectedRevision: expectedRevision, encoded: encoded)
+            // Replaying is read-only and requires the predecessor/candidate receipt
+            // committed with the original pointer, even after a fresh Session/reopen.
+            if encodePendingUpload(current) == encoded {
+                guard transaction.getPreferencesEntry(key: receiptKey)?.data == receipt else { return .failure(.conflict) }
+                return .success(())
+            }
             guard current.schemaVersion == 15, current.disposition == .prepared,
                   current.revision == expectedRevision, current.id == draft.id else { return .failure(.conflict) }
             // Reconstruct from authoritative canonical state. Comparing encoded bytes
@@ -92,8 +119,11 @@ nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, acc
                 captionInput: current.captionInput, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
                 items: current.items, isGrouped: false, presentation: .archive, archive: archive),
                 encodePendingUpload(expected) == encoded else { return .failure(.conflict) }
-            return telegramPendingUploadWrite(transaction: transaction, accountID: accountID,
+            let result = telegramPendingUploadWrite(transaction: transaction, accountID: accountID,
                 draft: draft, expectedRevision: expectedRevision)
+            guard case .success = result else { return result }
+            transaction.setPreferencesEntry(key: receiptKey, value: PreferencesEntry(data: receipt))
+            return .success(())
         }
     }
 }

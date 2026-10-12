@@ -1,6 +1,60 @@
 # Development status — 2026-10-12
 
-## Current stage: controller/model whole-bundle ZIP recovery
+## Current stage: fresh-Session Archive install acknowledgement
+
+Guarded installation commits an account/chat-scoped native receipt in the same
+transaction as the schema16 pointer. It binds the predecessor UUID and SHA256
+of the exact encoded candidate. A fresh Session authenticates the retained
+bundle and confirms the unchanged committed installation after encrypted
+Postbox reopen. Replay writes no pointer/file/S3 object. Wrong predecessor,
+missing/corrupt/foreign receipt, later caption revision including A→B→A and
+started submission refuse. Schemas1–16 stay unchanged. Older16 without receipt
+still restores/sends, but this install-replay route fails closed.
+
+Compiled behavioral RED3 tests/4 expected failures,0 unexpected; initial
+focused GREEN35 XCTest/0 failures and45 Python tests. Additional receipt-guard
+mutation compiles RED2 tests/5 expected failures,0 unexpected, covering missing,
+corrupt/foreign receipts and later caption revisions. Exact production guard
+restored afterward. Final focused GREEN37 XCTest/0 failures and45 Python tests.
+Initial full suite exits0:1,303 XCTest (1,227 Telegram +76 core),1 skipped,
+0 failures and45 Python tests; no compiler warnings,561 upstream t19 diagnostics.
+This predates the review fix. Bounded review identifies stale receipt reuse when
+ordinary writes restore the original candidate UUID after an intervening edit.
+Dedicated native regression compiles RED1 test/1 expected failure,0 unexpected.
+Every non-idempotent ordinary pointer write now invalidates the old receipt;
+exact no-ops preserve it, and guarded install sets its new receipt atomically.
+Final focused GREEN81 XCTest/0 failures and45 Python tests, including ordinary
+Postbox/Session regressions. Required final full/build exit0: **1,304 XCTest
+(1,228 Telegram +76 core),1 skipped,0 failures;45 Python tests**. No compiler
+warnings;563 upstream t19 diagnostics remain separate. Microphone authorization
+is the skip. Build was dispatched before full-test completion and waited on
+SwiftPM's lock; root suspended that exact owned waiting subtree and resumed it
+only after the full-test terminal PASS. Strict deep signature exits0.
+
+Actual final-binary compatibility QA in a fresh isolated common window shows
+one restored ZIP, Archive title/mode and edited caption after process restart.
+Explicit synthetic enqueue closes the modal with S3 OFF visible. Reopened native
+Postbox readback passes1 XCTest/0 failures and45 Python tests:one accepted ID,
+two canonical resources plus ZIP, exact caption and three local encrypted records
+without S3 receipts. QA executable matches the build except signing-related
+LINKEDIT virtual size. No Account/server send or hardware access. This checks
+existing recovery/send compatibility; install retry remains an internal operation.
+
+Fresh final project/reference XERJ checks exit0; own install/receipt and reference
+ArchiverSenderContainer queries are source-confirmed. Final replacement freeze
+matches after gates and temporary QA removal:453 files/9 review copies,
+471 integrity checks,0 mismatches. Bounded review's original revision-reuse
+finding is reproduced/fixed above; delta source review reports no additional
+actionable findings. Independent root contract verification passes:1,007
+integrity checks,223 artifacts,52 original executions and3 nonzero compiled
+RED runs retained above. Seven worker runtime/tool checks remain unrun; root
+owns the passing runtime gates. No query coverage skips in this slice.
+Observed worker provider/model/usage/internal execution remain unknown; no quorum.
+
+Capture-receipt retention before native commit and Archive picker/mode switching
+remain open. No new UI actions or Account/server sends. Full migration active.
+
+## Previous stage: controller/model whole-bundle ZIP recovery
 
 The model restores a whole authenticated bundle. Controller admission binds
 canonical items, ordered ZIP metadata and the current recovery epoch; active

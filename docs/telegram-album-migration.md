@@ -405,8 +405,10 @@ Postbox reopen tests cover both policies, deleted source paths, tampered names,
 array-only refusal and no recapture/promotion. A photo/GIF `originalFile` pair is
 not an Archive representation.
 
-Archive is not connected to the controller/model or native queue yet. Generic
-mode/prepare/plan entry points refuse it before state changes or copies. Dedicated
+Archive is connected to whole-bundle controller/model recovery and one-ZIP native
+enqueue with a complete receipt; the existing modal shows one ZIP and caption.
+Generic mode/prepare/plan entry points still refuse new Archive creation before
+state changes or copies. Dedicated
 pointer installation now accepts an already durable descriptor, authenticates
 the complete bundle, cleans its temporary exports and upgrades only an exact
 prepared schema15 pointer to active16. It preserves raw rich input/selection,
@@ -414,13 +416,23 @@ original draft/reply/title and ordered canonical records without new captures.
 The per-attempt token binds scope/revision/generation; its owner must invalidate
 it on context changes. Cancellation is checked under the same lock as native
 Postbox compare/set. A committed success remains success after late cancellation.
-Only the native repository's exact retained candidate has idempotent replay;
-fresh Session-call lost-ACK recovery is still open.
+The native transaction also commits a separate receipt binding predecessor
+revision and the SHA256 of the exact encoded candidate. Fresh Session-call
+lost-ACK replay authenticates the bundle and confirms only that unchanged
+installation, including after encrypted Postbox reopen. Wrong predecessor,
+missing/corrupt/foreign receipt or any later revision, including A→B→A, refuses.
+Non-idempotent ordinary pointer writes invalidate the receipt, including when
+an earlier UUID is later restored. Exact ordinary no-ops preserve it.
+The pointer schema stays16. Older16 pointers without a receipt still recover
+and send, but install replay refuses; no automatic rewrite or recapture occurs.
 
-Next adopt the whole bundle in controller/model, retain successful capture
-receipts across pointer failure, then send one ZIP with one complete native
-receipt. PostgreSQL/S3 capture and Postbox CAS
+Next retain successful capture receipts across pointer failure before native
+commit, then connect Archive generation and mode switching to the existing
+picker/preview. PostgreSQL/S3 capture and Postbox CAS
 are distinct transactions; preserve immutable files if pointer installation
 fails. Native stale CAS/queued cancellation and authenticated install now have
-regression coverage. Lost acknowledgement, native resource integrity, no automatic
-resend and actual existing-window Archive UI still need integration regressions.
+regression coverage. Controller/model recovery, native resource integrity,
+confirmation-only retry and no automatic resend have integration regressions.
+Actual isolated common-window QA covers restored ZIP/caption, process restart
+and explicit synthetic enqueue; Account/server delivery and full visual/gesture
+parity remain unverified.

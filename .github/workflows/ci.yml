@@ -14,8 +14,8 @@ jobs:
         run: |
           swift --version
           xcodebuild -version
-      - name: Install PostgreSQL client and CI server
-        run: brew install libpq postgresql@18 pkg-config
+      - name: Install build dependencies and CI PostgreSQL
+        run: brew install libpq postgresql@18 pkg-config openssl@3 cmake ninja
       - name: Start isolated CI PostgreSQL
         shell: bash
         run: |
@@ -33,10 +33,33 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as env:
               env.write(f'MAKOSH_TEST_DATABASE_URL=host=127.0.0.1 port=55439 dbname=postgres user=makosh password={password}\n')
           PYTHON
-      - name: Build
-        run: ./scripts/build-app.sh
-      - name: Test contact invariants
-        run: ./scripts/test.sh
+      - name: Build without research checkouts
+        run: |
+          test ! -e .references
+          ./scripts/build-app.sh
+          test ! -e .references
+          test "$(git --git-dir .local/telegram-source.git rev-parse --is-bare-repository)" = true
+      - name: Start isolated CI S3
+        shell: bash
+        run: |
+          python3 scripts/configure-dev-s3.py
+          python3 scripts/prepare-ci-s3.py
+          mkdir -p .local/ci-s3-data
+          nohup .local/ci-seaweedfs/weed mini -dir="$PWD/.local/ci-s3-data" -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3.port=55440 -s3.config="$PWD/.local/s3-identities.json" -bucket=makosh-files -s3.autoCreateBucket=false -s3.allowDeleteBucketNotEmpty=false -s3.iam.readOnly=true -master.telemetry=false -webdav=false -admin.ui=false > .local/ci-s3.log 2>&1 &
+          echo "$!" > .local/ci-s3.pid
+          for attempt in {1..30}; do
+            if test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:55440/makosh-files)" = 403; then break; fi
+            sleep 1
+          done
+          python3 scripts/dev-s3.py init
+          python3 scripts/dev-s3.py probe
+      - name: Test contact and Telegram invariants
+        run: |
+          ./scripts/test.sh
+          test ! -e .references
       - name: Stop CI PostgreSQL
         if: always()
         run: '"$(brew --prefix postgresql@18)/bin/pg_ctl" -D .local/ci-postgres -m fast -w stop || true'
+      - name: Stop CI S3
+        if: always()
+        run: 'if test -f .local/ci-s3.pid; then kill "$(cat .local/ci-s3.pid)" || true; fi'

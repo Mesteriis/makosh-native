@@ -1,0 +1,11 @@
+{
+  "project": "https://github.com/seaweedfs/seaweedfs",
+  "version": "4.48",
+  "revision": "530be3e37337488ecc34d58441e0bc476e121c93",
+  "license": "Apache-2.0",
+  "image": "chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d",
+  "ciArchives": {
+    "arm64": {"name": "darwin_arm64.tar.gz", "sha256": "faa194e72a346755dc4404288b0561eb3c260351702901d8363024d5099bdd7d"},
+    "x86_64": {"name": "darwin_amd64.tar.gz", "sha256": "425ef61d2ee773d5d5175003f38bd6cc891070ae6319370354aaf5378c45d5b3"}
+  }
+}

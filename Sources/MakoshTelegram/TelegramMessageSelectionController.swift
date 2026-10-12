@@ -1,0 +1,273 @@
+import Foundation
+import Combine
+import Postbox
+
+public struct TelegramMessageSelectionID: Hashable, Sendable {
+    public let peerID: Int64
+    public let namespace: Int32
+    public let messageID: Int32
+    public init(source: TelegramMessageActionSource) {
+        peerID = source.peerID; namespace = source.namespace; messageID = source.messageID
+    }
+    fileprivate var native: MessageId { MessageId(peerId: PeerId(peerID), namespace: namespace, id: messageID) }
+}
+
+public struct TelegramMessageSelectionEntry: Equatable, Sendable {
+    public let source: TelegramMessageActionSource
+    public var id: TelegramMessageSelectionID { .init(source: source) }
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.source == rhs.source && lhs.source.fingerprint.utf8.elementsEqual(rhs.source.fingerprint.utf8) &&
+            lhs.source.text.utf8.elementsEqual(rhs.source.text.utf8)
+    }
+}
+
+struct TelegramMessageSelectionInvalidActions: OptionSet, Equatable, Sendable {
+    let rawValue: UInt8
+    static let forward = Self(rawValue: 1)
+    static let copy = Self(rawValue: 2)
+    static let deleteLocally = Self(rawValue: 4)
+    static let deleteForEveryone = Self(rawValue: 8)
+    static let all: Self = [.forward, .copy, .deleteLocally, .deleteForEveryone]
+}
+
+public struct TelegramMessageSelectionSession: Equatable, Sendable {
+    public let id: UUID
+    public let contextID: UUID
+    public let revision: UUID
+    public let accountID: Int64
+    public let chatID: Int64
+    public let entries: [TelegramMessageSelectionEntry]
+    let invalidActions: [TelegramMessageSelectionID: TelegramMessageSelectionInvalidActions]
+    public var invalidIDs: Set<TelegramMessageSelectionID> { Set(invalidActions.filter { $0.value.contains(.forward) }.map(\.key)) }
+    public let lastSelectedID: TelegramMessageSelectionID?
+    public var sources: [TelegramMessageActionSource] { entries.map(\.source) }
+    public var count: Int { entries.count }
+    public var canForward: Bool { !entries.isEmpty && invalidIDs.isEmpty && sources.allSatisfy { $0.canForward && TelegramComposerForwardSource(source: $0).isValid } }
+    public var canCopy: Bool { permits(.copy) && sources.allSatisfy(\.canCopy) }
+    public var canDeleteLocally: Bool { permits(.deleteLocally) && sources.allSatisfy { $0.canDeleteLocally && TelegramComposerForwardSource(source: $0).isValid } }
+    public var canDeleteForEveryone: Bool { chatID != accountID && permits(.deleteForEveryone) && sources.allSatisfy { $0.canDeleteForEveryone && TelegramComposerForwardSource(source: $0).isValid } }
+    private func permits(_ action: TelegramMessageSelectionInvalidActions) -> Bool {
+        !entries.isEmpty && !invalidActions.values.contains { $0.contains(action) }
+    }
+}
+
+struct TelegramMessageSelectionRangeRequest: Equatable, Sendable {
+    let id: UUID
+    let sessionID: UUID
+    let revision: UUID
+    let contextID: UUID
+    let accountID: Int64
+    let chatID: Int64
+    let anchorID: TelegramMessageSelectionID
+    let endpointID: TelegramMessageSelectionID
+    var lowerBound: Int32 { min(anchorID.messageID, endpointID.messageID) }
+    var upperBoundExclusive: Int32 { max(anchorID.messageID, endpointID.messageID) }
+}
+
+/// Page absence never proves deletion. Ranges add cached items only.
+@MainActor public final class TelegramMessageSelectionController: ObservableObject {
+    @Published public private(set) var session: TelegramMessageSelectionSession?
+    @Published public private(set) var error: String?
+    @Published public private(set) var isResolvingRange = false
+    private(set) var rangeRequest: TelegramMessageSelectionRangeRequest?
+    public init() {}
+
+    @discardableResult
+    func begin(source: TelegramMessageActionSource, contextID: UUID, extendingRange: Bool = false) -> Bool {
+        guard TelegramComposerForwardSource(source: source).isValid else { return false }
+        cancelRange()
+        session = .init(id: UUID(), contextID: contextID, revision: UUID(), accountID: source.accountID, chatID: source.chatID,
+                        entries: [.init(source: source)], invalidActions: [:], lastSelectedID: extendingRange ? nil : .init(source: source))
+        error = nil
+        return true
+    }
+
+    @discardableResult
+    func beginGroup(sources: [TelegramMessageActionSource], contextID: UUID, extendingRange: Bool = false) -> Bool {
+        guard let first = sources.first,
+              validGroup(sources, accountID: first.accountID, chatID: first.chatID) else { return false }
+        let entries = sources.map { TelegramMessageSelectionEntry(source: $0) }.sorted { $0.id.native < $1.id.native }
+        cancelRange()
+        session = .init(id: UUID(), contextID: contextID, revision: UUID(), accountID: first.accountID, chatID: first.chatID,
+            entries: entries, invalidActions: [:], lastSelectedID: extendingRange ? nil : sources.last.map { .init(source: $0) })
+        error = nil
+        return true
+    }
+
+    @discardableResult
+    func toggleGroup(sources: [TelegramMessageActionSource], sessionID: UUID, contextID: UUID,
+                     expectedRevision: UUID, extendingRange: Bool = false) -> Bool {
+        guard let current = session, current.id == sessionID, current.contextID == contextID,
+              current.revision == expectedRevision,
+              validGroup(sources, accountID: current.accountID, chatID: current.chatID) else { return false }
+        let groupIDs = sources.map { TelegramMessageSelectionID(source: $0) }
+        let selectedIDs = Set(current.entries.map(\.id)), removing = groupIDs.allSatisfy { selectedIDs.contains($0) }
+        var entries = current.entries, invalid = current.invalidActions, anchor = current.lastSelectedID
+        var additions: [TelegramMessageActionSource] = [], overflow = false
+        if removing {
+            let removingIDs = Set(groupIDs)
+            entries.removeAll { removingIDs.contains($0.id) }
+            for id in groupIDs { invalid[id] = nil }
+            if !extendingRange, let last = groupIDs.last {
+                anchor = entries.map(\.id).filter { last.native < $0.native }.min { $0.native < $1.native } ?? last
+            }
+        } else {
+            let missing = sources.filter { !selectedIDs.contains(.init(source: $0)) }
+            additions = Array(missing.prefix(100 - entries.count))
+            guard !additions.isEmpty else { error = "Можно выбрать не более 100 сообщений."; return false }
+            overflow = additions.count < missing.count
+            // A visible member can reveal changes to an existing selection. Keep its
+            // frozen source and accumulate the same sticky invalidation as a range read.
+            for source in sources {
+                let id = TelegramMessageSelectionID(source: source)
+                if let frozen = current.entries.first(where: { $0.id == id }) {
+                    let changes = invalidation(frozen: frozen.source, fresh: source)
+                    if !changes.isEmpty { invalid[id, default: []].formUnion(changes) }
+                }
+            }
+            entries.append(contentsOf: additions.map { .init(source: $0) })
+            if !extendingRange { anchor = additions.last.map { .init(source: $0) } }
+        }
+        entries.sort { $0.id.native < $1.id.native }
+        let next = TelegramMessageSelectionSession(id: current.id, contextID: current.contextID, revision: UUID(),
+            accountID: current.accountID, chatID: current.chatID, entries: entries, invalidActions: invalid, lastSelectedID: anchor)
+        cancelRange()
+        session = next
+        error = overflow ? "Можно выбрать не более 100 сообщений." : nil
+        // The reference takes Set.first for a group Shift endpoint. Use the first
+        // newly added member in the frozen input/history order deterministically.
+        if extendingRange, entries.count < 100, let first = additions.first, let anchor {
+            let endpoint = TelegramMessageSelectionID(source: first)
+            if anchor.peerID == endpoint.peerID, anchor.messageID != endpoint.messageID {
+                rangeRequest = .init(id: UUID(), sessionID: next.id, revision: next.revision, contextID: next.contextID,
+                    accountID: next.accountID, chatID: next.chatID, anchorID: anchor, endpointID: endpoint)
+                isResolvingRange = true
+            }
+        }
+        return true
+    }
+
+    /// Membership comes only from the frozen visible group, never a backend album lookup.
+    private func validGroup(_ sources: [TelegramMessageActionSource], accountID: Int64, chatID: Int64) -> Bool {
+        guard (2...100).contains(sources.count), sources.allSatisfy({
+            $0.accountID == accountID && $0.chatID == chatID && TelegramComposerForwardSource(source: $0).isValid
+        }) else { return false }
+        return Set(sources.map { TelegramMessageSelectionID(source: $0) }).count == sources.count
+    }
+
+    @discardableResult
+    func toggle(source: TelegramMessageActionSource, sessionID: UUID, contextID: UUID, extendingRange: Bool = false) -> Bool {
+        guard let current = session, current.id == sessionID, current.contextID == contextID,
+              current.accountID == source.accountID, current.chatID == source.chatID else { return false }
+        cancelRange()
+        let id = TelegramMessageSelectionID(source: source)
+        var entries = current.entries, invalid = current.invalidActions, anchor = current.lastSelectedID
+        let removing = entries.contains { $0.id == id }
+        if removing {
+            entries.removeAll { $0.id == id }; invalid[id] = nil
+            if !extendingRange {
+                // Deterministic adaptation of the reference's arbitrary greater selected item.
+                anchor = entries.map(\.id).filter { id.native < $0.native }.min { $0.native < $1.native } ?? id
+            }
+        } else {
+            guard TelegramComposerForwardSource(source: source).isValid else { return false }
+            guard entries.count < 100 else { error = "Можно выбрать не более 100 сообщений."; return false }
+            entries.append(.init(source: source))
+            if !extendingRange { anchor = id }
+        }
+        entries.sort { $0.id.native < $1.id.native }
+        let next = TelegramMessageSelectionSession(id: current.id, contextID: current.contextID, revision: UUID(),
+            accountID: current.accountID, chatID: current.chatID, entries: entries, invalidActions: invalid, lastSelectedID: anchor)
+        session = next; error = nil
+        if extendingRange, !removing, entries.count < 100, let anchor,
+           anchor.peerID == id.peerID, anchor.messageID != id.messageID {
+            rangeRequest = .init(id: UUID(), sessionID: next.id, revision: next.revision, contextID: next.contextID,
+                accountID: next.accountID, chatID: next.chatID, anchorID: anchor, endpointID: id)
+            isResolvingRange = true
+        }
+        return true
+    }
+
+    private func matches(_ request: TelegramMessageSelectionRangeRequest) -> Bool {
+        guard rangeRequest == request, let session else { return false }
+        return session.id == request.sessionID && session.revision == request.revision &&
+            session.contextID == request.contextID && session.accountID == request.accountID && session.chatID == request.chatID
+    }
+
+    @discardableResult
+    func applyRange(sources: [TelegramMessageActionSource], request: TelegramMessageSelectionRangeRequest) -> Bool {
+        guard matches(request), let current = session else { return false }
+        guard sources.count <= 200, sources.allSatisfy({ source in
+            source.accountID == request.accountID && source.chatID == request.chatID &&
+            source.peerID == request.anchorID.peerID && [Int32(0), Int32(1)].contains(source.namespace) &&
+            source.messageID > 0 && source.messageID >= request.lowerBound && source.messageID < request.upperBoundExclusive &&
+            !source.fingerprint.isEmpty
+        }) else { failRange(request: request); return false }
+        cancelRange()
+        var entries = current.entries, ids = Set(entries.map(\.id)), invalid = current.invalidActions, overflow = false
+        // Cached range reads can reveal a newer version of an off-page selection.
+        // Preserve its frozen source, but refuse forwarding the stale snapshot.
+        for source in sources {
+            let id = TelegramMessageSelectionID(source: source)
+            if let frozen = current.entries.first(where: { $0.id == id }) {
+                let changes = invalidation(frozen: frozen.source, fresh: source)
+                if !changes.isEmpty { invalid[id, default: []].formUnion(changes) }
+            }
+        }
+        let ordered = sources.sorted {
+            if $0.messageID != $1.messageID { return $0.messageID > $1.messageID }
+            return $0.namespace < $1.namespace
+        }
+        for source in ordered {
+            let id = TelegramMessageSelectionID(source: source)
+            guard !ids.contains(id) else { continue }
+            guard entries.count < 100 else { overflow = true; break }
+            entries.append(.init(source: source)); ids.insert(id)
+        }
+        if entries.count != current.entries.count || invalid != current.invalidActions {
+            entries.sort { $0.id.native < $1.id.native }
+            session = .init(id: current.id, contextID: current.contextID, revision: UUID(), accountID: current.accountID,
+                chatID: current.chatID, entries: entries, invalidActions: invalid, lastSelectedID: current.lastSelectedID)
+        }
+        error = overflow ? "Можно выбрать не более 100 сообщений." : nil
+        return true
+    }
+
+    func cancelRange() { rangeRequest = nil; isResolvingRange = false }
+    func failRange(request: TelegramMessageSelectionRangeRequest) {
+        guard matches(request) else { return }
+        cancelRange(); error = "Не удалось выбрать диапазон сообщений. Выбранные сообщения сохранены."
+    }
+
+    func observe(sources: [TelegramMessageActionSource], contextID: UUID, chatID: Int64) {
+        guard let current = session, current.contextID == contextID, current.chatID == chatID else { return }
+        var invalid = current.invalidActions
+        for source in sources {
+            let id = TelegramMessageSelectionID(source: source)
+            guard let frozen = current.entries.first(where: { $0.id == id }) else { continue }
+            let changes = invalidation(frozen: frozen.source, fresh: source)
+            if !changes.isEmpty { invalid[id, default: []].formUnion(changes) }
+        }
+        guard invalid != current.invalidActions else { return }
+        cancelRange()
+        session = .init(id: current.id, contextID: current.contextID, revision: UUID(), accountID: current.accountID,
+                        chatID: current.chatID, entries: current.entries, invalidActions: invalid, lastSelectedID: current.lastSelectedID)
+    }
+
+    private func invalidation(frozen: TelegramMessageActionSource, fresh: TelegramMessageActionSource) -> TelegramMessageSelectionInvalidActions {
+        guard fresh.accountID == frozen.accountID, fresh.chatID == frozen.chatID,
+              fresh.fingerprint.utf8.elementsEqual(frozen.fingerprint.utf8), fresh.threadID == frozen.threadID else { return .all }
+        var result: TelegramMessageSelectionInvalidActions = []
+        if frozen.canForward && !fresh.canForward { result.insert(.forward) }
+        if frozen.canCopy && !fresh.canCopy { result.insert(.copy) }
+        if frozen.canDeleteLocally && !fresh.canDeleteLocally { result.insert(.deleteLocally) }
+        if frozen.canDeleteForEveryone && !fresh.canDeleteForEveryone { result.insert(.deleteForEveryone) }
+        return result
+    }
+
+    public func contains(_ source: TelegramMessageActionSource) -> Bool {
+        guard let session, session.accountID == source.accountID, session.chatID == source.chatID else { return false }
+        return session.entries.contains { $0.id == TelegramMessageSelectionID(source: source) }
+    }
+    func cancel() { cancelRange(); session = nil; error = nil }
+}

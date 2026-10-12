@@ -1,0 +1,97 @@
+import Foundation
+import Postbox
+import TelegramCore
+
+struct TelegramUploadQueueID: Codable, Equatable, Hashable, Sendable {
+    let peerID: Int64
+    let namespace: Int32
+    let id: Int32
+    init(_ value: MessageId) { peerID = value.peerId.toInt64(); namespace = value.namespace; id = value.id }
+    var description: String { "\(peerID):\(namespace):\(id)" }
+    var nativeID: MessageId { MessageId(peerId: PeerId(peerID), namespace: namespace, id: id) }
+}
+
+/// Stable item identities and caption assignment; random native group keys are
+/// supplied once at admission, rather than changing with preview positions.
+struct TelegramUploadBatchPlan: Equatable, Sendable {
+    struct Message: Equatable, Sendable {
+        let itemID: UUID?
+        let caption: TelegramFormattedText
+        let groupIndex: Int?
+        let captionAboveMedia: Bool
+        let mediaSpoiler: Bool
+    }
+    let messages: [Message]
+    let groupCount: Int
+
+    /// Archive is one document, independent of the number of canonical sources.
+    init(archiveID: UUID, caption: TelegramFormattedText, captionPolicy: TelegramUploadCaptionPolicy? = nil, captionRules: TelegramUploadCaptionRules? = nil) throws {
+        let rules: TelegramUploadCaptionRules = captionRules ?? (captionPolicy == nil ? .reference : .current)
+        guard rules != .extended || captionPolicy != nil else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        let maximum = captionPolicy?.maximumUTF16Count ?? 1024
+        guard archiveID != TelegramPendingUploadDraft.zeroUUID,
+              rules.canSend(caption, maximumUTF16Count: maximum) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        let projected = try rules.projection(caption)
+        guard telegramFormattedCaptionCanSend(projected, maximumUTF16Count: maximum, allowCustomEmoji: rules == .extended) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        messages = [.init(itemID: archiveID, caption: projected, groupIndex: nil,
+            captionAboveMedia: false, mediaSpoiler: false)]
+        groupCount = 0
+    }
+
+    init(items: [TelegramUploadBatchItem], isGrouped: Bool, caption: TelegramFormattedText,
+         captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil,
+         captionRules: TelegramUploadCaptionRules = .reference, captionPolicy: TelegramUploadCaptionPolicy? = nil) throws {
+        let maximum = captionPolicy?.maximumUTF16Count ?? 1024
+        guard captionRules != .extended || captionPolicy != nil,
+              captionPolicy == nil || ((captionRules == .current || captionRules == .extended) && captionPolicy!.isValid(for: items.map(\.id))) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        guard presentation != .archive else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        if items.contains(where: { $0.file.metadata?.roundVideo != nil }) {
+            guard items.count == 1, !isGrouped, caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
+                presentation == .media, items[0].file.mode == .video, items[0].originalFile == nil else {
+                throw TelegramPendingUploadPersistenceError.incompatibleData
+            }
+        }
+        if items.contains(where: { $0.file.metadata?.voice != nil }) {
+            guard items.count == 1, !isGrouped, caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
+                  presentation == .file, items[0].file.mode == .file, items[0].originalFile == nil else {
+                throw TelegramPendingUploadPersistenceError.incompatibleData
+            }
+        }
+        guard captionRules.canSend(caption, maximumUTF16Count: maximum) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        let caption = try captionRules.projection(caption)
+        guard !items.isEmpty, Set(items.map(\.id)).count == items.count,
+              items.allSatisfy({ $0.id != TelegramPendingUploadDraft.zeroUUID }),
+              telegramFormattedCaptionCanSend(caption, maximumUTF16Count: maximum, allowCustomEmoji: captionRules == .extended),
+              presentation != nil || items.allSatisfy({ $0.file.mode == .file }) || items.allSatisfy({ $0.file.mode != .file }),
+              presentation != nil || (!captionAboveMedia && !mediaSpoiler) || items.allSatisfy({ $0.file.mode != .file }),
+              presentation == nil || !isGrouped || presentation!.allowsGrouping(items) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        let empty = try TelegramFormattedText(text: "")
+        let grouped = isGrouped && items.count > 1
+        groupCount = grouped ? (items.count + 9) / 10 : 0
+        var result: [Message] = []
+        let leadingText = captionRules.hasLeadingText(itemCount: items.count, isGrouped: isGrouped,
+            singleItemCanHaveCaption: items.first.flatMap { captionPolicy?.canHaveCaption(itemID: $0.id, mode: $0.file.mode) } ?? TelegramUploadCaptionRules.canHaveCaption(kind: items.first?.file.mode.rawValue,
+                metadata: items.first?.file.metadata, selectionMIME: items.first?.sourceFacts?.selectionMIME), projectedCaption: caption)
+        if leadingText {
+            result.append(.init(itemID: nil, caption: caption, groupIndex: nil, captionAboveMedia: false, mediaSpoiler: false))
+        }
+        let chunkSize = grouped ? 10 : items.count
+        for start in stride(from: 0, to: items.count, by: chunkSize) {
+            let end = min(start + chunkSize, items.count)
+            let captionIndex = (start..<end).first { items[$0].file.mode != .file } ?? end - 1
+            for index in start..<end {
+                result.append(.init(itemID: items[index].id, caption: !leadingText && index == captionIndex ? caption : empty,
+                    groupIndex: grouped ? start / 10 : nil, captionAboveMedia: presentation == .file ? false : captionAboveMedia, mediaSpoiler: mediaSpoiler))
+            }
+        }
+        messages = result
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "sourceURL": "https://github.com/overtake/Telegram-iOS.git",
+  "revision": "a24bbe45f9861f736a79916a50898512f751e0dc",
+  "tree": "0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0",
+  "archivePath": "third-party/opus/opus-1.5.1.tar.gz",
+  "archiveSHA256": "b84610959b8d417b611aa12a22565e0a3732097c6389d19098d844543e340f85",
+  "version": "1.5.1",
+  "archiveRoot": "opus-1.5.1",
+  "licenseSHA256": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551",
+  "manifestSHA256": {
+    "opus_sources.mk": "43dced503e1ba8a9d7328615e16b878f6041502e28279d43c1335612e35450f9",
+    "celt_sources.mk": "0ecbea48a3344b76a83887247aebbfd04e6d297087a0297b3744f5006dad2209",
+    "silk_sources.mk": "e834190c31fd9b5d2606c14a1c00a180fa2ac0ea33330eeef0c45d9dc835a90a"
+  },
+  "preparedFilesSHA256": "a64c4a48c2005836c8e651b589010d778fed0894ef2dfcbe81ae8478eaf6d433"
+}

@@ -6,9 +6,9 @@
       "url": "https://github.com/overtake/TelegramSwift",
       "path": ".references/TelegramSwift",
       "sha": "579cebbf0c01fd41b712eff3647fa7f69db9665d",
-      "license": "GPL-2.0; exact or-later grant unresolved",
+      "license": "Outer macOS UI GPL-2.0 (excluded); exact iOS engine GPL-2.0-or-later, GPL-3.0 elected for combination",
       "purpose": "Telegram full-client integration reference",
-      "verification": "Cloned and source/license/manifest researched; upstream build and live account behavior not tested; no code copied",
+      "verification": "Exact gitlinked Telegram-iOS engine integrated; no outer UI copied. See docs/telegram.md and THIRD_PARTY_NOTICES.md; live account auth/send not verified.",
       "xerj": {
         "prefix": "mk-com-telegram",
         "stateName": "TelegramSwift",
@@ -26,6 +26,15 @@
           "*.xcassets/",
           "submodules/"
         ]
+      },
+      "engine": {
+        "url": "https://github.com/overtake/Telegram-iOS.git",
+        "sha": "a24bbe45f9861f736a79916a50898512f751e0dc",
+        "officialEquivalentSHA": "0699602bbc2756d1feaeb67df485e376dce44ad2",
+        "tree": "0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0",
+        "preparation": "scripts/prepare-telegram.py",
+        "buildLock": "Dependencies/TelegramEngine.lock.json",
+        "xerjPrefix": "mk-telegram-engine"
       }
     },
     {

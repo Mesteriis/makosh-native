@@ -1,25 +1,66 @@
 # Макош / Makosh
 
-Native macOS workspace for a unified contact dossier and future communications adapters. The first stage is a contact book backed by a local PostgreSQL service: create/edit/search, multiple phones/emails, organization, role, tags, notes, source-scoped identities, JSON import, duplicate review, transactional merge and guarded undo.
+Native macOS workspace for a unified contact dossier and communications. The contact book is backed by a local PostgreSQL service: create/edit/search, multiple phones/emails, organization, role, tags, notes, source-scoped identities, JSON import, duplicate review, transactional merge and guarded undo.
 
-Telegram, Mail, WhatsApp and Teams are visible as disconnected sections. Meetings can open an official Telemost link in the browser; no meeting API account is connected. This release does not synchronize messages, mail or accounts. It does not read macOS Contacts or existing mail/session databases. All included examples are synthetic.
+Telegram is the first implemented channel: native account setup, paged dialogs/archive and history, local chat search, per-dialog message search, explicit attachment downloads, bounded image previews, file saving, local native audio/video playback, explicit file/photo preparation and sending, and a text composer backed by the actual TelegramCore from the selected TelegramSwift reference. Connect your own separate session explicitly in the app. Real authorization/sync/send/download acceptance is still unverified; see [Telegram setup and limits](docs/telegram.md). Mail, WhatsApp and Teams remain disconnected. Meetings open an official Telemost link in the browser. Existing Telegram/mail sessions and macOS Contacts are not read. All included examples are synthetic.
+
+Open native Settings (⌘,) to choose Enter or ⌘Enter for Telegram submission.
+The choice persists across launches and applies to messages/replies, inline
+edits and attachment captions. Shift-Return inserts a newline; Return also
+inserts a newline when ⌘Enter is selected.
+
+An inline Telegram edit keeps its text, formatting and selection when switching
+chats or services in the same window. For media, right-click the edit accessory
+to move its caption above or below; changing only placement can be saved, and
+editing text preserves the native placement. Cancelling it returns to the separate
+ordinary draft/reply. Active edits remain in memory and reset after app restart.
+
+For a new photo, use the preparation window’s actions menu to move its caption
+above or below. The choice survives text edits and recovery after restart;
+ordinary files keep captions below. Prepared bytes are encrypted in S3, with
+metadata in PostgreSQL and the pending draft in encrypted Postbox.
+
+Forwarding opens the selected recipient in the same workspace, with a source
+accessory and optional rich comment. The forward draft/options survive chat and
+service switches and restart; cancelling the forward keeps the comment/reply.
+Unavailable or changed sources block sending. An uncertain submission is retained
+without automatic resend; a local queue receipt can be checked after restart.
+
+Use **Выбрать** in a history message's context menu to select up to 100 messages
+for one forward. The selection survives history pagination and switching services
+in the same window. Cancel returns to the ordinary draft/reply or active edit;
+choosing a recipient stages the selected batch without sending it. Shift-range,
+album grouping and selection copy/delete actions remain unfinished.
+
+Received Telegram text has a separate encrypted, append-only PostgreSQL archive,
+accessible through **Локальный архив** even while disconnected. Stored versions
+survive edits and removal from Telegram's cache. A durable same-transaction
+Postbox journal waits for the archive commit before acknowledgement, including
+when PostgreSQL is unavailable. Completed full-file downloads receive independent
+encrypted copies in S3; PostgreSQL contains metadata, object keys and receipts,
+never attachment payload bytes. Historical backfill and portable archive/key
+backup remain unfinished.
+Content removed before this client receives it cannot be recovered. See the
+[retention boundaries](docs/telegram.md#independent-local-message-retention).
 
 ## Requirements and run
 
-Apple Silicon, macOS 26+, Xcode 26+ with Swift 6.0+, Docker with Compose, and Homebrew `libpq`/`pkg-config`. First local verification uses Xcode 27 / Swift 6.4 on macOS 27.0.1; macOS 26 is the configured minimum and CI target, not a claim of a full OS/device matrix. Intel and older macOS are unverified.
+Apple Silicon, macOS 26+, Xcode 26+ with Swift 6.2+, Python 3.11+, Docker with Compose, and Homebrew `libpq`, `pkg-config`, `openssl@3`, `cmake` and `ninja`. First local verification uses Xcode 27 / Swift 6.4 on macOS 27.0.1; macOS 26 is the configured minimum and CI target, not a claim of a full OS/device matrix. Intel and older macOS are unverified.
 
 ```sh
-brew install libpq pkg-config
+brew install libpq pkg-config openssl@3 cmake ninja
 ./scripts/dev-db.sh up
 ./scripts/test.sh
 ./scripts/run.sh
 ```
 
-The scripts supply Homebrew libpq's `PKG_CONFIG_PATH`. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and needs that library on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
+Build/test scripts use Makosh's own [Telegram dependency lock](Dependencies/TelegramEngine.lock.json), [Opus source lock](Dependencies/Opus.lock.json), [OpusFile lock](Dependencies/OpusFile.lock.json) and [Mozjpeg lock](Dependencies/Mozjpeg.lock.json). They prepare the engine, FlatBuffers compiler and portable C codecs in ignored local storage, verify source checksums, and supply Homebrew libpq/OpenSSL `PKG_CONFIG_PATH`. The first build downloads locked source into `.local/telegram-source.git`; `.references/` is never read or created by the build. Verified prepared engine and codec packages can be reused without the source cache or network. `scripts/run.sh` creates an ad-hoc signed local `.app` in `.build/`; it dynamically links installed Homebrew libpq and OpenSSL 3 and needs both libraries on this Mac. This is not a standalone distributable bundle; no Developer ID or notarization is claimed.
 
-The development service uses PostgreSQL 18.6, binds only `127.0.0.1:55439`, and persists data in a Docker named volume mounted at `/var/lib/postgresql` (the PostgreSQL 18 layout). `./scripts/dev-db.sh down` stops the service while preserving its data. Do not remove the volume to upgrade or reset a test.
+Development services are PostgreSQL 18.6 (`127.0.0.1:55439`) and S3-compatible SeaweedFS 4.48 (`127.0.0.1:55440`), both pinned by image digest with separate persistent Docker volumes. `scripts/dev-db.sh up` starts both and initializes the private `makosh-files` bucket. Versioning is enabled; bucket policy denies deletion, expiration rules and suspending versioning. `scripts/dev-db.sh down` preserves both volumes and local credentials. Do not remove volumes to upgrade or reset a test. See [file storage](docs/object-storage.md) for configuration, encryption and recovery boundaries.
 
 Development scripts use ignored `.local/postgres-app.json`. Its object has `connectionString` and optional `schema` (default `makosh`); never commit this file or its password. To choose another configuration, run `./scripts/run.sh --database-config /path/to/database.json`. A direct app launch without this argument reads `~/Library/Application Support/Makosh/database.json`. A missing or invalid configuration shows a setup error; there is no embedded database fallback. Use a separate database/schema and configuration for isolated synthetic testing. Start with one app window for editing; transactional writes keep the latest database state across store instances, but an already-open editor does not offer field-level conflict resolution for competing edits of the same card.
+
+The default `scripts/run.sh` also supplies ignored private `.local/s3-app.json` through `--storage-config`. When supplying your own database arguments, also supply `--storage-config /path/to/s3.json`. A direct app launch reads `~/Library/Application Support/Makosh/s3.json`. S3 keys are generated separately from PostgreSQL and Telegram credentials; they are never embedded in the app or committed.
 
 ## Try the first stage
 
@@ -33,7 +74,7 @@ See the [import schema](docs/import-format.md), [architecture](docs/architecture
 
 ## References and source research
 
-The eight selected references are pinned in `references.lock.json`; clones live in ignored `.references/`. No reference application source or assets are included in the product. Our independent code is MIT. Upstream licenses and unresolved integration conditions remain separate; TelegramSwift GPL-2.0 and 900CRM Apache-2.0 must not be assumed compatible.
+The eight selected references are pinned in `references.lock.json`; optional research clones live in ignored `.references/`. `scripts/prepare-references.py` is only a research tool, never a build prerequisite. The selected iOS engine revision is independently pinned by Makosh's dependency lock and prepared from its own source cache; the outer macOS UI and branding assets are excluded. The combined application is **GPLv3**; independently authored Makosh code retains MIT. Exact official-tree equivalence, adaptations, license grants and retained texts are in [third-party notices](THIRD_PARTY_NOTICES.md). No built app or prepared engine is published as a binary release. Other reference applications remain research inputs.
 
 Read [XERJ workflow](docs/xerj.md) and the CRM, communications, UI/meetings research documents. Indexes, journals, raw local reports and machine configuration are excluded from Git. Reference research does not claim their applications build or their live integrations work.
 

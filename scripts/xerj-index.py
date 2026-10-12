@@ -2,6 +2,7 @@
 """Reproducible local XERJ refresh and content freshness checks. No remote rerank."""
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -17,7 +18,14 @@ def git(*args, cwd=ROOT):
 
 def scope(name):
     if name == "project":
-        return ROOT, "mk-own", "project"
+        return ROOT, "mk-own-v9", "project-v9"
+    if name == "telegram-engine":
+        spec = importlib.util.spec_from_file_location("telegram_preparation", ROOT / "scripts/prepare-telegram.py")
+        preparation = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(preparation)
+        if not preparation.verify_prepared():
+            raise ValueError("Telegram engine is not prepared")
+        return preparation.DEST / "submodules/TelegramCore", "mk-telegram-engine", "telegram-engine"
     lock = json.loads((ROOT / "references.lock.json").read_text())
     item = next((x for x in lock["references"] if x["name"] == name), None)
     if not item:
@@ -32,7 +40,10 @@ def scope(name):
 
 
 def fingerprint(path):
-    names = git("ls-files", "--cached", "--others", "--exclude-standard", "-z", cwd=path).decode().split("\0")
+    if path == ROOT / ".local/telegram-engine/submodules/TelegramCore":
+        names = [str(p.relative_to(path)) for p in path.rglob("*") if p.is_file()]
+    else:
+        names = git("ls-files", "--cached", "--others", "--exclude-standard", "-z", cwd=path).decode().split("\0")
     # Status is an evidence ledger updated AFTER indexing; deliberately excluded by .xerjignore.
     names = sorted(set(n for n in names if n and n != "docs/development-status.md"))
     digest = hashlib.sha256()
@@ -56,7 +67,7 @@ def fingerprint(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("name", help="project or reference name from references.lock.json")
+    parser.add_argument("name", help="project, telegram-engine, or reference name from references.lock.json")
     parser.add_argument("--url", default="http://127.0.0.1:19320")
     parser.add_argument("--check", action="store_true", help="read-only fingerprint check; exit 1 if stale/missing")
     parser.add_argument("--record-existing", nargs=2, metavar=("RESULT", "LOG"), help="record a completed run after checking its root and terminal line")
@@ -68,7 +79,7 @@ def main():
         if not report_path.exists():
             print(args.name + ": missing freshness record"); return 1
         report = json.loads(report_path.read_text())
-        fresh = report["fingerprint"] == before
+        fresh = report["fingerprint"] == before and report["prefix"] == prefix
         print(args.name + (": fresh" if fresh else ": STALE"))
         return 0 if fresh else 1
     LOCAL.mkdir(exist_ok=True)
@@ -101,7 +112,8 @@ def main():
         print("Source changed while indexing; freshness not recorded"); return 1
     report_path.parent.mkdir(exist_ok=True)
     report = {"name": args.name, "fingerprint": after, "prefix": prefix, "command": command,
-              "source_sha": git("rev-parse", "HEAD", cwd=path).decode().strip() if args.name != "project" else "see content fingerprint",
+              "source_sha": (json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())["revision"] if args.name == "telegram-engine" else
+                  git("rev-parse", "HEAD", cwd=path).decode().strip() if args.name != "project" else "see content fingerprint"),
               "exit_code": exit_code, "result": result, "terminal": terminal,
               "result_path": str(result_path.relative_to(ROOT)), "log_path": str(log_path.relative_to(ROOT)),
               "recording_limit": "Existing-run recording validates scope and current fingerprint; it cannot reconstruct source changes during a past run."}
@@ -113,6 +125,6 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (ValueError, OSError, subprocess.CalledProcessError, KeyError) as error:
+    except (ValueError, OSError, subprocess.CalledProcessError, KeyError, RuntimeError) as error:
         print("XERJ workflow error: " + str(error), file=sys.stderr)
         sys.exit(1)

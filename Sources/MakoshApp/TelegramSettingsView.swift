@@ -4,9 +4,10 @@ import MakoshTelegram
 struct TelegramSettingsView: View {
     @StateObject private var systemAppearance = TelegramSystemAppearance()
     var sessions: TelegramSessionsController? = nil
+    var privacy: TelegramPrivacyController? = nil
     var synthetic = false
     var close: (() -> Void)? = nil
-    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства" }
+    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность" }
     @State private var page: Page?
     @AppStorage(TelegramLocalTheme.preferenceKey) private var theme = TelegramLocalTheme.system.rawValue
     @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
@@ -23,10 +24,13 @@ struct TelegramSettingsView: View {
                 if let close { Button("Готово", action: close).accessibilityIdentifier("telegram.settings.close") }
             }.padding().frame(height: 55)
             Divider()
-            if synthetic { Text("Синтетический аккаунт · изменения устройств симулируются").font(.caption).foregroundStyle(.secondary).padding(10) }
+            if synthetic { Text("Синтетический аккаунт · серверные изменения симулируются").font(.caption).foregroundStyle(.secondary).padding(10) }
             switch page {
             case .general: TelegramGeneralSettingsView()
             case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme)
+            case .privacy:
+                if let privacy { TelegramPrivacyView(controller: privacy, synthetic: synthetic) }
+                else { ContentUnavailableView("Откройте Telegram", systemImage: "hand.raised") }
             case .devices:
                 if let sessions { TelegramSessionsView(controller: sessions, synthetic: synthetic) }
                 else { ContentUnavailableView("Откройте Telegram", systemImage: "desktopcomputer", description: Text("Устройства доступны в настройках выбранного аккаунта Telegram.")) }
@@ -36,6 +40,7 @@ struct TelegramSettingsView: View {
                         settingsRow(.general, symbol: "gearshape", id: "general")
                         settingsRow(.appearance, symbol: "paintpalette", id: "appearance")
                         if sessions != nil { settingsRow(.devices, symbol: "desktopcomputer", id: "devices") }
+                        if privacy != nil { settingsRow(.privacy, symbol: "hand.raised", id: "privacy") }
                     }
                 }.formStyle(.grouped)
             }

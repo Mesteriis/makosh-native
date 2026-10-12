@@ -222,6 +222,7 @@ public final class TelegramModel: ObservableObject {
     public let sharedMedia = TelegramSearchModel()
     public let peerManagement = TelegramPeerManagementController()
     public let accountSessions = TelegramSessionsController()
+    public let accountPrivacy = TelegramPrivacyController()
     public let media = TelegramMediaController()
     public let avatars = TelegramAvatarStore()
     public let peerStatus = TelegramPeerStatusController()
@@ -1996,6 +1997,7 @@ public final class TelegramModel: ObservableObject {
         profilePhotos.bind(TelegramEngineProfilePhotoProvider(account: account))
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
+        accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
@@ -2052,7 +2054,7 @@ public final class TelegramModel: ObservableObject {
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
         profilePhotos.bind(nil); peerManagement.bind(nil)
-        accountSessions.bind(nil)
+        accountSessions.bind(nil); accountPrivacy.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -2314,6 +2316,7 @@ public final class TelegramModel: ObservableObject {
         let pages = TelegramSyntheticPages(albums: albums, forum: forum)
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
+        model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider())
         model.search.useSyntheticPreview(albums: albums, forum: forum)
         model.globalSearch.useSyntheticPreview(albums: albums, forum: forum)
         model.sharedMedia.useSyntheticPreview(albums: albums, forum: forum)

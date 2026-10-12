@@ -2851,3 +2851,40 @@ archived messages, change per-chat S3 policy, or store file bytes in PostgreSQL.
 Cloud themes, wallpaper/night scheduling, privacy/2FA, notifications, storage/
 download/proxy settings, QR linking and web sessions remain unimplemented. Actual
 Telegram device acceptance requires separately authorized real-account testing.
+
+## Privacy audiences (2026-10-12)
+
+The existing Telegram settings opens a privacy overview and dedicated audience
+editors for phone visibility/discovery, presence, profile photos, bio, birthday,
+group invitations, forwarding attribution, calls and P2P. Discovery and P2P have
+separate child pages/RPCs; no compound write claims atomicity across Telegram keys.
+Forwarding privacy controls profile attribution, not forwarding permission.
+Existing exception memberships are read-only in this slice. A parent draft must
+be saved or explicitly discarded before opening its discovery/P2P child editor;
+child ACK reloads cannot silently discard that draft. All native user/chat,
+close-friend/Premium/bot/deny-contact rules and their order survive audience edits.
+Recognized base/fallback rules alone are replaced; nonstandard bases stay read-only.
+Malformed lists, nonpositive/duplicate peer IDs and bounded-list violations fail
+closed. Phone discovery does not offer Nobody.
+
+Immutable snapshots belong to the selected Account. Confirmation captures the
+account/context and exact original rule sequence. A new getPrivacy must match
+that basis before setPrivacy. Every preserved user is resolved from that fresh
+response; missing/min/duplicate identities refuse the entire write instead of
+omitting exceptions. Native typed keys and input rules are used. No application
+retry/flood-wait wrapper is installed.30s read/write deadlines cancel unresolved
+work; uncertain account barriers survive close/rebind and need explicit Refresh.
+Native MTProto transport semantics remain upstream; cancellation is not rollback.
+Empty/malformed/mismatching ACKs never report success. An accepted audience and
+unchanged exception sequence are required; a fresh full read then updates the UI.
+Telegram has no compare-and-swap argument here: another client can still change
+rules between the fresh read and write. Category feedback belongs only to its
+last admitted write; the uncertain/saving barrier applies to the whole Account.
+
+There are no privacy records in PostgreSQL, file bytes, S3 policy changes, engine
+preparation/pin/dependency changes or reference-runtime dependencies. DEBUG fixtures
+bind ten in-memory settings to a synthetic Account with no Telegram access.
+Native QA uses its own bundle/preferences and an explicit isolated PostgreSQL
+schema.2FA, blocked peers, exception membership editing, Premium/voice-message/
+global privacy settings and account removal remain open. No real-account privacy
+change or private content retrieval is part of local acceptance.

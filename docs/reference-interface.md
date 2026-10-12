@@ -578,10 +578,30 @@ Mode write меняет только Postbox metadata, сохраняет исх
 Send до подтверждения. Native PNG regression проверяет настоящий FileName,
 точные исходные байты MediaBox и complete receipt после восстановления.
 
-Оставшиеся различия классификации явные: WebP сохраняет исходные байты с native sticker attributes. Static-photo admission уже использует
-NSImage logical size. Ordered classifier теперь использует отдельные schema14
+Оставшиеся различия классификации явные: WebP сохраняет исходные байты с native sticker attributes. Static-photo payload admission использует
+transformed ImageIO pixels отдельно от NSImage logical source options. Ordered classifier использует отдельные schema14
 source facts; exhaustive MIME/Ogg/Vorbis и полная recorder visual/gesture parity
 ещё открыты, как Archive и image edits.
+
+Новый static photo/File payload сверяется с `SenderController.swift:333–368`:
+height≥40px и width/10≤height после transformation. Width<40px и tall aspect
+сами по себе не запрещают photo. Probe и staging используют общий2560px maximum;
+orientation/non-square DPI проверены по настоящему JPEG. Source options остаются
+симметричными logical40-point/10:1. Существующие frozen File/photo подготовки
+не переклассифицируются. Отдельно открыты all-File Media (reference initial state
+в `PreviewSenderController.swift:1744–1745` выбирается только по options), default
+1280/large2560 setting и JPEG.75 (`FastSettings.swift:301–308`, SenderController).
+Без version gate новый all-File допуск изменил бы прежний fail-closed смысл
+schema14–16, поэтому этот переход не включён в изменение генерации payload.
+
+Native picker QA 2026-10-12 на final built payload: S3 OFF, PNG39×48 и PNG40×80.
+До изменения narrow PNG — File row; после — два JPEG/photo в mosaic. Screenshot
+и AX predicate воспроизводят RED→GREEN; exact restart без прежних picker paths
+сохраняет оба UUID, изображения и emoji caption. Reopened readback подтверждает
+четыре encrypted local photo/raw ресурса и21 retained record с прежними/cancelled
+подготовками, отсутствие receipt/pending/S3 objects и отсутствие promotion после
+enable/resume. Это проверка подготовки/восстановления; native queue отдельно
+покрыт synthetic integration regression, Account/server delivery не утверждается.
 
 Для новых ordinary picker preparations сверены `ThumbUtils.swift:222–260`,
 `CoreExtension.swift:2953–3015`, `PreviewSenderController.swift:1743–1788` и

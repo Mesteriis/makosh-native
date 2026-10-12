@@ -1843,13 +1843,26 @@ the verified reference state/send boundary. Returning to media restores the
 retained placement and cover. Native original-file enqueue verifies the selected
 record's plaintext SHA256 before and after copying to MediaBox.
 
-Static-photo admission inspects an owned no-follow byte snapshot. The source's
-finite `NSImage.size` must be at least40 points on each side and at most10:1,
-matching `ThumbUtils` before JPEG generation. Pixel dimensions separately remain
-positive, at most8192 per axis and40M pixels, with the20MiB/one-frame bounds.
-For example64×64 pixels at144DPI remain an original file (32×32 points), while
-32×32 pixels at36DPI can become a photo (64×64 points). Both paths retain exact
-raw bytes after source removal; normalized JPEG pixels do not reclassify the source.
+Static-photo payload admission inspects an owned no-follow byte snapshot.
+It applies `SenderController.swift:333–368` to the transformed ImageIO thumbnail:
+height must be at least40 pixels and width/10 must not exceed height. A narrow
+width or reciprocal tall aspect alone does not force a File payload. The probe
+shares the actual staging maximum2560; orientation and non-square DPI transforms
+therefore match the generated JPEG. Decoder bounds remain at most8192 per axis,
+40M source pixels,20MiB and one frame. Source options separately retain the
+symmetric40-point/10:1 `NSImage.size` rule from `ThumbUtils.swift:222–260`.
+For example64×64 pixels at144DPI now retains a64×64 photo plus raw source but
+defaults to File (32×32 logical points). A32×32-pixel source at36DPI retains
+only raw File bytes even though its64×64 logical source contributes Media.
+The existing all-File Media guard still normalizes that latter case to File;
+reference mode parity requires a separately versioned allowance, because an
+ungated helper change would retroactively admit invalid schema14–16 pointers.
+The current2560/.85 staging recipe also still differs from the reference's
+default1280/.75 and optional large-photo setting. These are explicit next gaps.
+Existing frozen preparations retain their kind, raw roles, facts and bytes;
+restore never reruns new photo eligibility. Both representations survive source
+removal. S3 OFF forbids every new copy, including either preparation resource;
+later enabling does not promote them.
 GIF/WebP/multiframe inputs are never flattened into static photos. WebP typed
 originals, GIF conversion and explicit recorded-voice attributes are supported
 below. Schema14 implements ordered whole-list options; full recorder interaction parity remains open. The

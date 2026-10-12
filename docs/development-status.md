@@ -1,6 +1,63 @@
 # Development status — 2026-10-12
 
-## Current stage: single/separate upload preview and safe video looping
+## Current stage: static-photo payload pixels separated from source options
+
+New static-photo preparation follows SenderController's transformed-pixel
+predicate: height≥40 and width/10≤height. Width<40 and reciprocal tall aspect
+alone no longer force File. The owned no-follow snapshot, source decode bounds,
+cancellation and GIF/WebP/multiframe exclusions remain. The probe and staging
+share the existing2560 maximum; orientation and non-square DPI are checked
+against actual generated JPEG dimensions. Source logical facts/options and
+frozen preparation kinds/bytes remain independent; schemas/pins are unchanged.
+The all-File Media allowance needs a separate version gate to preserve existing
+schema14–16 validity. Reference default1280/optional2560 and JPEG.75 versus the
+current2560/.85 are also explicit next gaps; this slice does not claim full parity.
+
+Compiled initial RED25 tests/18 failures (one unexpected nil-unwrap consequence)
+reproduces payload/option conflation. Two initial GREEN attempts expose wrong
+non-square-DPI expectations; a bounded diagnostic records actual transformed
+sizes and corrected literals. An integration fixture initially compares the
+retry revision incorrectly; it is corrected to assert immutable resources/input.
+Focused final GREEN53 XCTest/0 failures and45 Python tests includes new narrow
+photo/raw pairs under both storage policies, exact restore after source removal,
+no recapture on retry, native local queue JPEG bytes/dimensions/caption/receipt,
+OFF absence from S3 and no promotion after enable. Existing frozen mixed-File
+native regressions remain unchanged. Reverting just the generation predicate
+makes the new integration test fail8 assertions (one unexpected nil-unwrap
+consequence); GREEN source is restored byte for byte.
+
+Actual native picker QA with S3 OFF reproduces a39×48 PNG as a File row in the
+preceding app, then shows both selected PNGs as photos/mosaic in the final build.
+The same screenshot/AX predicate is RED (zero green pixels/missing narrow JPEG)
+and GREEN after the change and exact owned-process restart. Original picker paths
+are moved before restart; both stable IDs and the exact emoji caption survive.
+Reopened readback passes1 XCTest and45 Python tests: two photo/raw pairs, exact
+original bytes,21 retained encrypted local records including prior/cancelled
+preparations, no receipt/pending and no remote object for the four new resources,
+including after enable/resume. Runtime is stopped; temporary QA source is removed.
+No personal Account, Telegram server send or hardware is used.
+
+Required database startup, full tests, app build and strict deep signatures
+exit0; normalized built/QA Mach-O payload comparison also passes. Full suite:
+**1,346 XCTest (1,267 Telegram +79 core),1 microphone-authorization precondition
+skip,0 failures;45 Python tests**. Full compilation repeats three pre-existing
+diagnostics (six warning lines); build and final UI readback have no warnings.
+651 SQL-prefixed t19 teardown diagnostics plus one bare line remain separate
+from compiler warnings.
+Bounded frozen review finds no actionable issues. Root verifies19 frozen/live
+source/reference hashes, five before hashes and24 original worker argv/exits.
+Report metadata is corrected/normalized separately with immutable originals;
+worker runtime gates stay skipped, observed route/usage unknown. Final XERJ
+refresh/freshness/query exit0:482 files,444/444 classified code. The shared photo
+maximum hit is confirmed against source; locked-reference freshness also exits0.
+The initial freshness refusal after test edits is retained, then resolved by
+refresh. Indexes, runtime configuration and raw evidence remain ignored.
+Hosted CI for preceding f5cb727 succeeds in both
+[PR run38203402066](https://github.com/Mesteriis/makosh-native/actions/runs/38203402066)
+and [push run38203398907](https://github.com/Mesteriis/makosh-native/actions/runs/38203398907).
+Those results do not establish CI for this new slice. Full migration remains active.
+
+## Previous stage: single/separate upload preview and safe video looping
 
 Single and separate ordinary photo/video previews now share the existing bounded
 ChatLayoutUtils-derived size rules. This removes the separate-row200pt cap/120pt

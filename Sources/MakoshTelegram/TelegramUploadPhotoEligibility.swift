@@ -3,10 +3,9 @@ import Darwin
 import ImageIO
 import CoreGraphics
 import UniformTypeIdentifiers
-import AppKit
 
 enum TelegramUploadPhotoEligibility {
-    /// Source logical size follows reference options; pixel/byte bounds protect decoding separately.
+    /// SenderController's payload decision uses transformed photo pixels. Source options use separate logical facts.
     static func canPrepare(_ raw: TelegramUploadFile) async throws -> Bool {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) { try inspect(raw) }
@@ -66,17 +65,15 @@ enum TelegramUploadPhotoEligibility {
               let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int64Value,
               let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int64Value,
               width > 0, height > 0, width <= 8192, height <= 8192,
-              width * height <= 40_000_000,
-              let sourceImage = NSImage(data: data) else { return false }
-        let logical = sourceImage.size
-        guard logical.width.isFinite, logical.height.isFinite,
-              logical.width >= 40, logical.height >= 40,
-              logical.width / 10 <= logical.height, logical.height / 10 <= logical.width else { return false }
+              width * height <= 40_000_000 else { return false }
+        let maximum = TelegramUploadFileIO.photoMaximumPixelSize
         let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 256,
+            kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: maximum,
             kCGImageSourceShouldCacheImmediately: true]
         let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         try Task.checkCancellation()
-        return image.map { $0.width > 0 && $0.height > 0 && $0.width <= 256 && $0.height <= 256 } ?? false
+        guard let image, image.width > 0, image.height >= 40,
+              image.width <= maximum, image.height <= maximum else { return false }
+        return Double(image.width) / 10 <= Double(image.height)
     }
 }

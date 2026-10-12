@@ -47,6 +47,8 @@ public enum TelegramUploadFileError: LocalizedError, Equatable {
 }
 
 public enum TelegramUploadFileIO {
+    /// Shared by static-photo staging and its payload probe; existing prepared bytes remain authoritative.
+    static let photoMaximumPixelSize = 2560
     public static func stage(_ source: URL, mode: TelegramUploadMode) async throws -> TelegramUploadFile {
         try await stage(source, mode: mode, coverCrop: nil)
     }
@@ -150,7 +152,7 @@ public enum TelegramUploadFileIO {
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.int32Value,
               let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.int32Value,
-              width > 0, height > 0, width <= 2560, height <= 2560 else { throw TelegramUploadFileError.invalidImage }
+              width > 0, height > 0, width <= photoMaximumPixelSize, height <= photoMaximumPixelSize else { throw TelegramUploadFileError.invalidImage }
         return TelegramUploadFile(id: id, name: name, size: size, mode: mode, pixelWidth: width, pixelHeight: height, url: url, directory: directory)
     }
 
@@ -321,7 +323,7 @@ public enum TelegramUploadFileIO {
             }
             try Task.checkCancellation()
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: coverCrop == nil ? 2560 : 8192,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: coverCrop == nil ? photoMaximumPixelSize : 8192,
                 kCGImageSourceShouldCacheImmediately: true]
             guard var image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
                 throw TelegramUploadFileError.invalidImage

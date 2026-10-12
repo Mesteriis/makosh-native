@@ -41,8 +41,9 @@ import ImageIO
         for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(controller.presentation, .media)
         XCTAssertTrue(controller.isGrouped); XCTAssertTrue(controller.canGroupItems)
-        XCTAssertEqual(controller.items.map(\.file.mode), [.file, .photo])
-        XCTAssertNil(controller.items.first?.originalFile)
+        XCTAssertEqual(controller.items.map(\.file.mode), [.photo, .photo])
+        XCTAssertEqual(controller.items.first?.sourceFacts?.image, .decoded(width: 39, height: 48))
+        XCTAssertEqual(controller.items.first?.originalFile?.name, "small.png")
     }
 
     func testOpusAndMP3AreOrdinaryGroupedMusicEvenWithMisleadingNames() async throws {
@@ -96,7 +97,8 @@ import ImageIO
         XCTAssertEqual(try Data(contentsOf: item.file.url), bytes)
     }
 
-    func testUndersizedImageUsesItsOriginalFileWithoutPhotoNormalization() async throws {
+    // Catches conflating File-only source options with a pixel-eligible photo payload.
+    func testNarrowImageKeepsPhotoAndRawPayloadsWithFilePresentation() async throws {
         let source = try makeSources()[0].deletingLastPathComponent().appendingPathComponent("small.png")
         let image = try XCTUnwrap(CGContext(data: nil, width: 39, height: 48, bitsPerComponent: 8,
             bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
@@ -110,16 +112,18 @@ import ImageIO
         for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(controller.phase, .ready)
         let item = try XCTUnwrap(controller.items.first)
-        XCTAssertEqual(item.file.mode, .file); XCTAssertEqual(item.file.name, "small.png")
-        XCTAssertNil(item.originalFile); XCTAssertEqual(controller.presentation, .file)
-        XCTAssertEqual(try Data(contentsOf: item.file.url), bytes)
+        XCTAssertEqual(item.file.mode, .photo); XCTAssertEqual(item.file.name, "small.jpg")
+        XCTAssertEqual(item.file.pixelWidth, 39); XCTAssertEqual(item.file.pixelHeight, 48)
+        XCTAssertEqual(controller.presentation, .file); XCTAssertFalse(controller.canSwitchPresentation)
+        XCTAssertEqual(controller.file?.name, "small.png")
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(item.originalFile?.url)), bytes)
     }
 
-    // Catches classifying the normalized JPEG instead of the selected source's logical size.
-    func testPhotoPickerUsesSourceLogicalSizeAndRetainsTheCorrectPayloads() async throws {
+    // Catches DPI changing payload pixels or loss of raw bytes. The existing all-File Media guard remains versioned separately.
+    func testPhotoPickerSeparatesSourceOptionsFromPixelPayloads() async throws {
         let root = try makeSources()[0].deletingLastPathComponent()
         let cases: [(Int, Int, TelegramUploadPresentation, TelegramUploadMode)] = [
-            (64, 144, .file, .file), (32, 36, .media, .photo)
+            (64, 144, .file, .photo), (32, 36, .file, .file)
         ]
         for (pixels, dpi, presentation, mode) in cases {
             let source = root.appendingPathComponent("dpi-\(dpi).png")
@@ -140,13 +144,14 @@ import ImageIO
             try FileManager.default.removeItem(at: source)
             XCTAssertEqual(controller.presentation, presentation)
             XCTAssertEqual(item.file.mode, mode)
-            XCTAssertEqual(controller.canSwitchPresentation, mode == .photo)
+            XCTAssertFalse(controller.canSwitchPresentation)
+            XCTAssertEqual(item.sourceFacts?.image, dpi == 144 ? .decoded(width: 32, height: 32) : .decoded(width: 64, height: 64))
             let raw = try XCTUnwrap(mode == .photo ? item.originalFile : item.file)
             XCTAssertEqual(raw.name, "dpi-\(dpi).png")
             XCTAssertEqual(try Data(contentsOf: raw.url), bytes, "Raw bytes survive source removal in either presentation")
             if mode == .photo {
-                XCTAssertEqual(item.file.pixelWidth, 32); XCTAssertEqual(item.file.pixelHeight, 32)
-                XCTAssertEqual(item.file.name, "dpi-36.jpg")
+                XCTAssertEqual(item.file.pixelWidth, 64); XCTAssertEqual(item.file.pixelHeight, 64)
+                XCTAssertEqual(item.file.name, "dpi-144.jpg")
             } else { XCTAssertNil(item.originalFile) }
         }
     }

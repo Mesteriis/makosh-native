@@ -33,7 +33,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 14
+RECIPE = 18
 
 
 def run(*args):

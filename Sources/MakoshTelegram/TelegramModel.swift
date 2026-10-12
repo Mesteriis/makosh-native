@@ -218,6 +218,7 @@ public final class TelegramModel: ObservableObject {
         loadHistory()
     }
     public let search = TelegramSearchModel()
+    public let globalSearch = TelegramSearchModel(global: true)
     public let media = TelegramMediaController()
     public let avatars = TelegramAvatarStore()
     public let peerStatus = TelegramPeerStatusController()
@@ -661,6 +662,17 @@ public final class TelegramModel: ObservableObject {
             await self?.prepareRoundVideoRecording(bytes: bytes, target: target, context: context, send: send, isOneTime: once) == true
         }
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+        globalSearch.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+        search.selectionDidChange = { [weak self] id, context in
+            guard let self, self.search.resultContextID == context,
+                  let index = self.search.messageIndex(id: id, inChat: self.selectedChatID, threadID: self.selectedThreadID) else { return }
+            self.loadHistory(anchor: index, clear: false, focusID: id)
+        }
+        globalSearch.selectionDidChange = { [weak self] id, context in self?.activateGlobalSearchResult(id: id, contextID: context) }
+        search.dateDidSelect = { [weak self] index, id, context in
+            guard let self, self.search.resultContextID == context else { return }
+            self.loadHistory(anchor: index, clear: false, focusID: id)
+        }
         upload.originalDraftForRecovery = { [weak self] _, id in
             guard let transfer = self?.uploadComposerTransfer, transfer.id == id else { return nil }
             return transfer.draft
@@ -1964,7 +1976,7 @@ public final class TelegramModel: ObservableObject {
         selectedMessagesDelete.bind(provider: TelegramEngineSelectedMessagesDeleteProvider(account: account))
         savedMessagesForward.bind(TelegramEngineSavedMessagesForwardProvider(account: account, approval: sendApproval))
         historyRead.bind(TelegramEngineHistoryReadProvider(account: account))
-        search.bind(account: account)
+        search.bind(account: account); globalSearch.bind(account: account)
         search.setFolder(chatFolder)
         let accountToken = accountGeneration
         uploadCaptionLimit.set((telegramUploadCaptionLimit(postbox: account.postbox, accountID: account.peerId.toInt64())
@@ -2027,7 +2039,7 @@ public final class TelegramModel: ObservableObject {
         pendingForwardStage = nil
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
-        search.bind(account: nil)
+        search.bind(account: nil); globalSearch.bind(account: nil)
         accountGeneration = UUID(); conversationGeneration = UUID()
         messageEditSessions = [:]; messageEditSession = nil; submittedEditSession = nil; editDrafts = [:]
         account?.shouldBeServiceTaskMaster.set(.single(.never))
@@ -2072,11 +2084,26 @@ public final class TelegramModel: ObservableObject {
     public func showLatestMessages() { loadHistory(clear: false) }
     public func retryHistoryPage() { loadHistory(anchor: historyPages.anchor, clear: false) }
 
-    public func openSearchMessage(id: String) {
+    public func openSearchMessage(id: String, contextID: UUID? = nil) {
         // Migrated-group matches have the old peer ID. Postbox includes that
         // associated history; validate the search's selected chat, not the index peer.
-        guard let index = search.messageIndex(id: id, inChat: selectedChatID, threadID: selectedThreadID) else { return }
-        search.messageQuery = ""
+        guard search.messageIndex(id: id, inChat: selectedChatID, threadID: selectedThreadID) != nil else { return }
+        search.selectResult(id: id, contextID: contextID ?? search.resultContextID)
+    }
+
+    public func openGlobalSearchMessage(id: String, contextID: UUID) {
+        globalSearch.selectResult(id: id, contextID: contextID)
+    }
+
+    private func activateGlobalSearchResult(id: String, contextID: UUID) {
+        guard phase == .ready, !isBusy, !messageActions.isBusy, upload.phase == .idle,
+              !isComposerSuspended, !isForwardComposerLocked, !selectedMessagesDeletionBlocksActions,
+              let (chat, index, thread) = globalSearch.resultDestination(id: id, contextID: contextID),
+              thread.map({ $0 > 0 && $0 <= Int64(Int32.max) }) ?? true else { return }
+        knownChats[chat.id] = chat
+        selectedChatID = chat.id
+        if thread != selectedThreadID { selectThread(thread) }
+        isForumTopicsListPresented = false
         loadHistory(anchor: index, clear: false, focusID: id)
     }
 
@@ -2096,9 +2123,9 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func refreshMediaSources() {
-        let sources = historyMediaSources + Array(search.mediaSources.values)
+        let sources = historyMediaSources + Array(search.mediaSources.values) + Array(globalSearch.mediaSources.values)
         mediaProvider?.sources = Dictionary(sources.map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
-        let attachments = (messages + search.messages).flatMap(\.attachments)
+        let attachments = (messages + search.messages + globalSearch.messages).flatMap(\.attachments)
         playback.retain(attachments: attachments)
         media.retain(attachments: attachments)
         if let accountID = draftAccountID, !isSyntheticPreview {
@@ -2255,6 +2282,7 @@ public final class TelegramModel: ObservableObject {
         let pages = TelegramSyntheticPages(albums: albums, forum: forum)
         model.preview = pages
         model.search.useSyntheticPreview(albums: albums, forum: forum)
+        model.globalSearch.useSyntheticPreview(albums: albums, forum: forum)
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
@@ -2321,6 +2349,7 @@ public final class TelegramModel: ObservableObject {
         let observedAt = Date()
         model.preview = TelegramSyntheticPages(presenceObservedAt: observedAt)
         model.search.useSyntheticPreview(presenceObservedAt: observedAt)
+        model.globalSearch.useSyntheticPreview(presenceObservedAt: observedAt)
         model.loadChatList(clear: true)
         model.avatars.bind(TelegramSyntheticAvatarProvider())
         model.peerStatus.useSyntheticPreview()

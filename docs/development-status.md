@@ -1,4 +1,4 @@
-# Development status — 2026-10-12
+# Development status — 2026-10-13
 
 ## CI repairs for the preceding integration
 
@@ -40,7 +40,54 @@ focused24 XCTest pass; commit a9ee000 is published for hosted verification in
 [PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
 separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram privacy audiences (block 6)
+## Current stage: Telegram privacy exception membership (block 7)
+
+Privacy now edits user/group allow and deny memberships in the existing settings
+workspace. Reference list/add/remove/multiselect flows are implemented in own
+SwiftUI; selection moves a peer out of the opposite list. Audience and membership
+share one immutable confirmed draft. Untouched special rules and native identity
+are preserved; duplicate/nonpositive/oversized or ambiguous additions fail closed.
+Cached Telegram contacts appear initially; queries search cached contacts/chats,
+with200 results and an explicit refine-query notice. Global remote search and
+special-category editing remain open. No system Contacts or other account is read.
+
+Each write retains the fresh exact server basis guard. Preserved/moved users need
+hashes from that response; only newly added users may use fresh personal native
+hashes. Every new group remains eligible in a fresh Postbox transaction. Missing/
+min/ambiguous identities refuse the whole write. Empty/different ACKs remain
+uncertain; the existing account-wide reconciliation barrier and lack of Telegram
+CAS remain unchanged. Editor basis captures account/context before interaction;
+callbacks after refresh/rebinding cannot borrow the new context, even with identical
+rule values. Drafts from another context are never composed into a new draft.
+
+Valid assertion REDs: rules4 tests/3 failures; directory3/2; native peers with
+directory6/4; actual encrypted Postbox1/4; stale editor basis2/2. The final focused
+30 XCTest pass. Required DB startup and final app build exit0 with0 compiler
+warnings. Native synthetic QA verifies list navigation, contact/group selection
+across queries, opposite-list movement, cancellation/discard, combined audience+
+membership ACK, removal without audience change and preserved Premium rules.
+Review restores read-only counters for nonstandard bases; native QA confirms
+visible user/group counts and disabled writes. The final rebuilt bundle also
+verifies contact addition and ACK through the captured editor basis. Strict signing
+and unsigned executable payload equality pass. The owned QA process is stopped;
+its isolated PostgreSQL data is retained. No real Telegram mutation is tested.
+
+Earlier full runs pass1,819 XCTest before the final editor-context repair. The
+final mandatory `scripts/test.sh` exits0: **1,821 XCTest (1,742 Telegram +79 core),
+1 microphone precondition skip,0 failures;85 Python tests across18 suites**.
+Existing upstream teardown/macOS Contacts-service diagnostics are not assertion
+failures or proof of private contact retrieval. All694 frozen tracked/new file
+fingerprints match after validation, excluding this mutable ledger. Project,
+locked reference and recipe19 engine XERJ checks are fresh; queries are confirmed
+against source. No dependency, engine pin, preparation recipe, schema, permanent
+message retention or S3-policy change. Hosted verification/integration is recorded
+on the attached PR; merge requires both hosted runs on its exact head.
+
+Blocked users,2FA, global peer search, special/Premium/voice-message/global privacy,
+account removal and the preceding settings/parity gaps remain open. Local synthetic
+acceptance does not establish real-account behavior or Telegram delivery.
+
+## Previous stage: Telegram privacy audiences (block 6)
 
 The existing settings sheet now opens the reference privacy list
 and separate audience editors for phone visibility/discovery, presence, profile

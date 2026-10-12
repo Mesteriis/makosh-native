@@ -2888,3 +2888,41 @@ Native QA uses its own bundle/preferences and an explicit isolated PostgreSQL
 schema.2FA, blocked peers, exception membership editing, Premium/voice-message/
 global privacy settings and account removal remain open. No real-account privacy
 change or private content retrieval is part of local acceptance.
+
+## Privacy exception membership (2026-10-12)
+
+Block7 extends the preceding read-only exception lists with user/group membership
+editing. Allow/deny lists use distinct wire identity types; selecting a peer removes
+only that peer from the opposite list. Edited membership is bounded, nonpositive/
+duplicate identities are refused, and untouched bases/special rules remain intact.
+Audience and membership changes share one immutable expected/replacement draft and
+one explicit confirmation. Phone discovery does not expose exception editing.
+Nested Done only stages a draft; Cancel/Discard and closing never send a write.
+Editor basis captures account/context/original rules before interaction; stale
+callbacks cannot borrow a later context even when the rule values are identical.
+Audience input and membership sheets use that same basis. A draft from another
+context is never composed into a new draft.
+
+The account-bound directory reads the selected native Postbox, never system Contacts
+or another account. Default candidates are cached Telegram contacts; a query searches
+cached contacts/chats.200 results and a has-more notice bound the UI; query length128,
+request generations/cancellation and a30s deadline bound its lifetime. Existing
+memberships are retained independently of search results, including unresolved names.
+Broadcast/secret/departed/migrated peers, self and non-personal/missing user hashes
+are unavailable as new candidates. Ambiguous basic-group/channel wire IDs are refused.
+
+Before writing, the exact fresh server rule basis must still match. Preserved and
+moved users require hashes from that fresh server response. Only newly added users
+may resolve personal hashes from a fresh native transaction; every new group must
+still be eligible there. Missing/min/ambiguous additions refuse the whole write.
+ACK validation compares the confirmed audience and complete exception sequence;
+server normalization that changes that sequence remains uncertain. No automatic
+retry, optimistic state, engine/cache update or persistence is added. The existing
+account-wide uncertainty barrier and Telegram's lack of CAS remain as documented.
+
+Tests exercise real native peer values and the production directory on an encrypted
+Postbox fixture. Synthetic native UI uses its own signed bundle/isolated PostgreSQL
+schema with no real account, private contents, network mutation or message delivery.
+Global remote peer search, editing special categories,2FA and blocked users remain
+open. Permanent message retention, per-chat prohibition of all new S3 copies and
+file storage policy are unchanged; no schema, dependency or engine-pin change.

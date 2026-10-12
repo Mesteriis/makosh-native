@@ -49,9 +49,22 @@ public struct TelegramPrivacySetting: Equatable, Sendable {
 public struct TelegramPrivacyChange: Equatable, Sendable {
     public let expected: TelegramPrivacySetting
     public let audience: TelegramPrivacyAudience
-    public init(expected: TelegramPrivacySetting, audience: TelegramPrivacyAudience) { self.expected = expected; self.audience = audience }
+    private let proposed: TelegramPrivacySetting
+    public init(expected: TelegramPrivacySetting, audience: TelegramPrivacyAudience) {
+        self.expected = expected; self.audience = audience; proposed = expected.replacingAudience(audience) ?? expected
+    }
+    public init(expected: TelegramPrivacySetting, replacement: TelegramPrivacySetting) {
+        self.expected = expected; self.audience = replacement.audience ?? .contacts; proposed = replacement
+    }
+    public var replacement: TelegramPrivacySetting? {
+        guard expected.audience != nil, proposed.audience != nil, expected.kind == proposed.kind, proposed != expected,
+              expected.rules.filter({ $0.isSpecial }) == proposed.rules.filter({ $0.isSpecial }) else { return nil }
+        if expected.kind == .phoneDiscovery, expected.rules.filter({ !$0.isBase }) != proposed.rules.filter({ !$0.isBase }) { return nil }
+        return proposed
+    }
 }
 extension TelegramPrivacyRule {
+    var isSpecial: Bool { switch self { case .denyContacts, .closeFriends, .premium, .bots, .denyBots: true; default: false } }
     var isBase: Bool { switch self { case .everybody, .contacts, .nobody: true; default: false } }
     var peerIDs: [Int64] { switch self { case let .allowUsers(ids), let .denyUsers(ids), let .allowChats(ids), let .denyChats(ids): ids; default: [] } }
 }
@@ -77,7 +90,7 @@ func telegramPrivacySetting(_ response: Api.account.PrivacyRules, kind: Telegram
     return value.isValid ? value : nil
 }
 func telegramAdmitPrivacyChange(accountID: Int64, expectedAccountID: Int64, current: TelegramPrivacySetting, change: TelegramPrivacyChange) -> Bool {
-    accountID == expectedAccountID && current == change.expected && current.replacingAudience(change.audience) != nil
+    accountID == expectedAccountID && current == change.expected && change.replacement != nil
 }
 func telegramPrivacyInputRules(_ setting: TelegramPrivacySetting, userHashes: [Int64: Int64], selfID: Int64) -> [Api.InputPrivacyRule]? {
     guard setting.isValid, setting.audience != nil else { return nil }
@@ -133,8 +146,15 @@ enum TelegramPrivacyError: Error, Equatable, Sendable { case unavailable, change
 @MainActor protocol TelegramPrivacyProvider: AnyObject {
     var accountID: Int64 { get }
     func load(receive: @escaping @MainActor (Result<TelegramPrivacySnapshot, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest
+    func peers(query: String, include: [TelegramPrivacyPeerID], receive: @escaping @MainActor (Result<TelegramPrivacyPeerDirectory, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest
     func apply(_ change: TelegramPrivacyChange, expectedAccountID: Int64, receive: @escaping @MainActor (Result<Void, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest
 }
+extension TelegramPrivacyProvider {
+    func peers(query: String, include: [TelegramPrivacyPeerID], receive: @escaping @MainActor (Result<TelegramPrivacyPeerDirectory, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest {
+        receive(.failure(.unavailable)); return UnavailablePrivacyRequest()
+    }
+}
+@MainActor private final class UnavailablePrivacyRequest: TelegramPrivacyRequest { func cancel() {} }
 extension TelegramPrivacySnapshot {
     var isValid: Bool {
         accountID != 0 && Set(settings.keys) == Set(TelegramPrivacyKind.allCases)
@@ -157,15 +177,17 @@ extension TelegramPrivacySnapshot {
         if mutationStatus == .saving || mutationStatus == .uncertain { return mutationStatus }
         return mutationKind == kind ? mutationStatus : .idle
     }
+    public let peerDirectory = TelegramPrivacyPeerDirectoryController()
     public init() {}
     isolated deinit { read?.cancel(); write?.cancel(); readDeadline?.cancel(); writeDeadline?.cancel() }
-    func bind(_ provider: (any TelegramPrivacyProvider)?) { close(); self.provider = provider }
+    func bind(_ provider: (any TelegramPrivacyProvider)?) { close(); self.provider = provider; peerDirectory.bind(provider) }
     public func open() {
         close()
         if let id = provider?.accountID, uncertainAccounts.contains(id) { mutationStatus = .uncertain }
         load(reconcile: false)
     }
     public func close() {
+        peerDirectory.close()
         if mutationStatus == .saving, let id = provider?.accountID { uncertainAccounts.insert(id) }
         contextID = UUID(); readID = nil; writeID = nil
         read?.cancel(); read = nil; write?.cancel(); write = nil
@@ -174,6 +196,7 @@ extension TelegramPrivacySnapshot {
     }
     public func refresh() { guard mutationStatus != .saving else { return }; load(reconcile: true) }
     private func load(reconcile: Bool) {
+        peerDirectory.close()
         contextID = UUID(); readID = nil; read?.cancel(); read = nil; readDeadline?.cancel(); readDeadline = nil
         guard let provider else { snapshot = nil; status = .failed; return }
         let token = UUID(), context = contextID, accountID = provider.accountID
@@ -201,7 +224,7 @@ extension TelegramPrivacySnapshot {
     }
     @discardableResult public func apply(_ change: TelegramPrivacyChange, contextID: UUID) -> Bool {
         guard self.contextID == contextID, status == .ready, mutationStatus != .saving, mutationStatus != .uncertain,
-              let provider, let snapshot, snapshot.accountID == provider.accountID, snapshot.settings[change.expected.kind] == change.expected, change.expected.replacingAudience(change.audience) != nil else { return false }
+              let provider, let snapshot, snapshot.accountID == provider.accountID, snapshot.settings[change.expected.kind] == change.expected, change.replacement != nil else { return false }
         let token = UUID(); writeID = token; mutationKind = change.expected.kind; mutationStatus = .saving
         writeDeadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(30)) } catch { return }

@@ -6,10 +6,10 @@ import SwiftSignalKit
 func telegramPerformPrivacyChange(accountID: Int64, expectedAccountID: Int64, change: TelegramPrivacyChange,
     load: () -> Signal<TelegramPrivacySetting, TelegramPrivacyError>,
     perform: @escaping (TelegramPrivacySetting) -> Signal<TelegramPrivacySetting, TelegramPrivacyError>) -> Signal<TelegramPrivacySetting, TelegramPrivacyError> {
-    guard accountID == expectedAccountID, change.expected.replacingAudience(change.audience) != nil else { return .fail(.changed) }
+    guard accountID == expectedAccountID, change.replacement != nil else { return .fail(.changed) }
     let signal = load() |> take(1) |> mapToSignal { current -> Signal<TelegramPrivacySetting, TelegramPrivacyError> in
         guard telegramAdmitPrivacyChange(accountID: accountID, expectedAccountID: expectedAccountID, current: current, change: change),
-              let sent = current.replacingAudience(change.audience) else { return .fail(.changed) }
+              let sent = change.replacement else { return .fail(.changed) }
         return perform(sent) |> take(1) |> mapToSignal { ack -> Signal<TelegramPrivacySetting, TelegramPrivacyError> in
             guard ack.kind == sent.kind, ack.isValid, ack.audience == sent.audience,
                   ack.rules.filter({ !$0.isBase }) == sent.rules.filter({ !$0.isBase }) else { return .fail(.uncertain) }
@@ -75,14 +75,18 @@ private final class PrivacyBackend {
                   case let .privacyRules(_, _, users) = response, let hashes = telegramPrivacyUserHashes(users) else { return .fail(.unavailable) }
             return telegramPerformPrivacyChange(accountID: account.peerId.toInt64(), expectedAccountID: expectedAccountID, change: change,
                 load: { .single(fresh) }, perform: { sent in
-                    guard let rpc = telegramPrivacyRPC(sent, userHashes: hashes, selfID: account.peerId.id._internalGetInt64Value()) else { return .fail(.unavailable) }
-                    // No application retry or flood-wait wrapper; the controller owns the deadline.
-                    return account.network.request(rpc, automaticFloodWait: false)
-                        |> mapError { (400..<500).contains($0.errorCode) ? TelegramPrivacyError.failed : .uncertain }
-                        |> mapToSignal { response -> Signal<TelegramPrivacySetting, TelegramPrivacyError> in
-                            guard let ack = telegramPrivacySetting(response, kind: sent.kind) else { return .fail(.uncertain) }
-                            return .single(ack)
-                        }
+                    return account.postbox.transaction { transaction in
+                        telegramPrivacyResolveAdditions(transaction: transaction, current: fresh, sent: sent, freshHashes: hashes, selfID: account.peerId.id._internalGetInt64Value())
+                    } |> castError(TelegramPrivacyError.self) |> mapToSignal { resolved -> Signal<TelegramPrivacySetting, TelegramPrivacyError> in
+                        guard let resolved, let rpc = telegramPrivacyRPC(sent, userHashes: resolved, selfID: account.peerId.id._internalGetInt64Value()) else { return .fail(.unavailable) }
+                        // No application retry or flood-wait wrapper; the controller owns the deadline.
+                        return account.network.request(rpc, automaticFloodWait: false)
+                            |> mapError { (400..<500).contains($0.errorCode) ? TelegramPrivacyError.failed : .uncertain }
+                            |> mapToSignal { response -> Signal<TelegramPrivacySetting, TelegramPrivacyError> in
+                                guard let ack = telegramPrivacySetting(response, kind: sent.kind) else { return .fail(.uncertain) }
+                                return .single(ack)
+                            }
+                    }
                 })
         }
         return telegramPrivacyAcknowledgement(signal)
@@ -97,6 +101,11 @@ private final class PrivacyBackend {
         request.disposable.set((backend.load() |> deliverOnMainQueue).start(
             next: { value in MainActor.assumeIsolated { receive(.success(value)) } },
             error: { error in MainActor.assumeIsolated { receive(.failure(error)) } }))
+        return request
+    }
+    func peers(query: String, include: [TelegramPrivacyPeerID], receive: @escaping @MainActor (Result<TelegramPrivacyPeerDirectory, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest {
+        let request = PrivacyRequest(), account = backend.account
+        request.disposable.set((telegramPrivacySearch(postbox: account.postbox, accountID: accountID, selfID: account.peerId.id._internalGetInt64Value(), query: query, include: include) |> deliverOnMainQueue).start(next: { value in MainActor.assumeIsolated { receive(.success(value)) } }))
         return request
     }
     func apply(_ change: TelegramPrivacyChange, expectedAccountID: Int64, receive: @escaping @MainActor (Result<Void, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest {

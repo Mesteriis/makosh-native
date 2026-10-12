@@ -28,6 +28,13 @@ private struct PrivacyDraft: Identifiable {
     let context: UUID
 }
 
+private struct PrivacyExceptionDraft: Identifiable {
+    let id = UUID()
+    let side: TelegramPrivacyExceptionSide
+    let basis: TelegramPrivacyEditorBasis
+    let staged: TelegramPrivacySetting
+}
+
 struct TelegramPrivacyView: View {
     @ObservedObject var controller: TelegramPrivacyController
     let synthetic: Bool
@@ -69,20 +76,28 @@ private struct TelegramPrivacyDetailView: View {
     @State private var confirmation: PrivacyDraft?
     @State private var related: TelegramPrivacyKind?
     @State private var validationFailed = false
+    @State private var exceptionDraft: PrivacyExceptionDraft?
+    private var activeDraft: PrivacyDraft? { draft?.context == controller.contextID ? draft : nil }
     private var enabled: Bool { controller.status == .ready && controller.mutationStatus != .saving && controller.mutationStatus != .uncertain }
     var body: some View {
         VStack(spacing: 0) {
             HStack { Text(kind.title).font(.headline); Spacer(); Button("Готово", action: close).accessibilityIdentifier("telegram.privacy.detail.close") }.padding()
             Divider()
-            Text(validationFailed ? "Настройки изменились. Обновите их и подтвердите заново." : draft != nil && enabled ? "Изменения ещё не сохранены" : privacyStatus(controller, kind: kind))
+            Text(validationFailed ? "Настройки изменились. Обновите их и подтвердите заново." : activeDraft != nil && enabled ? "Изменения ещё не сохранены" : privacyStatus(controller, kind: kind))
                 .font(.caption).foregroundStyle(.secondary).padding(10).accessibilityIdentifier("telegram.privacy.status")
             if let current = controller.snapshot?.settings[kind] {
+                let basis = TelegramPrivacyEditorBasis(controller: controller, kind: kind)
                 Form {
                     Section(kind.question) {
                         if let audience = current.audience {
-                            Picker(kind.question, selection: Binding(get: { draft?.change.audience ?? audience }, set: { value in
+                            Picker(kind.question, selection: Binding(get: { activeDraft?.change.audience ?? audience }, set: { value in
                                 validationFailed = false
-                                draft = current.replacingAudience(value) == nil ? nil : .init(change: .init(expected: current, audience: value), context: controller.contextID)
+                                let staged = activeDraft?.change.replacement ?? current
+                                let next = staged.audience == value ? staged : staged.replacingAudience(value) ?? staged
+                                guard let basis, basis.isCurrent(in: controller) else { validationFailed = true; return }
+                                if next == current { draft = nil }
+                                else if let change = basis.change(to: next, controller: controller) { draft = .init(change: change, context: basis.contextID) }
+                                else { validationFailed = true }
                             })) {
                                 ForEach(TelegramPrivacyAudience.allCases.filter { kind != .phoneDiscovery || $0 != .nobody }) { value in Text(value.title).tag(value).accessibilityIdentifier("telegram.privacy.audience.\(value.rawValue)") }
                             }.labelsHidden().pickerStyle(.radioGroup).disabled(!enabled).accessibilityIdentifier("telegram.privacy.audience")
@@ -91,22 +106,39 @@ private struct TelegramPrivacyDetailView: View {
                         if kind == .forwards { Text("Это правило управляет ссылкой на профиль при пересылке сообщения.").font(.caption).foregroundStyle(.secondary) }
                         if kind == .callP2P { Text("При прямом соединении собеседник может видеть ваш IP-адрес. Если оно запрещено, звонок проходит через серверы Telegram.").font(.caption).foregroundStyle(.secondary) }
                     }
-                    Section("Существующие исключения") {
-                        let labels = exceptionLabels(current.rules)
-                        if labels.isEmpty { Text("Нет исключений").foregroundStyle(.secondary) }
+                    Section("Исключения") {
+                        let staged = activeDraft?.change.replacement ?? current
+                        if staged.audience != nil && kind != .phoneDiscovery {
+                            if staged.audience != .nobody { exceptionRow(.deny, setting: staged, basis: basis) }
+                            if staged.audience != .everybody { exceptionRow(.allow, setting: staged, basis: basis) }
+                        }
+                        let labels = exceptionLabels(staged.audience == nil || kind == .phoneDiscovery ? staged.rules : staged.rules.filter { $0 == .closeFriends || $0 == .premium || $0 == .bots || $0 == .denyBots || $0 == .denyContacts })
                         ForEach(Array(labels.enumerated()), id: \.offset) { _, label in Text(label) }
-                        Text("Исключения сохраняются при смене основного правила.").font(.caption).foregroundStyle(.secondary)
+                        Text("Остальные правила сохраняются. Выбор человека или группы переносит их из противоположного списка.").font(.caption).foregroundStyle(.secondary)
                     }
                     if kind == .phoneNumber { relatedRow(.phoneDiscovery) }
                     if kind == .voiceCalls { relatedRow(.callP2P) }
                     Section {
-                        Button("Сохранить") { confirmation = draft }.disabled(!enabled || draft == nil).accessibilityIdentifier("telegram.privacy.save")
-                        if draft != nil { Button("Отменить изменения") { draft = nil }.accessibilityIdentifier("telegram.privacy.discardDraft") }
+                        Button("Сохранить") { confirmation = activeDraft }.disabled(!enabled || activeDraft == nil).accessibilityIdentifier("telegram.privacy.save")
+                        if activeDraft != nil { Button("Отменить изменения") { draft = nil }.accessibilityIdentifier("telegram.privacy.discardDraft") }
                     }
                 }.formStyle(.grouped)
             } else { ContentUnavailableView("Настройки недоступны", systemImage: "hand.raised") }
         }.frame(width: 520, height: 630)
-        .onChange(of: controller.contextID) { _, _ in draft = nil; confirmation = nil }
+        .onChange(of: controller.contextID) { _, _ in draft = nil; confirmation = nil; exceptionDraft = nil }
+        .sheet(item: $exceptionDraft) { request in
+            TelegramPrivacyExceptionEditor(directory: controller.peerDirectory, side: request.side, setting: request.staged, apply: { peers in
+                guard request.basis.isCurrent(in: controller) else { return false }
+                guard Set(peers) != Set(request.staged.exceptionPeers(request.side)) else { return true }
+                guard let next = request.staged.replacingExceptions(request.side, peers: peers) else { return false }
+                if next == request.basis.setting { draft = nil }
+                else {
+                    guard let change = request.basis.change(to: next, controller: controller) else { return false }
+                    draft = .init(change: change, context: request.basis.contextID)
+                }
+                return true
+            }, close: { exceptionDraft = nil })
+        }
         .sheet(item: $related) { kind in TelegramPrivacyDetailView(controller: controller, kind: kind, synthetic: synthetic) { related = nil } }
         .alert("Изменить приватность?", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), presenting: confirmation) { request in
             Button("Отмена", role: .cancel) { confirmation = nil }
@@ -114,13 +146,21 @@ private struct TelegramPrivacyDetailView: View {
                 let accepted = controller.apply(request.change, contextID: request.context)
                 validationFailed = !accepted; if accepted { draft = nil }; confirmation = nil
             }
-        } message: { request in Text((synthetic ? "Симуляция. " : "") + "\(kind.title): \(request.change.audience.title). Существующие исключения сохранятся.") }
+        } message: { request in Text((synthetic ? "Симуляция. " : "") + "\(kind.title): \(request.change.audience.title). Всегда разрешено: \(request.change.replacement?.exceptionPeers(.allow).count ?? 0); никогда: \(request.change.replacement?.exceptionPeers(.deny).count ?? 0). Остальные правила сохранятся.") }
+    }
+    private func exceptionRow(_ side: TelegramPrivacyExceptionSide, setting: TelegramPrivacySetting, basis: TelegramPrivacyEditorBasis?) -> some View {
+        Button {
+            guard let basis, basis.isCurrent(in: controller) else { validationFailed = true; return }
+            exceptionDraft = .init(side: side, basis: basis, staged: setting)
+        } label: {
+            HStack { Text(side == .allow ? "Всегда разрешать" : "Никогда не разрешать"); Spacer(); Text("\(setting.exceptionPeers(side).count)").foregroundStyle(.secondary); Image(systemName: "chevron.right") }
+        }.buttonStyle(.plain).disabled(!enabled).accessibilityIdentifier("telegram.privacy.exceptions.\(side.rawValue)")
     }
     private func relatedRow(_ value: TelegramPrivacyKind) -> some View {
         Section {
             Button { related = value } label: { HStack { Text(value.title); Spacer(); Text(controller.snapshot?.settings[value]?.audience?.title ?? "Особое правило").foregroundStyle(.secondary); Image(systemName: "chevron.right") } }
-                .buttonStyle(.plain).disabled(!enabled || draft != nil).accessibilityIdentifier("telegram.privacy.open.\(value.rawValue)")
-            if draft != nil { Text("Сохраните или отмените изменения перед переходом.").font(.caption).foregroundStyle(.secondary) }
+                .buttonStyle(.plain).disabled(!enabled || activeDraft != nil).accessibilityIdentifier("telegram.privacy.open.\(value.rawValue)")
+            if activeDraft != nil { Text("Сохраните или отмените изменения перед переходом.").font(.caption).foregroundStyle(.secondary) }
         }
     }
 }

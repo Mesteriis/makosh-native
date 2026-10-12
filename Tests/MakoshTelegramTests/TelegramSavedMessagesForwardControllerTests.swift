@@ -89,7 +89,10 @@ import XCTest
         XCTAssertEqual(controller.phase, .validating); XCTAssertTrue(controller.isBusy)
         XCTAssertEqual(provider.leases.last?.cancelled, 0)
         provider.events[0](.committing)
-        try await Task.sleep(for: .milliseconds(120))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while controller.phase == .committing && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         XCTAssertEqual(controller.phase, .uncertain); XCTAssertEqual(provider.leases.last?.cancelled, 1)
         provider.events[0](.queued); XCTAssertEqual(controller.phase, .uncertain)
     }

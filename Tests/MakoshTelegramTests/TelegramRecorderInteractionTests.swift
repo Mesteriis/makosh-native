@@ -9,7 +9,7 @@ import XCTest
         let fixture = RecorderButtonFixture()
         defer { fixture.close() }
         fixture.button.mouseDown(with: fixture.event(.leftMouseDown, at: fixture.center))
-        try await Task.sleep(for: .milliseconds(400))
+        try await fixture.waitForStart()
         XCTAssertEqual(fixture.starts, 1)
         XCTAssertEqual(fixture.window.childWindows?.count, 2)
         XCTAssertEqual(fixture.window.childWindows?.map(\.frame.size).filter { $0 == NSSize(width: 120, height: 120) }.count, 1)
@@ -22,7 +22,7 @@ import XCTest
         let fixture = RecorderButtonFixture()
         defer { fixture.close() }
         fixture.button.mouseDown(with: fixture.event(.leftMouseDown, at: fixture.center))
-        try await Task.sleep(for: .milliseconds(400))
+        try await fixture.waitForStart()
         // 40pt is outside the32pt composer button and inside the120pt overlay.
         fixture.button.mouseUp(with: fixture.event(.leftMouseUp,
             at: fixture.center.applying(.init(translationX: 40, y: 0))))
@@ -33,7 +33,7 @@ import XCTest
         let fixture = RecorderButtonFixture()
         defer { fixture.close() }
         fixture.button.mouseDown(with: fixture.event(.leftMouseDown, at: fixture.center))
-        try await Task.sleep(for: .milliseconds(400))
+        try await fixture.waitForStart()
         let moved = fixture.center.applying(.init(translationX: 40, y: 70))
         fixture.button.mouseDragged(with: fixture.event(.leftMouseDragged, at: moved))
         XCTAssertEqual(fixture.movements, [70])
@@ -72,7 +72,7 @@ import XCTest
         fixture.button.send = { sends += 1 }
         fixture.button.requestCancel = { discards += 1 }
         fixture.button.mouseDown(with: fixture.event(.leftMouseDown, at: fixture.center))
-        try await Task.sleep(for: .milliseconds(400))
+        try await fixture.waitForStart()
         fixture.button.locked = true
         fixture.button.updateRecordingPresentation(phase: .locked, roundVideo: false,
             level: 0, canUseOneTime: false, isOneTime: false, toggleOneTime: {})
@@ -93,7 +93,7 @@ import XCTest
         let fixture = RecorderButtonFixture()
         defer { fixture.close() }
         fixture.button.mouseDown(with: fixture.event(.leftMouseDown, at: fixture.center))
-        try await Task.sleep(for: .milliseconds(400))
+        try await fixture.waitForStart()
         XCTAssertEqual(fixture.window.childWindows?.count, 2)
         fixture.button.updateContext(UUID())
         XCTAssertTrue(fixture.window.childWindows?.isEmpty ?? true)
@@ -127,6 +127,15 @@ import XCTest
             windowNumber: window.windowNumber, context: nil, eventNumber: 0,
             clickCount: 1, pressure: 1)!
     }
+    func waitForStart(file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while starts == 0 && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertEqual(starts, 1, "Held capture must start before pointer assertions", file: file, line: line)
+        guard starts == 1 else { throw StartFailure.deadline }
+    }
+    private enum StartFailure: Error { case deadline }
     func close() {
         button.invalidateHold()
         button.removeFromSuperview()

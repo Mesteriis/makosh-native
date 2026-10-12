@@ -100,7 +100,10 @@ import XCTest
         XCTAssertEqual(controller.phase, .committing); XCTAssertNil(controller.error)
         XCTAssertEqual(provider.leases.last?.cancelled, 0)
         provider.events[0](.approvalCompleted)
-        try await Task.sleep(for: .milliseconds(120))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while controller.phase == .committing && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         XCTAssertEqual(controller.phase, .uncertain); XCTAssertFalse(controller.submit(value))
         provider.events[0](.accepted(.init(accountID: 1, chatID: 42, text: "")))
         XCTAssertEqual(controller.phase, .idle)

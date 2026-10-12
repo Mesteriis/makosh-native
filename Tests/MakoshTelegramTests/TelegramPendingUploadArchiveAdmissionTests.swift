@@ -1,0 +1,192 @@
+import XCTest
+import Foundation
+import MakoshCore
+import Postbox
+import SwiftSignalKit
+@testable import MakoshTelegram
+
+@MainActor final class TelegramPendingUploadArchiveAdmissionTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches a native write dropping canonical state, or a retained retry creating another revision.
+    func testNativeInstallPreservesResourcesAndExactRetainedRetry() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let (current, candidate) = try await makeCandidate(fixture, box: box)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let token = admission(current)
+        let first = await install(repository, candidate, current.revision, token)
+        guard case .success = first else { return XCTFail("A valid Archive install was refused: \(first)") }
+        let installed = try await sourceFactsLoad(fixture.session(box))
+        XCTAssertEqual(installed, candidate)
+        XCTAssertEqual(installed.schemaVersion, 16)
+        XCTAssertEqual(installed.items, current.items)
+        XCTAssertEqual(installed.captionInput, current.captionInput)
+        XCTAssertEqual(installed.originalDraft, current.originalDraft)
+        XCTAssertEqual(installed.replyTarget, current.replyTarget)
+        XCTAssertFalse(installed.isGrouped); XCTAssertFalse(installed.captionAboveMedia); XCTAssertFalse(installed.mediaSpoiler)
+        let retry = await install(repository, candidate, current.revision, token)
+        guard case .success = retry else { return XCTFail("An exact retained retry was refused: \(retry)") }
+        let repeated = try await sourceFactsLoad(fixture.session(box))
+        XCTAssertEqual(repeated.revision, candidate.revision)
+        for invalid in [
+            TelegramPendingUploadArchiveAdmission(accountID: 2, chatID: 42, preparationID: current.id, expectedRevision: current.revision, generation: UUID()),
+            TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 43, preparationID: current.id, expectedRevision: current.revision, generation: UUID()),
+            TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 42, preparationID: UUID(), expectedRevision: current.revision, generation: UUID()),
+            TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 42, preparationID: current.id, expectedRevision: UUID(), generation: UUID())
+        ] { assertConflict(await install(repository, candidate, current.revision, invalid)) }
+        token.cancel()
+        assertConflict(await install(repository, candidate, current.revision, token))
+        let afterCancel = try await sourceFactsLoad(fixture.session(box))
+        XCTAssertEqual(afterCancel, candidate)
+    }
+
+    // Catches cancellation checked only on MainActor, before a write waits in the native queue.
+    func testCancellationWhileNativeQueueIsHeldLeavesOldPointer() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let (current, candidate) = try await makeCandidate(fixture, box: box)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1), token = admission(current)
+        let gate = ArchiveAdmissionQueueGate()
+        let held = holdArchiveAdmissionQueue(box, gate: gate).start()
+        defer { gate.release.signal(); held.dispose() }
+        let entered = await Task.detached { gate.waitForEntry() }.value
+        XCTAssertTrue(entered, "Native transaction did not enter the test gate")
+        guard entered else { return }
+        let completed = expectation(description: "guarded native completion")
+        var result: Result<Void, TelegramPendingUploadPersistenceError>?
+        repository.installArchive(candidate, expectedRevision: current.revision, admission: token) {
+            result = $0; completed.fulfill()
+        }
+        XCTAssertNil(result, "A native install must wait for its transaction")
+        token.cancel(); gate.release.signal()
+        await fulfillment(of: [completed], timeout: 20)
+        assertConflict(try XCTUnwrap(result))
+        let after = try await sourceFactsLoad(fixture.session(box))
+        XCTAssertEqual(after, current)
+    }
+
+    // Catches an obsolete Archive operation overwriting a later caption or submission state.
+    func testStaleRevisionAndNonPreparedPointerCannotBeOverwritten() async throws {
+        for disposition in [TelegramPendingUploadDisposition.prepared, .submissionStarted, .cancelled] {
+            let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+            let (current, candidate) = try await makeCandidate(fixture, box: box)
+            let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            let changed = current.updating(captionInput: try .init(formattedText: .init(text: "later caption")),
+                captionAboveMedia: false, mediaSpoiler: false, disposition: disposition)
+            try await save(repository, changed, current.revision)
+            assertConflict(await install(repository, candidate, current.revision, admission(current)))
+            if disposition != .prepared {
+                let terminalCandidate = try TelegramPendingUploadDraft(id: changed.id, accountID: 1, chatID: 42,
+                    title: changed.title, captionInput: changed.captionInput, originalDraft: changed.originalDraft,
+                    replyTarget: changed.replyTarget, items: changed.items, isGrouped: false,
+                    presentation: .archive, archive: candidate.archive)
+                assertConflict(await install(repository, terminalCandidate, changed.revision, admission(changed)))
+            }
+            let after = try await sourceFactsLoad(fixture.session(box))
+            XCTAssertEqual(after, changed)
+        }
+    }
+
+    // Catches String's canonical equality accepting different opaque UTF8 metadata during CAS.
+    func testNativeInstallCannotSubstituteCanonicalEquivalentTitleOrCaption() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let (current, candidate) = try await makeCandidate(fixture, box: box, title: "Cafe\u{301}")
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let forged = try TelegramPendingUploadDraft(id: candidate.id, revision: candidate.revision,
+            accountID: 1, chatID: 42, title: "Caf\u{e9}", captionInput: candidate.captionInput,
+            originalDraft: candidate.originalDraft, replyTarget: candidate.replyTarget, items: candidate.items,
+            isGrouped: false, presentation: .archive, archive: candidate.archive)
+        XCTAssertTrue(forged.isValid)
+        XCTAssertEqual(forged.title, current.title)
+        XCTAssertNotEqual(Data(forged.title.utf8), Data(current.title.utf8))
+        assertConflict(await install(repository, forged, current.revision, admission(current)))
+        let replaced = try TelegramPendingUploadDraft(id: candidate.id, revision: UUID(), accountID: 1,
+            chatID: 42, title: current.title, captionInput: try .init(formattedText: .init(text: "substituted caption")),
+            originalDraft: candidate.originalDraft, replyTarget: candidate.replyTarget, items: candidate.items,
+            isGrouped: false, presentation: .archive, archive: candidate.archive)
+        XCTAssertTrue(replaced.isValid)
+        assertConflict(await install(repository, replaced, current.revision, admission(current)))
+        let after = try await sourceFactsLoad(fixture.session(box))
+        XCTAssertEqual(after.revision, current.revision)
+        XCTAssertEqual(Data(after.title.utf8), Data(current.title.utf8))
+    }
+
+    // Catches a token escaping its account/chat/preparation/revision or an invalid generation.
+    func testAdmissionBindsScopeAndRejectsCancellationOrZeroGeneration() throws {
+        let preparation = UUID(), revision = UUID(), generation = UUID()
+        let token = TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 42,
+            preparationID: preparation, expectedRevision: revision, generation: generation)
+        XCTAssertNoThrow(try token.check(accountID: 1, chatID: 42, preparationID: preparation, expectedRevision: revision))
+        for (account, chat, preparationID, expectedRevision) in [(Int64(2), Int64(42), preparation, revision),
+            (1, 43, preparation, revision), (1, 42, UUID(), revision), (1, 42, preparation, UUID())] {
+            XCTAssertThrowsError(try token.check(accountID: account, chatID: chat,
+                preparationID: preparationID, expectedRevision: expectedRevision)) {
+                XCTAssertEqual($0 as? TelegramPendingUploadPersistenceError, .conflict)
+            }
+        }
+        let invalid = TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 42,
+            preparationID: preparation, expectedRevision: revision, generation: TelegramPendingUploadDraft.zeroUUID)
+        XCTAssertThrowsError(try invalid.check(accountID: 1, chatID: 42, preparationID: preparation, expectedRevision: revision)) {
+            XCTAssertEqual($0 as? TelegramPendingUploadPersistenceError, .conflict)
+        }
+        token.cancel()
+        XCTAssertThrowsError(try token.check(accountID: 1, chatID: 42, preparationID: preparation, expectedRevision: revision)) {
+            XCTAssertTrue($0 is CancellationError)
+        }
+    }
+
+    private func makeCandidate(_ fixture: SourceFactsTestArchive, box: Postbox, title: String = "Synthetic admission")
+        async throws -> (TelegramPendingUploadDraft, TelegramPendingUploadDraft) {
+        let items = [try await sourceFactsDocument(fixture, name: "first.txt", text: "first native admission"),
+                     try await sourceFactsDocument(fixture, name: ".second.txt", text: "second native admission")]
+        defer { items.forEach { try? $0.discard() } }
+        let store = fixture.session(box), preparation = UUID()
+        try await store.prepare(preparationID: preparation, items: items, isGrouped: false, presentation: .file,
+            target: .init(accountID: 1, chatID: 42, title: title),
+            captionInput: try .init(formattedText: .init(text: "original caption")), originalDraft: nil)
+        let current = try await sourceFactsLoad(store)
+        let sources = items.map { TelegramUploadArchiveIO.Source(itemID: $0.id, file: $0.rawSource) }
+        let zip = try await TelegramUploadArchiveIO.prepare(sources)
+        defer { try? TelegramUploadFileIO.discard(zip.file) }
+        let record = try await TelegramPendingUploadFiles(repository: fixture.archive).saveArchive(zip, sources: sources,
+            archiveID: zip.file.id, accountID: 1, chatID: 42, preparationID: preparation)
+        let descriptor = TelegramPendingUploadArchive(id: zip.file.id, file: record,
+            members: zip.members.map { .init(itemID: $0.itemID, entryName: $0.entryName) })
+        let candidate = try TelegramPendingUploadDraft(id: current.id, accountID: 1, chatID: 42,
+            title: current.title, captionInput: current.captionInput, originalDraft: current.originalDraft,
+            replyTarget: current.replyTarget, items: current.items, isGrouped: false, presentation: .archive, archive: descriptor)
+        XCTAssertTrue(current.isValid); XCTAssertTrue(candidate.isValid)
+        return (current, candidate)
+    }
+
+    private func admission(_ draft: TelegramPendingUploadDraft) -> TelegramPendingUploadArchiveAdmission {
+        .init(accountID: draft.accountID, chatID: draft.chatID, preparationID: draft.id,
+              expectedRevision: draft.revision, generation: UUID())
+    }
+    private func install(_ repository: TelegramPostboxPendingUploadRepository, _ draft: TelegramPendingUploadDraft,
+                         _ expected: UUID, _ token: TelegramPendingUploadArchiveAdmission)
+        async -> Result<Void, TelegramPendingUploadPersistenceError> {
+        await withCheckedContinuation { continuation in
+            repository.installArchive(draft, expectedRevision: expected, admission: token) { continuation.resume(returning: $0) }
+        }
+    }
+    private func save(_ repository: TelegramPostboxPendingUploadRepository, _ draft: TelegramPendingUploadDraft,
+                      _ expected: UUID) async throws {
+        let result: Result<Void, TelegramPendingUploadPersistenceError> = await withCheckedContinuation { continuation in
+            repository.save(draft, expectedRevision: expected) { continuation.resume(returning: $0) }
+        }
+        try result.get()
+    }
+    private func assertConflict(_ result: Result<Void, TelegramPendingUploadPersistenceError>, file: StaticString = #filePath, line: UInt = #line) {
+        guard case .failure(.conflict) = result else { return XCTFail("Expected conflict, got \(result)", file: file, line: line) }
+    }
+}
+
+private final class ArchiveAdmissionQueueGate: @unchecked Sendable {
+    let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+    func waitForEntry() -> Bool { entered.wait(timeout: .now() + 10) == .success }
+}
+// No MainActor closure crosses into the engine's independent native transaction queue.
+private nonisolated func holdArchiveAdmissionQueue(_ box: Postbox, gate: ArchiveAdmissionQueueGate) -> Signal<Void, NoError> {
+    box.transaction { _ in
+        gate.entered.signal()
+        _ = gate.release.wait(timeout: .now() + 20)
+    }
+}

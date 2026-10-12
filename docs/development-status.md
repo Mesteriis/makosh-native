@@ -1,6 +1,63 @@
 # Development status — 2026-10-12
 
-## Current stage: Archive schema and complete recovery foundation
+## Current stage: authenticated Archive pointer installation
+
+The dedicated native Postbox operation binds cancellation/scope/revision to the
+same synchronous compare/set admission. It preserves canonical metadata by
+reconstructing from the authoritative pointer and comparing encoded JSON bytes.
+Exact retained candidates can replay only while admitted. Cancellation before a
+queued transaction refuses it; cancellation after admission cannot undo it.
+The caller owns invalidating each generation token on context changes.
+
+Root compiled RED:5 tests,10 assertion failures,0 unexpected. Two prior test
+compile errors and an initial behavioral run with one thrown missing-feature
+error remain separate. Focused native/Postbox/presentation recovery GREEN:
+62 XCTest,0 failures;45 Python tests. Three existing recompiled-test warnings
+and upstream t19 diagnostics are retained. A terminal-state test also uses the
+exact current revision and passes in the integration rerun below.
+
+Session tests compiled RED:8 tests,10 assertion failures,0 unexpected. Minimal
+installation authenticates an already durable ZIP plus all canonical/raw files,
+discards temporary exports, and changes only an exact prepared schema15 pointer
+to16. It retains raw rich input/selection, original draft/reply/title and canonical
+records without capture; Archive clears grouping, placement and spoiler.
+Focused install/native/bundle/session/source-facts GREEN:28 XCTest,0 failures;
+45 Python tests, no compile warnings. Both policies, encrypted reopen after
+source deletion, forged records/members, stale CAS, suspended-read cancellation
+and cancellation after committed success are covered. OFF verifies no new
+objects/events, no recapture and no promotion after enable.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,283 XCTest (1,207 Telegram +76 core),1 skipped,0 failures;45 Python tests**.
+Warm gates emit no compile warnings;483 existing upstream t19 diagnostics remain
+without test failures. Strict deep signature, system libz linkage and bundled
+notice equality pass. All452 source/test/dependency/script/license/reference-lock
+files and11 review copies remain frozen through gates. Project v6 refresh/check
+exit0:469 files,431/431 classified code. Unchanged reference579cebbf and engine
+a24bbe45 checks pass; active own/reference results are source-confirmed.
+
+Bounded final source review reports no actionable findings. Root verifies the
+implementation delivery independently:
+307 integrity checks,32 original worker commands plus2 close/reconcile commands,
+4 nonzero and4 explicit skips,141 artifact files. An initial parent verification
+used the wrong artifact-index
+filename and failed; the corrected verification passes without overwriting that
+failure or either original/final index. Requested route is inherited; observed
+provider/model/usage/internal transfer remain unknown, with no quorum.
+Final review verification passes884 integrity checks:37 original read-only worker
+commands plus13 delegated original RED/GREEN/XERJ invocations,6 original nonzero,
+2 explicit skips and214 artifact files. The private collector's wrong-log-path
+failure remains separate from its corrected stdout/stderr collection. Runtime
+gates belong to root; review does not claim a separate build/test/UI rerun.
+Both hosted12198194 CI runs now pass; new-head hosted verification is separate.
+
+A timeout is not proof of non-commit; only exact retained candidates can replay
+at the native repository. There is no visible screen change in this slice;
+actual Archive UI/native send validation remains deferred until connected.
+Capture-receipt retention/lost ACK, controller/model adoption, native ZIP sending
+and actual existing-window Archive UI remain open. Full migration stays active.
+
+## Previous stage: Archive schema and complete recovery foundation
 
 Strict schema16 retains ordered canonical items plus a versioned ZIP descriptor,
 stable item/name bindings and an outgoing scoped record. It requires complete raw

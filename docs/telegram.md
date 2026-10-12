@@ -1915,9 +1915,26 @@ ZIP capture reuses the existing outgoing-file policy: S3 OFF forbids every new
 S3 copy, including preparation, and encrypted local records never promote after
 enable. Restoration reads existing immutable records without recapture. Generic
 mode/prepare/plan entry points refuse Archive before changing state or copying
-files. The dedicated install/generation CAS, controller/model bundle adoption,
+files. A dedicated `installArchive` authenticates an already durable ZIP and all
+canonical/raw resources, discards authentication stages, then upgrades the exact
+prepared schema15 pointer to16. Rich raw input/selection, original draft, reply,
+title and canonical records remain byte-bound; Archive clears grouping, caption
+placement and spoiler. It does not capture files or create new storage records.
+
+Its per-attempt admission token binds account/chat/preparation/revision and a
+nonzero generation. The owner must cancel it on context invalidation. A lock
+covers the bounded synchronous Postbox read/compare/set, so cancellation before
+native admission refuses a queued write. Cancellation after admission cannot
+undo it; a successful completion returns the committed candidate. Ordinary
+serial writes retain their previous behavior. The native repository can replay
+an exact retained candidate, including its revision and encoded JSON, while its
+token remains active. A fresh Session call after a lost ACK is not that retry.
+Completion means engine transaction completion, not an fsync promise.
+
+Controller/model adoption, capture-receipt retention across pointer failure,
 one native ZIP resource/complete receipt and existing-window Archive UI remain
-open; existing ordinary preparations still use schema15.
+open; ordinary preparations still use schema15. Capture and pointer installation
+are separate transactions; failed installation never purges immutable records.
 
 ### Versioned caption projection
 

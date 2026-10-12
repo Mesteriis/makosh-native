@@ -16,6 +16,17 @@ internal enum TelegramPendingUploadPersistenceError: Error, LocalizedError, Equa
     var accountID: Int64 { get }
     func load(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable
     func save(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID?, completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void)
+    func installArchive(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID,
+                        admission: TelegramPendingUploadArchiveAdmission,
+                        completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void)
+}
+extension TelegramPendingUploadRepository {
+    func installArchive(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID,
+                        admission: TelegramPendingUploadArchiveAdmission,
+                        completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
+        // An older adapter must not turn a guarded install into an ordinary save.
+        completion(.failure(.incompatibleData))
+    }
 }
 private let pendingUploadMarker = Data("Makosh.PendingUpload.JSON.v1\n".utf8)
 // A long owned namespace plus fixed-width account/chat fields, never a native
@@ -57,11 +68,46 @@ nonisolated func telegramPendingUploadWrite(transaction: Transaction, accountID:
     transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: pendingUploadMarker + encoded))
     return .success(())
 }
+nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, accountID: Int64,
+    draft: TelegramPendingUploadDraft, expectedRevision: UUID, admission: TelegramPendingUploadArchiveAdmission)
+    -> Result<Void, TelegramPendingUploadPersistenceError> {
+    admission.withAdmission(accountID: accountID, chatID: draft.chatID, preparationID: draft.id, expectedRevision: expectedRevision) {
+        guard draft.isValid, draft.accountID == accountID, draft.schemaVersion == 16,
+              draft.presentation == .archive, draft.disposition == .prepared,
+              let archive = draft.archive, let encoded = encodePendingUpload(draft) else { return .failure(.incompatibleData) }
+        guard draft.revision != expectedRevision else { return .failure(.conflict) }
+        switch telegramPendingUploadRead(transaction: transaction, accountID: accountID, chatID: draft.chatID) {
+        case let .failure(error): return .failure(error)
+        case let .success(current):
+            guard let current else { return .failure(.conflict) }
+            // Only an exact retained candidate can replay a lost acknowledgement.
+            // Admission precedes this check, so cancelled or foreign tokens cannot replay it.
+            if encodePendingUpload(current) == encoded { return .success(()) }
+            guard current.schemaVersion == 15, current.disposition == .prepared,
+                  current.revision == expectedRevision, current.id == draft.id else { return .failure(.conflict) }
+            // Reconstruct from authoritative canonical state. Comparing encoded bytes
+            // also preserves opaque UTF8 spellings, selections and record metadata.
+            guard let expected = try? TelegramPendingUploadDraft(id: current.id, revision: draft.revision,
+                accountID: current.accountID, chatID: current.chatID, title: current.title,
+                captionInput: current.captionInput, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
+                items: current.items, isGrouped: false, presentation: .archive, archive: archive),
+                encodePendingUpload(expected) == encoded else { return .failure(.conflict) }
+            return telegramPendingUploadWrite(transaction: transaction, accountID: accountID,
+                draft: draft, expectedRevision: expectedRevision)
+        }
+    }
+}
 private nonisolated func pendingUploadLoad(postbox: Postbox, accountID: Int64, chatID: Int64) -> Signal<Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>, NoError> {
     postbox.transaction { telegramPendingUploadRead(transaction: $0, accountID: accountID, chatID: chatID) }
 }
 private nonisolated func pendingUploadSave(postbox: Postbox, accountID: Int64, draft: TelegramPendingUploadDraft, expectedRevision: UUID?) -> Signal<Result<Void, TelegramPendingUploadPersistenceError>, NoError> {
     postbox.transaction { telegramPendingUploadWrite(transaction: $0, accountID: accountID, draft: draft, expectedRevision: expectedRevision) }
+}
+private nonisolated func pendingUploadInstallArchive(postbox: Postbox, accountID: Int64,
+    draft: TelegramPendingUploadDraft, expectedRevision: UUID, admission: TelegramPendingUploadArchiveAdmission)
+    -> Signal<Result<Void, TelegramPendingUploadPersistenceError>, NoError> {
+    postbox.transaction { telegramPendingUploadArchiveWrite(transaction: $0, accountID: accountID,
+        draft: draft, expectedRevision: expectedRevision, admission: admission) }
 }
 @MainActor internal final class TelegramPostboxPendingUploadRepository: TelegramPendingUploadRepository {
     let accountID: Int64
@@ -76,5 +122,13 @@ private nonisolated func pendingUploadSave(postbox: Postbox, accountID: Int64, d
         // Completion is engine transaction completion, not an fsync/disk-full promise.
         let _ = (pendingUploadSave(postbox: postbox, accountID: accountID, draft: draft, expectedRevision: expectedRevision)
             |> deliverOnMainQueue).startStandalone(next: { result in MainActor.assumeIsolated { completion(result) } })
+    }
+    func installArchive(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID,
+                        admission: TelegramPendingUploadArchiveAdmission,
+                        completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
+        // The admission check executes on the native queue, together with the CAS.
+        let _ = (pendingUploadInstallArchive(postbox: postbox, accountID: accountID, draft: draft,
+            expectedRevision: expectedRevision, admission: admission) |> deliverOnMainQueue)
+            .startStandalone(next: { result in MainActor.assumeIsolated { completion(result) } })
     }
 }

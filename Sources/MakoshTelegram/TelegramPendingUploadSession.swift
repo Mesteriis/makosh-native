@@ -19,6 +19,64 @@ import SwiftSignalKit
         try await serial { [self] in try await read(chatID: chatID) }
     }
 
+    func installArchive(preparationID: UUID, expectedRevision: UUID, archive: TelegramPendingUploadArchive,
+                        target: TelegramUploadTarget, admission: TelegramPendingUploadArchiveAdmission) async throws -> TelegramPendingUploadDraft {
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try admission.check(accountID: accountID, chatID: target.chatID,
+                preparationID: preparationID, expectedRevision: expectedRevision)
+            guard target.accountID == accountID, target.hasValidReplySource else {
+                throw TelegramPendingUploadPersistenceError.incompatibleData
+            }
+            do {
+                return try await serial { [self] in
+                    try admission.check(accountID: accountID, chatID: target.chatID,
+                        preparationID: preparationID, expectedRevision: expectedRevision)
+                    let current = try await read(chatID: target.chatID)
+                    try admission.check(accountID: accountID, chatID: target.chatID,
+                        preparationID: preparationID, expectedRevision: expectedRevision)
+                    guard let current, current.id == preparationID, current.revision == expectedRevision,
+                          current.schemaVersion == 15, current.disposition == .prepared,
+                          current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
+                        throw TelegramPendingUploadPersistenceError.conflict
+                    }
+                    let candidate = try TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: current.chatID,
+                        title: current.title, captionInput: current.captionInput, captionAboveMedia: false, mediaSpoiler: false,
+                        originalDraft: current.originalDraft, replyTarget: current.replyTarget,
+                        items: current.items, isGrouped: false, presentation: .archive,
+                        captionRules: current.captionRules, archive: archive)
+                    guard candidate.isValid else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+                    // Reopen every authenticated canonical/raw stream and the ZIP.
+                    // This only exports temporary files; it never captures new records.
+                    let bundle = try await restoreBundle(draft: candidate)
+                    try bundle.discard()
+                    try admission.check(accountID: accountID, chatID: target.chatID,
+                        preparationID: preparationID, expectedRevision: expectedRevision)
+                    let _: Void = try await awaitResult { [repository] completion in
+                        repository.installArchive(candidate, expectedRevision: expectedRevision,
+                            admission: admission, completion: completion)
+                        return nil
+                    }
+                    // Native admission/read/compare/set is the linearization point.
+                    // Cancellation after a committed success cannot revoke its ACK.
+                    return candidate
+                }
+            } catch {
+                // A refusal delivered from the native queue maps inactive attempts
+                // to cancellation. Timeout can still mean a committed, unacknowledged
+                // pointer; invalidation only prevents later admission, not rollback.
+                try admission.check(accountID: accountID, chatID: target.chatID,
+                    preparationID: preparationID, expectedRevision: expectedRevision)
+                admission.cancel()
+                throw error
+            }
+        } onCancel: {
+            // Generic serial writes intentionally finish after caller cancellation;
+            // Archive install additionally carries this native-queue admission token.
+            admission.cancel()
+        }
+    }
+
     func replaceVideoCover(preparationID: UUID, file: TelegramUploadFile, target: TelegramUploadTarget,
                            cover: TelegramUploadVideoCover?) async throws {
         guard target.accountID == accountID, target.hasValidReplySource, file.mode == .video, file.metadata?.gif == nil,

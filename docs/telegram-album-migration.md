@@ -406,9 +406,21 @@ array-only refusal and no recapture/promotion. A photo/GIF `originalFile` pair i
 not an Archive representation.
 
 Archive is not connected to the controller/model or native queue yet. Generic
-mode/prepare/plan entry points refuse it before state changes or copies. Next
-implement dedicated install/generation CAS and whole-bundle adoption, then send
-one ZIP with one complete native receipt. PostgreSQL/S3 capture and Postbox CAS
+mode/prepare/plan entry points refuse it before state changes or copies. Dedicated
+pointer installation now accepts an already durable descriptor, authenticates
+the complete bundle, cleans its temporary exports and upgrades only an exact
+prepared schema15 pointer to active16. It preserves raw rich input/selection,
+original draft/reply/title and ordered canonical records without new captures.
+The per-attempt token binds scope/revision/generation; its owner must invalidate
+it on context changes. Cancellation is checked under the same lock as native
+Postbox compare/set. A committed success remains success after late cancellation.
+Only the native repository's exact retained candidate has idempotent replay;
+fresh Session-call lost-ACK recovery is still open.
+
+Next adopt the whole bundle in controller/model, retain successful capture
+receipts across pointer failure, then send one ZIP with one complete native
+receipt. PostgreSQL/S3 capture and Postbox CAS
 are distinct transactions; preserve immutable files if pointer installation
-fails. Stale CAS, lost acknowledgement, native resource integrity, no automatic
+fails. Native stale CAS/queued cancellation and authenticated install now have
+regression coverage. Lost acknowledgement, native resource integrity, no automatic
 resend and actual existing-window Archive UI still need integration regressions.

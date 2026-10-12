@@ -4,6 +4,17 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramComposerDraftModelTests: XCTestCase {
+    func testSelectedQuotePersistsWithTargetAndRemainsResolvedForComposer() throws {
+        let (model, repository) = fixture()
+        let message = try XCTUnwrap(model.messages.last), formatted = try XCTUnwrap(message.formattedTextForDisplay)
+        let quote = try XCTUnwrap(TelegramReplyQuote(source: formatted, selection: .init(location: 0, length: 8)))
+        XCTAssertTrue(model.beginReply(to: message, contextID: model.messageActionContextID, quote: quote))
+        XCTAssertEqual(repository.writes.last?.0.replyTarget?.quote, quote)
+        XCTAssertEqual(repository.writes.last?.0.schemaVersion, 5)
+        XCTAssertEqual(model.composerReply.resolved?.source.replyQuote, quote)
+        model.draft = "answer"
+        XCTAssertEqual(repository.writes.last?.0.replyTarget?.quote, quote)
+    }
     private final class Repository: TelegramComposerDraftRepository {
         let accountID: Int64 = -1
         var reads: [(Int64, @MainActor (Result<TelegramComposerDraft?, TelegramComposerDraftPersistenceError>) -> Void)] = []

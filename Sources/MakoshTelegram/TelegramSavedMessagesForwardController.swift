@@ -1,10 +1,16 @@
 import Foundation
 import Combine
+import Postbox
+import TelegramCore
 
 struct TelegramSavedMessagesForwardOrigin: Codable, Equatable, Sendable {
     let chatID: Int64
+    let threadID: Int64?
     let revision: UUID
     let intentID: UUID
+    init(chatID: Int64, threadID: Int64? = nil, revision: UUID, intentID: UUID) {
+        self.chatID = chatID; self.threadID = threadID; self.revision = revision; self.intentID = intentID
+    }
 }
 struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
     let id: UUID
@@ -29,7 +35,13 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
               forwardIntent: .init(id: id, sources: sources))
     }
     var isValid: Bool {
-        draft.isValid && sources.allSatisfy { $0.chatID == sources.first?.chatID } && (origin.map { $0.chatID > 0 } ?? true)
+        guard draft.isValid, sources.allSatisfy({ $0.chatID == sources.first?.chatID }),
+              origin.map({ $0.chatID > 0 }) ?? true else { return false }
+        if let origin, let threadID = origin.threadID {
+            guard threadID > 0, threadID <= Int64(Int32.max),
+                  PeerId(origin.chatID).namespace == Namespaces.Peer.CloudChannel else { return false }
+        }
+        return true
     }
 }
 
@@ -54,7 +66,10 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
     private var token: UUID?
     private var lease: (any TelegramComposerForwardLease)?
     private var deadline: Task<Void, Never>?
-    public init() {}
+    private let operationTimeout: Duration
+    private var awaitingApproval = false
+    public init() { operationTimeout = .seconds(30) }
+    init(timeout: Duration) { operationTimeout = timeout }
     func bind(_ provider: (any TelegramSavedMessagesForwardProvider)?) {
         reset(); self.provider = provider
         guard let provider else { return }
@@ -81,7 +96,12 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
         let returned = provider.submit(request: request) { [weak self] event in
             guard let self, self.token == token, self.isBusy else { return }
             switch event {
-            case .committing: self.phase = .committing
+            case .awaitingApproval:
+                guard self.phase == .validating else { break }
+                self.awaitingApproval = true
+                self.deadline?.cancel(); self.deadline = nil
+            case .committing:
+                self.awaitingApproval = false; self.phase = .committing; self.armDeadline(token)
             case .queued: self.complete(.queued); self.didQueue?(request)
             case .rejected: self.complete(.rejected)
             case .uncertain, .applied: self.complete(.uncertain)
@@ -90,11 +110,13 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
         install(returned, token: token)
         return true
     }
-    public func cancel() { guard isBusy else { return }; complete(.uncertain) }
-    func timeout() { cancel() }
+    public func cancel() { guard isBusy else { return }; complete(awaitingApproval ? .rejected : .uncertain) }
+    func timeout() { guard !awaitingApproval else { return }; cancel() }
     private func armDeadline(_ token: UUID) {
+        deadline?.cancel()
+        let timeout = operationTimeout
         deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            do { try await Task.sleep(for: timeout) } catch { return }
             guard self?.token == token else { return }; self?.timeout()
         }
     }
@@ -102,7 +124,7 @@ struct TelegramSavedMessagesForwardRequest: Codable, Equatable, Sendable {
         if self.token == token && isBusy { lease = returned } else { returned.cancel() }
     }
     private func complete(_ phase: TelegramMessageActionPhase) {
-        token = nil; deadline?.cancel(); deadline = nil; self.phase = phase
+        token = nil; deadline?.cancel(); deadline = nil; awaitingApproval = false; self.phase = phase
         let old = lease; lease = nil; old?.cancel()
     }
     private func reset() { complete(.idle); error = nil; request = nil; provider = nil }

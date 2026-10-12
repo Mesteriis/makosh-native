@@ -30,6 +30,7 @@ public final class TelegramSearchModel: ObservableObject {
     }
     private var account: Account?
     private var chatID: Int64?
+    private var threadID: Int64?
     private var folder: TelegramChatFolder = .inbox
     private var chatTracker = TelegramSearchTracker<Void>()
     private var messageTracker = TelegramSearchTracker<MessageCursor>()
@@ -58,7 +59,7 @@ public final class TelegramSearchModel: ObservableObject {
     func bind(account: Account?) {
         cancelChats(); cancelMessages()
         self.account = account
-        chatID = nil
+        chatID = nil; threadID = nil
         #if DEBUG
         preview = nil
         failNextPreviewMessageRequest = false
@@ -66,9 +67,9 @@ public final class TelegramSearchModel: ObservableObject {
         chatQuery = ""; messageQuery = ""
     }
 
-    func selectChat(_ id: Int64?) {
-        guard chatID != id else { return }
-        chatID = id
+    func selectChat(_ id: Int64?, threadID: Int64? = nil) {
+        guard chatID != id || self.threadID != threadID else { return }
+        chatID = id; self.threadID = threadID
         cancelMessages()
         messageQuery = ""
     }
@@ -79,8 +80,8 @@ public final class TelegramSearchModel: ObservableObject {
         searchChats()
     }
 
-    func messageIndex(id: String, inChat selectedChatID: Int64?) -> MessageIndex? {
-        guard chatID == selectedChatID else { return nil }
+    func messageIndex(id: String, inChat selectedChatID: Int64?, threadID: Int64? = nil) -> MessageIndex? {
+        guard chatID == selectedChatID, self.threadID == threadID else { return nil }
         return indexes[id]
     }
 
@@ -171,6 +172,7 @@ public final class TelegramSearchModel: ObservableObject {
         }
         let query = messageQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, let chatID else { return }
+        let threadID = self.threadID
         let token = messageTracker.begin()
         messageStatus = messageTracker.status
         messageTask = Task { [weak self] in
@@ -182,7 +184,7 @@ public final class TelegramSearchModel: ObservableObject {
             if let preview = self.preview {
                 var offset = 0
                 if case let .synthetic(value) = self.messageTracker.state { offset = value }
-                let matches = preview.searchMessages(chatID: chatID, query: query)
+                let matches = preview.searchMessages(chatID: chatID, query: query, threadID: threadID)
                 let end = min(offset + 50, matches.items.count)
                 let failed = self.failNextPreviewMessageRequest
                 self.failNextPreviewMessageRequest = false
@@ -201,7 +203,7 @@ public final class TelegramSearchModel: ObservableObject {
             var state: SearchMessagesState?
             if case let .server(value) = self.messageTracker.state { state = value }
             let location = SearchMessagesLocation.peer(peerId: PeerId(chatID), fromId: nil, tags: nil,
-                reactions: nil, threadId: nil, minDate: nil, maxDate: nil)
+                reactions: nil, threadId: threadID, minDate: nil, maxDate: nil)
             self.messageRequest.set((TelegramEngine(account: account).messages.searchMessages(
                 location: location, query: query, state: state, centerId: nil, limit: 50)
                 |> deliverOnMainQueue).start(next: { [weak self] result, state in
@@ -227,9 +229,9 @@ public final class TelegramSearchModel: ObservableObject {
     }
 
     #if DEBUG
-    func useSyntheticPreview(presenceObservedAt: Date? = nil, albums: Bool = false) {
+    func useSyntheticPreview(presenceObservedAt: Date? = nil, albums: Bool = false, forum: Bool = false) {
         bind(account: nil)
-        preview = TelegramSyntheticPages(presenceObservedAt: presenceObservedAt, albums: albums)
+        preview = TelegramSyntheticPages(presenceObservedAt: presenceObservedAt, albums: albums, forum: forum)
     }
 
     public func failNextSyntheticMessageSearch() {

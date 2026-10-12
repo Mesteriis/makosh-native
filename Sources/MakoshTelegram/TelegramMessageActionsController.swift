@@ -45,6 +45,10 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
     public let metadata: TelegramMessageActionMetadata
     public let accountID: Int64
     public let chatID: Int64
+    public let replyQuote: TelegramReplyQuote?
+    // Ephemeral Postbox provenance. Never serialized with a user-selected quote
+    // or accepted through the public draft/target initializers.
+    var validatedReplyMediaData: Data?
     public var peerID: Int64 { metadata.peerID }
     public var namespace: Int32 { metadata.namespace }
     public var messageID: Int32 { metadata.messageID }
@@ -58,8 +62,10 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
     public var canCopy: Bool { metadata.canCopy }
     public var canDeleteLocally: Bool { metadata.canDeleteLocally }
     public var canDeleteForEveryone: Bool { metadata.canDeleteForEveryone && (metadata.authorID == accountID || metadata.canDeleteAsAdmin || metadata.canDeleteIncomingPrivate || metadata.canDeleteOutgoingChannel) }
-    public init(metadata: TelegramMessageActionMetadata, accountID: Int64, chatID: Int64) {
+    public init(metadata: TelegramMessageActionMetadata, accountID: Int64, chatID: Int64, replyQuote: TelegramReplyQuote? = nil) {
         self.metadata = metadata; self.accountID = accountID; self.chatID = chatID
+        self.replyQuote = replyQuote
+        self.validatedReplyMediaData = nil
     }
     public init(accountID: Int64, chatID: Int64, peerID: Int64, namespace: Int32, messageID: Int32,
                 fingerprint: String, text: String, canReply: Bool, canEdit: Bool, canForward: Bool,
@@ -68,6 +74,13 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
             fingerprint: fingerprint, text: text, authorID: accountID, canReply: canReply, canEdit: canEdit,
             canForward: canForward, canDeleteLocally: canDeleteLocally, canDeleteForEveryone: canDeleteForEveryone, canCopy: canCopy),
             accountID: accountID, chatID: chatID)
+    }
+    public func quoting(_ quote: TelegramReplyQuote?, maximumLength: Int = 1024) -> Self? {
+        if let quote {
+            guard canReply, canCopy, let formatted = metadata.formattedText,
+                  formatted.text.utf8.elementsEqual(text.utf8), quote.matches(source: formatted, maximumLength: maximumLength) else { return nil }
+        }
+        return Self(metadata: metadata, accountID: accountID, chatID: chatID, replyQuote: quote)
     }
 }
 
@@ -83,13 +96,13 @@ public enum TelegramMessageActionPhase: Equatable, Sendable {
     func start(action: TelegramMessageAction, source: TelegramMessageActionSource,
                receive: @escaping @MainActor (TelegramMessageActionEvent) -> Void) -> any TelegramMessageActionsLease
 }
-enum TelegramMessageActionEvent { case committing, queued, applied, rejected, uncertain }
+enum TelegramMessageActionEvent { case awaitingApproval, committing, queued, applied, rejected, uncertain }
 
 func telegramMessageActionAllowed(_ action: TelegramMessageAction, source: TelegramMessageActionSource) -> Bool {
     guard (source.chatID == source.peerID || source.metadata.migrationChatID == source.chatID), !source.fingerprint.isEmpty else { return false }
     switch action {
-    case let .reply(text): return source.canReply && (try? TelegramFormattedText(text: text)).map { telegramFormattedTextCanSend($0) } == true
-    case let .replyFormatted(value): return source.canReply && telegramFormattedTextCanSend(value)
+    case let .reply(text): return source.canReply && (try? TelegramFormattedText(text: text)).map { telegramFormattedTextCanPrepare($0) } == true
+    case let .replyFormatted(value): return source.canReply && telegramFormattedTextCanPrepare(value)
     case let .edit(text):
         return source.canEdit && (source.metadata.formattedText?.entities.isEmpty ?? true) &&
             text.utf16.count <= source.editLimit && !text.utf8.elementsEqual(source.text.utf8) &&
@@ -119,7 +132,9 @@ func telegramMessageActionAllowed(_ action: TelegramMessageAction, source: Teleg
     private var lease: (any TelegramMessageActionsLease)?
     private var token: UUID?
     private var deadline: Task<Void, Never>?
-    public init() {}
+    private let timeoutDuration: Duration
+    public init() { timeoutDuration = .seconds(30) }
+    init(timeout: Duration) { timeoutDuration = timeout }
     func bind(provider: (any TelegramMessageActionsProvider)?) { reset(); self.provider = provider }
     @discardableResult public func perform(_ action: TelegramMessageAction, source: TelegramMessageActionSource) -> Bool {
         guard !isBusy, phase != .uncertain else { return false }
@@ -127,14 +142,14 @@ func telegramMessageActionAllowed(_ action: TelegramMessageAction, source: Teleg
         guard let provider, provider.accountID == source.accountID,
               telegramMessageActionAllowed(action, source: source) else { phase = .rejected; return false }
         let id = UUID(); token = id; phase = .validating
-        deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(30)) } catch { return }
-            guard self?.token == id else { return }; self?.timeout()
-        }
+        armDeadline(id)
         let result = provider.start(action: action, source: source) { [weak self] event in
             guard let self, self.token == id, self.isBusy else { return }
             switch event {
-            case .committing: self.phase = .committing
+            case .awaitingApproval:
+                self.deadline?.cancel(); self.deadline = nil
+                self.phase = .validating
+            case .committing: self.phase = .committing; self.armDeadline(id)
             case .queued:
                 self.complete(.queued)
                 self.didQueue?(action, source)
@@ -147,6 +162,14 @@ func telegramMessageActionAllowed(_ action: TelegramMessageAction, source: Teleg
         }
         if token == id && isBusy { lease = result } else { result.cancel() }
         return true
+    }
+    private func armDeadline(_ id: UUID) {
+        deadline?.cancel()
+        let timeout = timeoutDuration
+        deadline = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard self?.token == id else { return }; self?.timeout()
+        }
     }
     public func cancel() { guard isBusy else { return }; complete(phase == .committing ? .uncertain : .rejected) }
     func timeout() { cancel() }

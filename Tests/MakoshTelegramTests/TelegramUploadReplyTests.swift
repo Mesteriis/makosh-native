@@ -4,6 +4,22 @@ import Postbox
 @testable import MakoshTelegram
 
 final class TelegramUploadReplyMappingTests: XCTestCase {
+    func testSelectedQuoteIsRetainedAndCannotBeSubstitutedByAnotherSelection() throws {
+        let formatted = try TelegramFormattedText(text: "original")
+        let metadata = TelegramMessageActionMetadata(peerID: 2, namespace: Namespaces.Message.Cloud, messageID: 42,
+            fingerprint: "version-1", text: "original", authorID: 3, canReply: true, canEdit: false,
+            canForward: true, canDeleteLocally: true, canDeleteForEveryone: false, formattedText: formatted, canCopy: true)
+        let full = try XCTUnwrap(TelegramReplyQuote(source: formatted, selection: .init(location: 0, length: 8)))
+        let partial = try XCTUnwrap(TelegramReplyQuote(source: formatted, selection: .init(location: 0, length: 3)))
+        let source = TelegramMessageActionSource(metadata: metadata, accountID: 1, chatID: 2)
+        let captured = try XCTUnwrap(source.quoting(full)), changed = try XCTUnwrap(source.quoting(partial))
+        let target = TelegramUploadTarget(accountID: 1, chatID: 2, title: "Synthetic", replySource: captured)
+        let mapped = try XCTUnwrap(telegramUploadMessage(caption: "", reference: reference(), target: target, replySource: captured))
+        guard case let .message(_, _, _, _, _, reply, _, _, _, _) = mapped else { return XCTFail("Expected upload reply") }
+        XCTAssertEqual(reply?.quote?.text, "original")
+        XCTAssertEqual(reply?.quote?.offset, 0)
+        XCTAssertNil(telegramUploadMessage(caption: "", reference: try reference(), target: target, replySource: changed))
+    }
     private func source(account: Int64 = 1, chat: Int64 = 2, fingerprint: String = "version-1", canReply: Bool = true) -> TelegramMessageActionSource {
         .init(metadata: .init(peerID: 2, namespace: Namespaces.Message.Cloud, messageID: 42,
             fingerprint: fingerprint, text: "original", authorID: 3, canReply: canReply, canEdit: false,

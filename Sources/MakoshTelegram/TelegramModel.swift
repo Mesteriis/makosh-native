@@ -74,6 +74,149 @@ enum TelegramSetupError: LocalizedError {
 /// performs no account, Keychain, filesystem or network access until Connect.
 @MainActor
 public final class TelegramModel: ObservableObject {
+    public let customEmojiCatalog = TelegramCustomEmojiCatalogController()
+    @Published public private(set) var customEmojiPlaybackContext: TelegramCustomEmojiPlaybackContext?
+    @Published public private(set) var customEmojiDescriptors: [Int64: TelegramCustomEmojiDescriptor] = [:]
+    @Published public private(set) var customEmojiInsertion: TelegramCustomEmojiInsertionRequest?
+    public var composerInputRevision: UUID? {
+        guard let accountID = draftAccountID, let chatID = selectedChatID else { return nil }
+        return drafts.snapshot(accountID: accountID, chatID: chatID, threadID: selectedThreadID)?.revision
+    }
+    @discardableResult public func requestCustomEmojiInsertion(descriptor: TelegramCustomEmojiDescriptor,
+        catalogContextID: UUID, expectedInput: TelegramComposerInput, contextID: UUID,
+        chatID: Int64, expectedRevision: UUID?) -> Bool {
+        guard phase == .ready, !isBusy, composerSupportsCustomEmoji, !isComposerSuspended, !isRestoringComposerDraft,
+              !isRestoringPendingUpload, !isForwardComposerLocked, !isResolvingServerDraft,
+              !voiceRecording.isActive, upload.phase == .idle, serverDraftConflict == nil,
+              composerDraftRecoveryError == nil, pendingUploadRecoveryError == nil,
+              contextID == conversationGeneration, chatID == selectedChatID,
+              let accountID = draftAccountID, customEmojiCatalog.snapshot?.accountID == accountID,
+              catalogContextID == customEmojiCatalog.contextID,
+              expectedInput == composerInput, expectedRevision == composerInputRevision,
+              customEmojiCatalog.canInsert(descriptor, chatID: chatID) else { return false }
+        let request = TelegramCustomEmojiInsertionRequest(descriptor: descriptor,
+            expectedInput: expectedInput, contextID: contextID)
+        pendingEmojiInsertion = (request, accountID, chatID, selectedThreadID, expectedRevision, catalogContextID)
+        customEmojiInsertion = request
+        return true
+    }
+    @discardableResult public func consumeCustomEmojiInsertion(id: UUID, expectedInput: TelegramComposerInput) -> Bool {
+        guard let pending = pendingEmojiInsertion, pending.request.id == id,
+              customEmojiInsertion == pending.request else { return false }
+        pendingEmojiInsertion = nil; customEmojiInsertion = nil
+        return phase == .ready && !isBusy && composerSupportsCustomEmoji && !isComposerSuspended && !isForwardComposerLocked &&
+            !isRestoringComposerDraft && !isRestoringPendingUpload && !isResolvingServerDraft &&
+            serverDraftConflict == nil && !voiceRecording.isActive && upload.phase == .idle &&
+            pending.request.contextID == conversationGeneration && pending.account == draftAccountID &&
+            pending.chat == selectedChatID && pending.thread == selectedThreadID &&
+            pending.revision == composerInputRevision && pending.catalog == customEmojiCatalog.contextID &&
+            expectedInput == composerInput && expectedInput == pending.request.expectedInput &&
+            customEmojiCatalog.snapshot?.accountID == pending.account &&
+            customEmojiCatalog.canInsert(pending.request.descriptor, chatID: pending.chat)
+    }
+    private var pendingEmojiInsertion: (request: TelegramCustomEmojiInsertionRequest, account: Int64,
+        chat: Int64, thread: Int64?, revision: UUID?, catalog: UUID)?
+    private let emojiResolution = MetaDisposable(), capabilityObservation = MetaDisposable()
+    private var emojiResolutionID = UUID(), emojiRequested = Set<Int64>()
+    private var emojiCatalogObservation: AnyCancellable?
+    private var emojiForumObservation: AnyCancellable?
+    private var emojiUploadObservation: AnyCancellable?
+
+    private func refreshCustomEmojiDescriptors(uploadCaption: TelegramFormattedText? = nil,
+        catalogItems: [TelegramCustomEmojiDescriptor]? = nil, topics: [TelegramForumTopic]? = nil) {
+        guard let context = customEmojiPlaybackContext, context.accountID == draftAccountID else { return }
+        let catalog = customEmojiCatalog.snapshot
+        let known = catalogItems ?? ((catalog?.recent ?? []) + (catalog?.installed.flatMap(\.items) ?? []) +
+            (catalog?.featured.flatMap(\.items) ?? []))
+        var ids = Set<Int64>()
+        var values = messages.compactMap(\.formattedTextForDisplay) +
+            [composerInput.formattedText, uploadCaption ?? upload.captionInput.formattedText]
+        if let edit = messageEditSession { values.append(edit.input.formattedText) }
+        for value in values {
+            for entity in value.entities {
+                if case let .customEmoji(_, fileID) = entity.kind { ids.insert(fileID) }
+            }
+        }
+        for topic in topics ?? forumTopics.snapshot?.topics ?? [] { if let icon = topic.iconFileID { ids.insert(icon) } }
+        ids = Set(ids.sorted().prefix(1024))
+        var available: [Int64: TelegramCustomEmojiDescriptor] = [:]
+        for descriptor in known.prefix(1024) { available[descriptor.fileID] = descriptor }
+        for id in ids { if let value = customEmojiDescriptors[id] { available[id] = value } }
+        customEmojiDescriptors = available
+        guard ids != emojiRequested else { return }
+        emojiRequested = ids; emojiResolutionID = UUID(); emojiResolution.set(nil)
+        guard !ids.isEmpty else { return }
+        let request = emojiResolutionID, accountID = context.accountID
+        emojiResolution.set(context.resolveDescriptors(fileIDs: Array(ids)).start(next: { [weak self, weak context] values in
+            MainActor.assumeIsolated {
+                guard let self, let context, context === self.customEmojiPlaybackContext,
+                      self.draftAccountID == accountID, self.emojiResolutionID == request else { return }
+                self.customEmojiDescriptors.merge(values, uniquingKeysWith: { _, new in new })
+            }
+        }))
+    }
+    private func refreshConversationCapabilities() {
+        capabilityObservation.set(nil); conversationCapabilities = nil
+        #if DEBUG
+        if extendedMessagesPreview, isSyntheticPreview, let chatID = selectedChatID {
+            let secret: TelegramSecretConversation? = chatID == 10002 ? .init(regularPeerID: 10004,
+                participantTitle: "Синтетический собеседник", state: .active,
+                verification: .init(sha1: Data((0..<20).map(UInt8.init)), sha256: Data((32..<64).map(UInt8.init)))) : nil
+            conversationCapabilities = .init(accountID: -1, chatID: chatID,
+                messageFee: chatID == 10003 ? .stars(3) : .free, secret: secret)
+            return
+        }
+        #endif
+        guard let account, let chatID = selectedChatID else { return }
+        let context = conversationGeneration, accountID = account.peerId.toInt64()
+        capabilityObservation.set(telegramConversationCapabilitiesSignal(postbox: account.postbox,
+            accountID: accountID, chatID: chatID).start(next: { [weak self] result in
+                MainActor.assumeIsolated {
+                    guard let self, self.conversationGeneration == context, self.draftAccountID == accountID,
+                          self.selectedChatID == chatID else { return }
+                    if case let .success(value) = result { self.conversationCapabilities = value }
+                    else { self.conversationCapabilities = nil }
+                }
+            }))
+    }
+    @Published public private(set) var replyQuoteMaximumUTF16Count = 1024
+    private let replyQuoteLimitObservation = MetaDisposable()
+    public let sendApproval = TelegramSendApprovalController()
+    @Published public private(set) var conversationCapabilities: TelegramConversationCapabilities?
+    public let forumTopics = TelegramForumTopicsController()
+    @Published public var isForumTopicsListPresented = true
+    @Published public private(set) var selectedThreadID: Int64?
+    public var selectedForumTopic: TelegramForumTopic? {
+        forumTopics.snapshot?.topics.first { $0.threadID == selectedThreadID && $0.chatID == selectedChatID }
+    }
+    @discardableResult public func selectForumTopic(_ topic: TelegramForumTopic, contextID: UUID) -> Bool {
+        guard contextID == conversationGeneration, phase == .ready, topic.accountID == draftAccountID,
+              topic.chatID == selectedChatID, forumTopics.phase == .ready,
+              forumTopics.snapshot?.topics.contains(topic) == true, topic.threadID != selectedThreadID,
+              !isBusy, !messageActions.isBusy, upload.phase == .idle, !isComposerSuspended,
+              !isForwardComposerLocked, !selectedMessagesDeletionBlocksActions else { return false }
+        selectThread(topic.threadID)
+        return true
+    }
+    public func showForumAllMessages() {
+        guard selectedThreadID != nil, !isBusy, !messageActions.isBusy, upload.phase == .idle,
+              !isComposerSuspended, !isForwardComposerLocked, !selectedMessagesDeletionBlocksActions else { return }
+        selectThread(nil)
+    }
+    private func selectThread(_ threadID: Int64?) {
+        cancelVoiceRecording(); cancelMessageSelectionRange(); selectedMessagesCopy.cancel()
+        messageSelection.cancel(); cancelContactProfile(); playback.stop()
+        conversationGeneration = UUID(); selectedThreadID = threadID
+        pendingEmojiInsertion = nil; customEmojiInsertion = nil
+        sendApproval.cancel(); refreshConversationCapabilities()
+        if let accountID = draftAccountID, let chatID = selectedChatID {
+            displayComposerInput(drafts.snapshot(accountID: accountID, chatID: chatID, threadID: threadID)?.input ?? .empty)
+        } else { displayComposerInput(.empty) }
+        projectMessageEditSession(); refreshComposerReply(); refreshComposerForward()
+        pendingRecoveryAttempt = nil; cancelPendingRecovery(); restoreComposerDraft()
+        restorePendingUpload(); refreshServerDraftObservation(); search.selectChat(selectedChatID, threadID: selectedThreadID)
+        loadHistory()
+    }
     public let search = TelegramSearchModel()
     public let media = TelegramMediaController()
     public let avatars = TelegramAvatarStore()
@@ -89,13 +232,13 @@ public final class TelegramModel: ObservableObject {
     public var canStartVoiceRecording: Bool {
         !voiceRecording.isActive && upload.phase == .idle && composerInput == .empty &&
         messageEditSession == nil && !isRestoringComposerDraft && !isComposerSuspended &&
-        !composerReply.preventsSend && uploadTarget(replyTo: composerReply.resolved?.source, contextID: accountGeneration) != nil &&
-        uploadTarget.map { canPrepareUpload(target: $0, contextID: accountGeneration) } == true
+        !composerReply.preventsSend && uploadTarget(replyTo: composerReply.resolved?.source, contextID: conversationGeneration) != nil &&
+        uploadTarget.map { canPrepareUpload(target: $0, contextID: conversationGeneration) } == true
     }
     public func beginVoiceRecording() {
         guard canStartVoiceRecording,
-            let target = uploadTarget(replyTo: composerReply.resolved?.source, contextID: accountGeneration) else { return }
-        playback.stop(); voiceRecording.begin(target: target, contextID: accountGeneration)
+            let target = uploadTarget(replyTo: composerReply.resolved?.source, contextID: conversationGeneration) else { return }
+        playback.stop(); voiceRecording.begin(target: target, contextID: conversationGeneration)
     }
     public func beginVoiceRecording(contextID: UUID) {
         guard contextID == voiceInputContextID else { return }
@@ -127,10 +270,110 @@ public final class TelegramModel: ObservableObject {
     @Published public private(set) var composerForwardDisposition: TelegramComposerForwardDisposition?
     @Published public private(set) var isRestoringComposerDraft = false
     @Published public private(set) var composerDraftRecoveryError: String?
-    private var pendingForwardStage: (context: UUID, destination: Int64, intent: TelegramComposerForwardIntent, origin: (chat: Int64, intent: UUID)?)?
-    public var uploadContextID: UUID { accountGeneration }
-    public var messageActionContextID: UUID { accountGeneration }
-    public var contactProfileContextID: UUID { accountGeneration }
+    @Published public private(set) var serverDraftConflict: TelegramServerDraftConflict?
+    @Published public private(set) var isResolvingServerDraft = false
+    private var serverDraftObserver: (any TelegramServerDraftObserving)?
+    private let serverDraftObservation = MetaDisposable(), serverDraftResolution = MetaDisposable()
+    private var serverDraftContext: TelegramServerDraftObservationContext?
+    private var serverDraftResolutionID: UUID?
+    private var serverDraftResolutionDeadline: Task<Void, Never>?
+    private var nextServerDraftUpdate: TelegramServerDraftUpdate?
+    func bindServerDraftObserver(_ observer: (any TelegramServerDraftObserving)?) {
+        serverDraftObserver = observer
+        refreshServerDraftObservation()
+    }
+    private func refreshServerDraftObservation() {
+        serverDraftResolutionDeadline?.cancel(); serverDraftResolutionDeadline = nil
+        serverDraftObservation.set(nil); serverDraftResolution.set(nil)
+        serverDraftResolutionID = nil; isResolvingServerDraft = false; nextServerDraftUpdate = nil
+        serverDraftConflict = nil; serverDraftContext = nil
+        guard let accountID = draftAccountID, let chatID = selectedChatID,
+              let observer = serverDraftObserver, observer.accountID == accountID,
+              let resolver = composerDraftRepository as? any TelegramServerDraftResolving, resolver.accountID == accountID else { return }
+        let context = TelegramServerDraftObservationContext(accountID: accountID, chatID: chatID, threadID: selectedThreadID, generation: UUID())
+        serverDraftContext = context
+        let subscription = observer.observe(chatID: chatID, context: context) { [weak self] event in
+            guard let self, self.serverDraftContext == event.context,
+                  self.draftAccountID == event.context.accountID, self.selectedChatID == event.context.chatID, self.selectedThreadID == event.context.threadID else { return }
+            switch event.result {
+            case let .success(update): self.receiveServerDraftUpdate(update, context: event.context)
+            case let .failure(error):
+                self.composerDraftRecoveryError = error.localizedDescription; self.error = error.localizedDescription
+            }
+        }
+        if serverDraftContext == context { serverDraftObservation.set(subscription) } else { subscription.dispose() }
+    }
+    private func receiveServerDraftUpdate(_ update: TelegramServerDraftUpdate, context: TelegramServerDraftObservationContext) {
+        guard update.draft.isValid, update.draft.accountID == context.accountID, update.draft.chatID == context.chatID, update.draft.threadID == context.threadID,
+              serverDraftContext == context else { return }
+        if isResolvingServerDraft || isRestoringComposerDraft { nextServerDraftUpdate = update; return }
+        let current = drafts.snapshot(accountID: context.accountID, chatID: context.chatID, threadID: context.threadID)
+        let clean = current?.revision == update.basisRevision &&
+            unsavedComposerDrafts[ComposerDraftKey(accountID: context.accountID, chatID: context.chatID, threadID: context.threadID)] == nil &&
+            current?.forwardIntent == nil && !isComposerSuspended && !voiceRecording.isActive &&
+            messageEditSession == nil && !isRestoringComposerDraft
+        if clean { beginServerDraftResolution(update, context: context, choice: .remote) }
+        else {
+            serverDraftConflict = .init(id: UUID(), localText: current?.text ?? "", remoteText: update.draft.text,
+                update: update, context: context)
+        }
+    }
+    public func resolveServerDraftConflict(id: UUID, keepLocal: Bool) {
+        guard let conflict = serverDraftConflict, conflict.id == id else { return }
+        beginServerDraftResolution(conflict.update, context: conflict.context, choice: keepLocal ? .local : .remote)
+    }
+    private func beginServerDraftResolution(_ update: TelegramServerDraftUpdate, context: TelegramServerDraftObservationContext,
+        choice: TelegramServerDraftChoice) {
+        guard serverDraftContext == context, selectedChatID == context.chatID, selectedThreadID == context.threadID, draftAccountID == context.accountID,
+              !isResolvingServerDraft, !isComposerSuspended, !voiceRecording.isActive, messageEditSession == nil,
+              let resolver = composerDraftRepository as? any TelegramServerDraftResolving,
+              resolver.accountID == context.accountID else { return }
+        let local = drafts.snapshot(accountID: context.accountID, chatID: context.chatID, threadID: context.threadID)
+        guard local?.forwardIntent == nil else { return }
+        let requestID = UUID(), revision = local?.revision
+        serverDraftResolutionID = requestID; isResolvingServerDraft = true
+        serverDraftResolutionDeadline?.cancel()
+        serverDraftResolutionDeadline = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            guard let self, self.serverDraftResolutionID == requestID, self.serverDraftContext == context else { return }
+            self.serverDraftResolutionID = nil; self.isResolvingServerDraft = false
+            self.serverDraftResolution.set(nil); self.serverDraftResolutionDeadline = nil
+            let candidate = self.nextServerDraftUpdate ?? update
+            self.nextServerDraftUpdate = nil
+            self.serverDraftConflict = .init(id: UUID(), localText: local?.text ?? "", remoteText: candidate.draft.text,
+                update: candidate, context: context)
+            self.error = "Не получено подтверждение сохранения черновика. Текущий текст сохранён в поле ввода."
+        }
+        let operation = resolver.resolve(update: update, local: local, choice: choice) { [weak self] result in
+            guard let self, self.serverDraftContext == context, self.serverDraftResolutionID == requestID,
+                  self.draftAccountID == context.accountID, self.selectedChatID == context.chatID, self.selectedThreadID == context.threadID else { return }
+            self.serverDraftResolutionID = nil; self.isResolvingServerDraft = false
+            self.serverDraftResolutionDeadline?.cancel(); self.serverDraftResolutionDeadline = nil
+            switch result {
+            case let .success(snapshot):
+                guard self.drafts.restore(snapshot, accountID: context.accountID, chatID: context.chatID, threadID: context.threadID, expectedRevision: revision) else {
+                    self.refreshServerDraftObservation(); return
+                }
+                let key = ComposerDraftKey(accountID: context.accountID, chatID: context.chatID, threadID: context.threadID)
+                if self.unsavedComposerDrafts[key]?.revision == revision { self.unsavedComposerDrafts[key] = nil }
+                self.serverDraftConflict = nil; self.composerDraftRecoveryError = nil
+                self.displayComposerInput(snapshot.input); self.refreshComposerReply(); self.refreshComposerForward()
+            case let .failure(error):
+                self.error = error.localizedDescription
+                if error == .serverConflict { self.refreshServerDraftObservation(); return }
+                self.serverDraftConflict = .init(id: UUID(), localText: local?.text ?? "", remoteText: update.draft.text,
+                    update: update, context: context)
+            }
+            if let next = self.nextServerDraftUpdate {
+                self.nextServerDraftUpdate = nil; self.receiveServerDraftUpdate(next, context: context)
+            }
+        }
+        if serverDraftResolutionID == requestID { serverDraftResolution.set(operation) } else { operation.dispose() }
+    }
+    private var pendingForwardStage: (context: UUID, destination: Int64, intent: TelegramComposerForwardIntent, origin: (chat: Int64, thread: Int64?, intent: UUID)?)?
+    public var uploadContextID: UUID { conversationGeneration }
+    public var messageActionContextID: UUID { conversationGeneration }
+    public var contactProfileContextID: UUID { conversationGeneration }
     @Published public private(set) var contactProfileState: TelegramContactProfileState = .idle
     var contactProfileRequestID: UUID?
     public var forwardDestinations: [TelegramChat] {
@@ -159,13 +402,13 @@ public final class TelegramModel: ObservableObject {
     }
     public var selectedChat: TelegramChat? { selectedChatID.flatMap { knownChats[$0] } }
     public var uploadTarget: TelegramUploadTarget? {
-        guard phase == .ready, !isBusy, !selectedMessagesDeletionBlocksActions, composerDraftRecoveryError == nil,
+        guard phase == .ready, !isBusy, !selectedMessagesDeletionBlocksActions, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
               composerForwardIntent == nil, let chat = selectedChat, let accountID = draftAccountID else { return nil }
         if !isSyntheticPreview {
             guard [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel]
                 .contains(PeerId(chat.id).namespace) else { return nil }
         }
-        return TelegramUploadTarget(accountID: accountID, chatID: chat.id, title: chat.title)
+        return TelegramUploadTarget(accountID: accountID, chatID: chat.id, title: chat.title, selectedThreadID: selectedThreadID)
     }
     public var historyWindowID: UUID? { historyPages.requestID }
     public var historyReadContext: TelegramHistoryReadContext? {
@@ -173,7 +416,7 @@ public final class TelegramModel: ObservableObject {
               let accountID = draftAccountID, let chatID = selectedChatID,
               let windowID = historyWindowID else { return nil }
         return TelegramHistoryReadContext(accountID: accountID, chatID: chatID,
-            accountContextID: accountGeneration, historyWindowID: windowID)
+            accountContextID: accountGeneration, historyWindowID: windowID, threadID: selectedThreadID)
     }
     let historyRead = TelegramHistoryReadController()
     var historyReadIndexes: [String: MessageIndex] = [:]
@@ -192,6 +435,10 @@ public final class TelegramModel: ObservableObject {
     @Published public var selectedChatID: Int64? {
         didSet {
             guard oldValue != selectedChatID else { return }
+            pendingEmojiInsertion = nil; customEmojiInsertion = nil
+            sendApproval.cancel()
+            if selectedThreadID != nil { conversationGeneration = UUID(); selectedThreadID = nil }
+            forumTopics.selectChat(selectedChatID)
             cancelVoiceRecording()
             cancelMessageSelectionRange()
             selectedMessagesCopy.cancel()
@@ -200,7 +447,7 @@ public final class TelegramModel: ObservableObject {
             playback.stop()
             if let id = selectedChatID, let found = search.chats.first(where: { $0.id == id }) { knownChats[id] = found }
             if let accountID = draftAccountID {
-                displayComposerInput(selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0)?.input } ?? .empty)
+                displayComposerInput(selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0, threadID: selectedThreadID)?.input } ?? .empty)
             } else { displayComposerInput(.empty) }
             projectMessageEditSession()
             refreshComposerReply()
@@ -209,9 +456,11 @@ public final class TelegramModel: ObservableObject {
             cancelPendingRecovery()
             restoreComposerDraft()
             restorePendingUpload()
+            refreshServerDraftObservation()
             search.selectChat(selectedChatID)
             peerStatus.selectPeer(selectedChatID)
             refreshConversationFilePolicy()
+            refreshConversationCapabilities()
             loadHistory()
         }
     }
@@ -230,16 +479,40 @@ public final class TelegramModel: ObservableObject {
         }
     }
     public var composerCanSend: Bool {
-        guard messageSelection.session == nil, !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil, pendingUploadRecoveryError == nil else { return false }
+        guard composerHasTopicDestination, messageSelection.session == nil, !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft, pendingUploadRecoveryError == nil else { return false }
+        if let secret = conversationCapabilities?.secret {
+            guard secret.state == .active, secret.verification != nil,
+                  composerInput.formattedText.entities.isEmpty, composerForwardIntent == nil,
+                  composerReply.state == .none else { return false }
+        }
         if composerForwardIntent != nil {
             guard !isForwardComposerLocked, composerForward.phase == .ready,
-                  composerInput.formattedText.text.isEmpty || telegramFormattedTextCanSend(composerInput.formattedText),
+                  composerInput.formattedText.text.isEmpty || telegramFormattedTextCanPrepare(composerInput.formattedText),
                   let accountID = draftAccountID, let chatID = selectedChatID else { return false }
-            return (isSyntheticPreview && composerDraftRepository == nil) || unsavedComposerDrafts[ComposerDraftKey(accountID: accountID, chatID: chatID)] == nil
+            return (isSyntheticPreview && composerDraftRepository == nil) || unsavedComposerDrafts[ComposerDraftKey(accountID: accountID, chatID: chatID, threadID: selectedThreadID)] == nil
         }
-        return telegramFormattedTextCanSend(composerInput.formattedText)
+        return telegramFormattedTextCanPrepare(composerInput.formattedText)
     }
-    public var composerSupportsAttachments: Bool { composerInput.formattedText.isEditable && composerForwardIntent == nil }
+    private var composerHasTopicDestination: Bool {
+        guard let snapshot = forumTopics.snapshot, snapshot.accountID == draftAccountID,
+              snapshot.chatID == selectedChatID else { return true }
+        if selectedThreadID != nil { return true }
+        // Ordinary All Messages can reply into an observed source topic. Paid
+        // consent instead requires an explicitly selected immutable destination.
+        return conversationCapabilities?.messageFee == .free && composerReply.resolved?.source.threadID != nil
+    }
+    private var composerIsSecretChat: Bool {
+        conversationCapabilities?.secret != nil ||
+        selectedChatID.map { PeerId($0).namespace == Namespaces.Peer.SecretChat } == true
+    }
+    public var composerSupportsCustomEmoji: Bool {
+        composerHasTopicDestination && !composerIsSecretChat
+    }
+    public var composerSupportsAttachments: Bool {
+        composerHasTopicDestination && !composerIsSecretChat &&
+        composerInput.formattedText.isEditable && composerForwardIntent == nil &&
+        serverDraftConflict == nil && !isResolvingServerDraft
+    }
     public var isForwardComposerLocked: Bool {
         guard let intent = composerForwardIntent else { return false }
         let saved = savedMessagesForward.request
@@ -251,7 +524,7 @@ public final class TelegramModel: ObservableObject {
     }
     public var composerForwardRevision: UUID? {
         guard let accountID = draftAccountID, let chatID = selectedChatID, composerForwardIntent != nil else { return nil }
-        return drafts.snapshot(accountID: accountID, chatID: chatID)?.revision
+        return drafts.snapshot(accountID: accountID, chatID: chatID, threadID: selectedThreadID)?.revision
     }
     @Published public private(set) var codeExplanation = "Введите код, полученный от Telegram."
     @Published public private(set) var connectionDescription = "Не подключено"
@@ -263,9 +536,10 @@ public final class TelegramModel: ObservableObject {
     private var account: Account?
     private var generation = UUID()
     private var accountGeneration = UUID()
+    private var conversationGeneration = UUID()
     private var authorizationGeneration = UUID()
     private var drafts = TelegramDraftStore()
-    private struct ComposerDraftKey: Hashable { let accountID: Int64; let chatID: Int64 }
+    private struct ComposerDraftKey: Hashable { let accountID: Int64; let chatID: Int64; var threadID: Int64? = nil }
     @Published private var unsavedComposerDrafts: [ComposerDraftKey: TelegramComposerDraft] = [:]
     private let composerPersistenceError = "Не удалось сохранить черновик на диске. Текст и выбранный ответ остаются в памяти; повторите сохранение перед выходом."
     public var canRetryComposerDraftPersistence: Bool {
@@ -282,8 +556,8 @@ public final class TelegramModel: ObservableObject {
     private var uploadComposerTransfer: (id: UUID, draft: TelegramComposerDraft)?
     public var isComposerSuspended: Bool {
         guard let transfer = uploadComposerTransfer, transfer.draft.accountID == draftAccountID,
-              transfer.draft.chatID == selectedChatID else { return false }
-        return drafts.snapshot(accountID: transfer.draft.accountID, chatID: transfer.draft.chatID)?.revision == transfer.draft.revision
+              transfer.draft.chatID == selectedChatID, transfer.draft.threadID == selectedThreadID else { return false }
+        return drafts.snapshot(accountID: transfer.draft.accountID, chatID: transfer.draft.chatID, threadID: transfer.draft.threadID)?.revision == transfer.draft.revision
     }
     @Published public private(set) var isRestoringPendingUpload = false
     @Published public private(set) var pendingUploadRecoveryError: String?
@@ -341,6 +615,19 @@ public final class TelegramModel: ObservableObject {
     private let contactProfileSubscription = MetaDisposable()
 
     public init() {
+        emojiCatalogObservation = customEmojiCatalog.$snapshot.sink { [weak self] snapshot in
+            let items = (snapshot?.recent ?? []) + (snapshot?.installed.flatMap(\.items) ?? []) +
+                (snapshot?.featured.flatMap(\.items) ?? [])
+            self?.refreshCustomEmojiDescriptors(catalogItems: items)
+        }
+        emojiForumObservation = forumTopics.$snapshot.sink { [weak self] snapshot in
+            self?.refreshCustomEmojiDescriptors(topics: snapshot?.topics ?? [])
+        }
+        emojiUploadObservation = upload.$captionInput.sink { [weak self] input in
+            // Published emits before storage changes. Resolve the emitted input,
+            // including restores/removal, rather than the preceding caption.
+            self?.refreshCustomEmojiDescriptors(uploadCaption: input.formattedText)
+        }
         voiceRecording.didCancel = { [weak self] in self?.cancelVoicePreparation() }
         voiceRecording.isCurrent = { [weak self] target, context in self?.isCurrentVoice(target, context: context) == true }
         voiceRecording.authorize = { [weak self] in
@@ -383,7 +670,7 @@ public final class TelegramModel: ObservableObject {
             self.uploadComposerPreparationID = id
             self.uploadComposerTransfer = nil
             if let original, original.accountID == target.accountID, original.chatID == target.chatID,
-               self.drafts.snapshot(accountID: original.accountID, chatID: original.chatID)?.revision == original.revision {
+               self.drafts.snapshot(accountID: original.accountID, chatID: original.chatID, threadID: original.threadID)?.revision == original.revision {
                 self.uploadComposerTransfer = (id, original)
                 if self.selectedChatID == target.chatID { self.displayComposerInput(.empty); self.refreshComposerReply() }
             }
@@ -411,7 +698,7 @@ public final class TelegramModel: ObservableObject {
             if self.selectedChatID == origin.chatID { self.refreshComposerForward() }
         }
         savedMessagesForward.didQueue = { [weak self] request in
-            guard let self, self.accountGeneration == request.contextID, self.draftAccountID == request.accountID,
+            guard let self, self.conversationGeneration == request.contextID, self.draftAccountID == request.accountID,
                   let captured = self.savedForwardSelection, captured.requestID == request.id else { return }
             self.savedForwardSelection = nil
             if let origin = request.origin,
@@ -428,7 +715,7 @@ public final class TelegramModel: ObservableObject {
             }
         }
         selectedMessagesDelete.didQueue = { [weak self] request in
-            guard let self, self.accountGeneration == request.contextID, self.draftAccountID == request.accountID else { return }
+            guard let self, self.conversationGeneration == request.contextID, self.draftAccountID == request.accountID else { return }
             if let captured = self.selectedDeleteEditSession,
                self.messageEditSessions[request.chatID] == captured,
                request.sources.contains(where: { $0 == captured.source }) {
@@ -454,7 +741,7 @@ public final class TelegramModel: ObservableObject {
             }
             let captured = self.submittedEditSession
             self.submittedEditSession = nil
-            if let captured, captured.source == source, captured.contextID == self.accountGeneration,
+            if let captured, captured.source == source, captured.contextID == self.conversationGeneration,
                self.messageEditSessions[source.chatID] == captured {
                 self.messageEditSessions[source.chatID] = nil
                 self.projectMessageEditSession()
@@ -466,42 +753,46 @@ public final class TelegramModel: ObservableObject {
         }
         composerForward.didUpdateDraft = { [weak self] captured, replacement in
             guard let self, captured.accountID == self.draftAccountID,
-                  let current = self.drafts.snapshot(accountID: captured.accountID, chatID: captured.chatID),
+                  let current = self.drafts.snapshot(accountID: captured.accountID, chatID: captured.chatID, threadID: captured.threadID),
                   current.revision == captured.revision, current.input == captured.input,
                   current.replyTarget == captured.replyTarget, current.forwardIntent == captured.forwardIntent,
-                  self.drafts.restore(replacement, accountID: captured.accountID, chatID: captured.chatID,
+                  self.drafts.restore(replacement, accountID: captured.accountID, chatID: captured.chatID, threadID: captured.threadID,
                       expectedRevision: current.revision) else { return }
-            let key = ComposerDraftKey(accountID: captured.accountID, chatID: captured.chatID)
+            let key = ComposerDraftKey(accountID: captured.accountID, chatID: captured.chatID, threadID: captured.threadID)
             if self.unsavedComposerDrafts[key]?.revision == captured.revision { self.unsavedComposerDrafts[key] = nil }
             // Provider transitions have already committed to the captured Postbox.
-            if self.selectedChatID == captured.chatID {
+            if self.selectedChatID == captured.chatID, self.selectedThreadID == captured.threadID {
                 self.displayComposerInput(replacement.input); self.refreshComposerReply(); self.refreshComposerForward()
             }
         }
     }
 
     private func displayComposerInput(_ input: TelegramComposerInput) {
+        pendingEmojiInsertion = nil; customEmojiInsertion = nil
         composerInput = isComposerSuspended ? .empty : input
+        refreshCustomEmojiDescriptors()
     }
 
     private func setComposerInput(_ input: TelegramComposerInput) {
-        guard !isForwardComposerLocked else { return }
+        guard !isForwardComposerLocked, !isResolvingServerDraft else { return }
+        pendingEmojiInsertion = nil; customEmojiInsertion = nil
         composerInput = input
+        refreshCustomEmojiDescriptors()
         guard let accountID = draftAccountID, let chatID = selectedChatID else { return }
-        if let changed = drafts.save(input: input, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        if let changed = drafts.save(input: input, accountID: accountID, chatID: chatID, threadID: selectedThreadID) { persistComposerDraft(changed) }
         refreshComposerForward()
     }
 
     @discardableResult
     public func updateComposerInput(_ input: TelegramComposerInput, contextID: UUID, chatID: Int64) -> Bool {
-        guard !voiceRecording.isActive, contextID == accountGeneration, selectedChatID == chatID, phase == .ready, !isComposerSuspended,
-              !isForwardComposerLocked, composerDraftRecoveryError == nil else { return false }
+        guard !voiceRecording.isActive, contextID == conversationGeneration, selectedChatID == chatID, phase == .ready, !isComposerSuspended,
+              !isForwardComposerLocked, composerDraftRecoveryError == nil, !isResolvingServerDraft else { return false }
         setComposerInput(input)
         return true
     }
 
     private func composerSubmission(formatted: TelegramFormattedText, accountID: Int64, chatID: Int64) -> TelegramComposerDraft? {
-        guard let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID),
+        guard let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID, threadID: selectedThreadID),
               snapshot.input.formattedText == formatted else { return nil }
         return snapshot
     }
@@ -515,7 +806,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func persistComposerDraft(_ snapshot: TelegramComposerDraft) {
-        let key = ComposerDraftKey(accountID: snapshot.accountID, chatID: snapshot.chatID)
+        let key = ComposerDraftKey(accountID: snapshot.accountID, chatID: snapshot.chatID, threadID: snapshot.threadID)
         unsavedComposerDrafts[key] = snapshot
         guard let repository = composerDraftRepository, repository.accountID == snapshot.accountID else { return }
         let context = composerDraftGeneration
@@ -527,7 +818,7 @@ public final class TelegramModel: ObservableObject {
             }
             guard self.composerDraftGeneration == context,
                   self.draftAccountID == snapshot.accountID,
-                  self.drafts.snapshot(accountID: snapshot.accountID, chatID: snapshot.chatID)?.revision == snapshot.revision else { return }
+                  self.drafts.snapshot(accountID: snapshot.accountID, chatID: snapshot.chatID, threadID: snapshot.threadID)?.revision == snapshot.revision else { return }
             if case .failure = result, self.unsavedComposerDrafts[key]?.revision == snapshot.revision {
                 self.error = self.composerPersistenceError
             }
@@ -538,7 +829,7 @@ public final class TelegramModel: ObservableObject {
         guard let accountID = draftAccountID, composerDraftRepository?.accountID == accountID else { return }
         for snapshot in Array(unsavedComposerDrafts.values) where snapshot.accountID == accountID {
             guard snapshot.forwardDisposition == nil || snapshot.forwardDisposition == .prepared else { continue }
-            guard drafts.snapshot(accountID: accountID, chatID: snapshot.chatID)?.revision == snapshot.revision else { continue }
+            guard drafts.snapshot(accountID: accountID, chatID: snapshot.chatID, threadID: snapshot.threadID)?.revision == snapshot.revision else { continue }
             persistComposerDraft(snapshot)
         }
     }
@@ -555,6 +846,7 @@ public final class TelegramModel: ObservableObject {
         refreshConversationFilePolicy()
         retryComposerDraftPersistence()
         restoreComposerDraft()
+        refreshServerDraftObservation()
     }
 
     private func restoreComposerDraft(forceForwardReceipt: Bool = false) {
@@ -565,23 +857,30 @@ public final class TelegramModel: ObservableObject {
         composerDraftLoad.set(nil)
         guard let chatID = selectedChatID, let accountID = draftAccountID,
               let repository = composerDraftRepository, repository.accountID == accountID else { return }
-        let current = drafts.snapshot(accountID: accountID, chatID: chatID)
+        let threadID = selectedThreadID
+        let current = drafts.snapshot(accountID: accountID, chatID: chatID, threadID: threadID)
         guard current == nil || retryFailedLoad || (current?.forwardIntent != nil && (current?.forwardDisposition != .prepared || forceForwardReceipt)) else { return }
         let expectedRevision = current?.revision
         let requestID = UUID(), context = composerDraftGeneration, accountContext = accountGeneration
         composerDraftLoadID = requestID
         isRestoringComposerDraft = true
-        let disposable = repository.load(chatID: chatID) { [weak self] result in
+        let disposable = repository.load(chatID: chatID, threadID: threadID) { [weak self] result in
             guard let self, self.composerDraftLoadID == requestID, self.composerDraftGeneration == context,
                   self.accountGeneration == accountContext, self.draftAccountID == accountID,
-                  self.selectedChatID == chatID else { return }
+                  self.selectedChatID == chatID, self.selectedThreadID == threadID else { return }
             self.composerDraftLoadID = nil
             self.isRestoringComposerDraft = false
-            defer { self.restorePendingUpload() }
+            defer {
+                self.restorePendingUpload()
+                if let next = self.nextServerDraftUpdate, let draftContext = self.serverDraftContext {
+                    self.nextServerDraftUpdate = nil
+                    self.receiveServerDraftUpdate(next, context: draftContext)
+                }
+            }
             switch result {
             case let .success(snapshot):
-                if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, expectedRevision: expectedRevision) {
-                    self.displayComposerInput(self.drafts.snapshot(accountID: accountID, chatID: chatID)?.input ?? .empty)
+                if self.drafts.restore(snapshot, accountID: accountID, chatID: chatID, threadID: threadID, expectedRevision: expectedRevision) {
+                    self.displayComposerInput(self.drafts.snapshot(accountID: accountID, chatID: chatID, threadID: threadID)?.input ?? .empty)
                     self.refreshComposerReply()
                     self.refreshComposerForward()
                 }
@@ -618,7 +917,7 @@ public final class TelegramModel: ObservableObject {
               upload.phase == .idle,
               pendingRecoveryAttempt?.account != accountID || pendingRecoveryAttempt?.chat != chatID else { return }
         pendingRecoveryAttempt = (accountID, chatID)
-        let request = UUID(), context = accountGeneration, restorationEpoch = upload.recoveryRestoreEpoch
+        let request = UUID(), context = conversationGeneration, threadID = selectedThreadID, restorationEpoch = upload.recoveryRestoreEpoch
         pendingRecoveryID = request; isRestoringPendingUpload = true; pendingUploadRecoveryError = nil
         pendingRecoveryDeadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(30)) } catch { return }
@@ -627,7 +926,7 @@ public final class TelegramModel: ObservableObject {
         }
         pendingRecoveryTask = Task { [weak self] in
             guard let self else { return }
-            @MainActor func current() -> Bool { !Task.isCancelled && self.pendingRecoveryID == request && self.accountGeneration == context && self.draftAccountID == accountID && self.selectedChatID == chatID }
+            @MainActor func current() -> Bool { !Task.isCancelled && self.pendingRecoveryID == request && self.conversationGeneration == context && self.draftAccountID == accountID && self.selectedChatID == chatID && self.selectedThreadID == threadID }
             defer {
                 if self.pendingRecoveryID == request {
                     self.pendingRecoveryTask = nil; self.pendingRecoveryDeadline?.cancel(); self.pendingRecoveryDeadline = nil
@@ -637,6 +936,7 @@ public final class TelegramModel: ObservableObject {
             do {
                 guard let draft = try await store.load(chatID: chatID), current() else { return }
                 guard draft.isValid, draft.accountID == accountID, draft.chatID == chatID else { throw TelegramUploadFileError.unavailable }
+                guard draft.threadID == threadID else { return }
                 switch draft.disposition {
                 case .cancelled: return
                 case .accepted, .acceptedBatch:
@@ -652,7 +952,7 @@ public final class TelegramModel: ObservableObject {
                 }
                 let bundle = try await store.restoreBundle(draft: draft)
                 guard current() else { try? bundle.discard(); return }
-                let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: draft.title, replySource: source)
+                let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: draft.title, replySource: source, selectedThreadID: draft.threadID)
                 guard self.upload.restore(draft: draft, bundle: bundle, target: target, restorationEpoch: restorationEpoch) else {
                     try? bundle.discard(); throw TelegramUploadFileError.unavailable
                 }
@@ -684,23 +984,23 @@ public final class TelegramModel: ObservableObject {
     private func acknowledgeComposerDraft(formatted: TelegramFormattedText, submitted: TelegramComposerDraft) {
         guard submitted.input.formattedText == formatted,
               let cleared = drafts.acknowledge(sentInput: submitted.input, revision: submitted.revision,
-            accountID: submitted.accountID, chatID: submitted.chatID) else { return }
+            accountID: submitted.accountID, chatID: submitted.chatID, threadID: submitted.threadID) else { return }
         persistComposerDraft(cleared)
-        if draftAccountID == submitted.accountID, selectedChatID == submitted.chatID {
+        if draftAccountID == submitted.accountID, selectedChatID == submitted.chatID, selectedThreadID == submitted.threadID {
             displayComposerInput(.empty); refreshComposerReply()
         }
     }
 
     private func refreshComposerReply(initial: TelegramComposerReply? = nil) {
         let target = isComposerSuspended ? nil : draftAccountID.flatMap { accountID in
-            selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0)?.replyTarget }
+            selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0, threadID: selectedThreadID)?.replyTarget }
         }
         composerReply.select(target: target, chatID: selectedChatID, initial: initial)
     }
 
     private func refreshComposerForward() {
         let snapshot = draftAccountID.flatMap { accountID in
-            selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0) }
+            selectedChatID.flatMap { drafts.snapshot(accountID: accountID, chatID: $0, threadID: selectedThreadID) }
         }
         composerForwardIntent = snapshot?.forwardIntent
         composerForwardDisposition = snapshot?.forwardDisposition
@@ -715,8 +1015,8 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func stageMessageForwards(sources: [TelegramMessageActionSource], destinationChatID: Int64, contextID: UUID) -> Bool {
-        guard contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
-              !isRestoringComposerDraft, composerDraftRecoveryError == nil,
+        guard contextID == conversationGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
+              !isRestoringComposerDraft, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               !sources.isEmpty, sources.allSatisfy({ $0.accountID == draftAccountID && $0.chatID == selectedChatID && $0.canForward }),
@@ -734,7 +1034,7 @@ public final class TelegramModel: ObservableObject {
 
     private var canChangeMessageSelection: Bool {
         phase == .ready && !isBusy && !historyPage.isLoading && !historyPage.timedOut && !search.hasMessageQuery &&
-        !isRestoringComposerDraft && composerDraftRecoveryError == nil && !isForwardComposerLocked &&
+        !isRestoringComposerDraft && composerDraftRecoveryError == nil && serverDraftConflict == nil && !isResolvingServerDraft && !isForwardComposerLocked &&
         !isRestoringPendingUpload && pendingUploadRecoveryError == nil && upload.phase == .idle &&
         !messageActions.isBusy && messageActions.phase != .uncertain && !selectedMessagesDeletionBlocksActions
     }
@@ -742,7 +1042,7 @@ public final class TelegramModel: ObservableObject {
     @discardableResult
     public func toggleMessageGroupSelection(group: TelegramHistoryItem, sessionID: UUID?, expectedRevision: UUID?,
                                            contextID: UUID, windowID: UUID, extendingRange: Bool = false) -> Bool {
-        guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
+        guard canChangeMessageSelection, contextID == conversationGeneration, historyWindowID == windowID,
               group.isAlbum, let current = historyItems.first(where: { $0.id == group.id }), current == group,
               zip(current.messages, group.messages).allSatisfy({ fresh, frozen in
                   fresh.text.utf8.elementsEqual(frozen.text.utf8) &&
@@ -764,7 +1064,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func beginMessageSelection(messageID: String, contextID: UUID, windowID: UUID, extendingRange: Bool = false) -> Bool {
-        guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
+        guard canChangeMessageSelection, contextID == conversationGeneration, historyWindowID == windowID,
               messageSelection.session == nil, let message = messages.first(where: { $0.id == messageID }),
               let source = actionSource(for: message) else { return false }
         return messageSelection.begin(source: source, contextID: contextID, extendingRange: extendingRange)
@@ -772,7 +1072,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func toggleMessageSelection(messageID: String, sessionID: UUID, contextID: UUID, windowID: UUID, extendingRange: Bool = false) -> Bool {
-        guard canChangeMessageSelection, contextID == accountGeneration, historyWindowID == windowID,
+        guard canChangeMessageSelection, contextID == conversationGeneration, historyWindowID == windowID,
               messageSelection.session?.id == sessionID,
               let message = messages.first(where: { $0.id == messageID }), let source = actionSource(for: message) else { return false }
         cancelMessageSelectionRange()
@@ -806,7 +1106,7 @@ public final class TelegramModel: ObservableObject {
         }
         let lease = provider.resolve(request: request) { [weak self] sources in
             guard let self, self.messageSelection.rangeRequest == request else { return }
-            guard self.canChangeMessageSelection, self.accountGeneration == request.contextID,
+            guard self.canChangeMessageSelection, self.conversationGeneration == request.contextID,
                   self.draftAccountID == request.accountID, self.selectedChatID == request.chatID,
                   self.historyWindowID == windowID else {
                 self.cancelMessageSelectionRange(); return
@@ -820,7 +1120,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func cancelMessageSelection(sessionID: UUID, contextID: UUID) {
-        guard contextID == accountGeneration, messageSelection.session?.id == sessionID else { return }
+        guard contextID == conversationGeneration, messageSelection.session?.id == sessionID else { return }
         guard !selectedMessagesDeletionBlocksActions else { return }
         cancelMessageSelectionRange()
         selectedMessagesCopy.cancel()
@@ -828,7 +1128,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func currentMessageSelection(sessionID: UUID, contextID: UUID, revision: UUID) -> TelegramMessageSelectionSession? {
-        guard phase == .ready, contextID == accountGeneration, let session = messageSelection.session,
+        guard phase == .ready, contextID == conversationGeneration, let session = messageSelection.session,
               session.id == sessionID, session.revision == revision, session.contextID == contextID,
               session.accountID == draftAccountID, session.chatID == selectedChatID else { return nil }
         return session
@@ -868,7 +1168,7 @@ public final class TelegramModel: ObservableObject {
     }
     private func forwardToSaved(sources: [TelegramMessageActionSource], contextID: UUID,
                                 selection: TelegramMessageSelectionSession?) -> Bool {
-        guard canChangeMessageSelection, !messageSelection.isResolvingRange, contextID == accountGeneration,
+        guard canChangeMessageSelection, !messageSelection.isResolvingRange, contextID == conversationGeneration,
               let accountID = draftAccountID, !sources.isEmpty,
               sources.allSatisfy({ $0.accountID == accountID && $0.chatID == selectedChatID && $0.canForward }) else { return false }
         let request = TelegramSavedMessagesForwardRequest(contextID: contextID, accountID: accountID,
@@ -880,7 +1180,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func stageSelectedMessagesForward(destinationChatID: Int64, sessionID: UUID, contextID: UUID, expectedRevision: UUID? = nil) -> Bool {
-        guard !messageSelection.isResolvingRange, contextID == accountGeneration, let session = messageSelection.session,
+        guard !messageSelection.isResolvingRange, contextID == conversationGeneration, let session = messageSelection.session,
               session.id == sessionID, session.contextID == contextID, session.accountID == draftAccountID,
               session.chatID == selectedChatID, session.canForward,
               expectedRevision == nil || expectedRevision == session.revision else { return false }
@@ -889,37 +1189,37 @@ public final class TelegramModel: ObservableObject {
 
     private func applyPendingForwardStage() {
         guard let pending = pendingForwardStage, !isRestoringComposerDraft else { return }
-        guard pending.context == accountGeneration, pending.destination == selectedChatID,
+        guard pending.context == conversationGeneration, pending.destination == selectedChatID,
               let accountID = draftAccountID else { pendingForwardStage = nil; return }
         pendingForwardStage = nil
-        let current = drafts.snapshot(accountID: accountID, chatID: pending.destination)
+        let current = drafts.snapshot(accountID: accountID, chatID: pending.destination, threadID: selectedThreadID)
         guard current?.forwardDisposition == nil || current?.forwardDisposition == .prepared else {
             error = "В этом диалоге уже есть пересылка с неподтверждённым результатом. Черновик сохранён."; return
         }
-        if let changed = drafts.setForwardIntent(pending.intent, accountID: accountID, chatID: pending.destination) {
+        if let changed = drafts.setForwardIntent(pending.intent, accountID: accountID, chatID: pending.destination, threadID: selectedThreadID) {
             persistComposerDraft(changed)
         }
         if let origin = pending.origin,
-           drafts.snapshot(accountID: accountID, chatID: origin.chat)?.forwardIntent?.id == origin.intent,
-           let cleared = drafts.setForwardIntent(nil, accountID: accountID, chatID: origin.chat) { persistComposerDraft(cleared) }
+           drafts.snapshot(accountID: accountID, chatID: origin.chat, threadID: origin.thread)?.forwardIntent?.id == origin.intent,
+           let cleared = drafts.setForwardIntent(nil, accountID: accountID, chatID: origin.chat, threadID: origin.thread) { persistComposerDraft(cleared) }
         refreshComposerForward()
     }
 
     public func cancelComposerForward() {
         guard !isForwardComposerLocked, let accountID = draftAccountID, let chatID = selectedChatID else { return }
-        if let changed = drafts.setForwardIntent(nil, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        if let changed = drafts.setForwardIntent(nil, accountID: accountID, chatID: chatID, threadID: selectedThreadID) { persistComposerDraft(changed) }
         refreshComposerForward()
     }
 
     @discardableResult
     public func updateForwardOption(_ option: TelegramForwardOption, intentID: UUID, contextID: UUID,
                                     expectedChatID: Int64, expectedRevision: UUID) -> Bool {
-        guard contextID == accountGeneration, !isForwardComposerLocked,
+        guard contextID == conversationGeneration, !isForwardComposerLocked,
               let accountID = draftAccountID, let chatID = selectedChatID, chatID == expectedChatID,
               composerForwardRevision == expectedRevision,
               let intent = composerForwardIntent, intent.id == intentID else { return false }
         if case .captionsHidden = option, !composerForward.previews.contains(where: \.hasCaption) { return false }
-        if let changed = drafts.setForwardIntent(intent.applying(option), accountID: accountID, chatID: chatID) {
+        if let changed = drafts.setForwardIntent(intent.applying(option), accountID: accountID, chatID: chatID, threadID: selectedThreadID) {
             persistComposerDraft(changed)
         }
         refreshComposerForward()
@@ -927,19 +1227,19 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func updateForwardOptions(hideNames: Bool, hideCaptions: Bool, intentID: UUID, contextID: UUID) {
-        guard contextID == accountGeneration, !isForwardComposerLocked,
+        guard contextID == conversationGeneration, !isForwardComposerLocked,
               let accountID = draftAccountID, let chatID = selectedChatID,
               let intent = composerForwardIntent, intent.id == intentID else { return }
         let changedIntent = TelegramComposerForwardIntent(id: intent.id, sources: intent.sources,
             hideNames: hideNames, hideCaptions: hideCaptions, explicitHideNames: hideNames)
-        if let changed = drafts.setForwardIntent(changedIntent, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        if let changed = drafts.setForwardIntent(changedIntent, accountID: accountID, chatID: chatID, threadID: selectedThreadID) { persistComposerDraft(changed) }
         refreshComposerForward()
     }
 
     @discardableResult
     public func moveComposerForward(to destinationChatID: Int64, intentID: UUID, contextID: UUID,
                                     expectedRevision: UUID? = nil, expectedOriginChatID: Int64? = nil) -> Bool {
-        guard contextID == accountGeneration, !isForwardComposerLocked,
+        guard contextID == conversationGeneration, !isForwardComposerLocked,
               expectedRevision == nil || expectedRevision == composerForwardRevision,
               expectedOriginChatID == nil || expectedOriginChatID == selectedChatID,
               let intent = composerForwardIntent, intent.id == intentID else { return false }
@@ -947,9 +1247,9 @@ public final class TelegramModel: ObservableObject {
             guard canChangeMessageSelection, messageSelection.session == nil,
                   let accountID = draftAccountID, let chatID = selectedChatID, let revision = composerForwardRevision,
                   !savedMessagesForward.isBusy, savedMessagesForward.phase != .uncertain,
-                  (isSyntheticPreview && composerDraftRepository == nil) || unsavedComposerDrafts[ComposerDraftKey(accountID: accountID, chatID: chatID)] == nil else { return false }
+                  (isSyntheticPreview && composerDraftRepository == nil) || unsavedComposerDrafts[ComposerDraftKey(accountID: accountID, chatID: chatID, threadID: selectedThreadID)] == nil else { return false }
             let request = TelegramSavedMessagesForwardRequest(contextID: contextID, accountID: accountID, sources: intent.sources,
-                origin: .init(chatID: chatID, revision: revision, intentID: intent.id))
+                origin: .init(chatID: chatID, threadID: selectedThreadID, revision: revision, intentID: intent.id))
             guard request.isValid else { return false }
             savedForwardSelection = (request.id, nil)
             return savedMessagesForward.perform(request)
@@ -962,7 +1262,7 @@ public final class TelegramModel: ObservableObject {
         pendingForwardStage = (contextID, destinationChatID,
             TelegramComposerForwardIntent(sources: intent.sources, hideNames: intent.hideNames, hideCaptions: intent.hideCaptions,
                 explicitHideNames: intent.explicitHideNames),
-            (originChat, intentID))
+            (originChat, selectedThreadID, intentID))
         selectedChatID = destinationChatID
         applyPendingForwardStage()
         return true
@@ -973,7 +1273,7 @@ public final class TelegramModel: ObservableObject {
         guard composerCanSend, composerForwardIntent != nil, phase == .ready,
               !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions, upload.phase == .idle,
               let accountID = draftAccountID, let chatID = selectedChatID,
-              let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID) else { return false }
+              let snapshot = drafts.snapshot(accountID: accountID, chatID: chatID, threadID: selectedThreadID) else { return false }
         return composerForward.submit(snapshot)
     }
 
@@ -987,14 +1287,14 @@ public final class TelegramModel: ObservableObject {
     public func retryComposerDraftRestore() { restoreComposerDraft() }
 
     @discardableResult
-    public func beginReply(to message: TelegramMessage, contextID: UUID) -> Bool {
-        guard messageSelection.session == nil, !isRestoringPendingUpload, composerDraftRecoveryError == nil,
-              !isForwardComposerLocked, contextID == accountGeneration, !isBusy, upload.phase == .idle,
-              let source = actionSource(for: message), source.canReply, !source.fingerprint.isEmpty,
+    public func beginReply(to message: TelegramMessage, contextID: UUID, quote: TelegramReplyQuote? = nil) -> Bool {
+        guard messageSelection.session == nil, !isRestoringPendingUpload, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
+              !isForwardComposerLocked, contextID == conversationGeneration, !isBusy, upload.phase == .idle,
+              let source = actionSource(for: message)?.quoting(quote, maximumLength: replyQuoteMaximumUTF16Count), source.canReply, !source.fingerprint.isEmpty,
               source.chatID == source.peerID || source.metadata.migrationChatID == source.chatID else { return false }
         let target = TelegramComposerReplyTarget(source: source)
         guard target.isValid else { return false }
-        if let changed = drafts.setReplyTarget(target, accountID: source.accountID, chatID: source.chatID) {
+        if let changed = drafts.setReplyTarget(target, accountID: source.accountID, chatID: source.chatID, threadID: selectedThreadID) {
             persistComposerDraft(changed)
         }
         if let session = messageEditSession {
@@ -1006,7 +1306,7 @@ public final class TelegramModel: ObservableObject {
 
     public func cancelComposerReply() {
         guard !isForwardComposerLocked, let accountID = draftAccountID, let chatID = selectedChatID else { return }
-        if let changed = drafts.setReplyTarget(nil, accountID: accountID, chatID: chatID) { persistComposerDraft(changed) }
+        if let changed = drafts.setReplyTarget(nil, accountID: accountID, chatID: chatID, threadID: selectedThreadID) { persistComposerDraft(changed) }
         refreshComposerReply()
     }
 
@@ -1015,7 +1315,7 @@ public final class TelegramModel: ObservableObject {
     public func loadContactProfile() {
         cancelContactProfile()
         guard phase == .ready, let chat = selectedChat, let accountID = draftAccountID else { return }
-        let requestID = UUID(), contextID = accountGeneration
+        let requestID = UUID(), contextID = conversationGeneration
         contactProfileRequestID = requestID
         contactProfileState = .loading
         #if DEBUG
@@ -1049,7 +1349,7 @@ public final class TelegramModel: ObservableObject {
 
     func receiveContactProfile(_ profile: TelegramContactProfile?, requestID: UUID,
                                contextID: UUID, accountID: Int64, chatID: Int64) {
-        guard phase == .ready, requestID == contactProfileRequestID, contextID == accountGeneration,
+        guard phase == .ready, requestID == contactProfileRequestID, contextID == conversationGeneration,
               accountID == draftAccountID, chatID == selectedChatID,
               profile == nil || (profile?.accountID == accountID && profile?.peerID == chatID) else { return }
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
@@ -1059,7 +1359,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func isCurrentContactProfile(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
-        phase == .ready && contextID == accountGeneration && profile.accountID == draftAccountID
+        phase == .ready && contextID == conversationGeneration && profile.accountID == draftAccountID
             && profile.peerID == selectedChatID && contactProfileState == .ready(profile)
     }
 
@@ -1079,14 +1379,15 @@ public final class TelegramModel: ObservableObject {
 
     private func projectMessageEditSession() {
         messageEditSession = selectedChatID.flatMap { messageEditSessions[$0] }.flatMap {
-            $0.contextID == accountGeneration && $0.source.accountID == draftAccountID ? $0 : nil
+            $0.contextID == conversationGeneration && $0.source.accountID == draftAccountID ? $0 : nil
         }
+        refreshCustomEmojiDescriptors()
     }
 
     @discardableResult
     public func beginMessageEdit(source: TelegramMessageActionSource, author: String, contextID: UUID) -> Bool {
-        guard messageSelection.session == nil, contextID == accountGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
-              composerDraftRecoveryError == nil,
+        guard messageSelection.session == nil, contextID == conversationGeneration, phase == .ready, !isBusy, !isForwardComposerLocked,
+              composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
@@ -1105,7 +1406,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func updateMessageEditInput(_ input: TelegramComposerInput, sessionID: UUID, contextID: UUID) -> Bool {
-        guard phase == .ready, contextID == accountGeneration, let current = messageEditSession,
+        guard phase == .ready, contextID == conversationGeneration, let current = messageEditSession,
               current.id == sessionID, current.contextID == contextID,
               current.source.accountID == draftAccountID, current.source.chatID == selectedChatID,
               input.formattedText.isEditable else { return false }
@@ -1120,8 +1421,8 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func updateMessageEditCaptionPlacement(_ above: Bool, sessionID: UUID, revision: UUID, contextID: UUID) -> Bool {
-        guard phase == .ready, !isBusy, contextID == accountGeneration,
-              messageSelection.session == nil, !isForwardComposerLocked, composerDraftRecoveryError == nil,
+        guard phase == .ready, !isBusy, contextID == conversationGeneration,
+              messageSelection.session == nil, !isForwardComposerLocked, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
               !isRestoringPendingUpload, pendingUploadRecoveryError == nil, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               let current = messageEditSession, current.id == sessionID, current.revision == revision,
@@ -1144,7 +1445,7 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func cancelMessageEdit(sessionID: UUID, contextID: UUID) -> Bool {
-        guard contextID == accountGeneration, let current = messageEditSession,
+        guard contextID == conversationGeneration, let current = messageEditSession,
               current.id == sessionID, current.contextID == contextID,
               current.source.chatID == selectedChatID else { return false }
         editDrafts[EditDraftKey(current.source)] = nil
@@ -1170,7 +1471,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func saveMessageFormattedEditDraft(_ value: TelegramFormattedText, source: TelegramMessageActionSource, contextID: UUID) {
-        guard contextID == accountGeneration, source.accountID == draftAccountID else { return }
+        guard contextID == conversationGeneration, source.accountID == draftAccountID else { return }
         editDrafts[EditDraftKey(source)] = value
     }
 
@@ -1182,9 +1483,9 @@ public final class TelegramModel: ObservableObject {
 
     @discardableResult
     public func performMessageAction(_ action: TelegramMessageAction, source: TelegramMessageActionSource, contextID: UUID) -> Bool {
-        guard messageSelection.session == nil, !isRestoringPendingUpload, composerDraftRecoveryError == nil,
+        guard messageSelection.session == nil, !isRestoringPendingUpload, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
               !isForwardComposerLocked, pendingUploadRecoveryError == nil,
-              contextID == accountGeneration, phase == .ready, !isBusy, upload.phase == .idle,
+              contextID == conversationGeneration, phase == .ready, !isBusy, upload.phase == .idle,
               !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
               source.accountID == draftAccountID, source.chatID == selectedChatID,
               knownChats[source.chatID] != nil else { return false }
@@ -1195,7 +1496,7 @@ public final class TelegramModel: ObservableObject {
         replyComposerSubmission = nil
         if let formatted = replyText(action) {
             guard composerForwardIntent == nil else { return false }
-            if let target = drafts.snapshot(accountID: source.accountID, chatID: source.chatID)?.replyTarget {
+            if let target = drafts.snapshot(accountID: source.accountID, chatID: source.chatID, threadID: selectedThreadID)?.replyTarget {
                 guard target == TelegramComposerReplyTarget(source: source), composerReply.resolved?.source == source else { return false }
             }
             if let snapshot = composerSubmission(formatted: formatted, accountID: source.accountID, chatID: source.chatID) {
@@ -1236,23 +1537,24 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func canPrepareUpload(target: TelegramUploadTarget, contextID: UUID) -> Bool {
-        guard messageSelection.session == nil, !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
-              drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.forwardIntent == nil,
-              selectedChatID != target.chatID || composerDraftRecoveryError == nil,
-              target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource else { return false }
+        guard messageSelection.session == nil, !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == conversationGeneration, phase == .ready, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions,
+              drafts.snapshot(accountID: target.accountID, chatID: target.chatID, threadID: target.selectedThreadID)?.forwardIntent == nil,
+              selectedChatID != target.chatID || (composerDraftRecoveryError == nil && serverDraftConflict == nil && !isResolvingServerDraft),
+              target.accountID == draftAccountID, knownChats[target.chatID] != nil, target.hasValidReplySource,
+              target.chatID != selectedChatID || target.selectedThreadID == selectedThreadID else { return false }
         return true
     }
 
     private func isCurrentVoice(_ target: TelegramUploadTarget, context: UUID) -> Bool {
         guard selectedChatID == target.chatID, target.accountID == draftAccountID,
-            context == accountGeneration, composerInput == .empty, messageEditSession == nil,
+            context == conversationGeneration, composerInput == .empty, messageEditSession == nil,
             !isRestoringComposerDraft, canPrepareUpload(target: target, contextID: context) else { return false }
-        return drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.replyTarget ==
+        return drafts.snapshot(accountID: target.accountID, chatID: target.chatID, threadID: target.selectedThreadID)?.replyTarget ==
             target.replySource.map(TelegramComposerReplyTarget.init(source:))
     }
     private func authorizeRecording(kind: TelegramRecordingKind) async -> Bool {
-        guard let target = uploadTarget(replyTo: composerReply.resolved?.source, contextID: accountGeneration) else { return false }
-        let context = accountGeneration, inputContext = voiceInputContextID
+        guard let target = uploadTarget(replyTo: composerReply.resolved?.source, contextID: conversationGeneration) else { return false }
+        let context = conversationGeneration, inputContext = voiceInputContextID
         guard isCurrentVoice(target, context: context), voiceRecording.isActive else { return false }
         #if DEBUG
         if isSyntheticPreview { return true }
@@ -1290,7 +1592,9 @@ public final class TelegramModel: ObservableObject {
         while !Task.isCancelled, voicePreparationID == id, upload.preparationContextID == id,
             isCurrentVoice(target, context: context), ContinuousClock.now < limit {
             if upload.canSend {
-                if send { await sendPreparedRecording(contextID: id, accountContext: context, recordingIntent: id) }
+                // The recording owns a conversation token; the final send also
+                // checks the independently scoped account token after eligibility.
+                if send { await sendPreparedRecording(contextID: id, accountContext: accountGeneration, recordingIntent: id) }
                 if voicePreparationID == id { voicePreparationID = nil }
                 return true
             }
@@ -1329,13 +1633,13 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func uploadTarget(replyTo source: TelegramMessageActionSource?, contextID: UUID) -> TelegramUploadTarget? {
-        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == accountGeneration, composerSupportsAttachments, let target = uploadTarget else { return nil }
-        if let replyTarget = drafts.snapshot(accountID: target.accountID, chatID: target.chatID)?.replyTarget {
+        guard !isRestoringPendingUpload, pendingUploadRecoveryError == nil, contextID == conversationGeneration, composerSupportsAttachments, let target = uploadTarget else { return nil }
+        if let replyTarget = drafts.snapshot(accountID: target.accountID, chatID: target.chatID, threadID: target.selectedThreadID)?.replyTarget {
             guard let source, TelegramComposerReplyTarget(source: source) == replyTarget,
                   composerReply.resolved?.source == source else { return nil }
         }
         let captured = TelegramUploadTarget(accountID: target.accountID, chatID: target.chatID,
-            title: target.title, replySource: source)
+            title: target.title, replySource: source, selectedThreadID: target.selectedThreadID)
         return captured.hasValidReplySource ? captured : nil
     }
 
@@ -1344,7 +1648,7 @@ public final class TelegramModel: ObservableObject {
         uploadComposerTransfer = nil
         uploadComposerSubmission = nil
         guard target.accountID == draftAccountID,
-              let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
+              let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID, threadID: target.selectedThreadID),
               snapshot.input == input,
               snapshot.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
         uploadComposerTransfer = (id, snapshot)
@@ -1357,8 +1661,8 @@ public final class TelegramModel: ObservableObject {
         let transfer = uploadComposerTransfer
         uploadComposerTransfer = nil
         uploadComposerSubmission = nil
-        guard let transfer, transfer.draft.accountID == draftAccountID, transfer.draft.chatID == selectedChatID else { return }
-        displayComposerInput(drafts.snapshot(accountID: transfer.draft.accountID, chatID: transfer.draft.chatID)?.input ?? .empty)
+        guard let transfer, transfer.draft.accountID == draftAccountID, transfer.draft.chatID == selectedChatID, transfer.draft.threadID == selectedThreadID else { return }
+        displayComposerInput(drafts.snapshot(accountID: transfer.draft.accountID, chatID: transfer.draft.chatID, threadID: transfer.draft.threadID)?.input ?? .empty)
         refreshComposerReply()
     }
 
@@ -1372,11 +1676,12 @@ public final class TelegramModel: ObservableObject {
         guard target.accountID == draftAccountID else { return }
         if uploadComposerPreparationID != nil {
             guard let transfer = uploadComposerTransfer, transfer.draft.accountID == target.accountID, transfer.draft.chatID == target.chatID,
+                  transfer.draft.threadID == target.selectedThreadID,
                   transfer.draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
             uploadComposerSubmission = (transfer.draft, caption)
             return
         }
-        guard let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID),
+        guard let snapshot = drafts.snapshot(accountID: target.accountID, chatID: target.chatID, threadID: target.selectedThreadID),
               snapshot.input.formattedText == caption,
               snapshot.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else { return }
         uploadComposerSubmission = (snapshot, caption)
@@ -1390,6 +1695,7 @@ public final class TelegramModel: ObservableObject {
     func acknowledgeUpload(target: TelegramUploadTarget, caption: TelegramFormattedText) {
         guard target.accountID == draftAccountID, let submitted = uploadComposerSubmission,
               submitted.draft.accountID == target.accountID, submitted.draft.chatID == target.chatID,
+              submitted.draft.threadID == target.selectedThreadID,
               submitted.caption == caption else { return }
         uploadComposerSubmission = nil
         acknowledgeComposerDraft(formatted: submitted.draft.input.formattedText, submitted: submitted.draft)
@@ -1408,6 +1714,8 @@ public final class TelegramModel: ObservableObject {
     }
 
     isolated deinit {
+        emojiResolution.dispose(); capabilityObservation.dispose(); customEmojiPlaybackContext?.invalidate()
+        serverDraftResolutionDeadline?.cancel()
         selectionRangeDeadline?.cancel()
         selectionRangeDisposable.dispose()
         playback.stop()
@@ -1420,7 +1728,7 @@ public final class TelegramModel: ObservableObject {
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
         account?.network.shouldKeepConnection.set(.single(false))
-        for disposable in [session, authState, action, chatList, history, connection, outgoing, uploadCaptionLimit, contactProfileSubscription, composerDraftLoad] { disposable.dispose() }
+        for disposable in [session, authState, action, chatList, history, connection, outgoing, uploadCaptionLimit, contactProfileSubscription, composerDraftLoad, serverDraftObservation, serverDraftResolution] { disposable.dispose() }
     }
 
     public func connect(apiID: String, apiHash: String) {
@@ -1560,15 +1868,15 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func sendMessage(_ formatted: TelegramFormattedText) -> Bool {
-        guard messageSelection.session == nil, !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil,
+        guard messageSelection.session == nil, !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
               composerForwardIntent == nil, pendingUploadRecoveryError == nil,
               let draftAccountID, let chatID = selectedChatID,
-              drafts.snapshot(accountID: draftAccountID, chatID: chatID)?.replyTarget == nil else { return false }
+              drafts.snapshot(accountID: draftAccountID, chatID: chatID, threadID: selectedThreadID)?.replyTarget == nil else { return false }
         guard !isSyntheticPreview else { error = "Синтетическая проверка: отправка отключена."; return false }
         guard !isBusy, !messageActions.isBusy, messageActions.phase != .uncertain, !selectedMessagesDeletionBlocksActions, upload.phase == .idle,
               phase == .ready, let account, let selectedChatID,
               knownChats[selectedChatID] != nil else { return false }
-        guard telegramFormattedTextCanSend(formatted) else {
+        guard telegramFormattedTextCanPrepare(formatted) else {
             error = "Текст или его форматирование не поддерживается для отправки. Максимум — 4096 знаков UTF16."; return false
         }
         let token = generation
@@ -1577,12 +1885,13 @@ public final class TelegramModel: ObservableObject {
         let accountID = account.peerId.toInt64()
         let submitted = composerSubmission(formatted: formatted, accountID: accountID, chatID: chat)
         isBusy = true; error = nil
-        let enqueue = telegramEnqueueOutgoingText(account: account,chatID: chat,formatted: formatted)
+        let enqueue = telegramEnqueueOutgoingText(account: account, approval: sendApproval, chatID: chat,
+            threadID: selectedThreadID, revision: submitted?.revision ?? UUID(), formatted: formatted)
         outgoing.set((enqueue |> deliverOnMainQueue).start(next: { [weak self] ids in
             guard let self, self.generation == token, self.accountGeneration == accountToken else { return }
             self.isBusy = false
             guard let ids else { self.error = "Не удалось проверить форматирование перед отправкой. Черновик сохранён."; return }
-            if ids.contains(where: { $0 != nil }) {
+            if ids.count == 1, ids[0] != nil {
                 if let submitted { self.acknowledgeComposerDraft(formatted: formatted, submitted: submitted) }
             } else { self.error = "Не удалось подтвердить постановку в очередь. Черновик сохранён." }
         }))
@@ -1621,10 +1930,14 @@ public final class TelegramModel: ObservableObject {
         authorizationGeneration = UUID()
         action.set(nil)
         self.unauthorized = nil; self.account = account
+        sendApproval.bind(account: account)
+        customEmojiPlaybackContext = TelegramCustomEmojiPlaybackContext(account: account)
+        customEmojiCatalog.bind(account: account)
+        refreshConversationCapabilities()
         bindMessageSelectionRangeProvider(TelegramPostboxSelectionRangeProvider(postbox: account.postbox, accountID: account.peerId.toInt64()))
         let replyProvider = TelegramPostboxComposerReplyProvider(postbox: account.postbox, accountID: account.peerId.toInt64())
         composerReply.bind(replyProvider)
-        composerForward.bind(TelegramEngineForwardProvider(account: account))
+        composerForward.bind(TelegramEngineForwardProvider(account: account, approval: sendApproval))
         let recovery = TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: account.postbox, accountID: account.peerId.toInt64()), files: { [weak self] in
             guard let self else { throw TelegramUploadFileError.unavailable }
             return try self.archive.files.pendingUploadFiles()
@@ -1632,22 +1945,24 @@ public final class TelegramModel: ObservableObject {
         pendingRecoveryStore = recovery; pendingReplyProvider = replyProvider
         refreshComposerReply()
         bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: account.postbox, accountID: account.peerId.toInt64()))
+        bindServerDraftObserver(TelegramPostboxServerDraftObserver(postbox: account.postbox, accountID: account.peerId.toInt64()))
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
         setupAccount(account)
         avatars.bind(TelegramEngineAvatarProvider(account: account))
         peerStatus.bind(account: account)
+        forumTopics.bind(account: account); forumTopics.selectChat(selectedChatID)
         profilePhotos.bind(TelegramEngineProfilePhotoProvider(account: account))
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
         media.bind(provider: mediaProvider)
-        upload.bind(provider: TelegramEngineUploadProvider(account: account), recoveryStore: recovery, requiresRecovery: true)
+        upload.bind(provider: TelegramEngineUploadProvider(account: account, approval: sendApproval), recoveryStore: recovery, requiresRecovery: true)
         restorePendingUpload()
-        messageActions.bind(provider: TelegramEngineMessageActionsProvider(account: account))
+        messageActions.bind(provider: TelegramEngineMessageActionsProvider(account: account, approval: sendApproval))
         selectedMessagesCopy.bind(provider: TelegramPostboxSelectedMessagesCopyProvider(postbox: account.postbox, accountID: account.peerId.toInt64()))
         selectedMessagesDelete.bind(provider: TelegramEngineSelectedMessagesDeleteProvider(account: account))
-        savedMessagesForward.bind(TelegramEngineSavedMessagesForwardProvider(account: account))
+        savedMessagesForward.bind(TelegramEngineSavedMessagesForwardProvider(account: account, approval: sendApproval))
         historyRead.bind(TelegramEngineHistoryReadProvider(account: account))
         search.bind(account: account)
         search.setFolder(chatFolder)
@@ -1656,6 +1971,11 @@ public final class TelegramModel: ObservableObject {
             |> deliverOnMainQueue).start(next: { [weak self] limit in
                 guard let self, self.generation == token, self.accountGeneration == accountToken else { return }
                 self.uploadCaptionMaximumUTF16Count = limit
+            }))
+        replyQuoteLimitObservation.set((telegramReplyQuoteLimitSignal(postbox: account.postbox)
+            |> deliverOnMainQueue).start(next: { [weak self] limit in
+                guard let self, self.generation == token, self.accountGeneration == accountToken else { return }
+                self.replyQuoteMaximumUTF16Count = limit
             }))
         self.authState.set(nil); self.isBusy = false; self.phase = .ready
         account.shouldBeServiceTaskMaster.set(.single(.always))
@@ -1675,7 +1995,15 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        sendApproval.dispose(); capabilityObservation.set(nil); conversationCapabilities = nil
+        pendingEmojiInsertion = nil; customEmojiInsertion = nil
+        customEmojiCatalog.bind(account: nil); customEmojiPlaybackContext?.invalidate()
+        customEmojiPlaybackContext = nil; customEmojiDescriptors = [:]
+        emojiResolutionID = UUID(); emojiRequested = []; emojiResolution.set(nil)
+        bindServerDraftObserver(nil)
+        forumTopics.bind(account: nil)
         uploadCaptionLimit.set(nil); uploadCaptionMaximumUTF16Count = 1024
+        replyQuoteLimitObservation.set(nil); replyQuoteMaximumUTF16Count = 1024
         cancelVoiceRecording()
         bindMessageSelectionRangeProvider(nil)
         cancelContactProfile()
@@ -1700,7 +2028,7 @@ public final class TelegramModel: ObservableObject {
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
         search.bind(account: nil)
-        accountGeneration = UUID()
+        accountGeneration = UUID(); conversationGeneration = UUID()
         messageEditSessions = [:]; messageEditSession = nil; submittedEditSession = nil; editDrafts = [:]
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
@@ -1747,7 +2075,7 @@ public final class TelegramModel: ObservableObject {
     public func openSearchMessage(id: String) {
         // Migrated-group matches have the old peer ID. Postbox includes that
         // associated history; validate the search's selected chat, not the index peer.
-        guard let index = search.messageIndex(id: id, inChat: selectedChatID) else { return }
+        guard let index = search.messageIndex(id: id, inChat: selectedChatID, threadID: selectedThreadID) else { return }
         search.messageQuery = ""
         loadHistory(anchor: index, clear: false, focusID: id)
     }
@@ -1837,7 +2165,7 @@ public final class TelegramModel: ObservableObject {
         #if DEBUG
         if let preview, let selectedChatID, knownChats[selectedChatID] != nil {
             let requestID = historyPages.begin(anchor: anchor)
-            let page = preview.messages(chatID: selectedChatID, anchor: anchor)
+            let page = preview.messages(chatID: selectedChatID, anchor: anchor, threadID: selectedThreadID)
             prepareSyntheticHistoryReadIndexes(page.items)
             receiveMessages(page.items, requestID: requestID, previous: page.previous, next: page.next, isLoading: false)
             return
@@ -1848,16 +2176,16 @@ public final class TelegramModel: ObservableObject {
         }
         let token = generation
         let accountToken = accountGeneration
-        let chat = selectedChatID
+        let chat = selectedChatID, threadID = selectedThreadID
         let requestID = historyPages.begin(anchor: anchor)
         historyPage = historyPages.navigation
         updateHistoryDeadline(requestID: requestID)
         let index: MessageHistoryAnchorIndex = anchor.map { .message($0) } ?? .upperBound
-        history.set((account.viewTracker.aroundMessageHistoryViewForLocation(.peer(peerId: PeerId(chat), threadId: nil),
+        history.set((account.viewTracker.aroundMessageHistoryViewForLocation(.peer(peerId: PeerId(chat), threadId: threadID),
                 index: index, anchorIndex: index, count: 50, fixedCombinedReadStates: nil)
             |> deliverOnMainQueue).start(next: { [weak self] value in
                 guard let self, self.generation == token, self.accountGeneration == accountToken,
-                      self.selectedChatID == chat, self.historyPages.requestID == requestID else { return }
+                      self.selectedChatID == chat, self.selectedThreadID == threadID, self.historyPages.requestID == requestID else { return }
                 let view = value.0
                 let waiting = view.isLoading || view.isLoadingEarlier ||
                     (view.earlierId == nil && view.holeEarlier) || (view.laterId == nil && view.holeLater)
@@ -1890,9 +2218,9 @@ public final class TelegramModel: ObservableObject {
             isLoading: isLoading, hasPreviousGap: hasPreviousGap, hasNextGap: hasNextGap) else { return }
         historyPage = historyPages.navigation
         updateHistoryDeadline(requestID: requestID)
-        if !items.isEmpty || !isLoading { messages = items }
+        if !items.isEmpty || !isLoading { messages = items; refreshCustomEmojiDescriptors() }
         if let chatID = selectedChatID {
-            messageSelection.observe(sources: items.compactMap(actionSource), contextID: accountGeneration, chatID: chatID)
+            messageSelection.observe(sources: items.compactMap(actionSource), contextID: conversationGeneration, chatID: chatID)
         }
         if messageSelection.rangeRequest == nil || historyPage.isLoading { cancelMessageSelectionRange() }
         refreshMediaSources()
@@ -1922,11 +2250,11 @@ public final class TelegramModel: ObservableObject {
 
     #if DEBUG
     /// Explicit, in-memory UI fixture. Does not open accounts, files or Keychain.
-    public static func syntheticPreview(albums: Bool = false) -> TelegramModel {
+    public static func syntheticPreview(albums: Bool = false, forum: Bool = false) -> TelegramModel {
         let model = TelegramModel()
-        let pages = TelegramSyntheticPages(albums: albums)
+        let pages = TelegramSyntheticPages(albums: albums, forum: forum)
         model.preview = pages
-        model.search.useSyntheticPreview(albums: albums)
+        model.search.useSyntheticPreview(albums: albums, forum: forum)
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())
@@ -1942,6 +2270,43 @@ public final class TelegramModel: ObservableObject {
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"
         model.loadChatList(clear: true)
+        return model
+    }
+
+    private var extendedMessagesPreview = false
+    public static func syntheticExtendedMessagesPreview(specialConversation: String? = nil) -> TelegramModel {
+        let model = syntheticPreview(forum: true)
+        model.extendedMessagesPreview = true
+        do {
+            let emoji = try TelegramCustomEmojiSyntheticState.make()
+            model.customEmojiPlaybackContext = emoji.playbackContext
+            model.customEmojiDescriptors = emoji.descriptors
+            model.customEmojiCatalog.bind(provider: emoji.catalogProvider)
+            let pages = model.preview
+            model.forumTopics.bind(accountID: -1, provider: { chatID in
+                guard chatID == 10001 else { return .single(.failure(.unavailable)) }
+                return .single(.success(.init(accountID: -1, chatID: chatID, topics: [
+                    .init(accountID: -1, chatID: chatID, threadID: 1, title: "Общие", iconColor: 0x6FB9F0, unreadCount: 3),
+                    .init(accountID: -1, chatID: chatID, threadID: 7, title: "Разработка", iconFileID: 902, iconColor: 0x8E70E7,
+                        unreadCount: 2, pinnedIndex: 0, lastMessage: pages?.messages(chatID: chatID, anchor: nil, threadID: 7).items.last)
+                ], isLoading: false)))
+            })
+            model.selectedChatID = specialConversation == "secret" ? 10002 : specialConversation == "paid" ? 10003 : specialConversation == "draft" ? 10004 : 10001
+            model.refreshCustomEmojiDescriptors()
+            if specialConversation == "draft" {
+                let fixture = TelegramServerDraftSyntheticPreview()
+                model.bindComposerDraftRepository(fixture)
+                model.draft = "Локальный черновик 😀"
+                model.bindServerDraftObserver(fixture)
+            }
+            if specialConversation == "paid" {
+                model.sendApproval.bind(provider: TelegramSyntheticSendApprovalProvider(), accountID: 1)
+                model.sendApproval.request(context: .init(accountID: 1, chatID: 42, threadID: nil,
+                    submissionRevision: UUID(), messageCount: 3), title: "Платный чат · QA") { [weak model] result in
+                    if case .success = result { model?.error = "Синтетическая проверка: платная отправка отключена." }
+                }
+            }
+        } catch { model.error = "Не удалось загрузить синтетические custom emoji." }
         return model
     }
 
@@ -1995,3 +2360,15 @@ private enum TelegramSessionKey {
         return ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: key, salt: salt)
     }
 }
+
+#if DEBUG
+/// The preview only renders confirmation. It cannot create paid consent or an Account.
+@MainActor private final class TelegramSyntheticSendApprovalProvider: TelegramSendApprovalProviding {
+    func capabilities(context: TelegramSendContext)
+        -> Signal<Result<TelegramConversationCapabilities, TelegramConversationCapabilitiesError>, NoError> {
+        .single(.success(.init(accountID: context.accountID, chatID: context.chatID, messageFee: .stars(3), secret: nil)))
+    }
+    func createConsent(context: TelegramSendContext, perMessageStars: Int64, consentID: UUID)
+        -> Signal<Result<TelegramPaidSendConsent, TelegramPaidSendConsentError>, NoError> { .single(.failure(.incompatible)) }
+}
+#endif

@@ -25,15 +25,16 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
     let groupCount: Int
 
     /// Archive is one document, independent of the number of canonical sources.
-    init(archiveID: UUID, caption: TelegramFormattedText, captionPolicy: TelegramUploadCaptionPolicy? = nil) throws {
-        let rules: TelegramUploadCaptionRules = captionPolicy == nil ? .reference : .current
+    init(archiveID: UUID, caption: TelegramFormattedText, captionPolicy: TelegramUploadCaptionPolicy? = nil, captionRules: TelegramUploadCaptionRules? = nil) throws {
+        let rules: TelegramUploadCaptionRules = captionRules ?? (captionPolicy == nil ? .reference : .current)
+        guard rules != .extended || captionPolicy != nil else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         let maximum = captionPolicy?.maximumUTF16Count ?? 1024
         guard archiveID != TelegramPendingUploadDraft.zeroUUID,
               rules.canSend(caption, maximumUTF16Count: maximum) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         let projected = try rules.projection(caption)
-        guard telegramFormattedCaptionCanSend(projected, maximumUTF16Count: maximum) else {
+        guard telegramFormattedCaptionCanSend(projected, maximumUTF16Count: maximum, allowCustomEmoji: rules == .extended) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         messages = [.init(itemID: archiveID, caption: projected, groupIndex: nil,
@@ -45,7 +46,8 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
          captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil,
          captionRules: TelegramUploadCaptionRules = .reference, captionPolicy: TelegramUploadCaptionPolicy? = nil) throws {
         let maximum = captionPolicy?.maximumUTF16Count ?? 1024
-        guard captionPolicy == nil || (captionRules == .current && captionPolicy!.isValid(for: items.map(\.id))) else {
+        guard captionRules != .extended || captionPolicy != nil,
+              captionPolicy == nil || ((captionRules == .current || captionRules == .extended) && captionPolicy!.isValid(for: items.map(\.id))) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         guard presentation != .archive else { throw TelegramPendingUploadPersistenceError.incompatibleData }
@@ -65,7 +67,7 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
         let caption = try captionRules.projection(caption)
         guard !items.isEmpty, Set(items.map(\.id)).count == items.count,
               items.allSatisfy({ $0.id != TelegramPendingUploadDraft.zeroUUID }),
-              telegramFormattedCaptionCanSend(caption, maximumUTF16Count: maximum),
+              telegramFormattedCaptionCanSend(caption, maximumUTF16Count: maximum, allowCustomEmoji: captionRules == .extended),
               presentation != nil || items.allSatisfy({ $0.file.mode == .file }) || items.allSatisfy({ $0.file.mode != .file }),
               presentation != nil || (!captionAboveMedia && !mediaSpoiler) || items.allSatisfy({ $0.file.mode != .file }),
               presentation == nil || !isGrouped || presentation!.allowsGrouping(items) else {

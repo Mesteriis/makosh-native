@@ -3,7 +3,7 @@ import Foundation
 /// Schema15 changes the send projection, never the durable editor input.
 /// Earlier preparations retain their original caption and receipt semantics.
 enum TelegramUploadCaptionRules: Sendable {
-    case legacy, reference, current
+    case legacy, reference, current, extended
 
     /// PreviewSenderController uses preview entries, not outgoing message count.
     static func usesCaptionPlaceholder(items: [TelegramUploadBatchItem], presentation: TelegramUploadPresentation,
@@ -20,8 +20,13 @@ enum TelegramUploadCaptionRules: Sendable {
 
     func projection(_ value: TelegramFormattedText) throws -> TelegramFormattedText {
         if self == .current { return try TelegramUploadCaptionProjection.project(value) }
+        if self == .extended { return try TelegramUploadCaptionProjection.project(value, allowCustomEmoji: true) }
         guard self != .legacy else { return value }
-        guard value.isEditable, !value.entities.contains(where: {
+        return try Self.referenceProjection(value, allowCustomEmoji: false)
+    }
+
+    static func referenceProjection(_ value: TelegramFormattedText, allowCustomEmoji: Bool) throws -> TelegramFormattedText {
+        guard value.isEditable, allowCustomEmoji || !value.entities.contains(where: {
             if case .customEmoji = $0.kind { return true }; return false
         }) else { throw TelegramFormattedTextError.invalid }
         // Both reference substitutions retain one UTF16 unit; only edge trimming
@@ -59,7 +64,11 @@ enum TelegramUploadCaptionRules: Sendable {
         guard TelegramUploadCaptionLimit.isValid(maximumUTF16Count),
               validationUTF16Count(value) <= maximumUTF16Count,
               let projected = try? projection(value) else { return false }
-        return telegramFormattedCaptionCanSend(projected, maximumUTF16Count: maximumUTF16Count)
+        return telegramFormattedCaptionCanSend(projected, maximumUTF16Count: maximumUTF16Count, allowCustomEmoji: self == .extended)
+    }
+
+    static func containsCustomEmoji(_ value: TelegramFormattedText) -> Bool {
+        value.entities.contains { if case .customEmoji = $0.kind { return true }; return false }
     }
 
     static func canHaveCaption(kind: String?, metadata: TelegramUploadMetadata?, selectionMIME: String?) -> Bool {

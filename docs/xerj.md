@@ -17,7 +17,7 @@ python3 scripts/xerj-index.py MMail --check
 xerj search --url http://127.0.0.1:19320 --prefix mk-com-mail 'IMAPSession connectAndLogin' -k 3
 python3 scripts/xerj-index.py project
 python3 scripts/xerj-index.py project --check
-xerj search --url http://127.0.0.1:19320 --prefix mk-own-v7 'undoMerge expectedRevision' -k 3
+xerj search --url http://127.0.0.1:19320 --prefix mk-own-v9 'undoMerge expectedRevision' -k 3
 ```
 
 Reference preparation is optional research work. Application build/run/test uses
@@ -30,10 +30,14 @@ Adding retained `.notice` license files caused the original `mk-own` frozen
 dataset to refuse new text fields (actual exit 1, unsupported schema evolution).
 The separate `mk-own-v2` scope then completed successfully. Adding Makosh's own
 dependency lock later caused v2 to reject the new JSON fields (actual exit 1).
-The subsequent S3 dependency lock also introduced new JSON fields; v3 refused the unsupported schema evolution (exit 1). The Opus dependency lock later introduced archive and manifest JSON fields; v4 also refused schema evolution (exit 1). The OpusFile lock subsequently introduced nested archive JSON fields; v5 refused schema evolution (exit1). The Mozjpeg lock then introduced per-file source hashes; v6 also refused schema evolution (exit1). The current project therefore uses a separate `mk-own-v7` prefix/state, following
+The subsequent S3 dependency lock also introduced new JSON fields; v3 refused the unsupported schema evolution (exit 1). The Opus dependency lock later introduced archive and manifest JSON fields; v4 also refused schema evolution (exit 1). The OpusFile lock subsequently introduced nested archive JSON fields; v5 refused schema evolution (exit1). The Mozjpeg lock then introduced per-file source hashes; v6 also refused schema evolution (exit1). The next successful project scope used a separate `mk-own-v7` prefix/state, following
 the diagnostic's new-prefix instruction. These failures remain recorded locally;
 old prefixes are not reused as current evidence. Reference/engine scopes are
-unchanged. The dependency lock stays within the indexed project scope.
+unchanged. The block-2 Prisma/Boost dependency lock introduces nested dependency
+fields; v7 also refuses unsupported schema evolution (actual exit1). The next successful project scope used `mk-own-v8`/`project-v8`.
+Adding the VPX source inventory then causes v8 to refuse unsupported schema
+evolution (actual exit1). The current project uses `mk-own-v9`/`project-v9`,
+following that diagnostic's new-prefix instruction. The dependency lock stays within the indexed project scope.
 
 Hidden files, `.git`, built-in build/vendor/generated directories and ignore rules are excluded. Communication reference scopes also exclude private/, databases, png/jpg/xcassets; the original TelegramSwift index excludes submodules. Its selected TelegramCore engine is now prepared, audited and indexed separately as described below. The reproducer prepares local `.xerjignore` rules without modifying tracked upstream source. The project excludes `.references`, `.local`, `.build`, databases/images and the mutable development status ledger. Index state, logs, raw query results, machine configuration and fingerprints stay in `.local/` and are ignored. Exit 3 is completed-with-junk, not a clean exit 0; examine skipped paths before claiming coverage.
 

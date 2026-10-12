@@ -32,6 +32,7 @@ public struct TelegramAttachment: Identifiable, Sendable, Equatable {
     public let playback: TelegramPlaybackKind?
     public let dimensions: TelegramMediaDimensions?
     public let isSpoiler: Bool
+    public var paidMedia: TelegramPaidMediaState? = nil
 
     public init(id: String, kind: TelegramAttachmentKind, name: String, byteCount: Int64?,
                 mimeType: String?, hasPreview: Bool, canDownload: Bool,
@@ -161,10 +162,11 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         let digest = SHA256.hash(data: Data(framed.utf8)).map { String(format: "%02x", $0) }.joined()
         let mediaKey = media.id.map { "\($0.namespace):\($0.id)" } ?? "none"
         let id = "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id):\(ordinal):\(mediaKey):\(digest)"
-        let attachment = TelegramAttachment(id: id, kind: kind, name: name,
+        var attachment = TelegramAttachment(id: id, kind: kind, name: name,
             byteCount: size.flatMap { $0 >= 0 ? $0 : nil }, mimeType: mimeType,
             hasPreview: preview != nil, canDownload: full != nil, playback: playback, dimensions: dimensions,
             isSpoiler: message.attributes.contains { $0 is MediaSpoilerMessageAttribute })
+        attachment.paidMedia = (media as? TelegramMediaPaidContent).flatMap(telegramPaidMediaState)
         return TelegramAttachmentSource(attachment: attachment, messageID: message.id, full: full, preview: preview,
             location: .peer(message.id.peerId), contentType: contentType)
     }

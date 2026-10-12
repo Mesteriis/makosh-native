@@ -10,11 +10,21 @@ struct TelegramComposerView: View {
     @ObservedObject private var upload: TelegramUploadController
     @ObservedObject private var forward: TelegramComposerForwardController
     @ObservedObject private var voice: TelegramVoiceRecordingController
+    @ObservedObject private var emojiCatalog: TelegramCustomEmojiCatalogController
     @State private var editorError: String?
+    @State private var emojiPicker: EmojiPickerSnapshot?
+    @State private var expectedEmojiInput: TelegramComposerInput?
+    private struct EmojiPickerSnapshot {
+        let input: TelegramComposerInput
+        let revision: UUID?
+        let contextID: UUID
+        let catalogContextID: UUID
+        let chatID: Int64
+    }
     init(model: TelegramModel) {
         self.model = model; reply = model.composerReply; actions = model.messageActions; upload = model.upload; forward = model.composerForward
         selectedDelete = model.selectedMessagesDelete
-        voice = model.voiceRecording
+        voice = model.voiceRecording; emojiCatalog = model.customEmojiCatalog
     }
     var body: some View {
         replyAccessory
@@ -33,9 +43,17 @@ struct TelegramComposerView: View {
                     error: $editorError,selection: model.composerInput.selection,accessibilityID: "telegram.composer",
                     placeholder: model.composerForwardIntent == nil ? "Сообщение в Telegram" : "Добавить комментарий…",inputChanged: { input in
                         _ = model.updateComposerInput(input,contextID: contextID,chatID: chatID)
-                    },submit: send)
+                    },submit: send,
+                    customEmojiDescriptors: model.customEmojiDescriptors,
+                    customEmojiContext: model.customEmojiPlaybackContext,
+                    customEmojiInsertion: model.customEmojiInsertion,
+                    customEmojiInputContextID: contextID,
+                    consumeCustomEmojiInsertion: { id, input in
+                        model.consumeCustomEmojiInsertion(id: id, expectedInput: input)
+                    })
                     .id("\(contextID.uuidString):\(chatID)")
-                    .disabled(model.isComposerSuspended || model.isForwardComposerLocked || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil)
+                    .disabled(editorIsLocked)
+                emojiButton
             }
             }
             if model.composerInput.formattedText.text.isEmpty && model.composerForwardIntent == nil {
@@ -48,8 +66,20 @@ struct TelegramComposerView: View {
                 .accessibilityIdentifier("telegram.send")
             }
         }.padding(.horizontal, 16).padding(.vertical, 10)
-        .onChange(of: model.selectedChatID) { _,_ in editorError = nil }
-        .onChange(of: model.messageActionContextID) { _,_ in editorError = nil }
+        .onChange(of: model.selectedChatID) { _,_ in editorError = nil; dismissEmojiPicker() }
+        .onChange(of: model.messageActionContextID) { _,_ in editorError = nil; dismissEmojiPicker() }
+        .onChange(of: emojiCatalog.contextID) { _,_ in dismissEmojiPicker() }
+        .onChange(of: model.composerInput) { _, input in
+            guard let snapshot = emojiPicker else { return }
+            guard expectedEmojiInput == input, snapshot.chatID == model.selectedChatID,
+                  snapshot.contextID == model.messageActionContextID,
+                  snapshot.catalogContextID == emojiCatalog.contextID else { dismissEmojiPicker(); return }
+            // Advance only after our admitted native edit reports its exact result.
+            // Other changes leave the opening snapshot stale and close the picker.
+            expectedEmojiInput = nil
+            emojiPicker = .init(input: input, revision: model.composerInputRevision,
+                contextID: snapshot.contextID, catalogContextID: snapshot.catalogContextID, chatID: snapshot.chatID)
+        }
         .onExitCommand { if voice.isActive { voice.requestCancel() } }
         .alert("Удалить запись?", isPresented: Binding(get: { voice.cancelConfirmationID != nil }, set: { if !$0 { voice.dismissCancelConfirmation() } })) {
             if let id = voice.cancelConfirmationID {
@@ -60,6 +90,22 @@ struct TelegramComposerView: View {
         }
         if let error = voice.error { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal,16).accessibilityIdentifier("telegram.voice.error") }
         if let editorError { Text(editorError).font(.caption).foregroundStyle(.red).padding(.horizontal,16) }
+        if let conflict = model.serverDraftConflict {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Черновик изменился на другом устройстве").font(.caption).fontWeight(.medium)
+                Text("Здесь: \(model.draft.isEmpty ? "Пустой черновик" : model.draft)").font(.caption).lineLimit(2)
+                Text("На другом устройстве: \(conflict.remoteText.isEmpty ? "Пустой черновик" : conflict.remoteText)").font(.caption).lineLimit(2)
+                HStack {
+                    Button("Оставить текущий") { model.resolveServerDraftConflict(id: conflict.id, keepLocal: true) }
+                        .accessibilityIdentifier("telegram.draft.keepLocal")
+                    Button("Принять с другого устройства") { model.resolveServerDraftConflict(id: conflict.id, keepLocal: false) }
+                        .accessibilityIdentifier("telegram.draft.useRemote")
+                    if model.isResolvingServerDraft { ProgressView().controlSize(.small) }
+                }.controlSize(.small)
+                    .disabled(model.isResolvingServerDraft || model.isComposerSuspended || model.composerForwardIntent != nil || voice.isActive)
+            }.padding(.horizontal,16).padding(.bottom,6)
+                .accessibilityIdentifier("telegram.draft.conflict")
+        }
         if let recoveryError = model.composerDraftRecoveryError {
             HStack {
                 Text(recoveryError).font(.caption).foregroundStyle(.secondary)
@@ -68,6 +114,35 @@ struct TelegramComposerView: View {
             }.padding(.horizontal,16).padding(.bottom,6)
         }
     }
+    private var editorIsLocked: Bool {
+        model.isComposerSuspended || model.isForwardComposerLocked || model.isRestoringComposerDraft ||
+            model.isResolvingServerDraft || model.composerDraftRecoveryError != nil
+    }
+    private var emojiButton: some View {
+        Button {
+            guard !editorIsLocked, let chatID = model.selectedChatID else { return }
+            expectedEmojiInput = nil
+            emojiPicker = .init(input: model.composerInput, revision: model.composerInputRevision,
+                contextID: model.messageActionContextID, catalogContextID: emojiCatalog.contextID, chatID: chatID)
+        } label: { Image(systemName: "face.smiling").font(.system(size: 21)).frame(width: 28, height: 32) }
+        .buttonStyle(.plain).foregroundStyle(.secondary)
+        .accessibilityLabel("Эмодзи").accessibilityIdentifier("telegram.customEmoji.open")
+        .disabled(editorIsLocked || !model.composerSupportsCustomEmoji || model.customEmojiPlaybackContext == nil)
+        .popover(isPresented: Binding(get: { emojiPicker != nil }, set: { if !$0 { dismissEmojiPicker() } }), arrowEdge: .top) {
+            if let snapshot = emojiPicker {
+                TelegramCustomEmojiPicker(catalog: emojiCatalog, playbackContext: model.customEmojiPlaybackContext,
+                    chatID: snapshot.chatID) { descriptor, catalogContextID in
+                        guard expectedEmojiInput == nil, snapshot.catalogContextID == catalogContextID,
+                              let next = try? TelegramCustomEmojiInsertion.applying(descriptor, to: snapshot.input),
+                              model.requestCustomEmojiInsertion(descriptor: descriptor, catalogContextID: catalogContextID,
+                                expectedInput: snapshot.input, contextID: snapshot.contextID,
+                                chatID: snapshot.chatID, expectedRevision: snapshot.revision) else { return }
+                        expectedEmojiInput = next
+                    }
+            }
+        }
+    }
+    private func dismissEmojiPicker() { emojiPicker = nil; expectedEmojiInput = nil }
     private var recordingLine: some View {
         HStack(spacing: 10) {
             if voice.phase == .authorizing || voice.phase == .finishing { ProgressView().controlSize(.small) }

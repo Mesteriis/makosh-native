@@ -5,10 +5,12 @@ import Postbox
 public struct TelegramHistoryReadContext: Equatable, Hashable, Sendable {
     public let accountID: Int64
     public let chatID: Int64
+    public let threadID: Int64?
     public let accountContextID: UUID
     public let historyWindowID: UUID
-    public init(accountID: Int64, chatID: Int64, accountContextID: UUID, historyWindowID: UUID) {
+    public init(accountID: Int64, chatID: Int64, accountContextID: UUID, historyWindowID: UUID, threadID: Int64? = nil) {
         self.accountID = accountID; self.chatID = chatID
+        self.threadID = threadID
         self.accountContextID = accountContextID; self.historyWindowID = historyWindowID
     }
 }
@@ -20,7 +22,7 @@ internal struct TelegramHistoryReadTarget: Equatable {
 
 @MainActor internal protocol TelegramHistoryReadProvider: AnyObject {
     var accountID: Int64 { get }
-    /// True means local transaction completion, never a server acknowledgment.
+    /// True means acceptance by the bound native read operation, never a server acknowledgment.
     func apply(_ target: TelegramHistoryReadTarget, completion: @escaping @MainActor (Bool) -> Void)
 }
 
@@ -28,6 +30,7 @@ internal struct TelegramHistoryReadTarget: Equatable {
     private struct Key: Hashable {
         let peer: PeerId
         let namespace: Int32
+        let threadID: Int64?
     }
     private var provider: (any TelegramHistoryReadProvider)?
     private var generation = UUID()
@@ -40,8 +43,9 @@ internal struct TelegramHistoryReadTarget: Equatable {
     }
 
     @discardableResult func apply(_ target: TelegramHistoryReadTarget) -> Bool {
-        guard let provider, provider.accountID == target.context.accountID else { return false }
-        let key = Key(peer: target.index.id.peerId, namespace: target.index.id.namespace)
+        guard let provider, provider.accountID == target.context.accountID,
+              target.context.threadID.map({ $0 > 0 && $0 <= Int64(Int32.max) }) ?? true else { return false }
+        let key = Key(peer: target.index.id.peerId, namespace: target.index.id.namespace, threadID: target.context.threadID)
         if let index = applied[key], target.index <= index { return false }
         if pending[key]?.values.contains(where: { target.index <= $0 }) == true { return false }
         let request = UUID(), token = generation

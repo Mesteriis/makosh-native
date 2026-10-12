@@ -204,8 +204,12 @@ final class TelegramMessageActionsMappingTests: XCTestCase {
         let rich = try TelegramFormattedText(text: "😀 reply", entities: [.init(offset: 0, length: 2, kind: .bold)])
         XCTAssertTrue(telegramMessageActionAllowed(.replyFormatted(rich), source: source))
         XCTAssertFalse(telegramMessageActionAllowed(.replyFormatted(try TelegramFormattedText(text: " ")), source: source))
-        XCTAssertFalse(telegramMessageActionAllowed(.replyFormatted(try TelegramFormattedText(text: "😀", entities: [
-            .init(offset: 0, length: 2, kind: .customEmoji(stickerPack: nil, fileID: 1))])), source: source))
+        let custom = try TelegramFormattedText(text: "😀", entities: [
+            .init(offset: 0, length: 2, kind: .customEmoji(stickerPack: nil, fileID: 1))])
+        // The editor may prepare this request; only the native insertion boundary
+        // can resolve the document and authorize its current account entitlement.
+        XCTAssertTrue(telegramMessageActionAllowed(.replyFormatted(custom), source: source))
+        XCTAssertFalse(telegramFormattedTextCanSend(custom))
     }
 
 }

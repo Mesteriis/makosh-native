@@ -4,7 +4,7 @@
 import hashlib
 from pathlib import Path
 import unittest
-from telegram_enqueue_adaptation import ENQUEUE, SOURCE_SHA256, ADAPTED_SHA256, adapt_enqueue_source
+from telegram_enqueue_adaptation import ENQUEUE, SOURCE_SHA256, ADAPTED_SHA256, SOURCE_FEE_OLD, SOURCE_FEE_NEW, adapt_enqueue_source
 
 
 LEGACY_ADAPTED_SHA256 = "1eeaf9c208f35c6a0ea0bbffef9213df1008ed29f05cd66f1f3841d165edd35c"
@@ -61,13 +61,16 @@ class EnqueueAdaptationTests(unittest.TestCase):
         self.assertTrue(SCALAR_SIGNATURE in adapted, "Shared native core still requires Account")
         core = function_body(adapted, SCALAR_SIGNATURE)
         self.assertNotIn("account.", core)
+        self.assertEqual(core.count(SOURCE_FEE_NEW), 1)
+        core = core.replace(SOURCE_FEE_NEW, SOURCE_FEE_OLD)
         restored = core.replace("accountPeerId", "account.peerId").replace("isSupportUser", "account.isSupportUser")
         restored = restored.replace("var timestamp = timestamp()", "var timestamp = Int32(account.network.context.globalTime())")
         self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(), NATIVE_BODY_SHA256,
-                         "Native message logic changed beyond the three reviewed scalar inputs")
+                         "Native message logic changed beyond reviewed scalar inputs and source fee exclusion")
     def testMutatedAdaptedOutputFailClosed(self):
         adapted = adapt_enqueue_source(self.source)
         mutations = [
+            (SOURCE_FEE_NEW, SOURCE_FEE_OLD),
             ("enqueueMessagesLocally", "enqueueMessagesElsewhere"),
             ("messages.map { (false, $0) }", "messages.map { (true, $0) }"),
             ("guard transactionAdmission?(transaction) ?? true else { return [] }", "// admission removed"),

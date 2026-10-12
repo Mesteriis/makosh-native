@@ -21,7 +21,7 @@ private func replyFixturePeer(_ id: PeerId) -> TelegramUser {
 }
 private func replyFixtureMessage(_ box: Postbox, peer: PeerId, text: String, flags: StoreMessageFlags = [], update: Bool = false, media: [Media] = []) -> Signal<Message?, NoError> {
     box.transaction { transaction in
-        transaction.updatePeersInternal([replyFixturePeer(peer)],update: { _,new in new })
+        transaction.updatePeersInternal([replyFixturePeer(peer), replyFixturePeer(PeerId(99))],update: { _,new in new })
         let id = MessageId(peerId: peer,namespace: Namespaces.Message.Cloud,id: 1)
         let message = StoreMessage(id: id,globallyUniqueId: nil,groupingKey: nil,threadId: nil,
             timestamp: Int32(Date().timeIntervalSince1970) - 1,flags: flags,tags: [],globalTags: [],
@@ -35,7 +35,144 @@ private func removeReplyFixture(_ box: Postbox, peer: PeerId) -> Signal<Void, No
     box.transaction { $0.deleteMessages([MessageId(peerId: peer, namespace: Namespaces.Message.Cloud, id: 1)], forEachMedia: nil) }
 }
 
+private func quoteReplyMessage(_ box: Postbox, source: TelegramMessageActionSource, text: TelegramFormattedText) -> Signal<EnqueueMessage?, NoError> {
+    box.transaction { telegramReplyEnqueueMessage(transaction: $0, accountID: 99, source: source, formatted: text) }
+}
+private func quoteReplyQueue(_ box: Postbox, source: TelegramMessageActionSource, text: TelegramFormattedText, message: EnqueueMessage) -> Signal<[MessageId?], NoError> {
+    enqueueMessagesLocally(postbox: box, accountPeerId: PeerId(99), isSupportUser: false, timestamp: 200,
+        peerId: PeerId(source.chatID), messages: [message], transactionAdmission: {
+            telegramReplyEnqueueMessage(transaction: $0, accountID: 99, source: source, formatted: text) != nil
+        })
+}
+private func quoteReplyRead(_ box: Postbox, id: MessageId) -> Signal<Message?, NoError> {
+    box.transaction { $0.getMessage(id) }
+}
+
+private nonisolated func singleQuoteSeed(_ box: Postbox, draft: TelegramPendingUploadDraft, limit: Int) -> Signal<Bool, NoError> {
+    box.transaction { transaction in
+        var config = AppConfiguration.defaultValue
+        config.data = .dictionary(["quote_length_max": .number(Double(limit))])
+        transaction.setPreferencesEntry(key: PreferencesKeys.appConfiguration, value: PreferencesEntry(config))
+        if case .success = telegramPendingUploadWrite(transaction: transaction, accountID: draft.accountID, draft: draft, expectedRevision: nil) { return true }
+        return false
+    }
+}
+private nonisolated func singleQuoteQueue(_ box: Postbox, receipt: TelegramPendingUploadEnqueueReceipt,
+    message: EnqueueMessage, removeQuote: Bool) -> Signal<([MessageId?], Bool), NoError> {
+    let accepted = Atomic<Bool>(value: false)
+    return enqueueMessagesLocally(postbox: box, accountPeerId: PeerId(99), isSupportUser: false, timestamp: 200,
+        peerId: PeerId(receipt.target.chatID), messages: [message],
+        transactionAdmission: { receipt.validate(transaction: $0) }, transactionCommit: { transaction, ids in
+            if removeQuote, let id = ids.first ?? nil, let queued = transaction.getMessage(id) {
+                let attributes = queued.attributes.map { attribute -> MessageAttribute in
+                    guard let reply = attribute as? ReplyMessageAttribute else { return attribute }
+                    return ReplyMessageAttribute(messageId: reply.messageId, threadMessageId: reply.threadMessageId,
+                        quote: nil, isQuote: false, todoItemId: nil)
+                }
+                transaction.updateMessage(id) { _ in .update(StoreMessage(id: id, globallyUniqueId: nil,
+                    groupingKey: queued.groupingKey, threadId: queued.threadId, timestamp: queued.timestamp,
+                    flags: [.Unsent], tags: queued.tags, globalTags: queued.globalTags, localTags: queued.localTags,
+                    forwardInfo: nil, authorId: PeerId(99), text: queued.text, attributes: attributes, media: queued.media)) }
+            }
+            _ = accepted.swap(receipt.acknowledge(transaction: transaction, messageIDs: ids))
+        }) |> map { ($0, accepted.with { $0 }) }
+}
+
 @MainActor final class TelegramComposerReplyPostboxTests: XCTestCase {
+    // A stale preflight or dropped selected quote must not authorize/acknowledge
+    // a legacy single-file preparation. Uses the real native queue transaction.
+    func testLegacySingleUploadChecksCurrentQuoteLimitAndExactQueuedReply() async throws {
+        for scenario in ["canonical", "limitShrunk", "quoteDropped"] {
+            let box = try await open(root()), peer = PeerId(77)
+            let media = TelegramMediaImage(imageId: MediaId(namespace: 0, id: 17), representations: [], immediateThumbnailData: nil,
+                reference: nil, partialReference: nil, flags: [])
+            let seeded = try await value(replyFixtureMessage(box, peer: peer, text: "prefix selected suffix", media: [media]))
+            let original = try XCTUnwrap(seeded)
+            let quote = try XCTUnwrap(TelegramReplyQuote(source: try .init(text: original.text), selection: .init(location: 7, length: 8)))
+            let source = try XCTUnwrap(telegramMessageActionSource(original, accountID: 99, chatID: peer.toInt64()).quoting(quote))
+            let old = try pendingUploadFixture(accountID: 99, chatID: peer.toInt64())
+            let draft = TelegramPendingUploadDraft(id: old.id, accountID: 99, chatID: peer.toInt64(), title: "Synthetic",
+                captionInput: old.captionInput, originalDraft: nil, replyTarget: .init(source: source), file: old.file,
+                disposition: .submissionStarted)
+            let freshResult = try await value(validateTelegramReplySource(postbox: box, accountID: 99, source: source))
+            let fresh = try XCTUnwrap(freshResult)
+            let file = TelegramUploadFile(id: UUID(), name: draft.file.attachment.name, size: draft.file.plaintextByteCount,
+                mode: .file, pixelWidth: nil, pixelHeight: nil, url: URL(fileURLWithPath: "/unused"), directory: URL(fileURLWithPath: "/unused"))
+            let target = TelegramUploadTarget(accountID: 99, chatID: peer.toInt64(), title: "Synthetic", replySource: source)
+            let reference = try XCTUnwrap(telegramUploadMedia(file)?.1)
+            let message = try XCTUnwrap(telegramUploadMessage(caption: draft.captionInput.formattedText, reference: reference,
+                target: target, replySource: fresh))
+            let stored = try await value(singleQuoteSeed(box, draft: draft, limit: scenario == "limitShrunk" ? 4 : 1024))
+            XCTAssertTrue(stored)
+            let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: draft.id, target: target, file: file, caption: draft.captionInput.formattedText)
+            let result = try await value(singleQuoteQueue(box, receipt: receipt, message: message, removeQuote: scenario == "quoteDropped"))
+            if scenario == "limitShrunk" { XCTAssertTrue(result.0.isEmpty, "Admission revalidates quote length before native insertion") }
+            else { XCTAssertEqual(result.0.count, 1) }
+            XCTAssertEqual(result.1, scenario == "canonical", "Only the complete exact selected reply receives an acceptance receipt")
+        }
+    }
+
+    func testUploadQuoteUsesMediaFromFreshNativeValidation() async throws {
+        let box = try await open(root())
+        let peer = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(77))
+        let media = TelegramMediaImage(imageId: MediaId(namespace: 0, id: 17), representations: [], immediateThumbnailData: nil,
+            reference: nil, partialReference: nil, flags: [])
+        let seeded = try await value(replyFixtureMessage(box, peer: peer, text: "selected caption", media: [media]))
+        let original = try XCTUnwrap(seeded)
+        let quote = try XCTUnwrap(TelegramReplyQuote(source: try .init(text: original.text), selection: .init(location: 0, length: 8)))
+        let source = try XCTUnwrap(telegramMessageActionSource(original, accountID: 99, chatID: peer.toInt64()).quoting(quote))
+        let revalidated = try await value(validateTelegramReplySource(postbox: box, accountID: 99, source: source))
+        let fresh = try XCTUnwrap(revalidated)
+        let target = TelegramUploadTarget(accountID: 99, chatID: peer.toInt64(), title: "Synthetic", replySource: source)
+        let mapped = try XCTUnwrap(telegramUploadMessage(caption: try .init(text: "answer"), reference: nil, target: target, replySource: fresh))
+        guard case let .message(_, _, _, _, _, reply, _, _, _, _) = mapped else { return XCTFail("Expected native upload message") }
+        XCTAssertEqual(reply?.quote?.text, "selected")
+        XCTAssertTrue(reply?.quote?.media?.isEqual(to: media) == true)
+    }
+    func testSelectedQuoteReachesRealNativeQueueAndStaleSourceStopsBeforeInsertion() async throws {
+        let box = try await open(root())
+        let peer = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(77))
+        let seeded = try await value(replyFixtureMessage(box, peer: peer, text: "prefix selected suffix"))
+        let original = try XCTUnwrap(seeded)
+        let quote = try XCTUnwrap(TelegramReplyQuote(source: try .init(text: original.text), selection: .init(location: 7, length: 8)))
+        let source = try XCTUnwrap(telegramMessageActionSource(original, accountID: 99, chatID: peer.toInt64()).quoting(quote))
+        let text = try TelegramFormattedText(text: "answer 😀", entities: [.init(offset: 7, length: 2, kind: .bold)])
+        let prepared = try await value(quoteReplyMessage(box, source: source, text: text))
+        let message = try XCTUnwrap(prepared)
+        let ids = try await value(quoteReplyQueue(box, source: source, text: text, message: message))
+        let id = try XCTUnwrap(ids.first.flatMap { $0 })
+        let queued = try await value(quoteReplyRead(box, id: id))
+        let stored = try XCTUnwrap(queued)
+        let reply = try XCTUnwrap(stored.attributes.first { $0 is ReplyMessageAttribute } as? ReplyMessageAttribute)
+        XCTAssertTrue(reply.isQuote)
+        XCTAssertEqual(reply.quote?.text, "selected")
+        XCTAssertEqual(reply.quote?.offset, 7)
+        XCTAssertEqual(reply.messageId, original.id)
+        XCTAssertEqual(stored.text, text.text)
+        _ = try await value(replyFixtureMessage(box, peer: peer, text: "prefix changed suffix", update: true))
+        let rejected = try await value(quoteReplyQueue(box, source: source, text: text, message: message))
+        XCTAssertTrue(rejected.isEmpty)
+        let stale = try await value(quoteReplyMessage(box, source: source, text: text))
+        XCTAssertNil(stale)
+    }
+    func testSelectedQuoteResolvesAndRevalidationRetainsItOnlyWhileOriginalStillMatches() async throws {
+        let box = try await open(root())
+        let peer = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(77)), account: Int64 = 99
+        let originalValue = try await value(replyFixtureMessage(box, peer: peer, text: "prefix selected suffix"))
+        let original = try XCTUnwrap(originalValue)
+        let quote = try XCTUnwrap(TelegramReplyQuote(source: try .init(text: original.text), selection: .init(location: 7, length: 8)))
+        let source = try XCTUnwrap(telegramMessageActionSource(original, accountID: account, chatID: peer.toInt64()).quoting(quote))
+        let target = TelegramComposerReplyTarget(source: source)
+        let resolved = try await value(telegramComposerReply(postbox: box, accountID: account, target: target, chatID: peer.toInt64()))
+        XCTAssertEqual(resolved?.source.replyQuote, quote)
+        let admitted = try await value(validateTelegramReplySource(postbox: box, accountID: account, source: source))
+        XCTAssertEqual(admitted?.replyQuote, quote)
+        _ = try await value(replyFixtureMessage(box, peer: peer, text: "prefix changed suffix", update: true))
+        let changed = try await value(telegramComposerReply(postbox: box, accountID: account, target: target, chatID: peer.toInt64()))
+        XCTAssertNil(changed)
+        let stale = try await value(validateTelegramReplySource(postbox: box, accountID: account, source: source))
+        XCTAssertNil(stale)
+    }
     private weak var previousBox: Postbox?
     private func open(_ root: URL) async throws -> Postbox {
         initializeAccountManagement()

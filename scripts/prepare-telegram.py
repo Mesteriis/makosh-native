@@ -19,6 +19,8 @@ from telegram_read_adaptation import READ_SYNC, adapt_read_source
 from telegram_enqueue_adaptation import ENQUEUE, adapt_enqueue_source
 from telegram_selection_adaptation import adapt_selection_source
 from telegram_delete_adaptation import DELETE, adapt_delete_source
+from telegram_draft_adaptation import DRAFT_HELPERS, adapt_draft_source
+from telegram_topic_adaptation import TOPIC_SOURCES, adapt_topic_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -31,7 +33,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 9
+RECIPE = 14
 
 
 def run(*args):
@@ -163,6 +165,12 @@ def main():
     enqueue.write_text(adapt_enqueue_source(enqueue.read_text()))
     delete = DEST / DELETE
     delete.write_text(adapt_delete_source(delete.read_text()))
+    for relative in DRAFT_HELPERS:
+        source = DEST / relative
+        source.write_text(adapt_draft_source(relative, source.read_text()))
+    for relative in TOPIC_SOURCES:
+        source = DEST / relative
+        source.write_text(adapt_topic_source(relative, source.read_text()))
     replace_exact(DEST / "submodules/ManagedFile/Package.swift",
                   '../../submodules/telegram-ios/submodules/SSignalKit', '../SSignalKit')
     replace_exact(DEST / "submodules/TelegramCore/Sources/Account/Account.swift",
@@ -223,9 +231,11 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
                         "Message search reports RPC failure without consuming either history cursor",
                         "Postbox records message snapshots before overwrite/removal in a durable same-transaction archive journal",
                         "Postbox restores all pending read synchronization operations using an integer-key table scan",
-                        "Account and local outgoing enqueue share the native transaction core, admission and owned pending-upload receipt",
+                        "Account and local outgoing enqueue share the native transaction core, admission and owned pending-upload receipt; inherited source fees are excluded from forwards",
                         "Postbox exposes a bounded cached native-ID range lookup without history fetches",
                         "Selected-message fresh admission and exact-ID deletion share one Postbox transaction",
+                        "Existing native draft update and synchronization-operation helpers are public for same-transaction local/cloud persistence",
+                        "Native seed rendering and forum operations validate bounded topic wire structure before legacy Postbox decoding",
                         "FlatSerialization generated with pinned official flatc 24.12.23"]}, indent=2) + "\n")
     print(f"Telegram engine: prepared {len(packages)} pinned packages in ignored local storage")
 

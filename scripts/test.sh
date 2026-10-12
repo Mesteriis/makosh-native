@@ -6,6 +6,14 @@ python3 scripts/prepare-telegram.py
 python3 scripts/prepare-opus.py
 python3 scripts/prepare-opusfile.py
 python3 scripts/prepare-mozjpeg.py
+python3 scripts/prepare-code-highlight.py
+python3 scripts/prepare-rlottie.py
+python3 scripts/prepare-vpx.py
+python3 scripts/test-vpx-preparation.py
+python3 scripts/test-vpx-rtcd-preparation.py
+python3 scripts/test-rlottie-preparation.py
+python3 scripts/test-code-highlight-preparation.py
+python3 scripts/test-telegram-code-highlight-adaptation.py
 python3 scripts/test-mozjpeg-preparation.py
 python3 scripts/test-opusfile-preparation.py
 python3 scripts/test-opus-preparation.py
@@ -16,6 +24,8 @@ python3 scripts/test-telegram-read-adaptation.py
 python3 scripts/test-telegram-enqueue-adaptation.py
 python3 scripts/test-telegram-selection-adaptation.py
 python3 scripts/test-telegram-delete-adaptation.py
+python3 scripts/test-telegram-draft-adaptation.py
+python3 scripts/test-telegram-topic-adaptation.py
 python3 - "$@" <<'PYTHON'
 import json
 import os

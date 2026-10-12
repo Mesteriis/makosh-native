@@ -7,10 +7,10 @@ struct TelegramSavedMessagesForwardRecord: Codable, Equatable, Sendable {
     let request: TelegramSavedMessagesForwardRequest
     let acceptedIDs: [TelegramForwardQueueID]?
     init(request: TelegramSavedMessagesForwardRequest, acceptedIDs: [TelegramForwardQueueID]? = nil) {
-        schemaVersion = 1; self.request = request; self.acceptedIDs = acceptedIDs
+        schemaVersion = request.origin?.threadID == nil ? 1 : 2; self.request = request; self.acceptedIDs = acceptedIDs
     }
     var isValid: Bool {
-        schemaVersion == 1 && request.isValid && (acceptedIDs.map(request.draft.validForwardQueueIDs) ?? true)
+        schemaVersion == (request.origin?.threadID == nil ? 1 : 2) && request.isValid && (acceptedIDs.map(request.draft.validForwardQueueIDs) ?? true)
     }
 }
 private let savedForwardMarker = Data("Makosh.SavedForward.JSON.v1\n".utf8)
@@ -39,7 +39,7 @@ private nonisolated func writeSavedForward(transaction: Transaction, record: Tel
 private nonisolated func savedForwardOriginRemoval(transaction: Transaction, request: TelegramSavedMessagesForwardRequest) -> (key: ValueBoxKey, entry: PreferencesEntry)? {
     guard let origin = request.origin else { return nil }
     return telegramPreparedForwardRemoval(transaction: transaction, accountID: request.accountID, chatID: origin.chatID,
-        revision: origin.revision, intentID: origin.intentID, sources: request.sources)
+        threadID: origin.threadID, revision: origin.revision, intentID: origin.intentID, sources: request.sources)
 }
 nonisolated func telegramSavedForwardOriginIsCurrent(transaction: Transaction, request: TelegramSavedMessagesForwardRequest) -> Bool {
     request.origin == nil || savedForwardOriginRemoval(transaction: transaction, request: request) != nil

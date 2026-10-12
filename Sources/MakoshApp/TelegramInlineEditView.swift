@@ -58,7 +58,8 @@ struct TelegramInlineEditView: View {
                 TelegramRichTextEditor(value: Binding(get: { currentSession?.input.formattedText ?? session.input.formattedText },set: { _ in }),
                     error: $editorError,selection: session.input.selection,inputChanged: { input in
                         _ = model.updateMessageEditInput(input,sessionID: session.id,contextID: session.contextID)
-                    },submit: submit)
+                    },submit: submit, customEmojiDescriptors: model.customEmojiDescriptors,
+                    customEmojiContext: model.customEmojiPlaybackContext)
                     .disabled(controller.isBusy)
                 Button(action: submit) { Image(systemName: "checkmark.circle.fill").font(.title2) }
                     .buttonStyle(.plain).foregroundStyle(.tint).disabled(!canSubmit)

@@ -12,6 +12,10 @@ struct TelegramDetailView: View {
     @ObservedObject private var peerStatus: TelegramPeerStatusController
     @ObservedObject private var messageSelection: TelegramMessageSelectionController
     @ObservedObject private var selectedDelete: TelegramSelectedMessagesDeleteController
+    @ObservedObject private var forumTopics: TelegramForumTopicsController
+    @ObservedObject private var sendApproval: TelegramSendApprovalController
+    @State private var displayedApprovalID: UUID?
+    @State private var secretVerificationPresented = false
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
@@ -25,6 +29,7 @@ struct TelegramDetailView: View {
         self.peerStatus = model.peerStatus
         self.messageSelection = model.messageSelection
         self.selectedDelete = model.selectedMessagesDelete
+        self.forumTopics = model.forumTopics; self.sendApproval = model.sendApproval
         self.dossier = dossier; self.openDossier = openDossier
     }
     @State private var apiID = ""
@@ -83,7 +88,7 @@ struct TelegramDetailView: View {
                 attachmentActions.cancel(); profilePresented = false
                 closeMessageSearch()
             }
-            .onChange(of: model.messageActionContextID) { _, _ in messageActionRequest = nil; profilePresented = false }
+            .onChange(of: model.messageActionContextID) { _, _ in secretVerificationPresented = false; messageActionRequest = nil; profilePresented = false; closeMessageSearch() }
             .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
             .onChange(of: search.messageQuery) { _, _ in
@@ -98,6 +103,18 @@ struct TelegramDetailView: View {
                 peerStatus.setVisible(false)
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in model.cancelVoiceRecording() }
+            .sheet(item: Binding(get: { sendApproval.pendingPrompt }, set: { value in
+                if value == nil, let id = displayedApprovalID { sendApproval.cancel(promptID: id) }
+            })) { prompt in
+                TelegramPaidSendApprovalView(controller: sendApproval)
+                    .onAppear { displayedApprovalID = prompt.id }
+                    .onDisappear { sendApproval.cancel(promptID: prompt.id) }
+            }
+            .sheet(isPresented: $secretVerificationPresented) {
+                if let secret = model.conversationCapabilities?.secret {
+                    TelegramSecretVerificationView(secret: secret)
+                }
+            }
             .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
                 TelegramContactProfileView(model: model, dossier: dossier,
@@ -166,7 +183,8 @@ struct TelegramDetailView: View {
                         HStack(spacing: 10) {
                             TelegramChatAvatar(title: chat.title, peerID: chat.id, store: model.avatars, size: 36)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(chat.title).font(.headline).lineLimit(1)
+                                Text(model.selectedForumTopic?.title ?? model.selectedThreadID.map { "Тема \($0)" } ?? chat.title).font(.headline).lineLimit(1)
+                                if model.selectedThreadID != nil { Text(chat.title).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                                 if let status = peerStatus.status, status.peerID == chat.id, !status.isSelf {
                                     TelegramPeerStatusView(status: status, identifier: "telegram.peerStatus.header")
                                 }
@@ -175,6 +193,11 @@ struct TelegramDetailView: View {
                     }.buttonStyle(.plain).help("Открыть карточку собеседника")
                         .accessibilityIdentifier("telegram.profile.open")
                     Spacer()
+                    if forumTopics.snapshot?.chatID == chat.id {
+                        Button { model.isForumTopicsListPresented = true } label: { Image(systemName: "list.bullet") }
+                            .buttonStyle(.plain).help("Открыть темы").accessibilityLabel("Открыть темы")
+                            .accessibilityIdentifier("telegram.forum.open")
+                    }
                     TelegramConversationFilePolicyMenu(files: model.archive.files, chatID: chat.id)
                     Button {
                         if messageSearchPresented { closeMessageSearch() }
@@ -185,6 +208,9 @@ struct TelegramDetailView: View {
                         .help("Поиск сообщений (⌘F)").accessibilityLabel("Поиск сообщений в диалоге")
                         .accessibilityIdentifier("telegram.messageSearch.toggle")
                 }.padding(.horizontal, 16).frame(height: 50)
+                if let capabilities = model.conversationCapabilities {
+                    TelegramConversationCapabilityBanner(capabilities: capabilities) { secretVerificationPresented = true }
+                }
                 Divider()
                 if messageSearchPresented {
                     HStack(spacing: 12) {
@@ -219,7 +245,10 @@ struct TelegramDetailView: View {
                                     ForEach(model.historyItems) { historyItem in
                                         if historyItem.isAlbum {
                                             TelegramAlbumHistoryRow(item: historyItem, model: model, selection: messageSelection,
-                                                media: media, actions: attachmentActions, playback: playback) { message in
+                                                media: media, actions: attachmentActions, playback: playback,
+                                                nativeActions: nativeMessageActions, quoteSelection: { message, quote, context in
+                                                    _ = model.beginReply(to: message, contextID: context, quote: quote)
+                                                }) { message in
                                                 messageActionItems(message)
                                             }
                                         } else if let item = historyItem.messages.first {
@@ -380,9 +409,15 @@ struct TelegramDetailView: View {
     }
 
     private func messageCaption(_ item: TelegramMessage, lineLimit: Int? = nil) -> some View {
-        TelegramMessageTextView(value: item.formattedTextForDisplay,
-            identity: model.messageActionContextID.uuidString + item.id,
-            canCopy: item.actionMetadata?.canCopy == true, lineLimit: lineLimit) {
+        let context = model.messageActionContextID
+        return TelegramMessageTextView(value: item.formattedTextForDisplay,
+            identity: context.uuidString + item.id,
+            canCopy: item.actionMetadata?.canCopy == true, lineLimit: lineLimit,
+            nativeActions: nativeMessageActions(item), quoteSelection: { quote in
+                _ = model.beginReply(to: item, contextID: context, quote: quote)
+            }, maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+            customEmojiDescriptors: model.customEmojiDescriptors,
+            customEmojiContext: model.customEmojiPlaybackContext) {
                 messageActionItems(item)
             }
     }
@@ -429,6 +464,30 @@ struct TelegramDetailView: View {
             }.disabled(disabled || windowID == nil || search.hasMessageQuery || !TelegramComposerForwardSource(source: source).isValid)
                 .accessibilityIdentifier("telegram.selection.begin.\(item.id)")
         }
+    }
+
+    private func nativeMessageActions(_ item: TelegramMessage) -> [TelegramReadingMenuAction] {
+        guard let source = model.actionSource(for: item) else { return [] }
+        let context = model.messageActionContextID, window = model.historyWindowID
+        let enabled = !model.isBusy && !model.isRestoringComposerDraft && model.composerDraftRecoveryError == nil &&
+            !model.isForwardComposerLocked && upload.phase == .idle && !messageActions.isBusy && messageActions.phase != .uncertain
+        func choose(_ mode: TelegramMessageActionRequest.Mode) {
+            guard model.messageActionContextID == context else { return }
+            switch mode {
+            case .reply: _ = model.beginReply(to: item, contextID: context)
+            case .edit: _ = model.beginMessageEdit(source: source, author: item.author, contextID: context)
+            case .forward, .delete: messageActionRequest = .init(source: source, author: item.author, contextID: context, mode: mode)
+            }
+        }
+        return [
+            .init(title: "Ответить", enabled: enabled && source.canReply, perform: { choose(.reply) }),
+            .init(title: "Изменить", enabled: enabled && source.canEdit, perform: { choose(.edit) }),
+            .init(title: "Переслать…", enabled: enabled && source.canForward, perform: { choose(.forward) }),
+            .init(title: "Удалить…", enabled: enabled && (source.canDeleteLocally || source.canDeleteForEveryone), perform: { choose(.delete) }),
+            .init(title: "Выбрать", enabled: enabled && window != nil && !search.hasMessageQuery && TelegramComposerForwardSource(source: source).isValid, perform: {
+                if let window { _ = model.beginMessageSelection(messageID: item.id, contextID: context, windowID: window,
+                    extendingRange: NSApp.currentEvent?.modifierFlags.contains(.shift) == true) }
+            })]
     }
 }
 
@@ -481,7 +540,8 @@ struct TelegramDraftsSyntheticPreviewView: View {
                     throw CocoaError(.fileReadUnknown)
                 }
                 let preview = try await TelegramModel.syntheticDraftPreview(directory: URL(fileURLWithPath: arguments[index + 1]),
-                    albums: arguments.contains("--telegram-albums-qa"))
+                    albums: arguments.contains("--telegram-albums-qa"),
+                    extendedMessages: arguments.contains("--telegram-extended-messages-synthetic-preview"))
                 if arguments.contains("--telegram-round-video-qa") { preview.voiceRecording.toggleKind() }
                 model = preview
             } catch { failure = "Не удалось открыть отдельное синтетическое хранилище черновиков." }

@@ -4,19 +4,28 @@ import MakoshTelegram
 struct TelegramSidebarView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var search: TelegramSearchModel
+    @ObservedObject private var forumTopics: TelegramForumTopicsController
     @State private var connectionPresented = false
-    init(model: TelegramModel) { self.model = model; self.search = model.search }
+    init(model: TelegramModel) { self.model = model; self.search = model.search; self.forumTopics = model.forumTopics }
+    private var showsForum: Bool {
+        model.isForumTopicsListPresented && model.phase == .ready && forumTopics.snapshot?.chatID == model.selectedChatID
+    }
     private var visibleChats: [TelegramChat] { search.hasChatQuery ? search.chats : model.chats }
     private var showsArchiveEntry: Bool { model.phase == .ready && model.chatFolder == .inbox && !search.hasChatQuery }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
+                if showsForum {
+                    Button { model.isForumTopicsListPresented = false } label: { Image(systemName: "chevron.left") }
+                        .buttonStyle(.plain).help("Вернуться к диалогам")
+                        .accessibilityLabel("Вернуться к диалогам").accessibilityIdentifier("telegram.forum.back")
+                }
                 if model.phase == .ready && model.chatFolder == .archive {
                     Button { search.chatQuery = ""; model.chatFolder = .inbox } label: { Image(systemName: "chevron.left") }
                         .buttonStyle(.plain).help("Вернуться к диалогам")
                         .accessibilityLabel("Вернуться к диалогам").accessibilityIdentifier("telegram.folder.back")
                 }
-                Text(model.phase == .ready ? (model.chatFolder == .archive ? "Архив" : "Диалоги") : "Telegram")
+                Text(showsForum ? (model.selectedChat?.title ?? "Темы") : model.phase == .ready ? (model.chatFolder == .archive ? "Архив" : "Диалоги") : "Telegram")
                     .font(.headline).lineLimit(1)
                 Spacer(minLength: 4)
                 TelegramArchiveButton(archive: model.archive)
@@ -26,7 +35,7 @@ struct TelegramSidebarView: View {
                     .popover(isPresented: $connectionPresented) { connectionDetails }
             }.padding(.horizontal, 12).frame(height: 50)
             Divider()
-            if model.phase == .ready {
+            if model.phase == .ready && !showsForum {
                 TextField("Найти диалог", text: $search.chatQuery).textFieldStyle(.roundedBorder)
                     .padding(.horizontal, 10).frame(height: 40).accessibilityIdentifier("telegram.chatSearch")
                 if search.hasChatQuery {
@@ -36,7 +45,9 @@ struct TelegramSidebarView: View {
                         .padding(.horizontal, 12)
                 }
             }
-            if visibleChats.isEmpty {
+            if showsForum {
+                TelegramForumTopicsListView(model: model, topics: forumTopics)
+            } else if visibleChats.isEmpty {
                 if showsArchiveEntry { archiveEntry }
                 if search.hasChatQuery {
                     ContentUnavailableView(search.chatStatus == .ready ? "Диалоги не найдены" : "Поиск диалогов", systemImage: "magnifyingglass", description: Text(search.chatStatus == .ready ? "Попробуйте другое название. В кэше могут быть ещё не загружены все диалоги." : "Результаты появятся после завершения запроса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,13 +79,16 @@ struct TelegramSidebarView: View {
                     }
                 }.listStyle(.inset).accessibilityIdentifier("telegram.chats")
             }
-            if model.phase == .ready && !search.hasChatQuery {
+            if model.phase == .ready && !search.hasChatQuery && !showsForum {
                 TelegramPaginationBar(page: model.chatPage, prefix: "telegram.chatPage",
                     previous: model.loadOlderChats, next: model.loadNewerChats,
                     latest: model.showLatestChats, retry: model.retryChatPage)
                     .padding(12)
             }
         }.frame(maxHeight: .infinity, alignment: .top)
+            .onAppear { forumTopics.setVisible(true) }
+            .onDisappear { forumTopics.setVisible(false) }
+            .onChange(of: model.selectedChatID) { _, _ in model.isForumTopicsListPresented = true }
     }
 
     private var archiveEntry: some View {

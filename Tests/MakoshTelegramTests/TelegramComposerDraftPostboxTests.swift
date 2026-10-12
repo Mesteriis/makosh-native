@@ -12,8 +12,39 @@ private func composerFixtureRaw(_ box: Postbox, chatID: Int64, data: Data?) -> S
         return transaction.getPreferencesEntry(key: key)?.data
     }
 }
+private nonisolated func composerFixtureNativeInput(_ box: Postbox, chat: Int64) -> Signal<SynchronizeableChatInputState?, NoError> {
+    box.transaction { transaction in
+        transaction.getPeerChatInterfaceState(PeerId(chat)).flatMap {
+            _internal_decodeStoredChatInterfaceState(state: $0)?.synchronizeableInputState
+        }
+    }
+}
 
 @MainActor final class TelegramComposerDraftPostboxTests: XCTestCase {
+    private func nativeInput(_ box: Postbox, chat: Int64) async -> SynchronizeableChatInputState? {
+        let done = expectation(description: "Native cloud draft read")
+        var input: SynchronizeableChatInputState?
+        let op = (composerFixtureNativeInput(box, chat: chat) |> deliverOnMainQueue).start(next: { input = $0; done.fulfill() })
+        defer { op.dispose() }
+        await fulfillment(of: [done], timeout: 20)
+        return input
+    }
+    func testOrdinarySaveExportsNativeCloudDraftIncludingEntitiesAndReplyThenClearsIt() async throws {
+        let box = try await open(root())
+        let repository = TelegramPostboxComposerDraftRepository(postbox: box, accountID: 1)
+        let formatted = try TelegramFormattedText(text: "😀 bold", entities: [.init(offset: 3, length: 4, kind: .bold)])
+        let draft = TelegramComposerDraft(accountID: 1, chatID: 42,
+            input: try TelegramComposerInput(formattedText: formatted),
+            replyTarget: .init(peerID: 42, namespace: 0, messageID: 7))
+        try await save(draft, to: repository).get()
+        let native = await nativeInput(box, chat: 42)
+        XCTAssertEqual(native?.text, formatted.text)
+        XCTAssertEqual(native?.entities, formatted.engineEntities())
+        XCTAssertEqual(native?.replySubject?.messageId, MessageId(peerId: PeerId(42), namespace: 0, id: 7))
+        try await save(.init(accountID: 1, chatID: 42, text: ""), to: repository).get()
+        let cleared = await nativeInput(box, chat: 42)
+        XCTAssertNil(cleared)
+    }
     private weak var previousBox: Postbox?
     private func open(_ root: URL) async throws -> Postbox {
         initializeAccountManagement()

@@ -34,9 +34,10 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
 
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
-        guard draft.isValid, (6...19).contains(draft.schemaVersion), draft.disposition == .submissionStarted,
+        guard draft.isValid, (6...19).contains(draft.resourceSchemaVersion), draft.disposition == .submissionStarted,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
+              draft.threadID == target.selectedThreadID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
@@ -57,15 +58,15 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             ids.append(resource.resourceID)
-            plan = try TelegramUploadBatchPlan(archiveID: archive.id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy)
+            plan = try TelegramUploadBatchPlan(archiveID: archive.id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy, captionRules: draft.captionRules)
         } else {
             guard resources.count == draft.items.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
             plan = try TelegramUploadBatchPlan(items: resources.map(\.item), isGrouped: draft.isGrouped,
                 caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)
+                presentation: draft.resourceSchemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)
             for (stored, resource) in zip(draft.items, resources) {
                 let file = resource.item.file
-                let filePresentation = draft.schemaVersion >= 8 && draft.presentation == .file
+                let filePresentation = draft.resourceSchemaVersion >= 8 && draft.presentation == .file
                 guard let payload = filePresentation ? stored.payload(for: .file) : stored.file,
                       stored.id == resource.item.id, payload.attachment.name.utf8.elementsEqual(file.name.utf8),
                       (filePresentation ? "file" : payload.attachment.kind) == file.mode.rawValue, payload.plaintextByteCount == file.size,
@@ -107,8 +108,9 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             } else { reference = nil }
             guard let message = telegramUploadMessage(caption: entry.caption, reference: reference, target: target,
                 replySource: replySource, captionAboveMedia: entry.captionAboveMedia, mediaSpoiler: entry.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, maximumUTF16Count: draft.captionPolicy?.maximumUTF16Count ?? 1024,
-                isOneTime: entry.itemID.flatMap { byID[$0]?.item.file.metadata?.voice?.isOneTime ?? byID[$0]?.item.file.metadata?.roundVideo?.isOneTime } ?? false) else { return nil }
+                presentation: draft.resourceSchemaVersion >= 8 ? draft.presentation : nil, maximumUTF16Count: draft.captionPolicy?.maximumUTF16Count ?? 1024,
+                isOneTime: entry.itemID.flatMap { byID[$0]?.item.file.metadata?.voice?.isOneTime ?? byID[$0]?.item.file.metadata?.roundVideo?.isOneTime } ?? false,
+                allowCustomEmoji: draft.captionRules == .extended) else { return nil }
             result.append(message.withUpdatedGroupingKey { _ in entry.groupIndex.map { groupKeys[$0] } })
         }
         return result
@@ -141,16 +143,22 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
                   draft.captionRules.canSend(draft.captionInput.formattedText, maximumUTF16Count: maximum) else { return false }
         }
         for entry in plan.messages {
-            if entry.itemID == nil {
+            if draft.captionRules == .extended {
+                guard telegramFormattedCaptionCanSend(entry.caption, transaction: transaction,
+                        maximumUTF16Count: draft.captionPolicy?.maximumUTF16Count ?? 1024, allowCustomEmoji: true),
+                      telegramCustomEmojiCachedAdmission(formatted: entry.caption, transaction: transaction,
+                        accountID: target.accountID, chatID: target.chatID) else { return false }
+            } else if entry.itemID == nil {
                 guard telegramFormattedTextCanSend(entry.caption, transaction: transaction) else { return false }
             } else if !telegramFormattedCaptionCanSend(entry.caption, transaction: transaction, maximumUTF16Count: draft.captionPolicy?.maximumUTF16Count ?? 1024) { return false }
         }
         if let source = target.replySource {
             let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
             guard let message = transaction.getMessage(id) else { return false }
-            let fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
+            guard let fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
                 limits: currentLimitsConfiguration(transaction: transaction)), accountID: target.accountID, chatID: target.chatID)
-            guard fresh.canReply, fresh.fingerprint == source.fingerprint,
+                .quoting(source.replyQuote, maximumLength: telegramReplyQuoteLimit(transaction: transaction)),
+                  fresh.canReply, fresh.fingerprint == source.fingerprint,
                   fresh.threadID == source.threadID else { return false }
             if source.peerID != source.chatID {
                 guard let group = transaction.getPeer(id.peerId) as? TelegramGroup,
@@ -169,14 +177,14 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
             guard id.peerId.toInt64() == target.chatID, id.namespace == Namespaces.Message.Local,
                   let queued = transaction.getMessage(id), !queued.flags.contains(.Incoming), queued.flags.contains(.Unsent),
                   queued.forwardInfo == nil, queued.text.utf8.elementsEqual(entry.caption.text.utf8),
-                  queued.groupingKey == entry.groupIndex.map({ groupKeys[$0] }), queued.threadId == target.replySource?.threadID else { return false }
+                  queued.groupingKey == entry.groupIndex.map({ groupKeys[$0] }), queued.threadId == target.threadID else { return false }
             let entities = queued.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }
             guard entities.count <= 1, (entities.first?.entities ?? []) == entry.caption.engineEntities(),
                   queued.attributes.filter({ $0 is InvertMediaMessageAttribute }).count == (entry.captionAboveMedia ? 1 : 0),
                   queued.attributes.filter({ $0 is MediaSpoilerMessageAttribute }).count == (entry.mediaSpoiler ? 1 : 0) else { return false }
             let replies = queued.attributes.compactMap { $0 as? ReplyMessageAttribute }
             if let source = target.replySource {
-                guard replies.count == 1, Self.replyMatches(replies[0], source: source, target: target, transaction: transaction) else { return false }
+                guard replies.count == 1, telegramUploadReplyMatches(replies[0], source: source, target: target, transaction: transaction) else { return false }
             } else if !replies.isEmpty { return false }
             if let itemID = entry.itemID {
                 guard queued.media.count == 1, let resource = byID[itemID], let expected = resource.reference?.media,
@@ -222,14 +230,31 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
         return try encoder.encode(value)
     }
 
-    private nonisolated static func replyMatches(_ reply: ReplyMessageAttribute, source: TelegramMessageActionSource,
+}
+
+nonisolated func telegramUploadReplyMatches(_ reply: ReplyMessageAttribute, source: TelegramMessageActionSource,
                                                 target: TelegramUploadTarget, transaction: Transaction) -> Bool {
         let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
-        guard reply.messageId == id, let original = transaction.getMessage(id), !reply.isQuote, reply.todoItemId == nil else { return false }
+        guard reply.messageId == id, let original = transaction.getMessage(id), reply.todoItemId == nil else { return false }
         let thread = original.id.namespace == Namespaces.Message.Cloud ? original.threadId.map {
             MessageId(peerId: id.peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: $0))
         } : nil
         guard reply.threadMessageId == thread else { return false }
+        if let selected = source.replyQuote {
+            guard reply.isQuote, let quote = reply.quote,
+                  quote.offset == selected.selection?.location,
+                  quote.text.utf8.elementsEqual(selected.formattedText.text.utf8),
+                  quote.entities == selected.formattedText.engineEntities() else { return false }
+            switch (quote.media, original.media.first) {
+            case (nil, nil): return true
+            case let (.some(actual), .some(expected)):
+                let a = PostboxEncoder(), b = PostboxEncoder()
+                a.encodeRootObject(actual); b.encodeRootObject(expected)
+                return a.makeData() == b.makeData()
+            default: return false
+            }
+        }
+        guard !reply.isQuote else { return false }
         // Native enqueue derives a full quote for a migrated-peer reply, even
         // though our canonical request has no user-selected quote or todo item.
         guard source.peerID != target.chatID else { return reply.quote == nil }
@@ -246,4 +271,3 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
         default: return false
         }
     }
-}

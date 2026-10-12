@@ -18,6 +18,21 @@ final class TelegramAttachmentsTests: XCTestCase {
             associatedThreadInfo: nil, associatedStories: [:])
     }
 
+    func testPaidMediaDescriptorShowsAccessAndPriceWithoutGrantingResourceAccess() throws {
+        let preview = TelegramExtendedMedia.preview(dimensions: nil, immediateThumbnailData: nil, videoDuration: nil)
+        let image = photo([representation(25, side: 320)])
+        for (items, access) in [([preview], TelegramPaidMediaState.Access.locked),
+            ([TelegramExtendedMedia.full(media: image)], .full), ([preview, .full(media: image)], .mixed)] {
+            let source = try XCTUnwrap(telegramAttachments(message([
+                TelegramMediaPaidContent(amount: 9, extendedMedia: items)])).first)
+            XCTAssertEqual(source.attachment.paidMedia?.access, access)
+            XCTAssertEqual(source.attachment.paidMedia?.amount, 9)
+            XCTAssertEqual(source.attachment.paidMedia?.itemCount, items.count)
+            XCTAssertNil(source.full); XCTAssertNil(source.preview)
+            XCTAssertFalse(source.attachment.canDownload); XCTAssertFalse(source.attachment.hasPreview)
+        }
+    }
+
     private func representation(_ id: Int64, side: Int32) -> TelegramMediaImageRepresentation {
         TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: side, height: side),
             resource: LocalFileMediaResource(fileId: id, size: Int64(side)),

@@ -29,10 +29,11 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
               file.mode == .video ? localResourceID != nil && telegramUploadVideoAttributes(file) != nil &&
                   videoThumbnail?.isValid == true && videoThumbnail?.id != localResourceID : videoThumbnail == nil,
               case let .success(value) = telegramPendingUploadRead(transaction: transaction, accountID: target.accountID, chatID: target.chatID),
-              let draft = value, draft.schemaVersion < 6, draft.id == preparationID, draft.disposition == .submissionStarted,
+              let draft = value, draft.resourceSchemaVersion < 6, draft.id == preparationID, draft.disposition == .submissionStarted,
               draft.captionInput.formattedText == caption,
               draft.captionAboveMedia == captionAboveMedia,
               draft.mediaSpoiler == mediaSpoiler,
+              draft.threadID == target.selectedThreadID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
               draft.file.attachment.name.utf8.elementsEqual(file.name.utf8),
               draft.file.plaintextByteCount == file.size, draft.file.attachment.size == file.size,
@@ -42,13 +43,31 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
             guard let videoCover, videoCover.isValid, videoCover.id != localResourceID, videoCover.id != videoThumbnail?.id,
                   videoCover.width == staged.width, videoCover.height == staged.height, videoCover.size == staged.size else { return nil }
         }
+        if let source = target.replySource {
+            let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
+            guard let message = transaction.getMessage(id),
+                  let fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
+                      limits: currentLimitsConfiguration(transaction: transaction)), accountID: target.accountID, chatID: target.chatID)
+                      .quoting(source.replyQuote, maximumLength: telegramReplyQuoteLimit(transaction: transaction)),
+                  fresh.canReply, fresh.fingerprint == source.fingerprint, fresh.threadID == source.threadID else { return nil }
+            if source.peerID != source.chatID {
+                guard let group = transaction.getPeer(id.peerId) as? TelegramGroup,
+                      group.migrationReference?.peerId == PeerId(source.chatID) else { return nil }
+            }
+        }
         return draft
     }
     nonisolated func acknowledge(transaction: Transaction, messageIDs: [MessageId?]) -> Bool {
         guard let draft = current(transaction: transaction), messageIDs.count == 1, let id = messageIDs[0],
               id.peerId.toInt64() == target.chatID, id.namespace == Namespaces.Message.Local,
               let queued = transaction.getMessage(id), !queued.flags.contains(.Incoming),
+              queued.threadId == target.threadID,
               queued.text.utf8.elementsEqual(caption.text.utf8) else { return false }
+        let replies = queued.attributes.compactMap { $0 as? ReplyMessageAttribute }
+        if let source = target.replySource {
+            guard replies.count == 1, queued.threadId == source.threadID,
+                  telegramUploadReplyMatches(replies[0], source: source, target: target, transaction: transaction) else { return false }
+        } else if !replies.isEmpty { return false }
         let entityAttributes = queued.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }
         let placementCount = queued.attributes.filter { $0 is InvertMediaMessageAttribute }.count
         let spoilerCount = queued.attributes.filter { $0 is MediaSpoilerMessageAttribute }.count
@@ -69,7 +88,7 @@ internal struct TelegramPendingUploadEnqueueReceipt: Sendable {
                   native.alternativeRepresentations.isEmpty, queued.groupingKey == nil else { return false }
         }
         let accepted = TelegramPendingUploadDraft(id: draft.id, revision: UUID(), accountID: draft.accountID,
-            chatID: draft.chatID, title: draft.title, captionInput: draft.captionInput, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
+            chatID: draft.chatID, threadID: draft.threadID, title: draft.title, captionInput: draft.captionInput, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
             originalDraft: draft.originalDraft, replyTarget: draft.replyTarget, file: draft.file, video: draft.video, videoCover: draft.videoCover,
             disposition: .accepted(localMessageID: "\(id.peerId.toInt64()):\(id.namespace):\(id.id)"))
         if case .success = telegramPendingUploadWrite(transaction: transaction, accountID: draft.accountID,

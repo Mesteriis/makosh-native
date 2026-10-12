@@ -10,8 +10,8 @@ enum TelegramUploadCaptionProjection {
         let protectedRange: Range<Int>
     }
 
-    static func project(_ value: TelegramFormattedText) throws -> TelegramFormattedText {
-        let source = try TelegramUploadCaptionRules.reference.projection(value)
+    static func project(_ value: TelegramFormattedText, allowCustomEmoji: Bool = false) throws -> TelegramFormattedText {
+        let source = try TelegramUploadCaptionRules.referenceProjection(value, allowCustomEmoji: allowCustomEmoji)
         let units = Array(source.text.utf16)
         var tokens: [Token] = [], cursor = 0
         while cursor < units.count {
@@ -36,7 +36,7 @@ enum TelegramUploadCaptionProjection {
             return TelegramTextEntity(offset: entity.offset - removed, length: entity.length, kind: entity.kind)
         }
         let formatted = try TelegramFormattedText(text: String(decoding: output, as: UTF16.self), entities: explicit + generated)
-        let trimmed = try TelegramUploadCaptionRules.reference.projection(formatted)
+        let trimmed = try TelegramUploadCaptionRules.referenceProjection(formatted, allowCustomEmoji: allowCustomEmoji)
         let detected = try hashtags(in: trimmed)
         let ordered = (trimmed.entities + detected).enumerated().sorted {
             $0.element.offset == $1.element.offset ? $0.offset < $1.offset : $0.element.offset < $1.element.offset

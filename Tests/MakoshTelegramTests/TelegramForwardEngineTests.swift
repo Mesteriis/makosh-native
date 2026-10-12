@@ -100,6 +100,51 @@ private func forwardPreviewAuthors(_ box: Postbox, draft: TelegramComposerDraft)
     }
 }
 
+private nonisolated func forwardPaidSourceSeed(_ box: Postbox) -> Signal<Void, NoError> {
+    box.transaction { transaction in
+        transaction.updatePeersInternal([forwardUser(PeerId(1)), forwardUser(PeerId(7)), forwardUser(PeerId(42))],
+            update: { _, next in next })
+        transaction.updatePeerCachedData(peerIds: [PeerId(42)], update: { _, _ in
+            CachedUserData().withUpdatedSendPaidMessageStars(.init(value: 3, nanos: 0))
+        })
+        _ = transaction.addMessages([StoreMessage(id: .init(peerId: PeerId(7), namespace: Namespaces.Message.Cloud, id: 1),
+            globallyUniqueId: nil, groupingKey: nil, threadId: nil, timestamp: 100, flags: [.Incoming],
+            tags: [], globalTags: [], localTags: [], forwardInfo: nil, authorId: PeerId(7), text: "Previously paid source",
+            attributes: [PaidStarsMessageAttribute(stars: .init(value: 17, nanos: 0), postponeSending: false)], media: [])], location: .Random)
+    }
+}
+private nonisolated func forwardPaidSourceQueue(_ box: Postbox, destination: Int64, price: Int64?) -> Signal<[MessageId?], NoError> {
+    box.transaction { transaction -> TelegramNativeSendPreparation? in
+        let context = TelegramSendContext(accountID: 1, chatID: destination, threadID: nil,
+            submissionRevision: UUID(), messageCount: 1)
+        let consent = price.map { TelegramPaidSendConsent(id: UUID(), context: context, perMessageStars: $0, totalStars: $0) }
+        let message = EnqueueMessage.forward(source: .init(peerId: PeerId(7), namespace: Namespaces.Message.Cloud, id: 1),
+            threadId: nil, grouping: .none,
+            attributes: [ForwardOptionsMessageAttribute(hideNames: true, hideCaptions: false)], correlationId: nil)
+        return telegramNativeSendPreparation(transaction: transaction, context: context, messages: [message], files: [:], consent: consent)
+    } |> mapToSignal { prepared in
+        guard let prepared else { return .single([]) }
+        // Isolate the native transformation of an already prepared payload.
+        // Durable consent/admission authority is covered by the journal tests.
+        return enqueueMessagesLocally(postbox: box, accountPeerId: PeerId(1), isSupportUser: false,
+            timestamp: 101, peerId: PeerId(destination), messages: prepared.messages)
+    }
+}
+private struct ForwardPaidSourceSummary: Sendable {
+    let fees: [Int64]
+    let originalFees: [Int64]
+    let hideNames: Bool
+}
+private nonisolated func forwardPaidSourceSummary(_ box: Postbox, id: MessageId) -> Signal<ForwardPaidSourceSummary?, NoError> {
+    box.transaction { transaction in
+        guard let queued = transaction.getMessage(id),
+              let original = transaction.getMessage(.init(peerId: PeerId(7), namespace: Namespaces.Message.Cloud, id: 1)) else { return nil }
+        return .init(fees: queued.attributes.compactMap { ($0 as? PaidStarsMessageAttribute)?.stars.value },
+            originalFees: original.attributes.compactMap { ($0 as? PaidStarsMessageAttribute)?.stars.value },
+            hideNames: queued.attributes.compactMap { $0 as? ForwardOptionsMessageAttribute }.first?.hideNames == true)
+    }
+}
+
 @MainActor final class TelegramForwardEngineTests: XCTestCase {
     private func value<T>(_ signal: Signal<T, NoError>) async throws -> T {
         let done = expectation(description: "Synthetic forward transaction")
@@ -228,6 +273,25 @@ private func forwardPreviewAuthors(_ box: Postbox, draft: TelegramComposerDraft)
         let _: Int64 = try await value(forwardDestination(box, channel: true, creator: true, broadcast: true))
         let anonymous = TelegramComposerDraft(accountID: 1, chatID: chat, text: "comment", forwardIntent: .init(sources: anonymousSources))
         let allowed = try await value(forwardSummary(box, draft: anonymous)); XCTAssertNotNil(allowed)
+    }
+
+    func testForwardingPaidSourceToSavedNeverCopiesItsOldCharge() async throws {
+        let box = try await open(); let _: Void = try await value(forwardPaidSourceSeed(box))
+        let ids = try await value(forwardPaidSourceQueue(box, destination: 1, price: nil))
+        XCTAssertEqual(ids.compactMap { $0 }.count, 1)
+        let id = try XCTUnwrap(ids.first.flatMap { $0 })
+        let result = try await value(forwardPaidSourceSummary(box, id: id))
+        XCTAssertEqual(result?.fees, []); XCTAssertEqual(result?.originalFees, [17])
+        XCTAssertEqual(result?.hideNames, true)
+    }
+    func testForwardingPaidSourceUsesOnlyExplicitCurrentDestinationCharge() async throws {
+        let box = try await open(); let _: Void = try await value(forwardPaidSourceSeed(box))
+        let ids = try await value(forwardPaidSourceQueue(box, destination: 42, price: 3))
+        XCTAssertEqual(ids.compactMap { $0 }.count, 1)
+        let id = try XCTUnwrap(ids.first.flatMap { $0 })
+        let result = try await value(forwardPaidSourceSummary(box, id: id))
+        XCTAssertEqual(result?.fees, [3]); XCTAssertEqual(result?.originalFees, [17])
+        XCTAssertEqual(result?.hideNames, true)
     }
 
 }

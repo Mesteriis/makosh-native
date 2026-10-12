@@ -153,7 +153,7 @@ nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, acc
             // Reconstruct from authoritative canonical state. Comparing encoded bytes
             // also preserves opaque UTF8 spellings, selections and record metadata.
             guard let expected = try? TelegramPendingUploadDraft(id: current.id, revision: draft.revision,
-                accountID: current.accountID, chatID: current.chatID, title: current.title,
+                accountID: current.accountID, chatID: current.chatID, threadID: current.threadID, title: current.title,
                 captionInput: current.captionInput, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
                 items: current.items, isGrouped: false, presentation: .archive, captionRules: current.captionRules,
                 mediaRules: current.mediaRules, archive: archive, captionPolicy: current.captionPolicy),

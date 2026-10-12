@@ -11,7 +11,7 @@ struct TelegramUploadAppendCapture: Sendable {
     let candidateBytes: Data
 
     init(snapshot: TelegramPendingUploadDraft, candidate: TelegramPendingUploadDraft) throws {
-        guard snapshot.isValid, candidate.isValid, [17, 18, 19].contains(snapshot.schemaVersion),
+        guard snapshot.isValid, candidate.isValid, [17, 18, 19].contains(snapshot.resourceSchemaVersion),
               snapshot.disposition == .prepared, candidate.disposition == .prepared,
               candidate.revision != snapshot.revision, candidate.items.count > snapshot.items.count,
               try telegramUploadAppendBytes(Array(candidate.items.prefix(snapshot.items.count))) == telegramUploadAppendBytes(snapshot.items) else {
@@ -33,7 +33,7 @@ struct TelegramUploadAppendCapture: Sendable {
             }
         } else if candidate.archive != nil { throw TelegramPendingUploadPersistenceError.incompatibleData }
         let expected = try TelegramPendingUploadDraft(id: snapshot.id, revision: candidate.revision,
-            accountID: snapshot.accountID, chatID: snapshot.chatID, title: snapshot.title,
+            accountID: snapshot.accountID, chatID: snapshot.chatID, threadID: snapshot.threadID, title: snapshot.title,
             captionInput: snapshot.captionInput, captionAboveMedia: snapshot.captionAboveMedia, mediaSpoiler: snapshot.mediaSpoiler,
             originalDraft: snapshot.originalDraft, replyTarget: snapshot.replyTarget, items: candidate.items,
             isGrouped: snapshot.isGrouped && presentation.allowsGrouping(candidate.items), presentation: presentation,

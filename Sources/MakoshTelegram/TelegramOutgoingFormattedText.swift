@@ -5,14 +5,14 @@ import SwiftSignalKit
 
 /// Admission for text-only outgoing messages. Inline custom emoji needs a
 /// separately resolved media registry; retaining its DTO is not send authority.
-func telegramFormattedTextCanSend(_ value: TelegramFormattedText) -> Bool {
-    guard value.isEditable, value.text.utf16.count <= 4096,
-          !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-    return !value.entities.contains { if case .customEmoji = $0.kind { return true }; return false }
+/// Structural editor/preparation validation. A custom emoji remains unresolved
+/// until the shared native queue verifies its full account-bound document.
+func telegramFormattedTextCanPrepare(_ value: TelegramFormattedText) -> Bool {
+    value.isEditable && value.text.utf16.count <= 4096 &&
+        !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 }
-
-func telegramFormattedTextCanSend(_ value: TelegramFormattedText, transaction: Transaction) -> Bool {
-    guard telegramFormattedTextCanSend(value) else { return false }
+func telegramFormattedTextCanPrepare(_ value: TelegramFormattedText, transaction: Transaction) -> Bool {
+    guard telegramFormattedTextCanPrepare(value) else { return false }
     for entity in value.entities {
         if case let .textMention(peerID) = entity.kind {
             guard let user = transaction.getPeer(PeerId(peerID)) as? TelegramUser,
@@ -20,6 +20,14 @@ func telegramFormattedTextCanSend(_ value: TelegramFormattedText, transaction: T
         }
     }
     return true
+}
+func telegramFormattedTextCanSend(_ value: TelegramFormattedText) -> Bool {
+    telegramFormattedTextCanPrepare(value) && !value.entities.contains {
+        if case .customEmoji = $0.kind { return true }; return false
+    }
+}
+func telegramFormattedTextCanSend(_ value: TelegramFormattedText, transaction: Transaction) -> Bool {
+    telegramFormattedTextCanSend(value) && telegramFormattedTextCanPrepare(value, transaction: transaction)
 }
 
 /// Call only after admission; all original UTF16 ranges and native kinds survive.
@@ -35,14 +43,14 @@ nonisolated func telegramValidateOutgoingText(postbox: Postbox, formatted: Teleg
     }
 }
 
-nonisolated func telegramEnqueueOutgoingText(account: Account, chatID: Int64, formatted: TelegramFormattedText) -> Signal<[MessageId?]?, NoError> {
-    telegramValidateOutgoingText(postbox: account.postbox, formatted: formatted)
-    |> mapToSignal { valid -> Signal<[MessageId?]?, NoError> in
-        guard valid else { return .single(nil) }
-        let message = EnqueueMessage.message(text: formatted.text,
-            attributes: telegramOutgoingTextAttributes(formatted), inlineStickers: [:], mediaReference: nil,
-            threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil,
-            correlationId: nil, bubbleUpEmojiOrStickersets: [])
-        return enqueueMessages(account: account, peerId: PeerId(chatID), messages: [message]) |> map { Optional($0) }
-    }
+@MainActor func telegramEnqueueOutgoingText(account: Account, approval: TelegramSendApprovalController,
+    chatID: Int64, threadID: Int64?, revision: UUID, formatted: TelegramFormattedText) -> Signal<[MessageId?]?, NoError> {
+    guard telegramFormattedTextCanPrepare(formatted) else { return .single([]) }
+    let message = EnqueueMessage.message(text: formatted.text,
+        attributes: telegramOutgoingTextAttributes(formatted), inlineStickers: [:], mediaReference: nil,
+        threadId: threadID, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil,
+        correlationId: nil, bubbleUpEmojiOrStickersets: [])
+    return telegramApprovedEnqueue(account: account, approval: approval,
+        context: .init(accountID: account.peerId.toInt64(), chatID: chatID, threadID: threadID,
+            submissionRevision: revision, messageCount: 1), messages: [message])
 }

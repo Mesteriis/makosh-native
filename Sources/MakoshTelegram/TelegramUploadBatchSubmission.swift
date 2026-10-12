@@ -4,7 +4,7 @@ import TelegramCore
 import SwiftSignalKit
 
 enum TelegramUploadBatchEvent: Equatable {
-    case committing, accepted([TelegramUploadQueueID]), progress(Double?), queueFailed, rejected, uncertain
+    case awaitingApproval, committing, accepted([TelegramUploadQueueID]), progress(Double?), queueFailed, rejected, uncertain
 }
 
 @MainActor protocol TelegramUploadBatchProvider: TelegramUploadProvider {
@@ -47,6 +47,7 @@ enum TelegramUploadBatchAdmission {
     private var preparations: [TelegramUploadMediaBoxPreparation] = []
     private var resources: [TelegramUploadBatchResource] = []
     private let operation = MetaDisposable(), observation = MetaDisposable()
+    private let replyValidation = MetaDisposable()
     private var validation: Task<Void, Never>?
     private var stopped = false, committing = false, accepted = false
 
@@ -78,13 +79,14 @@ enum TelegramUploadBatchAdmission {
         if draft.presentation == .archive, let archive, let descriptor = draft.archive {
             self.items = [.init(id: descriptor.id, file: archive.file)]
         } else {
-            self.items = draft.schemaVersion >= 8 ? items.compactMap { $0.presented(as: draft.presentation) } : items
+            self.items = draft.resourceSchemaVersion >= 8 ? items.compactMap { $0.presented(as: draft.presentation) } : items
         }
         self.draft = draft; self.target = target
         self.enqueue = enqueue; self.observe = observe; self.receive = receive
         guard accountID == target.accountID, draft.accountID == accountID, target.chatID == draft.chatID,
               [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
               target.hasValidReplySource, draft.isValid, draft.disposition == .submissionStarted,
+              draft.threadID == target.selectedThreadID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
               items.count == draft.items.count,
               zip(items, draft.items).allSatisfy({ $0.id == $1.id && $0.file.metadata == $1.metadata &&
@@ -104,7 +106,7 @@ enum TelegramUploadBatchAdmission {
                       return member.itemID == item.id && member.sourceName.utf8.elementsEqual(facts.name.utf8) &&
                           member.byteCount == facts.byteCount && member.plaintextSHA256 == facts.plaintextSHA256
                   }),
-                  (try? TelegramUploadBatchPlan(archiveID: descriptor.id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy)) != nil else {
+                  (try? TelegramUploadBatchPlan(archiveID: descriptor.id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy, captionRules: draft.captionRules)) != nil else {
                 finish(.rejected); return
             }
             validation = Task { [weak self] in
@@ -120,11 +122,11 @@ enum TelegramUploadBatchAdmission {
             }
             return
         }
-        guard (draft.archive == nil) == (archive == nil), (6...19).contains(draft.schemaVersion),
+        guard (draft.archive == nil) == (archive == nil), (6...19).contains(draft.resourceSchemaVersion),
               self.items.count == items.count,
               (try? TelegramUploadBatchPlan(items: self.items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
                 captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)) != nil else {
+                presentation: draft.resourceSchemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)) != nil else {
             finish(.rejected); return
         }
         if let archive {
@@ -172,7 +174,7 @@ enum TelegramUploadBatchAdmission {
         let index = resources.count
         guard index < items.count else { commit(); return }
         let item = items[index]
-        guard let record = archive != nil ? draft.archive?.file : draft.schemaVersion >= 8 ? draft.items[index].payload(for: draft.presentation) : draft.items[index].file else {
+        guard let record = archive != nil ? draft.archive?.file : draft.resourceSchemaVersion >= 8 ? draft.items[index].payload(for: draft.presentation) : draft.items[index].file else {
             finish(.rejected); return
         }
         let digest = record.plaintextSHA256
@@ -189,17 +191,29 @@ enum TelegramUploadBatchAdmission {
     private func commit() {
         guard !stopped, !committing else { return }
         do {
-            let plan = try archive != nil ? TelegramUploadBatchPlan(archiveID: items[0].id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy)
+            let plan = try archive != nil ? TelegramUploadBatchPlan(archiveID: items[0].id, caption: draft.captionInput.formattedText, captionPolicy: draft.captionPolicy, captionRules: draft.captionRules)
                 : TelegramUploadBatchPlan(items: items, isGrouped: draft.isGrouped,
                 caption: draft.captionInput.formattedText, captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
-                presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)
+                presentation: draft.resourceSchemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules, captionPolicy: draft.captionPolicy)
             var keys: [Int64] = []
             while keys.count < plan.groupCount {
                 let key = Int64.random(in: Int64.min...Int64.max)
                 if !keys.contains(key) { keys.append(key) }
             }
             let receipt = try TelegramUploadBatchEnqueueReceipt(draft: draft, target: target, resources: resources, groupKeys: keys)
-            guard let messages = receipt.messages(replySource: target.replySource) else { finish(.rejected); return }
+            let validation: Signal<TelegramMessageActionSource?, NoError> = target.replySource.map {
+                validateTelegramReplySource(postbox: postbox, accountID: target.accountID, source: $0)
+            } ?? .single(nil)
+            replyValidation.set((validation |> take(1) |> deliverOnMainQueue).start(next: { [weak self] fresh in
+                guard let self, !self.stopped, !self.committing else { return }
+                guard self.target.replySource == nil || fresh != nil else { self.finish(.rejected); return }
+                self.commit(receipt: receipt, replySource: fresh)
+            }))
+        } catch { finish(.rejected) }
+    }
+
+    private func commit(receipt: TelegramUploadBatchEnqueueReceipt, replySource: TelegramMessageActionSource?) {
+            guard let messages = receipt.messages(replySource: replySource) else { finish(.rejected); return }
             committing = true; receive(.committing)
             guard !stopped else { return }
             operation.set((enqueue(receipt, messages) |> deliverOnMainQueue).start(next: { [weak self] admission in
@@ -220,7 +234,6 @@ enum TelegramUploadBatchAdmission {
                     }))
                 }
             }))
-        } catch { finish(.rejected) }
     }
 
     private func finish(_ event: TelegramUploadBatchEvent) {
@@ -230,6 +243,7 @@ enum TelegramUploadBatchAdmission {
     func stop() {
         guard !stopped else { return }
         stopped = true; validation?.cancel(); validation = nil; operation.dispose(); observation.dispose()
+        replyValidation.dispose()
         preparations.forEach { $0.stop() }; preparations.removeAll()
         // Disposing an observation does not recall a committed native send.
     }

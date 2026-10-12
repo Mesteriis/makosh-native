@@ -31,16 +31,16 @@ private nonisolated func savedForwardBegin(postbox: Postbox, accountID: Int64, r
         return telegramSavedForwardBegin(transaction: transaction, accountID: accountID, request: request) ? .started : .uncertain
     }
 }
-private nonisolated func savedForwardEnqueue(account: Account, request: TelegramSavedMessagesForwardRequest) -> Signal<SavedForwardAdmission, NoError> {
+private nonisolated func savedForwardEnqueue(account: Account, request: TelegramSavedMessagesForwardRequest,
+    context: TelegramSendContext, consent: TelegramPaidSendConsent?) -> Signal<SavedForwardAdmission, NoError> {
     account.postbox.transaction { telegramForwardBatch(transaction: $0, accountID: account.peerId.toInt64(), draft: request.draft) }
     |> mapToSignal { batch -> Signal<SavedForwardAdmission, NoError> in
         guard let batch else { return .single(.rejected) }
-        let admitted = Atomic<Bool>(value: false), accepted = Atomic<Bool>(value: false)
-        return enqueueMessages(account: account, peerId: account.peerId, messages: batch.messages,
-            transactionAdmission: { transaction in
-                guard telegramSavedForwardAdmission(transaction: transaction, accountID: account.peerId.toInt64(), request: request) else { return false }
-                _ = admitted.swap(true); return true
-            }, transactionCommit: { transaction, ids in
+        let accepted = Atomic<Bool>(value: false)
+        return telegramEnqueueApprovedMessages(account: account, context: context, messages: batch.messages, consent: consent,
+            specificAdmission: { transaction in
+                telegramSavedForwardAdmission(transaction: transaction, accountID: account.peerId.toInt64(), request: request)
+            }, specificCommit: { transaction, ids in
                 guard ids.count == batch.messages.count else { return }
                 var values: [TelegramForwardQueueID] = [], seen = Set<MessageId>()
                 for id in ids {
@@ -52,14 +52,15 @@ private nonisolated func savedForwardEnqueue(account: Account, request: Telegram
                     accountID: account.peerId.toInt64(), request: request, ids: values))
             }) |> map { ids in
                 if accepted.with({ $0 }) { return .queued }
-                return !admitted.with({ $0 }) && ids.isEmpty ? .rejected : .uncertain
+                return ids?.isEmpty == true ? .rejected : .uncertain
             }
     }
 }
 @MainActor final class TelegramEngineSavedMessagesForwardProvider: TelegramSavedMessagesForwardProvider {
     private let account: Account
+    private let approval: TelegramSendApprovalController
     var accountID: Int64 { account.peerId.toInt64() }
-    init(account: Account) { self.account = account }
+    init(account: Account, approval: TelegramSendApprovalController) { self.account = account; self.approval = approval }
     func recover(completion: @escaping @MainActor (Result<TelegramSavedMessagesForwardRecord?, TelegramComposerDraftPersistenceError>) -> Void) -> any TelegramComposerForwardLease {
         let lease = SavedForwardLease(), accountID = self.accountID
         lease.observation.set((telegramSavedForwardRecover(postbox: account.postbox, accountID: accountID)
@@ -68,8 +69,27 @@ private nonisolated func savedForwardEnqueue(account: Account, request: Telegram
     }
     func submit(request: TelegramSavedMessagesForwardRequest,
                 receive: @escaping @MainActor (TelegramMessageActionEvent) -> Void) -> any TelegramComposerForwardLease {
-        let lease = SavedForwardLease(), account = self.account
+        let lease = SavedForwardLease()
         guard request.accountID == accountID else { receive(.rejected); return lease }
+        let context = TelegramSendContext(accountID: accountID, chatID: request.destinationChatID, threadID: nil,
+            submissionRevision: request.id, messageCount: request.sources.count)
+        receive(.awaitingApproval)
+        lease.observation.set((telegramApprovalForDestination(account: account, approval: approval, context: context)
+            |> deliverOnMainQueue).start(next: { result in
+                MainActor.assumeIsolated {
+                    guard !lease.stopped else { return }
+                    guard case let .success(consent) = result else { receive(.rejected); return }
+                    lease.continueAfterApproval(notify: { receive(.committing) }, begin: {
+                        self.submitApproved(request: request, context: context, consent: consent, lease: lease, receive: receive)
+                    })
+                }
+            }))
+        return lease
+    }
+    private func submitApproved(request: TelegramSavedMessagesForwardRequest, context: TelegramSendContext,
+        consent: TelegramPaidSendConsent?, lease: SavedForwardLease,
+        receive: @escaping @MainActor (TelegramMessageActionEvent) -> Void) {
+        let account = self.account
         // Bound account survives UI cancellation through queue/receipt completion.
         let _ = (savedForwardBegin(postbox: account.postbox, accountID: accountID, request: request) |> deliverOnMainQueue).startStandalone(next: { result in
             MainActor.assumeIsolated {
@@ -78,8 +98,7 @@ private nonisolated func savedForwardEnqueue(account: Account, request: Telegram
                 case .uncertain: if !lease.stopped { receive(.uncertain) }; return
                 case .started: break
                 }
-                if !lease.stopped { receive(.committing) }
-                let _ = (savedForwardEnqueue(account: account, request: request) |> deliverOnMainQueue).startStandalone(next: { result in
+                let _ = (savedForwardEnqueue(account: account, request: request, context: context, consent: consent) |> deliverOnMainQueue).startStandalone(next: { result in
                     MainActor.assumeIsolated {
                         switch result {
                         case .queued: if !lease.stopped { receive(.queued) }
@@ -94,12 +113,17 @@ private nonisolated func savedForwardEnqueue(account: Account, request: Telegram
                 })
             }
         })
-        return lease
     }
 }
 @MainActor final class SavedForwardLease: TelegramComposerForwardLease {
     let observation = MetaDisposable()
     private(set) var stopped = false
+    func continueAfterApproval(notify: () -> Void, begin: () -> Void) {
+        guard !stopped else { return }
+        notify()
+        guard !stopped else { return }
+        begin()
+    }
     func cancel() { guard !stopped else { return }; stopped = true; observation.dispose() }
     isolated deinit { observation.dispose() }
 }

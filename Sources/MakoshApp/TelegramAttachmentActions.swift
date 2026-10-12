@@ -156,7 +156,12 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
             if let bytes = attachment.byteCount {
                 Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
             }
-            if attachment.kind == .unsupported {
+            if let paid = attachment.paidMedia {
+                Label(paid.access == .full ? "Оплачено" : "Платные медиа · \(paid.amount) Stars", systemImage: paid.access == .full ? "checkmark.seal" : "lock.fill")
+                    .font(.callout.weight(.medium))
+                    .accessibilityIdentifier("telegram.attachment.paid." + attachment.id)
+                Text("Вложений: \(paid.itemCount)").font(.caption).foregroundStyle(.secondary)
+            } else if attachment.kind == .unsupported {
                 Text("Этот тип вложения пока недоступен.").font(.caption).foregroundStyle(.secondary)
             } else if reveal.isHidden(attachment, contextID: contextID) {
                 Button("Показать скрытое вложение", systemImage: "eye") { reveal.reveal(attachment, contextID: contextID) }

@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import Postbox
+import TelegramCore
 @testable import MakoshTelegram
 
 @MainActor final class TelegramHistoryReadTests: XCTestCase {
@@ -78,6 +79,25 @@ import Postbox
         XCTAssertTrue(controller.apply(item)); XCTAssertTrue(controller.apply(item))
         provider.synchronous = true
         XCTAssertTrue(controller.apply(item)); XCTAssertFalse(controller.apply(item))
+        XCTAssertEqual(provider.requests.count, 3)
+    }
+    func testTopicsHaveIndependentReadBoundariesAndInvalidTopicDoesNotReachProvider() {
+        let controller = TelegramHistoryReadController(), provider = Provider(); controller.bind(provider)
+        let peer = PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(2))
+        let base = TelegramHistoryReadTarget(context: .init(accountID: 1, chatID: peer.toInt64(),
+            accountContextID: UUID(), historyWindowID: UUID()),
+            index: .init(id: .init(peerId: peer, namespace: Namespaces.Message.Cloud, id: 100), timestamp: 100))
+        func topic(_ threadID: Int64, id: Int32) -> TelegramHistoryReadTarget {
+            .init(context: .init(accountID: 1, chatID: base.context.chatID,
+                accountContextID: base.context.accountContextID, historyWindowID: UUID(), threadID: threadID),
+                index: .init(id: .init(peerId: base.index.id.peerId, namespace: 0, id: id), timestamp: 100))
+        }
+        XCTAssertTrue(controller.apply(topic(1, id: 100))); provider.requests[0].1(true)
+        XCTAssertTrue(controller.apply(topic(7, id: 3)))
+        XCTAssertTrue(controller.apply(base))
+        XCTAssertFalse(controller.apply(topic(0, id: 101)))
+        XCTAssertFalse(controller.apply(topic(-1, id: 101)))
+        XCTAssertFalse(controller.apply(topic(Int64(Int32.max) + 1, id: 101)))
         XCTAssertEqual(provider.requests.count, 3)
     }
 }

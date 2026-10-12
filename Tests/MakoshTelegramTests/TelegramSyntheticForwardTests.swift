@@ -77,6 +77,8 @@ private func syntheticForwardSnapshot(_ box: Postbox) -> Signal<(TelegramCompose
         let done = expectation(description: "Terminal synthetic event"); var events: [String] = []
         let lease = provider.submit(draft: draft) { event in
             switch event {
+            case .awaitingApproval: events.append("awaitingApproval")
+            case .approvalCompleted: events.append("approvalCompleted")
             case .committing: events.append("committing")
             case .receiptAccepted: events.append("receiptAccepted")
             case .accepted: events.append("accepted"); done.fulfill()

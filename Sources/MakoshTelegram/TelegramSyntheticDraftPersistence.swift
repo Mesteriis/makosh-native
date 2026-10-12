@@ -24,7 +24,7 @@ private func syntheticComposerPostbox(directory: URL) -> Signal<Postbox?, NoErro
 extension TelegramModel {
     /// Explicit DEBUG fixture only. Ordinary syntheticPreview remains memory-only.
     /// The caller must create a private, distinctly named synthetic directory.
-    public static func syntheticDraftPreview(directory: URL, albums: Bool = false) async throws -> TelegramModel {
+    public static func syntheticDraftPreview(directory: URL, albums: Bool = false, extendedMessages: Bool = false) async throws -> TelegramModel {
         let path = directory.standardizedFileURL
         let attributes = try FileManager.default.attributesOfItem(atPath: path.path)
         guard directory.isFileURL, path == directory.resolvingSymlinksInPath(),
@@ -34,7 +34,7 @@ extension TelegramModel {
             throw CocoaError(.fileReadNoPermission)
         }
         initializeAccountManagement()
-        let model = syntheticPreview(albums: albums)
+        let model = extendedMessages ? syntheticExtendedMessagesPreview() : syntheticPreview(albums: albums)
         let _: Void = try await withCheckedThrowingContinuation { continuation in
             let _ = (syntheticComposerPostbox(directory: path) |> deliverOnMainQueue).startStandalone(next: { box in
                 MainActor.assumeIsolated {
@@ -42,10 +42,10 @@ extension TelegramModel {
                     model.syntheticPendingPostbox = box
                     model.composerForward.bind(TelegramSyntheticForwardProvider(postbox: box,
                         loseAcknowledgement: ProcessInfo.processInfo.arguments.contains("--telegram-forward-ack-loss-qa"),
-                        pages: TelegramSyntheticPages(albums: albums)))
+                        pages: TelegramSyntheticPages(albums: albums, forum: extendedMessages)))
                     model.savedMessagesForward.bind(TelegramSyntheticSavedMessagesForwardProvider(postbox: box,
                         loseAcknowledgement: ProcessInfo.processInfo.arguments.contains("--telegram-saved-forward-ack-loss-qa"),
-                        pages: TelegramSyntheticPages(albums: albums)))
+                        pages: TelegramSyntheticPages(albums: albums, forum: extendedMessages)))
                     model.bindComposerDraftRepository(TelegramPostboxComposerDraftRepository(postbox: box, accountID: -1))
                     continuation.resume()
                 }
@@ -66,7 +66,8 @@ extension TelegramModel {
         upload.bind(provider: TelegramSyntheticUploadProvider(postbox: postbox,
             loseAcknowledgement: ProcessInfo.processInfo.arguments.contains("--telegram-pending-upload-ack-loss-qa")),
             recoveryStore: store, requiresRecovery: true)
-        bindPendingUploadRecovery(store, replyProvider: TelegramSyntheticComposerReplyProvider(pages: TelegramSyntheticPages(albums: albums)))
+        bindPendingUploadRecovery(store, replyProvider: TelegramSyntheticComposerReplyProvider(pages: TelegramSyntheticPages(albums: albums,
+            forum: ProcessInfo.processInfo.arguments.contains("--telegram-extended-messages-synthetic-preview"))))
     }
 }
 #endif

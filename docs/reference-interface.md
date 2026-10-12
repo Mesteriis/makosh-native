@@ -10,6 +10,47 @@
 GPLv3-приложение. Компоновка и сценарии воспроизводятся собственным SwiftUI/AppKit
 кодом. Research checkout нужен только для сверки; build/run/test от него не зависят.
 
+Второй блок (2026-10-12) заменяет прежние отметки ниже об открытых selected quote,
+server drafts, syntax highlighting, custom emoji и обычных forum topics.
+Сохраняются общая боковая панель сервисов, список диалогов/тем и область переписки;
+новая отдельная оболочка Telegram не добавляется.
+
+- `ChatMessageMenuItems.swift:382–397`: действие цитирования текущего выделения,
+  `quote_length_max` (1024 по умолчанию), trimmed text/entities, nil offset и
+  исходное media. Собственный AppKit reading view передаёт точное выделение;
+  Model наблюдает текущий лимит, native enqueue повторно проверяет источник.
+- `PreviewSenderController.swift:1545–1558`: обычные и animated emoji вставляются
+  в тот же caption input. Собственный picker работает в ordinary composer и
+  modal caption, сохраняет UTF16 selection/Undo и остаётся открытым после своей
+  вставки. Смена input/context/catalog закрывает устаревший picker. Старые
+  подготовки без frozen policy и recorded media намеренно не получают его.
+- `ChatListRowItem.swift:2245–2262`: темы используют тот же ряд списка (обычно70pt),
+  а не дополнительную постоянную колонку. Собственный список заменяет диалоги
+  внутри Telegram: All Messages, General, название, иконка, draft/unread/mute/pin/
+  closed состояния, возврат к диалогам и выбранная тема в заголовке переписки.
+  Topic management, monoforums, scheduled и migrated-peer parity остаются открыты.
+- `SecretChatKeyViewController.swift:37–99`:264px identicon, четыре строки
+  fingerprint и пояснение сравнения. Собственный renderer использует публичный
+  fingerprint и проверенный порядок битов, без копирования UI/assets. Полный
+  secret handshake/media/TTL интерфейс не перенесён; доступен active plain text.
+- `ChatController.swift:3608–3634,3959–3980`: подтверждение destination/count/Stars.
+  Собственный modal показывает unit price и точный total, требует явной кнопки
+  и не принимает Return как оплату. «Всегда платить», покупка баланса, purchase
+  paid media и анонимная/send-as платная отправка не подключены.
+
+Code header/copy/selection/spoiler layout сохранён; цвета добавляет независимо
+закреплённый Prisma/Boost, перечисленный в THIRD_PARTY_NOTICES. WebP/TGS/WebM
+custom emoji воспроизводятся только в видимых местах, с Unicode fallback для
+неподдерживаемого профиля или превышенных лимитов. Это не полная sticker parity.
+Конфликт server drafts использует собственные две явные кнопки выбора и сохраняет
+текущий ввод до подтверждения native CAS; такая защита — адаптация хранения Макоша.
+Фактические автоматические и native UI результаты записаны в development-status;
+само наличие экранов или успешная компиляция не доказывает их runtime-приёмку.
+В upload preview пока показано имя чата без названия выбранной темы; target,
+восстановление и native admission сохраняют и проверяют её идентификатор.
+Сверка полного secret/paid-media интерфейса отложена вместе с неподдержанными
+key-agreement/media/purchase сценариями, перечисленными в `telegram.md`.
+
 Текущий медиаблок (2026-10-12) заменяет прежние отметки об открытых premium
 limits, Markdown, drag/drop и предпросмотре файлов. Подтверждены
 `PreviewSenderController.swift:1091–1107,1171–1187,1213–1238,1261–1280,1824–1837,2001–2010`,

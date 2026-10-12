@@ -73,14 +73,24 @@ import COpus
 
     // A valid CRC cannot bypass mono/rate/gain/version/header/sequence/serial/EOS limits.
     func testRechecksContainerSemanticsAfterChecksum() async throws {
-        let data = try await TelegramRecordedVoiceCodec.encode(samples: tone(count: 2_000))
+        var data = try await TelegramRecordedVoiceCodec.encode(samples: tone(count: 2_000))
         let pages = try readPages(data)
+        // Reproduce the encoder's valid random serial having low byte 9.
+        // Every page must retain that same serial and a valid independent CRC.
+        for page in pages {
+            data[page.start + 14] = 9
+            repairCRC(&data, start: page.start, end: page.end)
+        }
+        let valid = try await TelegramRecordedVoiceCodec.decodeRecording(data)
+        XCTAssertEqual(valid.count, 2_000)
         for (pageIndex, offset, replacement) in [(0, 28 + 8, UInt8(2)), (0, 28 + 9, 2),
             (0, 28 + 12, 0), (0, 28 + 16, 1), (0, 28 + 18, 1), (0, 5, 0),
-            (1, 18, 9), (2, 14, 9), (2, 5, 1), (pages.count - 1, 5, 0),
+            (1, 18, 9), (2, 14, 10), (2, 5, 1), (pages.count - 1, 5, 0),
             (pages.count - 1, 13, 0xff)] {
             var invalid = data
             let page = pages[pageIndex]
+            XCTAssertNotEqual(invalid[page.start + offset], replacement,
+                "Mutation must change page \(pageIndex) at offset \(offset)")
             invalid[page.start + offset] = replacement
             repairCRC(&invalid, start: page.start, end: page.end)
             await assertInvalid(invalid)

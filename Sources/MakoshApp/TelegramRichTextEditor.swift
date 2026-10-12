@@ -13,13 +13,21 @@ struct TelegramRichTextEditor: View {
     var accessibilityLabel: String? = nil
     var inputChanged: ((TelegramComposerInput) -> Void)? = nil
     var submit: (() -> Void)? = nil
+    var customEmojiDescriptors: [Int64: TelegramCustomEmojiDescriptor] = [:]
+    var customEmojiContext: TelegramCustomEmojiPlaybackContext? = nil
+    var customEmojiInsertion: TelegramCustomEmojiInsertionRequest? = nil
+    var customEmojiInputContextID: UUID? = nil
+    var consumeCustomEmojiInsertion: ((UUID, TelegramComposerInput) -> Bool)? = nil
     @AppStorage(TelegramSendKey.preferenceKey) private var sendKeyPreference = TelegramSendKey.enter.rawValue
     @State private var height: CGFloat = 52
     var body: some View {
         NativeTelegramText(value: $value,error: $error,height: $height,selection: selection,
             accessibilityID: accessibilityID,accessibilityLabel: accessibilityLabel ?? defaultAccessibilityLabel,
             inputChanged: inputChanged,submit: submit,
-            sendKey: TelegramSendKey(preferenceValue: sendKeyPreference))
+            sendKey: TelegramSendKey(preferenceValue: sendKeyPreference),
+            customEmojiDescriptors: customEmojiDescriptors, customEmojiContext: customEmojiContext,
+            customEmojiInsertion: customEmojiInsertion, customEmojiInputContextID: customEmojiInputContextID,
+            consumeCustomEmojiInsertion: consumeCustomEmojiInsertion)
             .frame(height: height)
             .disabled(!value.isEditable)
             .overlay(alignment: .topLeading) {
@@ -35,7 +43,7 @@ struct TelegramRichTextEditor: View {
             accessibilityID == "telegram.upload.caption" ? "Подпись к вложению" : "Изменить сообщение"
     }
 }
-private struct NativeTelegramText: NSViewRepresentable {
+struct NativeTelegramText: NSViewRepresentable {
     @Binding var value: TelegramFormattedText
     @Binding var error: String?
     @Binding var height: CGFloat
@@ -45,6 +53,11 @@ private struct NativeTelegramText: NSViewRepresentable {
     let inputChanged: ((TelegramComposerInput) -> Void)?
     let submit: (() -> Void)?
     let sendKey: TelegramSendKey
+    let customEmojiDescriptors: [Int64: TelegramCustomEmojiDescriptor]
+    let customEmojiContext: TelegramCustomEmojiPlaybackContext?
+    let customEmojiInsertion: TelegramCustomEmojiInsertionRequest?
+    let customEmojiInputContextID: UUID?
+    let consumeCustomEmojiInsertion: ((UUID, TelegramComposerInput) -> Bool)?
     func makeCoordinator() -> Coordinator {
         Coordinator(value: $value,error: $error,height: $height,selection: selection,inputChanged: inputChanged)
     }
@@ -52,6 +65,9 @@ private struct NativeTelegramText: NSViewRepresentable {
         let scroll = TelegramGrowingScrollView()
         scroll.hasVerticalScroller = false; scroll.scrollerStyle = .overlay; scroll.borderType = .bezelBorder
         let text = TelegramNativeInput(frame: .zero)
+        TelegramCustomEmojiTextSystem.install(in: text)
+        context.coordinator.customEmojiDescriptors = customEmojiDescriptors
+        context.coordinator.customEmojiContext = customEmojiContext
         text.isRichText = true; text.importsGraphics = false; text.allowsUndo = true
         text.textColor = .labelColor; text.backgroundColor = .textBackgroundColor
         text.typingAttributes = [.font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.labelColor]
@@ -87,6 +103,7 @@ private struct NativeTelegramText: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.value = $value; coordinator.error = $error; coordinator.height = $height
         coordinator.selection = selection; coordinator.inputChanged = inputChanged
+        coordinator.customEmojiDescriptors = customEmojiDescriptors; coordinator.customEmojiContext = customEmojiContext
         guard let text = scroll.documentView as? NSTextView else { return }
         text.setAccessibilityLabel(accessibilityLabel)
         (text as? TelegramNativeInput)?.submit = submit
@@ -95,6 +112,11 @@ private struct NativeTelegramText: NSViewRepresentable {
         let installedDifferentValue = coordinator.lastValue != value
         if installedDifferentValue { coordinator.install(value,in: text) }
         else { coordinator.installSelection(in: text) }
+        if let customEmojiInsertion, let customEmojiInputContextID {
+            coordinator.insertCustomEmoji(customEmojiInsertion, contextID: customEmojiInputContextID,
+                in: text, consume: consumeCustomEmojiInsertion)
+        }
+        coordinator.updateCustomEmoji(in: text)
         coordinator.measure(text,in: scroll)
     }
     static func dismantleNSView(_ scroll: NSScrollView,coordinator: Coordinator) {
@@ -117,7 +139,50 @@ private struct NativeTelegramText: NSViewRepresentable {
         private var active = true
         private var revision = UUID()
         private var measurementTask: Task<Void,Never>?
-        func detach() { active = false; measurementTask?.cancel(); measurementTask = nil }
+        var customEmojiDescriptors: [Int64: TelegramCustomEmojiDescriptor] = [:]
+        var customEmojiContext: TelegramCustomEmojiPlaybackContext?
+        private let customEmojiOverlay = TelegramCustomEmojiTextOverlay()
+        private var consumedCustomEmojiID: UUID?
+        func detach() {
+            active = false; measurementTask?.cancel(); measurementTask = nil
+            customEmojiOverlay.detach(); customEmojiContext = nil; customEmojiDescriptors = [:]
+        }
+        func insertCustomEmoji(_ request: TelegramCustomEmojiInsertionRequest, contextID: UUID,
+            in text: NSTextView, consume: ((UUID, TelegramComposerInput) -> Bool)?) {
+            guard active, request.contextID == contextID, consumedCustomEmojiID != request.id else { return }
+            consumedCustomEmojiID = request.id
+            do {
+                let current = try TelegramAttributedText.formattedText(text.attributedString())
+                let range = text.selectedRange()
+                let input = try TelegramComposerInput(formattedText: current,
+                    selection: .init(location: range.location, length: range.length))
+                guard current == lastValue, input == request.expectedInput else { return }
+                let next = try TelegramCustomEmojiInsertion.applying(request.descriptor, to: input)
+                let attributed = try TelegramAttributedText.attributedString(next.formattedText)
+                guard text.isEditable, customEmojiPreflight(text, length: current.text.utf16.count, replacement: next.formattedText.text), consume?(request.id, input) == true,
+                    active, text.selectedRange() == range,
+                    (try? TelegramAttributedText.formattedText(text.attributedString())) == current else { return }
+                let previous = NSAttributedString(attributedString: text.attributedString())
+                registerUndo(previous, selection: range, in: text)
+                text.undoManager?.setActionName("Вставка эмодзи")
+                replace(attributed, selection: .init(location: next.selection.location, length: next.selection.length), in: text)
+                error.wrappedValue = nil
+                updateCustomEmoji(in: text)
+            } catch { self.error.wrappedValue = "Не удалось вставить эмодзи в это выделение." }
+        }
+        private func customEmojiPreflight(_ text: NSTextView, length: Int, replacement: String) -> Bool {
+            // NSTextView preflight also registers a native plain-text undo.
+            // Our atomic attributed snapshot owns Undo for this operation.
+            let undo = text.undoManager, enabled = text.undoManager?.isUndoRegistrationEnabled == true
+            if enabled { undo?.disableUndoRegistration() }
+            defer { if enabled { undo?.enableUndoRegistration() } }
+            return text.shouldChangeText(in: .init(location: 0, length: length), replacementString: replacement)
+        }
+        func updateCustomEmoji(in text: NSTextView) {
+            guard active, let lastValue else { customEmojiOverlay.detach(); return }
+            customEmojiOverlay.update(textView: text, value: lastValue, descriptors: customEmojiDescriptors,
+                context: customEmojiContext, concealedRanges: [])
+        }
         init(value: Binding<TelegramFormattedText>,error: Binding<String?>,height: Binding<CGFloat>,
              selection: TelegramInputSelection?,inputChanged: ((TelegramComposerInput) -> Void)?) {
             self.value = value; self.error = error; self.height = height
@@ -143,6 +208,7 @@ private struct NativeTelegramText: NSViewRepresentable {
                     text.setFrameSize(NSSize(width: scroll.contentSize.width,height: documentHeight))
                 }
                 if abs(self.height.wrappedValue - bounded) > 0.5 { self.height.wrappedValue = bounded }
+                self.customEmojiOverlay.layout()
             }
         }
         func install(_ value: TelegramFormattedText,in text: NSTextView) {
@@ -157,6 +223,7 @@ private struct NativeTelegramText: NSViewRepresentable {
                 else { text.setSelectedRange(NSRange(location: min(previousSelection.location,attributed.length),length: min(previousSelection.length,max(0,attributed.length - min(previousSelection.location,attributed.length))))) }
                 installing = false
                 lastValue = value
+                updateCustomEmoji(in: text)
             } catch {
                 let expectedRevision = revision
                 Task { @MainActor [weak self] in
@@ -203,6 +270,7 @@ private struct NativeTelegramText: NSViewRepresentable {
                 lastValue = next
                 if report(next,in: text) { error.wrappedValue = nil }
                 else { lastValue = previous }
+                updateCustomEmoji(in: text)
             } catch { self.error.wrappedValue = "Форматирование не сохранено. Отмените последнее изменение перед отправкой." }
         }
         private func replace(_ value: NSAttributedString,selection: NSRange,in text: NSTextView) {

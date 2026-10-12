@@ -9,6 +9,8 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
     @ObservedObject var media: TelegramMediaController
     @ObservedObject var actions: TelegramAttachmentActions
     @ObservedObject var playback: TelegramPlaybackController
+    var nativeActions: (TelegramMessage) -> [TelegramReadingMenuAction] = { _ in [] }
+    var quoteSelection: ((TelegramMessage, TelegramReplyQuote, UUID) -> Void)? = nil
     @ViewBuilder let menu: (TelegramMessage) -> MenuContent
 
     var body: some View {
@@ -92,7 +94,11 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
                                 }
                                 if !message.text.isEmpty {
                                     TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
-                                        canCopy: message.actionMetadata?.canCopy == true) { menu(message) }
+                                        canCopy: message.actionMetadata?.canCopy == true,
+                                        nativeActions: nativeActions(message), quoteSelection: { quoteSelection?(message, $0, context) },
+                                        maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+                                        customEmojiDescriptors: model.customEmojiDescriptors,
+                                        customEmojiContext: model.customEmojiPlaybackContext) { menu(message) }
                                 }
                             }.contextMenu { menu(message) }
                                 .background(TelegramHistoryReadRow(id: message.id, context: model.historyReadContext))
@@ -123,14 +129,21 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
             if selecting {
                 Button(action: toggle) {
                     TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
-                        canCopy: message.actionMetadata?.canCopy == true) { menu(message) }
+                        canCopy: message.actionMetadata?.canCopy == true,
+                        maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+                        customEmojiDescriptors: model.customEmojiDescriptors,
+                        customEmojiContext: model.customEmojiPlaybackContext) { menu(message) }
                         .allowsHitTesting(false).accessibilityHidden(true)
                 }.buttonStyle(.plain).accessibilityLabel("Выбрать альбом, \(item.messages.count) сообщений")
                     .accessibilityIdentifier("telegram.album.caption." + item.id)
                     .contextMenu { menu(message) }
             } else {
                 TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
-                    canCopy: message.actionMetadata?.canCopy == true) { menu(message) }
+                    canCopy: message.actionMetadata?.canCopy == true,
+                    nativeActions: nativeActions(message), quoteSelection: { quoteSelection?(message, $0, context) },
+                                        maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+                                        customEmojiDescriptors: model.customEmojiDescriptors,
+                                        customEmojiContext: model.customEmojiPlaybackContext) { menu(message) }
             }
         }
     }

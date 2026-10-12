@@ -94,7 +94,7 @@ extension TelegramUploadRecoveryStore {
         throw TelegramPendingUploadPersistenceError.incompatibleData
     }
     func restoreItems(draft: TelegramPendingUploadDraft) async throws -> [TelegramUploadBatchItem] {
-        guard draft.schemaVersion < 6 else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        guard draft.resourceSchemaVersion < 6 else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         return [.init(id: draft.items[0].id, file: try await restoreFile(draft: draft))]
     }
     func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],

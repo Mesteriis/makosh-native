@@ -92,8 +92,9 @@ private func validatedTelegramActionSource(postbox: Postbox, accountID: Int64,
     let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
     return postbox.transaction { transaction -> TelegramMessageActionSource? in
         guard source.accountID == accountID, let message = transaction.getMessage(id) else { return nil }
-        let fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
+        guard var fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
             limits: currentLimitsConfiguration(transaction: transaction)), accountID: accountID, chatID: source.chatID)
+            .quoting(source.replyQuote, maximumLength: telegramReplyQuoteLimit(transaction: transaction)) else { return nil }
         guard fresh.fingerprint == source.fingerprint else { return nil }
         if let action {
             guard telegramMessageActionAllowed(action, source: fresh) else { return nil }
@@ -101,7 +102,7 @@ private func validatedTelegramActionSource(postbox: Postbox, accountID: Int64,
             guard fresh.canReply, fresh.chatID == fresh.peerID || fresh.metadata.migrationChatID == fresh.chatID else { return nil }
         }
         if case let .replyFormatted(formatted)? = action {
-            guard telegramFormattedTextCanSend(formatted, transaction: transaction) else { return nil }
+            guard telegramFormattedTextCanPrepare(formatted, transaction: transaction) else { return nil }
         }
         if case let .editFormatted(formatted, _)? = action {
             for entity in formatted.entities {
@@ -124,6 +125,12 @@ private func validatedTelegramActionSource(postbox: Postbox, accountID: Int64,
                 guard group.hasPermission(.sendSomething) else { return nil }
             } else if !(peer is TelegramUser) { return nil }
         }
+        if fresh.replyQuote != nil, let media = message.media.first {
+            let encoder = PostboxEncoder(); encoder.encodeRootObject(media)
+            let data = encoder.makeData()
+            guard data.count <= 128 * 1024 else { return nil }
+            fresh.validatedReplyMediaData = data
+        }
         return fresh
     }
 }
@@ -137,8 +144,9 @@ private func reconcileEditedMessage(account: Account, id: MessageId, content: Te
 
 @MainActor final class TelegramEngineMessageActionsProvider: TelegramMessageActionsProvider {
     private let account: Account
+    private let approval: TelegramSendApprovalController
     var accountID: Int64 { account.peerId.toInt64() }
-    init(account: Account) { self.account = account }
+    init(account: Account, approval: TelegramSendApprovalController) { self.account = account; self.approval = approval }
     func start(action: TelegramMessageAction, source: TelegramMessageActionSource,
                receive: @escaping @MainActor (TelegramMessageActionEvent) -> Void) -> any TelegramMessageActionsLease {
         let lease = EngineMessageActionsLease(receive: receive)
@@ -146,19 +154,33 @@ private func reconcileEditedMessage(account: Account, id: MessageId, content: Te
             receive(.rejected); return lease
         }
         let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
-        let validation: Signal<(valid: Bool, editContent: TelegramMessageEditContent?), NoError>
+        let validation: Signal<(valid: Bool, editContent: TelegramMessageEditContent?, replyMessage: EnqueueMessage?), NoError>
         switch action {
+        case .reply, .replyFormatted:
+            let formatted: TelegramFormattedText?
+            switch action {
+            case let .reply(text): formatted = try? TelegramFormattedText(text: text)
+            case let .replyFormatted(value): formatted = value
+            default: formatted = nil
+            }
+            if let formatted {
+                validation = telegramPrepareReplyMessage(postbox: account.postbox, accountID: accountID, source: source, formatted: formatted)
+                    |> map { (valid: $0 != nil, editContent: nil, replyMessage: $0) }
+            } else { validation = .single((valid: false, editContent: nil, replyMessage: nil)) }
         case .edit, .editFormatted:
             validation = validatedTelegramEditContent(postbox: account.postbox, accountID: accountID, action: action, source: source)
-                |> map { (valid: $0 != nil, editContent: $0) }
+                |> map { (valid: $0 != nil, editContent: $0, replyMessage: nil) }
         default:
             validation = validateTelegramMessageAction(postbox: account.postbox, accountID: accountID, action: action, source: source)
-                |> map { (valid: $0, editContent: nil) }
+                |> map { (valid: $0, editContent: nil, replyMessage: nil) }
         }
-        lease.validation.set((validation |> deliverOnMainQueue).start(next: { [weak lease, account] result in
+        lease.validation.set((validation |> deliverOnMainQueue).start(next: { [weak lease, account, approval] result in
             guard let lease, !lease.stopped else { return }
             guard result.valid else { lease.emit(.rejected); return }
-            lease.receive(.committing)
+            switch action {
+            case .reply, .replyFormatted, .forward: lease.receive(.awaitingApproval)
+            case .edit, .editFormatted, .delete: lease.receive(.committing)
+            }
             guard !lease.stopped else { return }
             switch action {
             case .reply, .replyFormatted:
@@ -170,26 +192,37 @@ private func reconcileEditedMessage(account: Account, id: MessageId, content: Te
                 case let .replyFormatted(value): formatted = value
                 default: return
                 }
-                let message = EnqueueMessage.message(text: formatted.text, attributes: telegramOutgoingTextAttributes(formatted), inlineStickers: [:], mediaReference: nil,
-                    threadId: source.threadID, replyToMessageId: EngineMessageReplySubject(messageId: id, quote: nil, todoItemId: nil),
-                    replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
-                lease.operation.set((enqueueMessages(account: account, peerId: PeerId(source.chatID), messages: [message])
+                guard let message = result.replyMessage else { lease.emit(.rejected); return }
+                lease.operation.set((telegramEnqueueReplyMessage(account: account, approval: approval, source: source, formatted: formatted, message: message, onApproved: { [weak lease] in
+                        guard let lease, !lease.stopped else { return }; lease.receive(.committing)
+                    })
                     |> deliverOnMainQueue).start(next: { [weak lease] ids in
-                        lease?.emit(ids.first.flatMap { $0 } == nil ? .uncertain : .queued)
+                        lease?.emit(ids == nil ? .uncertain : ids?.count == 1 && ids?.first.flatMap({ $0 }) != nil ? .queued : .rejected)
                     }))
             case let .forward(destination):
-                lease.operation.set((enqueueMessages(account: account, peerId: PeerId(destination), messages: [
-                    .forward(source: id, threadId: nil, grouping: .none, attributes: [], correlationId: nil)
-                ]) |> deliverOnMainQueue).start(next: { [weak lease] ids in
-                    lease?.emit(ids.first.flatMap { $0 } == nil ? .uncertain : .queued)
-                }))
+                let context = TelegramSendContext(accountID: account.peerId.toInt64(), chatID: destination,
+                    threadID: nil, submissionRevision: UUID(), messageCount: 1)
+                lease.operation.set((telegramApprovedEnqueue(account: account, approval: approval, context: context,
+                    messages: [.forward(source: id, threadId: nil, grouping: .none, attributes: [], correlationId: nil)],
+                    onApproved: { [weak lease] in guard let lease, !lease.stopped else { return }; lease.receive(.committing) },
+                    specificAdmission: { transaction in
+                        guard let current = transaction.getMessage(id) else { return false }
+                        let fresh = telegramMessageActionSource(current, accountID: account.peerId.toInt64(), chatID: source.chatID)
+                        return fresh.fingerprint == source.fingerprint && fresh.canForward
+                    }) |> deliverOnMainQueue).start(next: { [weak lease] ids in
+                        lease?.emit(ids == nil ? .uncertain : ids?.count == 1 && ids?.first.flatMap({ $0 }) != nil ? .queued : .rejected)
+                    }))
             case .edit, .editFormatted:
                 guard let content = result.editContent else { lease.emit(.rejected); return }
                 // Empty plain messages are invalid; an empty supported media caption is allowed.
-                lease.operation.set((TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: content.formatted.text,
-                    media: .keep, entities: TextEntitiesMessageAttribute(entities: content.formatted.engineEntities()), inlineStickers: [:],
-                    invertMediaAttribute: content.invertMediaAttribute)
-                    |> deliverOnMainQueue).start(next: { [weak lease] result in
+                let edit = (telegramPrepareNativeEdit(account: account, source: source, content: content)
+                    |> castError(RequestEditMessageError.self)) |> mapToSignal { files -> Signal<RequestEditMessageResult, RequestEditMessageError> in
+                        guard let files else { return .fail(.restricted) }
+                        return TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: content.formatted.text,
+                            media: .keep, entities: TextEntitiesMessageAttribute(entities: content.formatted.engineEntities()),
+                            inlineStickers: files, invertMediaAttribute: content.invertMediaAttribute)
+                    }
+                lease.operation.set((edit |> deliverOnMainQueue).start(next: { [weak lease] result in
                         if case let .done(changed) = result {
                             guard let lease, !lease.stopped else { return }
                             if changed { lease.emit(.applied) }

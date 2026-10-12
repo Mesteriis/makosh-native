@@ -23,7 +23,7 @@ public struct TelegramComposerForwardPreview: Equatable, Sendable, Identifiable 
     func submit(draft: TelegramComposerDraft, receive: @escaping @MainActor (TelegramComposerForwardEvent) -> Void) -> any TelegramComposerForwardLease
     func consumeAccepted(draft: TelegramComposerDraft, completion: @escaping @MainActor (TelegramComposerDraft?) -> Void) -> any TelegramComposerForwardLease
 }
-enum TelegramComposerForwardEvent { case committing(TelegramComposerDraft), receiptAccepted(TelegramComposerDraft), rejected(TelegramComposerDraft), accepted(TelegramComposerDraft), uncertain }
+enum TelegramComposerForwardEvent { case awaitingApproval, approvalCompleted, committing(TelegramComposerDraft), receiptAccepted(TelegramComposerDraft), rejected(TelegramComposerDraft), accepted(TelegramComposerDraft), uncertain }
 
 @MainActor public final class TelegramComposerForwardController: ObservableObject {
     @Published public private(set) var phase: TelegramComposerForwardPhase = .idle
@@ -34,8 +34,11 @@ enum TelegramComposerForwardEvent { case committing(TelegramComposerDraft), rece
     private var draft: TelegramComposerDraft?
     private var lease: (any TelegramComposerForwardLease)?
     private var deadline: Task<Void, Never>?
+    private let operationTimeout: Duration
+    private var awaitingApproval = false
     private var request = UUID()
-    public init() {}
+    public init() { operationTimeout = .seconds(30) }
+    init(timeout: Duration) { operationTimeout = timeout }
     func bind(_ provider: (any TelegramComposerForwardProvider)?) {
         cancel(); self.provider = provider
     }
@@ -75,28 +78,43 @@ enum TelegramComposerForwardEvent { case committing(TelegramComposerDraft), rece
     @discardableResult func submit(_ draft: TelegramComposerDraft) -> Bool {
         guard phase == .ready, self.draft == draft, draft.forwardDisposition == .prepared,
               let provider, provider.accountID == draft.accountID else { return false }
-        let id = UUID(); request = id; phase = .committing; error = nil
+        let id = UUID(); request = id; phase = .committing; error = nil; awaitingApproval = false
         armDeadline(id: id, committing: true)
         let returned = provider.submit(draft: draft) { [weak self] event in
             guard let self, self.request == id else { return }
             switch event {
+            case .awaitingApproval:
+                guard self.draft?.forwardDisposition == .prepared else { break }
+                self.awaitingApproval = true
+                self.deadline?.cancel(); self.deadline = nil
+            case .approvalCompleted:
+                guard self.awaitingApproval else { break }
+                self.awaitingApproval = false
+                self.armDeadline(id: id, committing: true)
             case let .committing(started):
+                if self.awaitingApproval {
+                    self.awaitingApproval = false
+                    self.armDeadline(id: id, committing: true)
+                }
                 self.draft = started
                 self.didUpdateDraft?(draft, started)
             case let .receiptAccepted(accepted):
                 self.draft = accepted
                 self.didUpdateDraft?(draft, accepted)
             case let .accepted(replacement):
+                self.awaitingApproval = false
                 self.deadline?.cancel(); self.deadline = nil
                 self.request = UUID(); self.releaseLease(); self.draft = replacement
                 self.phase = .idle; self.previews = []; self.error = nil
                 self.didUpdateDraft?(draft, replacement)
             case let .rejected(replacement):
+                self.awaitingApproval = false
                 self.deadline?.cancel(); self.deadline = nil
                 self.request = UUID(); self.releaseLease(); self.draft = replacement
                 self.phase = .unavailable; self.error = "Пересылка не поставлена в очередь. Проверьте сообщения и получателя."
                 self.didUpdateDraft?(draft, replacement)
             case .uncertain:
+                self.awaitingApproval = false
                 self.deadline?.cancel(); self.deadline = nil
                 self.phase = .uncertain; self.error = "Результат отправки неизвестен. Не повторяйте пересылку."
             }
@@ -125,7 +143,7 @@ enum TelegramComposerForwardEvent { case committing(TelegramComposerDraft), rece
     }
     public func cancel() {
         request = UUID(); deadline?.cancel(); deadline = nil; releaseLease()
-        draft = nil; previews = []; error = nil; phase = .idle
+        awaitingApproval = false; draft = nil; previews = []; error = nil; phase = .idle
     }
     private func releaseLease() { let old = lease; lease = nil; old?.cancel() }
     private func install(_ returned: any TelegramComposerForwardLease, id: UUID, pending: Bool) {
@@ -133,13 +151,15 @@ enum TelegramComposerForwardEvent { case committing(TelegramComposerDraft), rece
     }
     private func armDeadline(id: UUID, committing: Bool) {
         deadline?.cancel()
+        let timeout = operationTimeout
         deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            do { try await Task.sleep(for: timeout) } catch { return }
             guard let self, self.request == id else { return }
             self.expire()
         }
     }
     func expire() {
+        guard !awaitingApproval else { return }
         if phase == .loading { request = UUID(); releaseLease(); phase = .unavailable; error = "Не удалось проверить пересылку вовремя." }
         else if phase == .committing { phase = .uncertain; error = "Результат отправки неизвестен. Не повторяйте пересылку." }
         deadline?.cancel(); deadline = nil

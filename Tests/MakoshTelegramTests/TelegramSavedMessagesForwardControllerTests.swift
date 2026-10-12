@@ -81,4 +81,38 @@ import XCTest
         XCTAssertEqual(controller.phase, .rejected); XCTAssertTrue(controller.perform(request()))
         XCTAssertEqual(provider.events.count, 2)
     }
+    func testApprovalWaitOutlivesDeadlineAndConsentRestartsNativeDeadline() async throws {
+        let provider = Provider(), controller = TelegramSavedMessagesForwardController(timeout: .milliseconds(40))
+        controller.bind(provider); XCTAssertTrue(controller.perform(request()))
+        provider.events[0](.awaitingApproval)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(controller.phase, .validating); XCTAssertTrue(controller.isBusy)
+        XCTAssertEqual(provider.leases.last?.cancelled, 0)
+        provider.events[0](.committing)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(controller.phase, .uncertain); XCTAssertEqual(provider.leases.last?.cancelled, 1)
+        provider.events[0](.queued); XCTAssertEqual(controller.phase, .uncertain)
+    }
+    func testRejectedApprovalReleasesWaitingLeaseWithoutQueueReceipt() async throws {
+        let provider = Provider(), controller = TelegramSavedMessagesForwardController(timeout: .milliseconds(40))
+        controller.bind(provider); XCTAssertTrue(controller.perform(request()))
+        var queued = 0; controller.didQueue = { _ in queued += 1 }
+        provider.events[0](.awaitingApproval)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(controller.phase, .validating)
+        provider.events[0](.rejected)
+        XCTAssertEqual(controller.phase, .rejected); XCTAssertEqual(queued, 0)
+        XCTAssertEqual(provider.leases.last?.cancelled, 1)
+    }
+    func testCancelBeforeConsentIsKnownRejectionAndLateApprovalCannotQueue() {
+        let provider = Provider(), controller = TelegramSavedMessagesForwardController(timeout: .milliseconds(40))
+        controller.bind(provider); XCTAssertTrue(controller.perform(request()))
+        var queued = 0; controller.didQueue = { _ in queued += 1 }
+        provider.events[0](.awaitingApproval); controller.cancel()
+        XCTAssertEqual(controller.phase, .rejected)
+        provider.events[0](.committing); provider.events[0](.queued)
+        XCTAssertEqual(controller.phase, .rejected); XCTAssertEqual(queued, 0)
+        XCTAssertEqual(provider.leases.last?.cancelled, 1)
+        XCTAssertTrue(controller.perform(request()))
+    }
 }

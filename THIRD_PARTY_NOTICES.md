@@ -65,7 +65,11 @@ Build adaptations in the generated copy:
   local entry point requiring Postbox and three scalar Account inputs. The
   production transformation and lazy clock read stay in place. Reverse scalar
   substitution must recover the exact original native-body SHA256; local tests
-  need neither Account construction nor network managers.
+  need neither Account construction nor network managers. Recipe12 excludes
+  `PaidStarsMessageAttribute` only from a forwarded source message's inherited
+  attributes. Explicit requested attributes retain the new consented charge.
+  Tests reverse this one exact change before checking the original native-body
+  hash, and real local-queue tests cover free Saved and a newly priced recipient.
 - Expose a cached numeric-ID index lookup on Postbox transactions. Recipe 7
   composes the exact recipe-4 journal file with the GPL-3.0-or-later adaptation
   in `scripts/telegram_selection_adaptation.py`, checking both file hashes.
@@ -78,12 +82,92 @@ Build adaptations in the generated copy:
   Only exact selected IDs are passed, without expanding albums. The own
   GPL-3.0-or-later addition in `scripts/telegram_delete_adaptation.py` is bound
   to exact input/output SHA256 and retains all previous adaptations.
+- Expose the existing chat-input update and synchronization-operation helpers.
+  Recipe10 changes only their visibility, through exact input/output hashes in
+  `scripts/telegram_draft_adaptation.py`. The native draft serialization and
+  synchronization algorithm remain upstream; local composer/basis changes are
+  committed in the same Postbox transaction. Recipe11 also makes Postbox draft
+  observation compare encoded draft data when the timestamp is unchanged; this
+  prevents a same-timestamp edit from being hidden from observers. The adapter
+  verifies the exact original and resulting file hashes for both changes.
+- Bound retained topic decoding before legacy pointer reads. Recipe14 adds an
+  own wire/semantic preflight in `scripts/telegram_topic_adaptation.py`, used by
+  native seed rendering, forum operations and Makosh admission. Exact original
+  and resulting SHA256 cover both adapted source files. It rejects truncated
+  lengths/tags, unsupported profiles, invalid notification variants, overflowing
+  bundled sound IDs and noncanonical author bits; pinned source remains unchanged.
 - Link OpenSSLEncryptionProvider explicitly to Homebrew OpenSSL 3, using its
   Apache-2.0 implementation rather than the upstream Bazel BoringSSL target.
 - Generate FlatSerialization using official `flatc 24.12.23`; source archive
   SHA256 `c5cd6a605ff20350c7faa19d8eeb599df6117ea4aabd16ac58a7eb5ba82df4e7`,
   as pinned in the upstream `MODULE.bazel`. Generator source is downloaded,
   checksum-verified and built locally; unknown cached binaries are refused.
+
+## Portable syntax highlighting provenance
+
+`Dependencies/CodeHighlight.lock.json` independently pins
+[desktop-app/libprisma](https://github.com/desktop-app/libprisma/tree/23b0d70f9709da9b38561d5706891a134d18df76)
+at `23b0d70f9709da9b38561d5706891a134d18df76` (MIT), and
+[Boost.Regex](https://github.com/boostorg/regex/tree/237e69caf65906d0313c9b852541b07fa84a99c1)
+at `237e69caf65906d0313c9b852541b07fa84a99c1` (Boost Software License1.0).
+Exact Git trees,115 source/provenance blob hashes and the prepared121-file
+fingerprint are pinned. The complete committed `grammars.dat` is embedded;
+`generate.js`, npm and unpinned grammar downloads are never run. Only four
+portable C++ compilation units and the reviewed standalone regex headers link.
+
+`scripts/telegram_code_highlight_adaptation.py` contains Makosh's own exact-hash
+adaptations for weak grammar references, bounded work/depth/token allocations,
+exception-safe abort/cleanup and complete alias lookup. The own C boundary
+returns only source-bound byte spans; Swift validates UTF16 conversion and keeps
+spoiler/link protection. Cooperative cancellation/work limits are not a hard
+real-time execution guarantee. MIT and Boost notices are retained in prepared
+source and bundled `Resources/Licenses`.
+
+## Portable animated emoji provenance
+
+`Dependencies/RLottie.lock.json` independently pins
+[TelegramMessenger/rlottie](https://github.com/TelegramMessenger/rlottie/tree/67f103bc8b625f2a4a9e94f1d8c7bd84c5a08d1d)
+at `67f103bc8b625f2a4a9e94f1d8c7bd84c5a08d1d`, archive SHA256
+`2b75c791781c3f61f7fd5348c74d09406a0f8d7be4067830986fab6f82b9129e`.
+RLottie is **LGPL2.1-or-later**, not MIT. Its reviewed portable closure contains
+31 C++ units and72 headers plus six source notices. The prepared package adds
+only Makosh's fixed configuration, module header/map and SwiftPM manifest.
+No upstream build/configure scripts or research checkouts participate.
+
+The included FreeType-derived rasterizer uses the FreeType License; **this
+software uses FreeType**. Pixman and RapidJSON portions retain their respective
+MIT notices. STB and RapidJSON's Windows integer headers are excluded from the
+compilation closure; the archived STB notice is retained for provenance.
+`LICENSES/RLottie-source-notices.txt` includes the full LGPL, FreeType, Pixman and
+RapidJSON notices and is bundled in `Resources/Licenses`. The combined app
+elects GPLv3 consistently with the engine; publication must retain corresponding
+source, these own preparation recipes/pins and the ability to rebuild/relink the
+combined work. This does not relicense any upstream source as MIT.
+
+The fixed configuration disables external image modules, logging, cache and
+background rendering threads, and uses the portable rasterizer. The reviewed
+reference's `pixman_region_selfcheck(x)=1` compile definition is retained. Own
+wrappers bound inputs/output dimensions; runtime acceptance is recorded in the
+development ledger separately from source/license preparation.
+
+## Portable VP9 emoji provenance
+
+`Dependencies/VPX.lock.json` independently pins libvpx1.17.0 at
+`6df3ec34557879fff673706f4a1d9fbd0f3a6f0e`, tree
+`f83d33a1ba18b3a203e43596b5223042b62417a3`, official source archive SHA256
+`3438fed428d5b272528b5e397cc3aa24cf080751933f600af3f8fcfcce1ab55b`.
+The exact126-file portable VP9 decode closure includes48 C units,72 headers,
+three runtime-dispatch inputs and LICENSE/PATENTS/AUTHORS. Its prepared135-file
+inventory is fingerprinted. BSD source and patent notices are retained in
+`LICENSES/VPX-source-notices.txt` and bundled in `Resources/Licenses`.
+
+The owned preparation generates a fixed C11, single-threaded portable decoder
+configuration and audited literal runtime-dispatch declarations. It runs no
+upstream configure/make/Perl scripts, assembly, encoder or VP8 components. The
+source size checks restrict decoded dimensions to512 and individual allocation
+to8MiB before allocation; this is not a whole-process memory limit. Makosh's own
+bounded WebM parser and C boundary retain separate color/alpha decoder state.
+Build/run/test do not depend on `.references/`.
 
 ## Portable Opus provenance
 

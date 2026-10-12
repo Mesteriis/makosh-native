@@ -1,6 +1,105 @@
 # Development status — 2026-10-12
 
-## Current stage: Telegram media block
+## Current stage: Telegram extended messages (block 2, locally verified)
+
+The authorized sequence remains: (1) media polish; (2) selected reply quotes,
+server drafts, custom emoji, code highlighting, forum topics and special
+secret/paid scenarios; (3) extended search; (4) profiles/admin/gallery;
+(5) settings/sessions/themes; (6) real-account delivery/reconnect acceptance.
+Block 1 was published at e29a731; its physical/account acceptance limits below
+remain. Block 2 implementation and local validation cover the contracts below;
+the listed special-conversation and actual-account acceptance limits remain.
+
+Implemented contracts cover selected Unicode/UTF16 reply quotes with observed
+account limits; server draft observation/reconciliation with explicit choices
+and atomic native/basis/local CAS; custom emoji catalogs, insertion and bounded
+WebP/TGS/WebM playback; independently pinned Prisma/Boost syntax highlighting;
+forum topic lists and isolated history/search/read/draft/upload/forward scopes.
+Caption wire22 freezes explicit custom-emoji policy over resource schema19;
+old wires retain their original policy and reject injected markers. Shared
+native queue admission rechecks complete media registries, account tier,
+destination/topic permissions and the caller's own durable receipt. Forwarding
+never inherits the source message's old Stars charge (engine recipe12).
+
+Secret sending is restricted to verified active plain text. Secret media,
+rich text/replies/forwarding, key agreement and TTL workflows remain unsupported.
+Paid sending confirms immutable destination/count/unit/total, with native atomic
+consent/queue admission; balance and paid-media purchase/fetch are unsupported.
+Personal-account delivery/reconnect acceptance remains block6. These boundaries
+do not establish full Telegram or special-conversation parity.
+
+The first mandatory full candidate exits1: 1,706 XCTest (1,627 Telegram +79
+core),1 microphone-authorization precondition skip,17 assertions in recorder
+final-admission tests;70 Python regressions pass. Root fixes the conversation
+token passed as an account token. The focused compiled follow-up exits0:
+44 recorder/server-draft/special-composer tests,0 failures. Earlier valid REDs
+and repairs for native forwarding/fees, scoped paging, Undo/Redo, captions,
+descriptor publication and approval cancellation remain in separate raw logs.
+No failed attempt is relabelled PASS. Successful final validation below
+supersedes these candidates.
+
+A later isolated full attempt exits1 on native Postbox SIGTRAP while reading a
+malformed forum topic; the Telegram target aborts before completing. The native
+seed renderer consumes topic data before the UI adapter, so an adapter-only
+structural check is insufficient (targeted exit1 retained). Recipe13 moves the
+guard into native rendering/forum operations and43 focused tests pass. Separate
+compiled REDs then prove invalid notification variants, overflowing bundled
+sound IDs and noncanonical author bits. Recipe14 adds bounded semantic checks;
+46 focused XCTest and73 Python pass, including exact native fixtures and every
+truncated topic prefix. No crash is reported as an assertion-only test failure
+or a successful complete run.
+
+The next full attempt completes1,714 XCTest but exits1 on one existing Ogg
+mutation test. The encoder's random serial low byte can already equal9, making
+the intended corruption a no-op. An all-page serial9 baseline with independent
+CRC repair reproduces that failure deterministically. The test now changes the
+one-page serial to10 and asserts every mutation changes a byte; all11 invalid
+semantic cases remain. The focused7 XCTest and73 Python follow-up exits0.
+
+Final isolated `scripts/test.sh` exits0: **1,714 XCTest (1,635 Telegram +79
+core),1 microphone-authorization precondition skip,0 failures;73 Python tests
+across17 suites**. Root verifies all622 frozen source/dependency/test fingerprints
+after the run; the only change since final native UI/build is the Ogg test.
+Two scoped read-only worker reviews cover topic decoding and native admission/
+durable receipts, with an additional Ogg test review. Root verifies the18-file
+boundary manifest and current reviewed hashes. These are source reviews, not
+external runtime approval or actual-account delivery evidence.
+
+`scripts/dev-db.sh up` and `scripts/build-app.sh` exit0; the app build has no
+compiler warnings. Strict deep QA signing and unsigned executable payload
+equality pass. Native CUA checks use a separate DEBUG bundle, explicit isolated
+PostgreSQL schema and encrypted synthetic Postbox: common service sidebar,
+selected quote accessory, two custom-emoji insertions/Undo/Redo, independent
+topic drafts, caption insertion/Undo/Redo and exact three-emoji caption after
+restart in its original topic. Both server-draft choices replace/retain the
+visible input correctly. Secret verification shows the reference-sized image
+and four public QA fingerprint lines; unsupported controls are disabled. The
+synthetic paid prompt shows3×3=9 Stars, Return cannot confirm and Cancel closes.
+No real account, payment or server delivery is used or inferred.
+The final successful suite retains upstream Postbox teardown and macOS Contacts
+service diagnostics; they are not assertion failures or evidence of successful
+personal-contact access. Full dependency rebuilding also emits inherited
+upstream compiler warnings; the final incremental app build emits none.
+
+Native UI exposed a reading-view scroll reset. Two compiled hosting-window
+regressions reproduced5 assertions; independent text measurement repairs it.
+The related45 XCTest and70 Python checks pass. A rebuilt signed QA bundle
+retains its position after scrolling and shows message118 after search →
+history, with code highlighting and the adjacent spoiler still concealed.
+Upload preview currently names the chat without the topic title;
+the frozen/native destination still includes and validates the selected topic.
+
+XERJ v8 refused VPX lock fields (actual exit1). Final separate v9 refresh covers
+639 files,588/588 classified code, exit0; final recipe14 engine refresh covers
+721 files,686/686 code, exit0. Project/reference/engine fingerprint checks and
+source-confirmed queries pass after the last source changes.
+Indexes/configurations and raw diagnostics remain ignored locally.
+The plain staged whitespace check exits2 on preserved RLottie license spacing;
+five public compiled-closure notice payloads match their pinned upstream bytes.
+All six notices, including unused STB provenance, remain exact in prepared
+source. The staged check excluding that one public notice file exits0.
+
+## Previous stage: Telegram media block
 
 The first media block is implemented against the locked TelegramSwift reference
 inside the common Makosh window. New preparations use schema19; schemas1–18

@@ -158,7 +158,7 @@ enum TelegramUploadWebPIO {
         return result
     }
 
-    private static func validatedSource(_ data: Data) throws -> (CGImageSource, TelegramUploadWebPMetadata) {
+    static func validatedSource(_ data: Data) throws -> (CGImageSource, TelegramUploadWebPMetadata) {
         try Task.checkCancellation()
         guard let source = CGImageSourceCreateWithData(data as CFData,
                   [kCGImageSourceShouldCache: false] as CFDictionary),

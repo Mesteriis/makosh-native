@@ -92,4 +92,39 @@ import XCTest
         controller.select(.init(accountID: 2, chatID: 42, text: "", forwardIntent: value.forwardIntent))
         XCTAssertEqual(controller.phase, .idle)
     }
+    func testApprovalWaitOutlivesDeadlineAndConsentRestartsNativeDeadline() async throws {
+        let provider = Provider(), controller = TelegramComposerForwardController(timeout: .milliseconds(40)), value = draft()
+        controller.bind(provider); controller.select(value); provider.resolves[0]([])
+        XCTAssertTrue(controller.submit(value)); provider.events[0](.awaitingApproval)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(controller.phase, .committing); XCTAssertNil(controller.error)
+        XCTAssertEqual(provider.leases.last?.cancelled, 0)
+        provider.events[0](.approvalCompleted)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(controller.phase, .uncertain); XCTAssertFalse(controller.submit(value))
+        provider.events[0](.accepted(.init(accountID: 1, chatID: 42, text: "")))
+        XCTAssertEqual(controller.phase, .idle)
+    }
+    func testRejectedApprovalReleasesWaitingLeaseWithoutChangingDraft() async throws {
+        let provider = Provider(), controller = TelegramComposerForwardController(timeout: .milliseconds(40)), value = draft()
+        controller.bind(provider); controller.select(value); provider.resolves[0]([])
+        var updates: [TelegramComposerDraft] = []; controller.didUpdateDraft = { _, value in updates.append(value) }
+        XCTAssertTrue(controller.submit(value)); provider.events[0](.awaitingApproval)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(controller.phase, .committing)
+        provider.events[0](.rejected(value))
+        XCTAssertEqual(controller.phase, .unavailable); XCTAssertEqual(updates, [value])
+        XCTAssertEqual(provider.leases.last?.cancelled, 1)
+    }
+    func testCancelWhileWaitingInvalidatesLateApprovalAndAcceptance() async throws {
+        let provider = Provider(), controller = TelegramComposerForwardController(timeout: .milliseconds(40)), value = draft()
+        controller.bind(provider); controller.select(value); provider.resolves[0]([])
+        XCTAssertTrue(controller.submit(value)); provider.events[0](.awaitingApproval)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(controller.phase, .committing)
+        controller.cancel(); XCTAssertEqual(controller.phase, .idle)
+        provider.events[0](.approvalCompleted)
+        provider.events[0](.accepted(.init(accountID: 1, chatID: 42, text: "")))
+        XCTAssertEqual(controller.phase, .idle); XCTAssertEqual(provider.leases.last?.cancelled, 1)
+    }
 }

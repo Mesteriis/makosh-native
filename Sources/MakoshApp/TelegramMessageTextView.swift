@@ -8,6 +8,11 @@ struct TelegramMessageTextView<MenuContent: View>: View {
     let identity: String
     var canCopy = false
     var lineLimit: Int? = nil
+    var nativeActions: [TelegramReadingMenuAction] = []
+    var quoteSelection: ((TelegramReplyQuote) -> Void)? = nil
+    var maximumQuoteLength = 1024
+    var customEmojiDescriptors: [Int64: TelegramCustomEmojiDescriptor] = [:]
+    var customEmojiContext: TelegramCustomEmojiPlaybackContext? = nil
     @ViewBuilder let menuContent: () -> MenuContent
     @State private var revealedKey: TelegramMessagePresentationKey?
     @State private var pendingLink: PendingLink?
@@ -30,8 +35,8 @@ struct TelegramMessageTextView<MenuContent: View>: View {
     private var hasSpoilers: Bool {
         value?.entities.contains { if case .spoiler = $0.kind { true } else { false } } ?? false
     }
-    private func attributed(_ value: TelegramFormattedText) -> AttributedString? {
-        let native = NSMutableAttributedString(attributedString:
+    private func decorated(_ value: TelegramFormattedText, presentation: NSAttributedString? = nil) -> NSAttributedString {
+        let native = NSMutableAttributedString(attributedString: presentation ??
             TelegramMessagePresentation.attributedString(value, revealingSpoilers: revealed))
         if !revealed {
             for entity in value.entities {
@@ -41,7 +46,7 @@ struct TelegramMessageTextView<MenuContent: View>: View {
                 }
             }
         }
-        return try? AttributedString(native, including: \.appKit)
+        return native
     }
     private func accessibleLinks(_ value: TelegramFormattedText) -> [AccessibleLink] {
         let presentation = TelegramMessagePresentation.attributedString(value, revealingSpoilers: revealed)
@@ -64,12 +69,12 @@ struct TelegramMessageTextView<MenuContent: View>: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(telegramMessageBlocks(value), id: \.range.lowerBound) { block in
                             switch block.kind {
-                            case .text: richText(block.value)
+                            case .text: richText(block.value, offset: block.range.lowerBound)
                             case let .code(language): codeBlock(block, language: language)
                             case let .quote(collapsed):
                                 TelegramQuoteReadingBlock(value: block.value, key: key,
                                     isCollapsed: collapsed, revealingSpoilers: revealed, offset: block.range.lowerBound) { limit in
-                                        richText(block.value, limit: limit)
+                                        richText(block.value, limit: limit, offset: block.range.lowerBound)
                                     }
                             }
                         }
@@ -89,16 +94,27 @@ struct TelegramMessageTextView<MenuContent: View>: View {
         .onChange(of: value) { _, _ in revealedKey = nil; pendingLink = nil; copiedCode = [:] }
     }
 
-    @ViewBuilder private func richText(_ value: TelegramFormattedText, limit: Int? = nil) -> some View {
-        if let attributed = attributed(value) {
+    @ViewBuilder private func richText(_ value: TelegramFormattedText, limit: Int? = nil, offset: Int = 0,
+                                      presentation: NSAttributedString? = nil) -> some View {
+        let native = decorated(value, presentation: presentation)
+        if let attributed = try? AttributedString(native, including: \.appKit) {
+            let hasCustomEmoji = customEmojiContext != nil && value.entities.contains {
+                if case .customEmoji = $0.kind { true } else { false }
+            }
+            let usesNativeReading = hasCustomEmoji || (limit == nil && canCopy && !nativeActions.isEmpty)
             Group {
-                if canCopy { Text(attributed).textSelection(.enabled) }
+                if usesNativeReading, let key {
+                    TelegramNativeMessageReading(presentation: native, value: value, key: key, offset: offset,
+                        canCopy: canCopy, revealingSpoilers: revealed, maximumQuoteLength: maximumQuoteLength,
+                        actions: nativeActions, quote: quoteSelection, activate: activate,
+                        customEmojiDescriptors: customEmojiDescriptors, customEmojiContext: customEmojiContext, lineLimit: limit)
+                } else if canCopy { Text(attributed).textSelection(.enabled) }
                 else { Text(attributed).textSelection(.disabled) }
             }
             .lineLimit(limit).fixedSize(horizontal: false, vertical: true)
             .contextMenu { menuContent() }
             .environment(\.openURL, OpenURLAction { url in activate(url); return .handled })
-            .accessibilityElement(children: .ignore)
+            .accessibilityElement(children: usesNativeReading ? .contain : .ignore)
             .accessibilityLabel(Text(TelegramMessagePresentation.plainText(value, revealingSpoilers: revealed)))
             .accessibilityActions {
                 if hasSpoilers && !revealed {
@@ -116,7 +132,8 @@ struct TelegramMessageTextView<MenuContent: View>: View {
 
     private func codeBlock(_ block: TelegramMessageBlock, language: String?) -> some View {
         let copied = copiedCode[block.range.lowerBound] == key
-        let language = TelegramMessagePresentation.codeLanguage(language, in: block.value, revealingSpoilers: revealed)
+        let rawLanguage = language
+        let language = TelegramMessagePresentation.codeLanguage(rawLanguage, in: block.value, revealingSpoilers: revealed)
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 guard canCopy, let key else { return }
@@ -134,7 +151,12 @@ struct TelegramMessageTextView<MenuContent: View>: View {
                 .help(canCopy ? "Копировать код" : "Копирование запрещено для этого сообщения")
                 .accessibilityLabel(copied ? "Скопировано" : "Копировать код")
                 .accessibilityIdentifier("telegram.code.copy.\(block.range.lowerBound)")
-            richText(block.value).padding(10)
+            if let key {
+                TelegramCodeHighlightView(value: block.value, key: key, offset: block.range.lowerBound,
+                    language: rawLanguage, revealingSpoilers: revealed) { presentation in
+                        richText(block.value, offset: block.range.lowerBound, presentation: presentation)
+                    }.padding(10)
+            }
         }.background(Color.secondary.opacity(0.10))
             .clipShape(RoundedRectangle(cornerRadius: 6))
     }
@@ -192,6 +214,7 @@ private struct TelegramQuoteReadingBlock<Content: View>: View {
 }
 
 @MainActor func telegramSourcePreview(_ source: TelegramMessageActionSource) -> String {
+    if let quote = source.replyQuote { return TelegramMessagePresentation.plainText(quote.formattedText) }
     guard let value = source.metadata.formattedText,
           value.text.utf8.elementsEqual(source.text.utf8) else { return "Форматирование сообщения недоступно" }
     return TelegramMessagePresentation.plainText(value)

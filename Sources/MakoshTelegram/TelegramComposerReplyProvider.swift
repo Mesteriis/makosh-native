@@ -11,8 +11,9 @@ func telegramComposerReply(postbox: Postbox, accountID: Int64, target: TelegramC
         guard target.isValid,
               let message = transaction.getMessage(MessageId(peerId: PeerId(target.peerID),
                 namespace: target.namespace, id: target.messageID)) else { return nil }
-        let source = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
+        guard let source = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
             limits: currentLimitsConfiguration(transaction: transaction)), accountID: accountID, chatID: chatID)
+            .quoting(target.quote, maximumLength: telegramReplyQuoteLimit(transaction: transaction)) else { return nil }
         guard source.canReply, TelegramComposerReplyTarget(source: source) == target,
               source.peerID == chatID || source.metadata.migrationChatID == chatID else { return nil }
         if source.peerID != chatID {
@@ -45,12 +46,13 @@ func telegramComposerReply(postbox: Postbox, accountID: Int64, target: TelegramC
             id: target.messageID), timestamp: 0)
         let value = pages.messages(chatID: chatID, anchor: anchor).items.first { item in
             guard let metadata = item.actionMetadata else { return false }
-            return TelegramComposerReplyTarget(source: TelegramMessageActionSource(metadata: metadata,
-                accountID: accountID, chatID: chatID)) == target
+            return TelegramMessageActionSource(metadata: metadata, accountID: accountID, chatID: chatID)
+                .quoting(target.quote).map(TelegramComposerReplyTarget.init(source:)) == target
         }.flatMap { item -> TelegramComposerReply? in
             guard let metadata = item.actionMetadata else { return nil }
-            return TelegramComposerReply(source: TelegramMessageActionSource(metadata: metadata,
-                accountID: accountID, chatID: chatID), author: item.author)
+            guard let source = TelegramMessageActionSource(metadata: metadata,
+                accountID: accountID, chatID: chatID).quoting(target.quote) else { return nil }
+            return TelegramComposerReply(source: source, author: item.author)
         }
         completion(value)
         return EmptyDisposable

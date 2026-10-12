@@ -7,12 +7,16 @@ public struct TelegramUploadTarget: Equatable, Sendable {
     public let chatID: Int64
     public let title: String
     public let replySource: TelegramMessageActionSource?
-    public init(accountID: Int64, chatID: Int64, title: String, replySource: TelegramMessageActionSource? = nil) {
+    public let selectedThreadID: Int64?
+    public var threadID: Int64? { selectedThreadID ?? replySource?.threadID }
+    public init(accountID: Int64, chatID: Int64, title: String, replySource: TelegramMessageActionSource? = nil, selectedThreadID: Int64? = nil) {
         self.accountID = accountID; self.chatID = chatID; self.title = title
-        self.replySource = replySource
+        self.replySource = replySource; self.selectedThreadID = selectedThreadID
     }
     var hasValidReplySource: Bool {
+        if let selectedThreadID { guard selectedThreadID > 0, selectedThreadID <= Int64(Int32.max) else { return false } }
         guard let source = replySource else { return true }
+        if let selectedThreadID { guard source.peerID == chatID, source.threadID == selectedThreadID else { return false } }
         return source.accountID == accountID && source.chatID == chatID && source.canReply &&
             !source.fingerprint.isEmpty && (source.peerID == chatID || source.metadata.migrationChatID == chatID)
     }
@@ -28,7 +32,7 @@ public enum TelegramUploadPhase: Equatable, Sendable {
                 receive: @escaping @MainActor (TelegramUploadEvent) -> Void) -> any TelegramUploadLease
 }
 enum TelegramUploadEvent {
-    case committing, accepted(String), progress(Double?), queueFailed, rejected, uncertain
+    case awaitingApproval, committing, accepted(String), progress(Double?), queueFailed, rejected, uncertain
 }
 
 @MainActor public final class TelegramUploadController: ObservableObject {
@@ -326,7 +330,7 @@ enum TelegramUploadEvent {
         guard !selected.isEmpty else { return }
         clear(); resetCancellationPresentation()
         guard items.isEmpty, recoveredArchive == nil else { phase = .failed; return }
-        usesBatchRecovery = true; captionRules = captionPolicy == nil ? .reference : .current; mediaRules = .reference
+        usesBatchRecovery = true; captionRules = captionPolicy == nil ? .reference : TelegramUploadCaptionRules.containsCustomEmoji(captionInput.formattedText) ? .extended : .current; mediaRules = .reference
         self.captionPolicy = captionPolicy
         self.target = target; self.captionInput = captionInput; phase = .preparing
         let request = token, bound = bindingID, discard = self.discard, store = recoveryStore
@@ -430,7 +434,7 @@ enum TelegramUploadEvent {
                 guard self?.isCurrent(write) == true,
                       let snapshot = try await store.load(chatID: target.chatID), snapshot.isValid,
                       snapshot.id == write.id, snapshot.accountID == target.accountID, snapshot.chatID == target.chatID,
-                      [17, 18, 19].contains(snapshot.schemaVersion), snapshot.disposition == .prepared,
+                      [17, 18, 19].contains(snapshot.resourceSchemaVersion), snapshot.disposition == .prepared,
                       snapshot.items.map(\.id) == write.previousIDs, snapshot.captionInput == write.input,
                       snapshot.captionAboveMedia == write.above, snapshot.mediaSpoiler == write.spoiler,
                       snapshot.presentation == write.presentation, snapshot.isGrouped == write.grouped,
@@ -674,6 +678,55 @@ enum TelegramUploadEvent {
     }
     @Published public private(set) var target: TelegramUploadTarget?
     @Published public private(set) var captionInput: TelegramComposerInput = .empty
+    @Published public private(set) var captionCustomEmojiInsertion: TelegramCustomEmojiInsertionRequest?
+    private struct CaptionEmojiInsertion {
+        let request: TelegramCustomEmojiInsertionRequest
+        let catalog: TelegramCustomEmojiCatalogController
+        let catalogContextID: UUID
+        let preparationID: UUID
+        let captionRevision: UUID
+        let itemsRevision: UUID
+        let target: TelegramUploadTarget
+        let bindingID: UUID
+    }
+    private var pendingCaptionEmojiInsertion: CaptionEmojiInsertion?
+    public var canInsertCaptionCustomEmoji: Bool {
+        phase == .ready && recoveryPrepared && !isRecoveryBusy && appendOperationID == nil &&
+            videoCoverEditingID == nil && !isVideoCoverSaving && !containsRecordedMedia &&
+            captionPolicy != nil && (captionRules == .current || captionRules == .extended) &&
+            captionInput.formattedText.isEditable
+    }
+    @discardableResult
+    public func requestCaptionCustomEmojiInsertion(descriptor: TelegramCustomEmojiDescriptor,
+        catalog: TelegramCustomEmojiCatalogController, catalogContextID: UUID, expectedInput: TelegramComposerInput,
+        contextID: UUID, revision: UUID, preparationID: UUID) -> Bool {
+        guard canInsertCaptionCustomEmoji, let target, self.preparationID == preparationID,
+              token == contextID, captionRevision == revision, captionInput == expectedInput,
+              catalog.contextID == catalogContextID, catalog.snapshot?.accountID == target.accountID,
+              catalog.canInsert(descriptor, chatID: target.chatID),
+              (try? TelegramCustomEmojiInsertion.applying(descriptor, to: expectedInput)) != nil else { return false }
+        let request = TelegramCustomEmojiInsertionRequest(descriptor: descriptor,
+            expectedInput: expectedInput, contextID: contextID)
+        pendingCaptionEmojiInsertion = .init(request: request, catalog: catalog, catalogContextID: catalogContextID,
+            preparationID: preparationID, captionRevision: revision, itemsRevision: itemsRevision,
+            target: target, bindingID: bindingID)
+        captionCustomEmojiInsertion = request
+        return true
+    }
+    @discardableResult
+    public func consumeCaptionCustomEmojiInsertion(id: UUID, expectedInput: TelegramComposerInput) -> Bool {
+        guard let pending = pendingCaptionEmojiInsertion, pending.request.id == id,
+              captionCustomEmojiInsertion == pending.request else { return false }
+        pendingCaptionEmojiInsertion = nil; captionCustomEmojiInsertion = nil
+        return canInsertCaptionCustomEmoji && bindingID == pending.bindingID &&
+            preparationID == pending.preparationID && target == pending.target &&
+            captionRevision == pending.captionRevision && itemsRevision == pending.itemsRevision &&
+            token == pending.request.contextID && expectedInput == captionInput &&
+            expectedInput == pending.request.expectedInput &&
+            pending.catalog.contextID == pending.catalogContextID &&
+            pending.catalog.snapshot?.accountID == pending.target.accountID &&
+            pending.catalog.canInsert(pending.request.descriptor, chatID: pending.target.chatID)
+    }
     @Published public private(set) var mediaSpoiler = false
     @discardableResult
     public func updateMediaSpoiler(_ spoiler: Bool, contextID: UUID, revision: UUID) -> Bool {
@@ -745,6 +798,7 @@ enum TelegramUploadEvent {
     private var lease: (any TelegramUploadLease)?
     private var preparation: Task<Void, Never>?
     private var deadline: Task<Void, Never>?
+    private let submissionTimeout: Duration
     private var token = UUID()
     private var preparationID: UUID?
     private var committed = false
@@ -757,7 +811,9 @@ enum TelegramUploadEvent {
     var stage: ((URL, TelegramUploadMode) async throws -> TelegramUploadFile)?
     var discard: (TelegramUploadFile) throws -> Void = TelegramUploadFileIO.discard
 
-    public init() {}
+    public init() { submissionTimeout = .seconds(30) }
+
+    init(submissionTimeout: Duration) { self.submissionTimeout = submissionTimeout }
 
     @discardableResult
     func prepareRecordedRoundVideo(bytes: Data, target: TelegramUploadTarget, isOneTime: Bool = false) -> Bool {
@@ -891,7 +947,12 @@ enum TelegramUploadEvent {
     public func updateCaptionInput(_ input: TelegramComposerInput, contextID: UUID) -> Bool {
         guard appendOperationID == nil, token == contextID, phase == .ready, videoCoverEditingID == nil, !isVideoCoverSaving else { return false }
         guard !containsRecordedMedia || input == .empty else { return false }
-        if captionInput != input { captionInput = input; captionRevision = UUID() }
+        if captionInput != input {
+            captionInput = input; captionRevision = UUID()
+            if captionRules == .current, captionPolicy != nil, TelegramUploadCaptionRules.containsCustomEmoji(input.formattedText) {
+                captionRules = .extended
+            }
+        }
         error = nil; persistCaption(); return true
     }
 
@@ -975,7 +1036,7 @@ enum TelegramUploadEvent {
                     if let bundle {
                         guard let batchProvider = provider as? any TelegramUploadBatchProvider,
                               let draft = try await store.load(chatID: target.chatID), draft.isValid,
-                              (6...19).contains(draft.schemaVersion), draft.archive == descriptor, draft.captionRules == rules, draft.captionPolicy == frozenPolicy, draft.mediaRules == frozenMediaRules,
+                              (6...19).contains(draft.resourceSchemaVersion), draft.archive == descriptor, draft.captionRules == rules, draft.captionPolicy == frozenPolicy, draft.mediaRules == frozenMediaRules,
                               draft.id == id, draft.disposition == .submissionStarted,
                               draft.items.map(\.id) == bundle.items.map(\.id), draft.isGrouped == grouped, draft.presentation == presentation,
                               draft.items.map(\.sourceFacts) == bundle.items.map(\.sourceFacts),
@@ -1007,15 +1068,13 @@ enum TelegramUploadEvent {
         sentInput = draft.captionInput; sentCaption = draft.captionInput.formattedText
         sentCaptionAboveMedia = draft.captionAboveMedia; sentMediaSpoiler = draft.mediaSpoiler
         phase = .storing; error = nil
-        deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(30)) } catch { return }
-            guard let self, self.token == request else { return }; self.expireSubmission()
-        }
+        startSubmissionDeadline(request: request)
         willSubmit?(target, sentCaption)
         guard token == request, phase == .storing else { return }
         let returned = provider.submit(bundle: bundle, draft: draft, target: target) { [weak self] event in
             guard let self, self.token == request else { return }
             switch event {
+            case .awaitingApproval: self.receive(.awaitingApproval)
             case .committing: self.receive(.committing)
             case let .accepted(ids):
                 guard self.committed, self.messageIDs.isEmpty, !ids.isEmpty else { return }
@@ -1041,7 +1100,7 @@ enum TelegramUploadEvent {
                 // descriptor must preserve its exact encoded member names.
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
                 guard let accepted = try await store.load(chatID: draft.chatID), accepted.id == draft.id,
-                      accepted.schemaVersion == draft.schemaVersion, accepted.accountID == draft.accountID, accepted.chatID == draft.chatID,
+                      accepted.resourceSchemaVersion == draft.resourceSchemaVersion, accepted.accountID == draft.accountID, accepted.chatID == draft.chatID,
                       accepted.title == draft.title, accepted.items == draft.items, accepted.isGrouped == draft.isGrouped,
                       try encoder.encode(accepted.archive) == encoder.encode(draft.archive),
                       accepted.presentation == draft.presentation, accepted.captionRules == draft.captionRules,
@@ -1067,11 +1126,7 @@ enum TelegramUploadEvent {
         let request = UUID(); token = request; sentInput = frozen; sentCaption = frozen.formattedText; sentCaptionAboveMedia = above; committed = false
         sentMediaSpoiler = spoiler
         phase = .storing; error = nil
-        deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(30)) } catch { return }
-            guard let self, self.token == request else { return }
-            self.expireSubmission()
-        }
+        startSubmissionDeadline(request: request)
         willSubmit?(target, sentCaption)
         guard token == request, phase == .storing else { return }
         let returned = provider.submit(file: file, target: target, preparationID: preparationID, caption: sentCaption, captionAboveMedia: above, mediaSpoiler: spoiler) { [weak self] event in
@@ -1098,6 +1153,7 @@ enum TelegramUploadEvent {
     }
 
     private func resetObservation() {
+        pendingCaptionEmojiInsertion = nil; captionCustomEmojiInsertion = nil
         if appendOperationID != nil { preparation?.cancel(); preparation = nil; appendOperationID = nil }
         sourceURLsByItemID = [:]
         recoveryRestoreEpoch = UUID()
@@ -1137,6 +1193,16 @@ enum TelegramUploadEvent {
         finishPreparation()
     }
 
+    private func startSubmissionDeadline(request: UUID) {
+        deadline?.cancel()
+        let timeout = submissionTimeout
+        deadline = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self, self.token == request else { return }
+            self.expireSubmission()
+        }
+    }
+
     func expireSubmission() {
         guard phase == .storing || phase == .enqueuing else { return }
         if committed {
@@ -1152,9 +1218,16 @@ enum TelegramUploadEvent {
 
     private func receive(_ event: TelegramUploadEvent) {
         switch event {
+        case .awaitingApproval:
+            guard (phase == .storing || phase == .enqueuing), messageID == nil, !acceptancePending else { return }
+            // The provider has not entered the native enqueue transaction yet.
+            // User confirmation has no network deadline and remains cancellable.
+            committed = false; phase = .storing
+            deadline?.cancel(); deadline = nil
         case .committing:
             guard phase == .storing else { return }
             committed = true; phase = .enqueuing
+            startSubmissionDeadline(request: token)
         case .accepted(let id):
             guard messageID == nil, !id.isEmpty, committed else { return }
             acceptancePending = true; messageID = id; messageIDs = [id]
@@ -1208,7 +1281,7 @@ enum TelegramUploadEvent {
                 if let policy {
                     guard let saved = try await store.load(chatID: target.chatID), saved.isValid, saved.id == id,
                           saved.accountID == target.accountID, saved.chatID == target.chatID,
-                          saved.captionRules == .current, saved.items.map(\.id) == staged.map(\.id),
+                          saved.captionRules == (TelegramUploadCaptionRules.containsCustomEmoji(input.formattedText) ? .extended : .current), saved.items.map(\.id) == staged.map(\.id),
                           saved.captionPolicy == (try policy.binding(staged)) else {
                         throw TelegramPendingUploadPersistenceError.conflict
                     }
@@ -1241,6 +1314,14 @@ enum TelegramUploadEvent {
             guard self?.appendOperationID == nil, self?.bindingID == bound, self?.preparationID == id, self?.phase == .ready, self?.itemsRevision == itemRevision, self?.captionInput == input, self?.captionAboveMedia == above, self?.mediaSpoiler == spoiler else { return }
             do {
                 try await store.save(preparationID: id, chatID: target.chatID, captionInput: input, captionAboveMedia: above, mediaSpoiler: spoiler, disposition: .prepared)
+                if self?.captionRules == .extended {
+                    guard let saved = try await store.load(chatID: target.chatID), saved.isValid,
+                          saved.id == id, saved.accountID == target.accountID, saved.chatID == target.chatID,
+                          saved.threadID == target.selectedThreadID, saved.captionRules == .extended,
+                          saved.captionInput == input, saved.captionAboveMedia == above, saved.mediaSpoiler == spoiler else {
+                        throw TelegramPendingUploadPersistenceError.conflict
+                    }
+                }
                 guard let self, self.appendOperationID == nil, self.bindingID == bound, self.preparationID == id, self.itemsRevision == itemRevision, self.videoCoverRevision == coverRevision, self.captionInput == input, self.captionAboveMedia == above, self.mediaSpoiler == spoiler, self.phase == .ready else { return }
                 self.recoveryStatus = nil; self.recoveryRetry = nil
             } catch {
@@ -1354,14 +1435,15 @@ enum TelegramUploadEvent {
     func restore(draft: TelegramPendingUploadDraft, bundle: TelegramRecoveredUploadBundle, target: TelegramUploadTarget, restorationEpoch: UUID) -> Bool {
         guard draft.isValid else { return false }
         let items = bundle.items
-        if draft.schemaVersion < 6 {
+        if draft.resourceSchemaVersion < 6 {
             guard bundle.archive == nil, items.count == 1, items[0].id == draft.items[0].id else { return false }
             return restore(draft: draft, file: items[0].file, target: target, restorationEpoch: restorationEpoch)
         }
         guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, self.items.isEmpty, recoveredArchive == nil,
-              (6...19).contains(draft.schemaVersion),
+              (6...19).contains(draft.resourceSchemaVersion),
               provider is any TelegramUploadBatchProvider, provider?.accountID == draft.accountID,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID, target.chatID == draft.chatID,
+              target.selectedThreadID == draft.threadID,
               target.hasValidReplySource, detachedInitialContents[draft.id] == nil,
               !detachedRecoveryWrites.contains(draft.id), detachedRecoveryRetries[draft.id] == nil,
               Self.matchesItems(items, draft: draft) else { return false }
@@ -1427,11 +1509,11 @@ enum TelegramUploadEvent {
         // A load/file export may finish after a detached write has cleared its
         // pending marker. Only a snapshot begun in the current epoch can apply.
         guard restorationEpoch == recoveryRestoreEpoch, phase == .idle, items.isEmpty, recoveredArchive == nil,
-              draft.isValid, draft.schemaVersion < 6, file.metadata == nil,
+              draft.isValid, draft.resourceSchemaVersion < 6, file.metadata == nil,
               provider?.accountID == draft.accountID,
               detachedInitialContents[draft.id] == nil, !detachedRecoveryWrites.contains(draft.id), detachedRecoveryRetries[draft.id] == nil,
               recoveryStore?.accountID == draft.accountID, target.accountID == draft.accountID,
-              target.chatID == draft.chatID, target.hasValidReplySource,
+              target.chatID == draft.chatID, target.selectedThreadID == draft.threadID, target.hasValidReplySource,
               file.name == draft.file.attachment.name, file.size == draft.file.plaintextByteCount,
               file.mode.rawValue == draft.file.attachment.kind, file.video == draft.video,
               telegramPendingUploadCoverMatches(draft.videoCover, file.videoCover) else { return false }

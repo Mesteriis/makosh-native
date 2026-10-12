@@ -63,15 +63,24 @@ private func batchNativeReplacingMedia(_ message: EnqueueMessage, _ media: Media
         threadId: thread, replyToMessageId: reply, replyToStoryId: story, localGroupingKey: key,
         correlationId: correlation, bubbleUpEmojiOrStickersets: bubbles)
 }
-private func batchNativeReplySource(_ box: Postbox) -> Signal<TelegramMessageActionSource?, NoError> {
+private func batchNativeReplySource(_ box: Postbox, media: [Media] = []) -> Signal<TelegramMessageActionSource?, NoError> {
     box.transaction { transaction in
         transaction.updatePeersInternal([batchNativePeer(PeerId(1)), batchNativePeer(PeerId(42))], update: { _, new in new })
         let id = MessageId(peerId: PeerId(42), namespace: Namespaces.Message.Cloud, id: 7)
         _ = transaction.addMessages([StoreMessage(id: id, globallyUniqueId: nil, groupingKey: nil, threadId: 77,
             timestamp: 100, flags: [.Incoming], tags: [], globalTags: [], localTags: [], forwardInfo: nil,
-            authorId: PeerId(42), text: "Synthetic reply source", attributes: [], media: [])], location: .Random)
+            authorId: PeerId(42), text: "Synthetic reply source", attributes: [], media: media)], location: .Random)
         return transaction.getMessage(id).map { TelegramMessageActionSource(metadata: telegramMessageActionMetadata($0,
             limits: currentLimitsConfiguration(transaction: transaction)), accountID: 1, chatID: 42) }
+    }
+}
+
+private nonisolated func batchNativeQuoteLimit(_ box: Postbox, limit: Int) -> Signal<Bool, NoError> {
+    box.transaction { transaction in
+        var config = AppConfiguration.defaultValue
+        config.data = .dictionary(["quote_length_max": .number(Double(limit))])
+        transaction.setPreferencesEntry(key: PreferencesKeys.appConfiguration, value: PreferencesEntry(config))
+        return true
     }
 }
 
@@ -99,6 +108,81 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
 }
 
 @MainActor final class TelegramNativeBatchEnqueueTests: XCTestCase {
+    func testSelectedQuoteAcknowledgesEveryNativeReplyAndRefusesChangedServerLimitBeforeInsertion() async throws {
+        for changedLimit in [false, true] {
+            let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
+            let (original, items) = try await fixture(root, modes: [.file, .file], grouped: true)
+            defer { items.forEach { try? $0.discard() } }
+            let media = TelegramMediaImage(imageId: MediaId(namespace: 0, id: 17), representations: [], immediateThumbnailData: nil,
+                reference: nil, partialReference: nil, flags: [])
+            let seededSource = try await value(batchNativeReplySource(box, media: [media]))
+            let plain = try XCTUnwrap(seededSource)
+            let quote = try XCTUnwrap(TelegramReplyQuote(source: try .init(text: plain.text), selection: .init(location: 10, length: 5)))
+            let source = try XCTUnwrap(plain.quoting(quote))
+            let draft = try TelegramPendingUploadDraft(id: original.id, accountID: 1, chatID: 42, title: "Synthetic",
+                captionInput: original.captionInput, originalDraft: nil, replyTarget: .init(source: source),
+                items: original.items, isGrouped: true, disposition: .submissionStarted)
+            let seeded = try await value(batchNativeSeed(box, draft: draft)); XCTAssertTrue(seeded)
+            let (resources, preparations) = try await prepare(box, draft: draft, items: items)
+            defer { preparations.forEach { $0.stop() } }
+            let receipt = try TelegramUploadBatchEnqueueReceipt(draft: draft,
+                target: .init(accountID: 1, chatID: 42, title: "Synthetic", replySource: source), resources: resources, groupKeys: [111])
+            let revalidated = try await value(validateTelegramReplySource(postbox: box, accountID: 1, source: source))
+            let messages = try XCTUnwrap(receipt.messages(replySource: revalidated))
+            if changedLimit { _ = try await value(batchNativeQuoteLimit(box, limit: 4)) }
+            let result = try await value(batchNativeEnqueue(box, receipt: receipt, messages: messages))
+            if changedLimit {
+                XCTAssertTrue(result.0.isEmpty, "Current server quote limit must be checked before insertion")
+                XCTAssertFalse(result.1)
+            } else {
+                XCTAssertTrue(result.1, "The selected quote must produce an atomic complete receipt")
+                let saved = try await value(batchNativeRead(box, ids: result.0.compactMap { $0 }))
+                XCTAssertEqual(saved.0?.disposition, .acceptedBatch(messageIDs: result.0.compactMap { $0 }.map(TelegramUploadQueueID.init)))
+                XCTAssertEqual(saved.1.count, 2)
+                for message in saved.1 {
+                    let reply = try XCTUnwrap(message.attributes.first { $0 is ReplyMessageAttribute } as? ReplyMessageAttribute)
+                    XCTAssertTrue(reply.isQuote); XCTAssertEqual(reply.quote?.text, "reply"); XCTAssertEqual(reply.quote?.offset, 10)
+                    XCTAssertTrue(reply.quote?.media?.isEqual(to: media) == true)
+                }
+            }
+        }
+    }
+    func testBatchSubmissionObtainsQuoteMediaFromCurrentPostboxBeforeNativeInsertion() async throws {
+        let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
+        let (original, items) = try await fixture(root, modes: [.file, .file], grouped: true)
+        defer { items.forEach { try? $0.discard() } }
+        let media = TelegramMediaImage(imageId: MediaId(namespace: 0, id: 17), representations: [], immediateThumbnailData: nil,
+            reference: nil, partialReference: nil, flags: [])
+        let sourceValue = try await value(batchNativeReplySource(box, media: [media]))
+        let plain = try XCTUnwrap(sourceValue)
+        let quote = try XCTUnwrap(TelegramReplyQuote(source: try .init(text: plain.text), selection: .init(location: 10, length: 5)))
+        let source = try XCTUnwrap(plain.quoting(quote))
+        let draft = try TelegramPendingUploadDraft(id: original.id, accountID: 1, chatID: 42, title: "Synthetic",
+            captionInput: original.captionInput, originalDraft: nil, replyTarget: .init(source: source),
+            items: original.items, isGrouped: true, disposition: .submissionStarted)
+        let seeded = try await value(batchNativeSeed(box, draft: draft)); XCTAssertTrue(seeded)
+        let done = expectation(description: "Quote submission terminal event")
+        var terminal: TelegramUploadBatchEvent?
+        let lease = TelegramUploadBatchSubmission(postbox: box, accountID: 1, items: items, draft: draft,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic", replySource: source),
+            enqueue: { receipt, messages in telegramUploadBatchEnqueueLocally(postbox: box, receipt: receipt, messages: messages) },
+            receive: { event in
+                switch event {
+                case .accepted, .rejected, .uncertain: terminal = event; done.fulfill()
+                default: break
+                }
+            })
+        defer { lease.stop() }
+        await fulfillment(of: [done], timeout: 20)
+        guard case let .accepted(ids) = terminal else { return XCTFail("Complete quoted batch was not accepted: \(String(describing: terminal))") }
+        let saved = try await value(batchNativeRead(box, ids: ids.map(\.nativeID)))
+        XCTAssertEqual(saved.1.count, 2)
+        for message in saved.1 {
+            let reply = try XCTUnwrap(message.attributes.first { $0 is ReplyMessageAttribute } as? ReplyMessageAttribute)
+            XCTAssertTrue(reply.isQuote); XCTAssertEqual(reply.quote?.text, "reply")
+            XCTAssertTrue(reply.quote?.media?.isEqual(to: media) == true)
+        }
+    }
     // Catches sharing or borrowing an original identity through the new GIF preview role.
     func testReceiptRejectsSharedOrCrossOriginalGIFPreviewIdentities() async throws {
         let root = try root()

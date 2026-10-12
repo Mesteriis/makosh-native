@@ -56,7 +56,7 @@ func telegramSelectedMessagesDeleteAllowed(_ request: TelegramSelectedMessagesDe
             case .committing: self.phase = .committing
             case .queued:
                 self.complete(.queued); self.didQueue?(request)
-            case .rejected: self.complete(.rejected)
+            case .awaitingApproval, .rejected: self.complete(.rejected)
             case .uncertain, .applied: self.complete(.uncertain)
             }
         }

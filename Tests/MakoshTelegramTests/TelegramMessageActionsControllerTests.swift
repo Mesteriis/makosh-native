@@ -130,4 +130,21 @@ import XCTest
         XCTAssertEqual(provider.actions.count,1)
     }
 
+    // Human confirmation may outlast a native-operation timeout. Once the
+    // native operation starts, the same deadline must protect an unknown ACK.
+    func testApprovalWaitOutlivesNativeDeadlineAndCommitRestartsIt() async throws {
+        let controller = TelegramMessageActionsController(timeout: .milliseconds(20)), provider = Provider()
+        provider.synchronous = [.awaitingApproval]
+        controller.bind(provider: provider)
+        XCTAssertTrue(controller.perform(.reply("Paid reply"), source: source()))
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(controller.phase, .validating)
+        XCTAssertEqual(provider.leases[0].cancellations, 0)
+        provider.callbacks[0](.committing)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(controller.phase, .uncertain)
+        XCTAssertEqual(provider.leases[0].cancellations, 1)
+        XCTAssertEqual(controller.action, .reply("Paid reply"))
+    }
+
 }

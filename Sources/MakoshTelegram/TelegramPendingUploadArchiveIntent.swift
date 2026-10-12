@@ -33,7 +33,7 @@ struct TelegramPendingUploadArchiveIntent: Codable, Sendable {
         guard isValid(for: current), record.id == recordID, record.plaintextByteCount == byteCount,
               record.plaintextSHA256 == plaintextSHA256 else { throw TelegramPendingUploadPersistenceError.conflict }
         return try TelegramPendingUploadDraft(id: current.id, revision: candidateRevision, accountID: current.accountID,
-            chatID: current.chatID, title: current.title, captionInput: current.captionInput,
+            chatID: current.chatID, threadID: current.threadID, title: current.title, captionInput: current.captionInput,
             originalDraft: current.originalDraft, replyTarget: current.replyTarget, items: current.items,
             isGrouped: false, presentation: .archive, captionRules: current.captionRules, mediaRules: current.mediaRules,
             archive: .init(id: archiveID, file: record, members: members), captionPolicy: current.captionPolicy)

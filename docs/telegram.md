@@ -97,6 +97,69 @@ Destroying the model also shuts down subscriptions through isolated deinit.
 
 ## Implemented surface and limits
 
+The extended-message block (2026-10-12) adds selected reply quotes, observed
+server drafts, custom emoji, syntax highlighting, ordinary forum topics and
+explicit secret/paid-send boundaries within the common workspace. Historical
+open-item notes below are superseded by this contract and the current validation
+ledger in `development-status.md`.
+
+- Selected quotes preserve trimmed Unicode/UTF16 entities, pack provenance and
+  validated reply media. The current `quote_length_max` is observed from native
+  account configuration and rechecked in the queue transaction. Quotes remain
+  attached through topic drafts, voice/round uploads, Archive and restart.
+- Server draft observation is read-only. Initial local restoration completes
+  before reconciliation; independent edits show an explicit local/remote choice.
+  Native version/basis/local revision checks and atomic Postbox acknowledgement
+  prevent stale replacement and echo. Same-timestamp native changes are observed
+  by preparation recipe11. Unsupported native payloads fail closed.
+- Account-bound custom-emoji catalogs expose recent/installed/featured/search,
+  pack loading and installation. Native editor insertion preserves typed text,
+  selection and Undo. Current full document and account tier are checked again
+  before enqueue/edit. Visible WebP/TGS/WebM playback and topic icons use owned
+  bounded decoders; hidden spoilers/offscreen views release their leases.
+- Caption schema22 explicitly enables custom emoji on frozen resource schema19.
+  A new marker is mandatory; older wires keep their original projection and
+  reject injected new policy fields. Schema20 wraps selected quotes and schema21
+  topic identity without changing their frozen resource policy. Restoring an old
+  preparation never silently promotes it. Recorded media and old preparations
+  without a frozen caption policy have no custom-emoji picker.
+- Code blocks retain their language/copy/selection/spoiler behavior, adding
+  source-bound syntax colors from independently pinned Prisma/Boost sources.
+  Unknown languages, stale/cancelled work and rejected bounds keep plain code.
+- Forums have an observed topic list and independent draft/history/search/read
+  and upload/forward scopes, including General. All Messages requires a selected
+  topic or a validated ordinary reply destination; paid consent requires an
+  explicitly selected topic. Native admission rechecks current topic/content
+  permissions and the caller's durable receipt. Retained topic data passes a
+  bounded check before native seed rendering/forum operations and the legacy
+  decoder (recipe14:512KiB,16 nesting levels,1024 fields). Truncated bytes,
+  unsupported wire profiles, invalid notification variants, overflowing legacy
+  sound IDs and noncanonical author bits fail closed.
+- Paid sends confirm an immutable destination/count/unit-price/total for each
+  submission. Current fee, consent Begin/consume and queue insertion share one
+  native transaction. Forwarding never inherits the source message's old charge
+  (recipe12). Human confirmation pauses the outer timeout; after native work
+  begins, a missing ACK remains recoverable and cannot enable automatic resend.
+- Secret chats expose current state and reference fingerprint verification;
+  sending is restricted to active plain text with validated native keys/layer.
+  Secret media, rich text, replies/forwarding, key-agreement and TTL workflows
+  remain unsupported. Paid-media access/price is displayed without a purchase or
+  media-fetch grant. Balance purchase and paid-media purchase are not implemented.
+
+Playback supports a deliberately narrow SDR8-bit420 WebM profile: at most8MiB,
+512px canvas,9s and3240 blocks. Explicit projection/content-encoding/mapping or
+stereo profiles use Unicode fallback. These input/output limits do not establish
+a whole-process memory or hard real-time bound. Full Telegram sticker/media
+parity and actual Account/network delivery remain outside this validation slice.
+
+Debug UI scenarios use `--telegram-extended-messages-synthetic-preview`,
+`--telegram-secret-synthetic-preview`, `--telegram-paid-send-synthetic-preview`
+or `--telegram-server-draft-synthetic-preview`, together with `--database-config`
+pointing to an isolated `qa_telegram_dossier_…` schema. They retain the common
+service sidebar, never connect an account, and cannot send or spend Stars.
+The draft scenario exercises the real Model conflict/choice lifecycle with an
+explicit in-memory fixture; native persistence has separate Postbox regressions.
+
 The current Telegram media preparation contract is described in
 `telegram-album-migration.md` (Media block,2026-10-12). New ordinary picker
 preparations use schema19 with account-derived caption limits, current Markdown

@@ -8,7 +8,7 @@ import hashlib
 
 ENQUEUE = "submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift"
 SOURCE_SHA256 = "230958d958e40e052c78934a55369fa71fa5b2f7971699a0965a12240124ad04"
-ADAPTED_SHA256 = "3cc296d2ea7b9b5d41babe12d8b3754ee11c87e4fafa56450e58447f2924f979"
+ADAPTED_SHA256 = "05ba874782d908e00b5b1537768aa49ba82c9b4600c720abe0a8520a67fd0649"
 
 OLD_SIGNATURE = "public func enqueueMessages(account: Account, peerId: PeerId, messages: [EnqueueMessage]) -> Signal<[MessageId?], NoError> {"
 NEW_SIGNATURE = """public func enqueueMessages(account: Account, peerId: PeerId, messages: [EnqueueMessage], transactionAdmission: ((Transaction) -> Bool)? = nil, transactionCommit: ((Transaction, [MessageId?]) -> Void)? = nil) -> Signal<[MessageId?], NoError> {"""
@@ -58,6 +58,11 @@ NEW_CORE_SIGNATURE = """func enqueueMessages(transaction: Transaction, account: 
 func enqueueMessages(transaction: Transaction, accountPeerId: PeerId, isSupportUser: Bool, timestamp: () -> Int32, peerId: PeerId, messages: [(Bool, EnqueueMessage)], disableAutoremove: Bool = false, transformGroupingKeysWithPeerId: Bool = false) -> [MessageId?] {"""
 
 
+# A source message's old charge is never authority to charge its recipient.
+# Explicit requested attributes retain their independently confirmed new fee.
+SOURCE_FEE_OLD = 'filterMessageAttributesForForwardedMessage(sourceMessage.attributes, forwardedMessageIds: forwardedMessageIds)'
+SOURCE_FEE_NEW = 'filterMessageAttributesForForwardedMessage(sourceMessage.attributes.filter { !($0 is PaidStarsMessageAttribute) }, forwardedMessageIds: forwardedMessageIds)'
+
 def adapt_enqueue_source(source: str) -> str:
     digest = hashlib.sha256(source.encode()).hexdigest()
     if digest == ADAPTED_SHA256:
@@ -83,6 +88,9 @@ def adapt_enqueue_source(source: str) -> str:
     adapted = source[:start] + core + source[end:]
     adapted = adapted.replace(OLD_SIGNATURE, NEW_SIGNATURE).replace(OLD_RETURN, NEW_RETURN)
     adapted = adapted.replace(OLD_CORE_SIGNATURE, NEW_CORE_SIGNATURE)
+    if adapted.count(SOURCE_FEE_OLD) != 1:
+        raise ValueError("Unexpected forwarded source fee context")
+    adapted = adapted.replace(SOURCE_FEE_OLD, SOURCE_FEE_NEW)
     if hashlib.sha256(adapted.encode()).hexdigest() != ADAPTED_SHA256:
         raise ValueError("Unexpected adapted Telegram enqueue source digest")
     return adapted

@@ -121,24 +121,29 @@ func telegramUploadVideoAttributes(_ file: TelegramUploadFile) -> [TelegramMedia
 @MainActor
 final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
     private let account: Account
+    private let approval: TelegramSendApprovalController
     var accountID: Int64 { account.peerId.toInt64() }
-    init(account: Account) { self.account = account }
+    init(account: Account, approval: TelegramSendApprovalController) { self.account = account; self.approval = approval }
 
     func submit(bundle: TelegramRecoveredUploadBundle, draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
                 receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
-        let account = self.account
+        let account = self.account, approval = self.approval
         return TelegramUploadBatchSubmission(postbox: account.postbox, accountID: accountID, bundle: bundle, draft: draft,
             target: target, enqueue: { receipt, messages in
-                enqueueBatchUploadWithReceipt(account: account, receipt: receipt, messages: messages)
+                receive(.awaitingApproval)
+                return enqueueBatchUploadWithReceipt(account: account, approval: approval, receipt: receipt, messages: messages,
+                    onApproved: { receive(.committing) })
             }, observe: { ids in observeBatchUpload(account: account, ids: ids) }, receive: receive)
     }
 
     func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
                 receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
-        let account = self.account
+        let account = self.account, approval = self.approval
         return TelegramUploadBatchSubmission(postbox: account.postbox, accountID: accountID, items: items, draft: draft,
             target: target, enqueue: { receipt, messages in
-                enqueueBatchUploadWithReceipt(account: account, receipt: receipt, messages: messages)
+                receive(.awaitingApproval)
+                return enqueueBatchUploadWithReceipt(account: account, approval: approval, receipt: receipt, messages: messages,
+                    onApproved: { receive(.committing) })
             }, observe: { ids in observeBatchUpload(account: account, ids: ids) }, receive: receive)
     }
 
@@ -151,14 +156,14 @@ final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
               telegramFormattedCaptionCanSend(caption), (!captionAboveMedia && !mediaSpoiler) || file.mode != .file else {
             receive(.rejected); return lease
         }
-        lease.preparation = TelegramUploadMediaBoxPreparation(mediaBox: account.postbox.mediaBox, file: file) { [weak lease, account] result in
+        lease.preparation = TelegramUploadMediaBoxPreparation(mediaBox: account.postbox.mediaBox, file: file) { [weak lease, account, approval] result in
             guard let lease, !lease.stopped, !lease.validating, !lease.committing else { return }
             guard case let .success(prepared) = result else {
                 lease.receive(.rejected); lease.stop(); return
             }
             let resource = prepared.resource, reference = prepared.reference
             lease.validating = true
-            let commit: @MainActor (TelegramMessageActionSource?) -> Void = { [weak lease, account] reply in
+            let commit: @MainActor (TelegramMessageActionSource?) -> Void = { [weak lease, account, approval] reply in
                 guard let lease, !lease.stopped, !lease.committing else { return }
                 guard let message = telegramUploadMessage(caption: caption, reference: reference, target: target, replySource: reply, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler) else {
                     lease.receive(.rejected); lease.stop(); return
@@ -169,8 +174,12 @@ final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
                 let receipt = TelegramPendingUploadEnqueueReceipt(preparationID: preparationID,
                     target: target, file: file, caption: caption, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
                     localResourceID: resource.fileId, videoThumbnail: prepared.videoThumbnail, videoCover: prepared.videoCover)
-                lease.enqueue.set((enqueueUploadWithReceipt(account: account, peerID: peerID,
-                    message: message, receipt: receipt)
+                lease.receive(.awaitingApproval)
+                guard !lease.stopped else { return }
+                lease.enqueue.set((enqueueUploadWithReceipt(account: account, approval: approval, peerID: peerID,
+                    message: message, receipt: receipt, onApproved: { [weak lease] in
+                        guard let lease, !lease.stopped else { return }; lease.receive(.committing)
+                    })
                 |> deliverOnMainQueue).start(next: { [weak lease, account] admission in
                     guard let lease, !lease.stopped, !lease.accepted else { return }
                     let id: MessageId
@@ -207,12 +216,21 @@ final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
     }
 }
 
-private nonisolated func enqueueBatchUploadWithReceipt(account: Account, receipt: TelegramUploadBatchEnqueueReceipt,
-                                                      messages: [EnqueueMessage]) -> Signal<TelegramUploadBatchAdmission, NoError> {
+@MainActor private func enqueueBatchUploadWithReceipt(account: Account, approval: TelegramSendApprovalController,
+    receipt: TelegramUploadBatchEnqueueReceipt, messages: [EnqueueMessage],
+    onApproved: @escaping @MainActor () -> Void) -> Signal<TelegramUploadBatchAdmission, NoError> {
+    let context = TelegramSendContext(accountID: receipt.target.accountID, chatID: receipt.target.chatID,
+        threadID: receipt.target.selectedThreadID, submissionRevision: receipt.draft.revision, messageCount: messages.count)
+    let consent = telegramApprovalForDestination(account: account, approval: approval, context: context, title: receipt.target.title, onApproved: onApproved)
+    return enqueueBatchUploadAfterApproval(account: account, receipt: receipt, context: context, messages: messages, approval: consent)
+}
+private nonisolated func enqueueBatchUploadAfterApproval(account: Account, receipt: TelegramUploadBatchEnqueueReceipt,
+    context: TelegramSendContext, messages: [EnqueueMessage],
+    approval: Signal<Result<TelegramPaidSendConsent?, TelegramSendApprovalError>, NoError>) -> Signal<TelegramUploadBatchAdmission, NoError> {
     telegramUploadBatchEnqueue(receipt: receipt, messages: messages,
         now: { Date().timeIntervalSince1970 + account.network.globalTimeDifference }) { messages, admission, commit in
-        enqueueMessages(account: account, peerId: PeerId(receipt.target.chatID), messages: messages,
-            transactionAdmission: admission, transactionCommit: commit)
+        telegramEnqueueAfterApproval(account: account, context: context, messages: messages, approval: approval,
+            specificAdmission: admission, specificCommit: commit) |> map { $0 ?? [nil] }
     }
 }
 
@@ -233,16 +251,24 @@ private enum TelegramEngineUploadAdmission { case rejected, uncertain, accepted(
 
 /// Postbox invokes these hooks on its own queue. Construct them outside the
 /// MainActor provider so the callbacks never inherit UI actor isolation.
-private nonisolated func enqueueUploadWithReceipt(account: Account, peerID: PeerId, message: EnqueueMessage,
-                                                 receipt: TelegramPendingUploadEnqueueReceipt) -> Signal<TelegramEngineUploadAdmission, NoError> {
+@MainActor private func enqueueUploadWithReceipt(account: Account, approval: TelegramSendApprovalController,
+    peerID: PeerId, message: EnqueueMessage, receipt: TelegramPendingUploadEnqueueReceipt,
+    onApproved: @escaping @MainActor () -> Void) -> Signal<TelegramEngineUploadAdmission, NoError> {
+    let context = TelegramSendContext(accountID: receipt.target.accountID, chatID: peerID.toInt64(),
+        threadID: receipt.target.selectedThreadID, submissionRevision: receipt.preparationID, messageCount: 1)
+    let consent = telegramApprovalForDestination(account: account, approval: approval, context: context, title: receipt.target.title, onApproved: onApproved)
+    return enqueueUploadAfterApproval(account: account, receipt: receipt, context: context, message: message, approval: consent)
+}
+private nonisolated func enqueueUploadAfterApproval(account: Account, receipt: TelegramPendingUploadEnqueueReceipt,
+    context: TelegramSendContext, message: EnqueueMessage,
+    approval: Signal<Result<TelegramPaidSendConsent?, TelegramSendApprovalError>, NoError>) -> Signal<TelegramEngineUploadAdmission, NoError> {
     let receiptSaved = Atomic<Bool>(value: false)
-    return enqueueMessages(account: account, peerId: peerID, messages: [message],
-        transactionAdmission: { receipt.validate(transaction: $0) },
-        transactionCommit: { transaction, ids in
+    return telegramEnqueueAfterApproval(account: account, context: context, messages: [message], approval: approval,
+        specificAdmission: { receipt.validate(transaction: $0) }, specificCommit: { transaction, ids in
             _ = receiptSaved.swap(receipt.acknowledge(transaction: transaction, messageIDs: ids))
         }) |> map { ids in
+            guard let ids else { return .uncertain }
             guard !ids.isEmpty else { return .rejected }
-            // An unexpected result after enqueue cannot prove rejection.
             guard ids.count == 1, let id = ids[0], receiptSaved.with({ $0 }) else { return .uncertain }
             return .accepted(id)
         }
@@ -257,9 +283,9 @@ func telegramUploadMessage(caption: String, reference: AnyMediaReference, target
 
 func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaReference?, target: TelegramUploadTarget,
                            replySource: TelegramMessageActionSource?, captionAboveMedia: Bool = false, mediaSpoiler: Bool = false,
-                           presentation: TelegramUploadPresentation? = nil, maximumUTF16Count: Int = 1024, isOneTime: Bool = false) -> EnqueueMessage? {
-    guard telegramFormattedCaptionCanSend(caption, maximumUTF16Count: maximumUTF16Count), target.hasValidReplySource,
-          reference != nil || telegramFormattedTextCanSend(caption),
+                           presentation: TelegramUploadPresentation? = nil, maximumUTF16Count: Int = 1024, isOneTime: Bool = false, allowCustomEmoji: Bool = false) -> EnqueueMessage? {
+    guard telegramFormattedCaptionCanSend(caption, maximumUTF16Count: maximumUTF16Count, allowCustomEmoji: allowCustomEmoji), target.hasValidReplySource,
+          reference != nil || (allowCustomEmoji ? caption.isEditable && caption.text.utf16.count <= 4096 : telegramFormattedTextCanSend(caption)),
           (presentation != nil && reference != nil) || (!captionAboveMedia && !mediaSpoiler) || reference?.media is TelegramMediaImage ||
               (reference?.media as? TelegramMediaFile)?.isVideo == true else { return nil }
     if (reference?.media as? TelegramMediaFile)?.isInstantVideo == true {
@@ -276,18 +302,24 @@ func telegramUploadMessage(caption: TelegramFormattedText, reference: AnyMediaRe
               replySource.chatID == captured.chatID, replySource.peerID == captured.peerID,
               replySource.namespace == captured.namespace, replySource.messageID == captured.messageID,
               replySource.fingerprint == captured.fingerprint, replySource.threadID == captured.threadID,
+              replySource.replyQuote == captured.replyQuote,
               replySource.canReply else { return nil }
     } else if replySource != nil { return nil }
-    let reply = replySource.map {
-        EngineMessageReplySubject(messageId: MessageId(peerId: PeerId($0.peerID), namespace: $0.namespace, id: $0.messageID),
-            quote: nil, todoItemId: nil)
+    let reply = replySource.map { source in
+        EngineMessageReplySubject(messageId: MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID),
+            quote: source.replyQuote.map { quote in
+                EngineMessageReplyQuote(text: quote.formattedText.text, offset: quote.selection?.location,
+                    entities: quote.formattedText.engineEntities(), media: source.validatedReplyMediaData.flatMap {
+                        PostboxDecoder(buffer: MemoryBuffer(data: $0)).decodeRootObject() as? Media
+                    })
+            }, todoItemId: nil)
     }
     var attributes = telegramOutgoingTextAttributes(caption)
     if captionAboveMedia { attributes.append(InvertMediaMessageAttribute()) }
     if mediaSpoiler { attributes.append(MediaSpoilerMessageAttribute()) }
     if isOneTime { attributes.append(AutoremoveTimeoutMessageAttribute(timeout: viewOnceTimeout, countdownBeginTime: 0)) }
     return .message(text: caption.text, attributes: attributes, inlineStickers: [:], mediaReference: reference,
-        threadId: replySource?.threadID, replyToMessageId: reply, replyToStoryId: nil,
+        threadId: target.threadID, replyToMessageId: reply, replyToStoryId: nil,
         localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
 }
 

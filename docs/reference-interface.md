@@ -521,8 +521,9 @@ entity attributes повторяются даже на media без текста
 группы используются против общей URL-коллекции, поэтому действие над11-м файлом
 может попасть на первый. Runtime референса не запускался. Для действий Макош
 использует постоянные item UUID; caption повторяется на chunk, а media без текста получают пустые entities
-по явно принятой send policy в telegram-album-migration.md. Точная preview mosaic-геометрия остаётся отдельным
-неисследованным helper boundary.
+по явно принятой send policy в telegram-album-migration.md. На этом историческом
+этапе preview mosaic ещё не был исследован; последующий перенос обычного visual
+набора записан в разделе «Геометрия Media-предпросмотра» ниже.
 
 Первый шаг в Макош — schema6 подготовки с ordered items, grouping и отдельными
 S3-оригиналами/обложками на каждый ID. Pointer публикуется целиком, старые схемы
@@ -612,8 +613,9 @@ initial reverse-picker sequence отдельно не проверены; про
 
 Остаются различия: bounded ImageIO admission вместо unbounded reference,
 неполная MIME table (UTType fallback и явный local Opus alias), отдельное правило
-static payload geometry, точная mosaic/gesture геометрия, Archive и оставшиеся
-caption gaps ниже. Полное визуальное совпадение с референсом не заявлено.
+static payload geometry, оставшаяся mixed/special-media и gesture геометрия,
+Archive и caption gaps ниже. Перенос обычного visual mosaic записан отдельно.
+Полное визуальное совпадение с референсом не заявлено.
 
 Сверены также `PreviewSenderController.swift:1690–1705,388–393`: mixed Media
 допускает spoiler/placement; legacy schema8 grouping требует all-visual eligibility. Макош
@@ -1072,3 +1074,19 @@ ZIP также не появляется; черновик другого чат
 Это обычный UI-путь. Удержание callback проверено отдельно интеграционно.
 Пределы и точный внутренний профиль записаны в telegram-album-migration.md;
 полное визуальное совпадение и готовность архивной отправки не заявляются.
+
+### Геометрия Media-предпросмотра — 2026-10-12
+
+Проверены `MediaGroupPreviewRowItem.swift:28–50,154–200` и
+`GroupedLayout.swift:18–26,97–333,391–404` в закреплённом TelegramSwift:
+preview использует квадратные пропорции, отдельные формы для2–4 элементов,
+оценку рядов для5–10, промежутки4pt, округление к пикселям и центрирование
+полученной области. Макош независимо реализует эти правила отдельно от
+раскладки истории. Одиночный остаток использует существующие bounded-размеры
+photo/video по `ChatLayoutUtils.swift:16–32,76–114`, максимум320pt.
+Исходники внешнего GPLv2-only интерфейса и его assets не копируются.
+
+Смешанный набор пока остаётся списком: reference `GroupedLayout.swift:52–59`
+отфильтровывает неинтерактивные media. Такой фильтр без отдельного разбора
+состава скрыл бы выбранные файлы. Полное совпадение mixed/special-media,
+жестов и пиксельной геометрии остаётся открытым.

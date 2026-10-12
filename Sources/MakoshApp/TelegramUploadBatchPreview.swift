@@ -5,6 +5,7 @@ import MakoshTelegram
 struct TelegramUploadBatchPreview: View {
     @ObservedObject var upload: TelegramUploadController
     let contextID: UUID
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         let items = upload.presentedItems
@@ -13,9 +14,7 @@ struct TelegramUploadBatchPreview: View {
                 if upload.isVisualMedia && upload.isGrouped {
                     ForEach(Array(stride(from: 0, to: items.count, by: 10)), id: \.self) { start in
                         let group = Array(items[start..<min(start + 10, items.count)])
-                        TelegramAlbumMosaicLayout(aspects: group.map { item in
-                            Double(item.file.pixelWidth ?? 1) / Double(max(1, item.file.pixelHeight ?? 1))
-                        }) {
+                        TelegramUploadMosaicLayout(items: group, scale: displayScale) {
                             ForEach(group) { item in
                                 itemView(item, compact: true)
                             }
@@ -79,6 +78,24 @@ struct TelegramUploadBatchPreview: View {
         Divider()
         Button("Удалить из подготовки") { upload.removeItem(id: item.id, contextID: contextID, revision: revision) }
             .disabled(!upload.canEditItems)
+    }
+}
+
+private struct TelegramUploadMosaicLayout: Layout {
+    let items: [TelegramUploadBatchItem]
+    let scale: Double
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = min(420, max(16, proposal.width ?? 360))
+        let layout = TelegramUploadPreviewMosaic.layout(items: items, width: width, scale: scale)
+        return CGSize(width: width, height: layout.dimensions.height)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let layout = TelegramUploadPreviewMosaic.layout(items: items, width: bounds.width, scale: scale)
+        let inset = (bounds.width - layout.dimensions.width) / 2
+        for (view, frame) in zip(subviews, layout.frames) {
+            view.place(at: CGPoint(x: bounds.minX + inset + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
+                proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
     }
 }
 

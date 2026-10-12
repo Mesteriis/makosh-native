@@ -1,6 +1,57 @@
 # Development status — 2026-10-12
 
-## Current stage: reference caption/comment placeholder
+## Current stage: reference upload-preview mosaic
+
+Grouped visual Media now has separate preview geometry; source aspect ratios
+continue to control history. Upload preview follows the locked reference's
+square ratios, distinct2/3/4-member forms,5–10 row scoring/tie order,4pt gaps
+and display-scale flooring. The bounded trailing singleton is centered.
+Existing chunking/actions/IDs, mixed-list rendering, send/storage behavior,
+schemas and dependency pins are unchanged. Mixed/special-media/gesture and full
+pixel parity remain open; this is one sequential migration slice.
+
+Observed screenshot RED before production edits measures the two portrait tiles
+at410×636 and416×639px. The same calibrated predicate passes in the final app:
+410×410 and416×416px. Earlier harness failures (missing system Pillow and an
+incorrect color-profile threshold) are retained and do not count as product RED.
+Native AX/screenshots additionally verify3/4-member forms, scroll access and all11
+IDs in a ten-member group plus a centered100×200pt singleton. Exact owned-process
+restarts preserve the prepared sets. Readback passes1 XCTest and45 Python tests:
+four prepared Media groups, exact20 item IDs/order, empty inputs,40 encrypted
+local resources, no receipt/pending and no remote object for any resource.
+A review then finds a0.25pt centering difference for9/420pt/scale2: reference
+bounds are measured before component flooring. The extracted sizing boundary
+compiles RED1 test/1 expected failure419.5≠420. Raw bounding dimensions now drive
+centering. One intermediate GREEN compilation fails on CGFloat?→Double and is
+corrected; the actual final focused/full/build gates below pass. Final native UI
+rechecks the square predicate, removes only items11/10 through their own menus,
+and displays all nine remaining IDs/three rows. Final reopened readback passes
+1 XCTest and45 Python tests:18 remaining IDs across four prepared sets, empty
+inputs,40 immutable local resources and no remote object/receipt/pending.
+The owned runtime is stopped; temporary QA sources are removed. No personal
+Account, Telegram server send or hardware is used.
+
+Required database startup, full tests, app build and strict deep signatures exit0.
+Focused final GREEN12 XCTest (six new preview +six history)/0 failures and45 Python
+tests. Full suite: **1,337 XCTest (1,258 Telegram +79 core),1 microphone-authorization
+precondition skip,0 failures;45 Python tests**. Cached compilation has no warnings;
+647 SQL-prefixed t19 teardown diagnostics plus one unprefixed line remain separate.
+The skip applies because the process already has permission and uses no hardware.
+
+XERJ final refresh/freshness/query exit0:479 files,441/441 classified code;
+preview layout/dimensions hits are source-confirmed. Bounded frozen review's P3
+is closed in a new snapshot with no further actionable findings. Root validates
+both report inventories (33 and24 artifact/hash checks) and five final frozen/live
+source hashes. Worker runtime gates remain skipped; observed route/usage unknown.
+The original review's focused breakdown typo is corrected by the delta report;
+actual original focused run is5 preview +6 history,11 total. Private evidence
+and machine state remain ignored.
+Hosted CI for preceding head8c4540 succeeds in
+[PR run38199811480](https://github.com/Mesteriis/makosh-native/actions/runs/38199811480)
+and [push run38199808807](https://github.com/Mesteriis/makosh-native/actions/runs/38199808807).
+Those results do not establish CI for this new patch. Full migration remains active.
+
+## Previous stage: reference caption/comment placeholder
 
 Upload text now follows locked PreviewSenderController preview-entry rules:
 one caption-capable row, one Media group up to10 items or one Archive ZIP uses

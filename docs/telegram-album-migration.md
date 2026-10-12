@@ -494,3 +494,19 @@ Media grouping follows reference entry count even for mixed selections; Makosh's
 current mixed-list renderer still differs from the reference collage. Existing
 conservative WebP MIME classification and incomplete premium/special-media
 parity remain open. No storage policy, schema or dependency change.
+
+## Upload preview mosaic — 2026-10-12
+
+Visual grouped Media now uses independently authored upload-preview geometry,
+separate from the history's aspect-sensitive layout. Locked GroupedLayout's
+preview mode fixes the ratios at1: two members are square, three place one wide
+tile above two, four place one large tile beside three, and five through ten use
+the reference row score and tie order. Four-point gaps and display-scale pixel
+flooring are retained. A trailing singleton uses bounded ordinary media sizing
+and is centered. Existing ten-item chunking, item IDs and actions remain intact.
+
+Mixed selections still use individual rows. The reference's photoOrVideo layout
+filters non-interactive members; adopting that filter directly would hide selected
+files. Mixed/special-media classification, gestures and complete pixel parity
+remain open. This change does not alter send projection, persistence, schemas,
+dependency pins or the rule that OFF forbids all new S3 copies.

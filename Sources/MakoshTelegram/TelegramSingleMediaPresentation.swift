@@ -1,6 +1,15 @@
 import Foundation
 
 public enum TelegramSingleMediaPresentation {
+    public static func uploadSize(_ file: TelegramUploadFile, availableWidth: Double) -> CGSize? {
+        guard file.mode != .file, file.metadata?.roundVideo == nil else { return nil }
+        let dimensions = file.pixelWidth.flatMap { w in file.pixelHeight.flatMap { TelegramMediaDimensions(width: w, height: $0) } }
+        let attachment = TelegramAttachment(id: file.id.uuidString, kind: file.mode == .photo ? .photo : .file,
+            name: file.name, byteCount: file.size, mimeType: nil, hasPreview: true, canDownload: false,
+            playback: file.mode == .video ? .video : nil, dimensions: dimensions)
+        return size(attachment, availableWidth: availableWidth)
+    }
+
     public static func size(_ attachment: TelegramAttachment, availableWidth: Double, hasCaption: Bool = false) -> CGSize? {
         guard availableWidth.isFinite, (16...16_384).contains(availableWidth),
               attachment.kind == .photo || attachment.playback == .video else { return nil }

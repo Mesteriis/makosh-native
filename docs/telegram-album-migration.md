@@ -510,3 +510,20 @@ filters non-interactive members; adopting that filter directly would hide select
 files. Mixed/special-media classification, gestures and complete pixel parity
 remain open. This change does not alter send projection, persistence, schemas,
 dependency pins or the rule that OFF forbids all new S3 copies.
+
+## Single/separate preview and loop completion — 2026-10-12
+
+Ordinary single/separate photo/video preview now reuses the bounded reference
+size helper, replacing fixed200/240pt caps. Grouped singleton bounds, File and
+recorded-round paths are preserved. Actual synthetic UI covers portrait/wide/
+square, grouping, item removal, single video and restart; reopened preparation
+readback retains six IDs and14 local encrypted records without receipts/pending.
+
+The preceding hosted round-loop failure is addressed by pausing before native
+seek and restarting only after successful completion while the same player,
+generation, seek and visible state are current. Held-completion regressions
+exercise real AVPlayers through hide/reveal, failed seek, duplicate EOF,
+replacement and stop; native actual-loop coverage remains. Exact AVPlayer
+internal ordering behind the CI assertion is unproved. Storage/send/schema/pins
+are unchanged. Mixed classification still needs separate source-option/payload
+analysis; full visual/gesture/caption parity and sequential migration remain open.

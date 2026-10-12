@@ -1,6 +1,64 @@
 # Development status — 2026-10-12
 
-## Current stage: reference upload-preview mosaic
+## Current stage: single/separate upload preview and safe video looping
+
+Single and separate ordinary photo/video previews now share the existing bounded
+ChatLayoutUtils-derived size rules. This removes the separate-row200pt cap/120pt
+floor and single-preview240pt cap. Loading/error states keep the same bounds;
+File, recorded-round and grouped-mosaic renderers retain their separate paths.
+Send projection, storage policy, schemas and dependency pins are unchanged.
+OFF continues to forbid every new S3 copy, including preparation/recovery.
+
+Actual isolated native screenshot predicates fail before production edits:
+portrait separate height394px and single square478px, each expected640px.
+The same predicates pass after the change:634px and638px; wide photo154px,
+expected160px (12px edge tolerance). Grouped squares, separate-row scrolling,
+single photo/video, item removal and exact owned-process restarts are inspected.
+Reopened readback passes1 XCTest and45 Python tests: six stable item IDs across
+four prepared Media sets, empty inputs,14 retained encrypted local resources,
+no receipt/pending and no remote object for the11 currently referenced resources.
+Removed resources remain retained locally. The owned runtime is stopped;
+temporary QA sources are removed. No personal Account, Telegram send or hardware.
+
+Preceding head f373b0 has one failed hosted
+[PR run38201383378](https://github.com/Mesteriis/makosh-native/actions/runs/38201383378)
+and one successful [push run38201380082](https://github.com/Mesteriis/makosh-native/actions/runs/38201380082).
+The failed round-loop assertion observes hidden rate1 instead of0. Source review
+finds unconditional hidden seeking and visible restart before asynchronous seek
+completion; exact AVPlayer internal ordering remains an inference. A narrow
+native-seek boundary and the production EOF handler permit held-completion tests
+with real loaded AVPlayers. Compiled RED3 tests/7 expected failures reproduces
+early restart, hidden seeking and duplicate requests. The fix pauses before seek,
+waits for successful completion and rechecks visibility, generation, player and
+seek identity. Stop/replacement invalidate it. The former50ms hidden-EOF wait is
+replaced by synchronous handling; actual native-loop tests still verify wraps.
+Focused GREEN26 XCTest/0 failures and45 Python tests covers native playback and
+held-completion hide/reveal, failed seek, duplicate EOF, stop/replacement and
+unchanged stage bytes. Sizing focused GREEN36 XCTest/0 failures and45 Python tests.
+
+Required database startup, final full tests, app build and strict deep signatures
+exit0. Final full suite: **1,344 XCTest (1,265 Telegram +79 core),1 microphone-
+authorization precondition skip,0 failures;45 Python tests**. Cached final
+compilation has no warnings;647 SQL-prefixed t19 teardown diagnostics plus one
+bare line remain separate. Initial sizing/loop-test compilation repeats three
+pre-existing compiler diagnostics (six warning lines). The skip uses no hardware.
+The final built app is inspected again with the restored single video and then
+stopped. Final bounded frozen review reports no actionable findings. Root checks
+its two artifact hashes,14 frozen source/reference hashes, seven recorded worker
+argv/exits and six original root evidence records (three nonzero REDs retained).
+Eleven frozen/live sources match exactly; the only delta removes one blank EOF
+line and is verified separately. Worker runtime checks stay skipped and observed
+route/usage unknown. The preceding CI review's P2/P3 are addressed by this patch;
+new-head hosted CI remains a separate gate.
+XERJ project refresh/freshness/query exit0:482 files,444/444 classified code;
+loop-controller hits are confirmed against source. Locked-reference freshness
+and source-confirmed media-sizing/visibility queries also exit0. Index/evidence
+and machine configuration stay ignored.
+Next: continue verified mixed/special classification, caption and preview/gesture
+gaps before later services. Full migration remains active; complete pixel parity
+and live-account delivery are open.
+
+## Previous stage: reference upload-preview mosaic
 
 Grouped visual Media now has separate preview geometry; source aspect ratios
 continue to control history. Upload preview follows the locked reference's

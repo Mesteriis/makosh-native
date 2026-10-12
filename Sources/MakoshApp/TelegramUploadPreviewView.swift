@@ -254,24 +254,26 @@ private struct TelegramUploadFilePreview: View {
     var body: some View {
         VStack(spacing: 10) {
             if file.mode == .photo || isVideo {
-                if let preview {
-                    ZStack {
-                        Image(preview.image, scale: 1, label: Text(file.videoCover != nil ? "Обложка видео" : (isVideo ? "Первый кадр видео" : "Предпросмотр фото"))).resizable().scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: 240)
-                            .blur(radius: mediaSpoiler ? 18 : 0)
-                            .accessibilityHidden(mediaSpoiler)
-                            .accessibilityIdentifier(file.videoCover != nil ? "telegram.upload.videoCoverPreview" : (isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview"))
-                        if playsVideo { TelegramUploadVideoPlayerView(playback: upload.videoPlayback) }
-                        if mediaSpoiler {
-                            Label(isVideo ? "Видео под спойлером" : "Фото под спойлером", systemImage: "eye.slash")
-                                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.thinMaterial)
-                                .accessibilityIdentifier("telegram.upload.spoilerPreview")
+                TelegramUploadSingleMediaLayout(file: file) {
+                    if let preview {
+                        ZStack {
+                            Image(preview.image, scale: 1, label: Text(file.videoCover != nil ? "Обложка видео" : (isVideo ? "Первый кадр видео" : "Предпросмотр фото"))).resizable().scaledToFit()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .blur(radius: mediaSpoiler ? 18 : 0)
+                                .accessibilityHidden(mediaSpoiler)
+                                .accessibilityIdentifier(file.videoCover != nil ? "telegram.upload.videoCoverPreview" : (isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview"))
+                            if playsVideo { TelegramUploadVideoPlayerView(playback: upload.videoPlayback) }
+                            if mediaSpoiler {
+                                Label(isVideo ? "Видео под спойлером" : "Фото под спойлером", systemImage: "eye.slash")
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(.thinMaterial)
+                                    .accessibilityIdentifier("telegram.upload.spoilerPreview")
+                            }
                         }
-                    }.clipped()
-                } else if failed {
-                    Label(isVideo ? "Не удалось показать первый кадр видео" : "Не удалось показать фото", systemImage: "photo.badge.exclamationmark")
-                        .frame(maxWidth: .infinity, minHeight: 140)
-                } else { ProgressView().frame(maxWidth: .infinity, minHeight: 140) }
+                    } else if failed {
+                        Label(isVideo ? "Не удалось показать первый кадр видео" : "Не удалось показать фото", systemImage: "photo.badge.exclamationmark")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                }.clipped()
             } else {
                 Image(systemName: "doc.fill").font(.system(size: 48)).foregroundStyle(.secondary).padding(18)
             }

@@ -17,12 +17,7 @@ public enum TelegramUploadPreviewMosaic {
               items.allSatisfy({ $0.file.mode != .file && $0.file.metadata?.roundVideo == nil }) else { return [] }
         let gap = 4.0
         if items.count == 1 {
-            let file = items[0].file
-            let dimensions = file.pixelWidth.flatMap { w in file.pixelHeight.flatMap { TelegramMediaDimensions(width: w, height: $0) } }
-            let attachment = TelegramAttachment(id: file.id.uuidString, kind: file.mode == .photo ? .photo : .file,
-                name: file.name, byteCount: file.size, mimeType: nil, hasPreview: true, canDownload: false,
-                playback: file.mode == .video ? .video : nil, dimensions: dimensions)
-            guard let size = TelegramSingleMediaPresentation.size(attachment, availableWidth: min(320, width)) else { return [] }
+            guard let size = TelegramSingleMediaPresentation.uploadSize(items[0].file, availableWidth: min(320, width)) else { return [] }
             return [CGRect(origin: .zero, size: size)]
         }
         if items.count == 2 {

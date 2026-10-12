@@ -80,7 +80,6 @@ struct TelegramUploadBatchPreview: View {
             .disabled(!upload.canEditItems)
     }
 }
-
 private struct TelegramUploadMosaicLayout: Layout {
     let items: [TelegramUploadBatchItem]
     let scale: Double
@@ -107,6 +106,20 @@ private struct TelegramUploadBatchTile: View {
     @State private var failed = false
     private var previewID: String { item.file.id.uuidString + ":" + (item.file.videoCover?.id.uuidString ?? "frame") }
     var body: some View {
+        Group {
+            if compact { content.frame(maxWidth: .infinity, maxHeight: .infinity) }
+            else { TelegramUploadSingleMediaLayout(file: item.file) { content } }
+        }
+        .clipped()
+        .task(id: previewID) {
+            preview = nil; failed = false
+            do {
+                let value = try await TelegramUploadFileIO.preview(item.file)
+                guard !Task.isCancelled else { return }; preview = value
+            } catch { if !Task.isCancelled { failed = true } }
+        }
+    }
+    private var content: some View {
         ZStack(alignment: .bottomLeading) {
             if let preview {
                 Image(preview.image, scale: 1, label: Text(item.file.name)).resizable()
@@ -117,15 +130,6 @@ private struct TelegramUploadBatchTile: View {
             else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
             if spoiler { Label("Спойлер", systemImage: "eye.slash").padding(6).background(.thinMaterial) }
             else if item.file.mode == .video { Label(item.file.name, systemImage: "video.fill").font(.caption).lineLimit(1).padding(6).background(.thinMaterial) }
-        }
-        .frame(maxWidth: .infinity, minHeight: compact ? 0 : 120, maxHeight: compact ? .infinity : 200)
-        .clipped()
-        .task(id: previewID) {
-            preview = nil; failed = false
-            do {
-                let value = try await TelegramUploadFileIO.preview(item.file)
-                guard !Task.isCancelled else { return }; preview = value
-            } catch { if !Task.isCancelled { failed = true } }
         }
     }
 }

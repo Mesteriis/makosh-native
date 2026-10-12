@@ -11,7 +11,17 @@ public final class TelegramUploadVideoPlaybackController: ObservableObject {
     private var engine: TelegramNativePlaybackEngine?
     private var generation: UUID?
     private var visible = false
+    private var loopSeekID: UUID?
     private var deadline: Task<Void, Never>?
+    private let seekToStart: @MainActor (AVPlayer, @escaping @MainActor (Bool) -> Void) -> Void
+
+    init(seekToStart: @escaping @MainActor (AVPlayer, @escaping @MainActor (Bool) -> Void) -> Void = { player, completion in
+        player.seek(to: .zero) { finished in
+            Task { @MainActor in completion(finished) }
+        }
+    }) {
+        self.seekToStart = seekToStart
+    }
 
     /// Borrows the immutable owned stage. The upload owner stops this decoder
     /// before submitting or releasing it; this controller never discards bytes.
@@ -81,23 +91,36 @@ public final class TelegramUploadVideoPlaybackController: ObservableObject {
     public func setVisible(_ visible: Bool, player: AVPlayer) {
         guard self.player === player, generation != nil else { return }
         self.visible = visible
-        if visible { engine?.play(rate: 1) } else { engine?.pause() }
+        if visible && loopSeekID == nil { engine?.play(rate: 1) } else { engine?.pause() }
     }
 
     private func receive(_ event: TelegramPlaybackEvent, id: UUID) {
         guard generation == id else { return }
         switch event {
         case .ended:
-            engine?.seek(seconds: 0)
-            if visible { engine?.play(rate: 1) }
+            if let player { repeatIfVisible(player: player) }
         case .failed:
             stop(); error = "Воспроизведение предпросмотра прервано."
         case .transport, .position: break
         }
     }
 
+    func repeatIfVisible(player: AVPlayer) {
+        guard self.player === player, let generation else { return }
+        engine?.pause()
+        guard visible, loopSeekID == nil else { return }
+        let seekID = UUID(); loopSeekID = seekID
+        seekToStart(player) { [weak self, weak player] finished in
+            guard let self, let player, self.generation == generation,
+                  self.player === player, self.loopSeekID == seekID else { return }
+            self.loopSeekID = nil
+            if finished && self.visible { self.engine?.play(rate: 1) }
+            else { self.engine?.pause() }
+        }
+    }
+
     public func stop() {
-        generation = nil; deadline?.cancel(); deadline = nil
+        generation = nil; loopSeekID = nil; deadline?.cancel(); deadline = nil
         engine?.stop(); engine = nil; player = nil; visible = false; error = nil
     }
     isolated deinit { deadline?.cancel(); engine?.stop() }

@@ -1090,3 +1090,33 @@ photo/video по `ChatLayoutUtils.swift:16–32,76–114`, максимум320pt
 отфильтровывает неинтерактивные media. Такой фильтр без отдельного разбора
 состава скрыл бы выбранные файлы. Полное совпадение mixed/special-media,
 жестов и пиксельной геометрии остаётся открытым.
+
+### Отдельный и одиночный Media-предпросмотр — 2026-10-12
+
+`MediaPreviewRowItem.swift:66–114,195–235` получает размеры ordinary media из
+`ChatLayoutUtils.swift:16–32,76–114`. Фото ограничено320pt, маленькие фото имеют
+особое увеличение/minimums; ordinary video использует420pt для landscape и320pt
+для portrait с нормализацией малых dimensions. Макош применяет уже существующий
+bounded helper также к отдельным строкам и одиночному предпросмотру. Их прежние
+фиксированные высоты200/240pt сняты; loading/error имеют ту же высоту. Singleton
+в коллаже сохраняет собственную границу320pt, File и recorded-round — свои пути.
+Нативно проверены portrait/wide/square, отдельные строки, группировка, одиночное
+видео, удаление только выбранного элемента и restart с теми же ID/локальными
+ресурсами. Внешняя форма modal, padding/карточки, special-media, жесты и полная
+pixel parity остаются открытыми; outer GPLv2-only код/assets не копируются.
+
+Уточнение mixed-границы: `ThumbUtils.swift:222–260` пропускает decoded image
+с любой стороной меньше40 либо aspect ratio больше10 при выборе options, но
+`SenderController.swift:331–369` переводит static payload в File только при
+width/10 > height или height <40. Поэтому width39 сам по себе не доказывает File.
+`CoreExtension.swift:307–320` не считает generic image File интерактивным;
+`GroupedLayout.swift:52–59` удаляет такие members из photoOrVideo layout.
+Например,40×39 рядом с обычным фото требует отдельного разбора. Текущий mixed
+список сохраняет видимость всех файлов; такое фильтрование не перенесено.
+
+Повтор video preview теперь ждёт завершения native seek, оставаясь на паузе.
+Поздний callback проверяет visibility/generation/player/seek identity; hidden EOF
+не начинает новую перемотку. Детерминированные held-completion проверки используют
+настоящий AVPlayer и immutable stage; обычные native integration tests сохраняют
+проверку реальных циклов. Это исправление собственного AVFoundation transport,
+а не заимствование reference player.

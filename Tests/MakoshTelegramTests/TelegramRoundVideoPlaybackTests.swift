@@ -117,8 +117,7 @@ import CryptoKit
         }
         XCTAssertNotNil(old.currentItem)
         playback.setVisible(false, player: old)
-        NotificationCenter.default.post(name: AVPlayerItem.didPlayToEndTimeNotification, object: oldItem)
-        try await Task.sleep(for: .milliseconds(50))
+        playback.repeatIfVisible(player: old)
         XCTAssertEqual(old.rate, 0); XCTAssertNotNil(old.currentItem)
         await playback.loadRoundVideo(second)
         guard let current = playback.player else { XCTFail("Replacement round preview missing"); return }

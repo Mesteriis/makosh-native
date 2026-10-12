@@ -11,7 +11,7 @@ struct TelegramUploadVideoPlayerView: View {
             NativeVideoSurface(player: player) { visible in
                 playback.setVisible(visible, player: player)
             }
-            .frame(height: 240).frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .accessibilityLabel("Видеопредпросмотр без звука")
             .accessibilityIdentifier("telegram.upload.videoPlayback")
         } else if let error = playback.error {

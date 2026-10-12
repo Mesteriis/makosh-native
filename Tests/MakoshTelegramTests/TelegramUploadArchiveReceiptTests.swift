@@ -7,6 +7,202 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadArchiveReceiptTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches acknowledging a different ZIP descriptor after native admission and losing owned stages.
+    func testControllerRefusesChangedArchiveAcknowledgementAndRetriesOnlyConfirmation() async throws {
+        for canonicalEquivalent in [false, true] {
+            let setup = try await prepared(accountID: -1, disposition: .prepared, firstName: "café.txt")
+            defer { try? setup.bundle.discard() }
+            let repository = ArchiveAcknowledgementRepository(postbox: setup.box, canonicalEquivalent: canonicalEquivalent)
+            let store = TelegramPendingUploadSession(repository: repository,
+                files: { TelegramPendingUploadFiles(repository: setup.fixture.archive) })
+            let controller = TelegramUploadController()
+            controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box), recoveryStore: store, requiresRecovery: true)
+            defer { controller.clear() }
+            guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+                                     restorationEpoch: controller.recoveryRestoreEpoch) else { return XCTFail("ZIP must restore") }
+            controller.send()
+            await archiveEventually { controller.phase == .uncertain || controller.phase == .queued(nil) }
+            XCTAssertEqual(controller.phase, .uncertain); XCTAssertTrue(controller.canRetryRecovery)
+            XCTAssertFalse(controller.canSend); XCTAssertEqual(repository.corruptedReads, 1)
+            for file in setup.bundle.items.map(\.file) + [try XCTUnwrap(setup.bundle.archive?.file)] {
+                XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path))
+            }
+            let accepted = try await sourceFactsLoad(setup.fixture.session(setup.box))
+            repository.corruptAcknowledgement = false
+            controller.retryRecovery()
+            await archiveEventually { controller.phase == .queued(nil) }
+            XCTAssertEqual(controller.phase, .queued(nil)); XCTAssertTrue(controller.items.isEmpty)
+            let retained = try await sourceFactsLoad(setup.fixture.session(setup.box))
+            XCTAssertEqual(retained, accepted, "Confirmation retry must not enqueue or rewrite the native receipt")
+            XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+            XCTAssertEqual(try eventCount(setup.fixture), setup.events)
+        }
+    }
+
+    // Catches dropping the recovered ZIP before explicit controller submission or accepting only N originals.
+    func testControllerRestoresAndSubmitsWholeArchiveUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] {
+            let setup = try await prepared(enabled: enabled, accountID: -1, disposition: .prepared)
+            defer { try? setup.bundle.discard() }
+            let controller = TelegramUploadController(), store = setup.fixture.session(setup.box)
+            controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box), recoveryStore: store, requiresRecovery: true)
+            defer { controller.clear() }
+            guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+                                     restorationEpoch: controller.recoveryRestoreEpoch) else {
+                XCTFail("Controller must adopt the ZIP and canonical resources together"); continue
+            }
+            XCTAssertEqual(controller.phase, .ready); XCTAssertTrue(controller.canSend)
+            XCTAssertEqual(controller.presentation, .archive)
+            XCTAssertEqual(controller.items.map(\.id), setup.draft.items.map(\.id))
+            XCTAssertEqual(controller.presentedItems.map(\.id), [try XCTUnwrap(setup.draft.archive?.id)])
+            XCTAssertEqual(controller.file?.name, "Telegram Archive.zip")
+            XCTAssertEqual(controller.captionInput, setup.draft.captionInput)
+            XCTAssertFalse(controller.canEditItems); XCTAssertFalse(controller.canEditVideoCover)
+            XCTAssertFalse(controller.updateGrouping(true, contextID: setup.draft.id, revision: controller.itemsRevision))
+            XCTAssertFalse(controller.updatePresentation(.file, contextID: setup.draft.id, revision: controller.itemsRevision))
+            controller.send()
+            await archiveEventually { controller.phase == .queued(nil) || controller.phase == .uncertain || controller.phase == .rejected }
+            XCTAssertEqual(controller.phase, .queued(nil))
+            XCTAssertEqual(controller.messageIDs.count, 1)
+            let accepted = try await sourceFactsLoad(store)
+            XCTAssertEqual(accepted.items, setup.draft.items); XCTAssertEqual(accepted.archive, setup.draft.archive)
+            XCTAssertEqual(accepted.captionInput, setup.draft.captionInput)
+            guard case let .acceptedBatch(ids) = accepted.disposition, ids.count == 1 else {
+                XCTFail("Controller must confirm the complete one-ZIP pointer"); continue
+            }
+            XCTAssertTrue(controller.items.isEmpty)
+            XCTAssertNil(controller.file)
+            for file in setup.bundle.items.map(\.file) + [try XCTUnwrap(setup.bundle.archive?.file)] {
+                XCTAssertFalse(FileManager.default.fileExists(atPath: file.url.path))
+            }
+            XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+            XCTAssertEqual(try eventCount(setup.fixture), setup.events)
+        }
+    }
+
+    // Catches treating a restored started ZIP as a fresh send opportunity.
+    func testControllerStartedArchiveIsUncertainAndRebindingReleasesWholeBundle() async throws {
+        let setup = try await prepared(accountID: -1)
+        defer { try? setup.bundle.discard() }
+        let controller = TelegramUploadController(), store = setup.fixture.session(setup.box)
+        controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box), recoveryStore: store, requiresRecovery: true)
+        guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+                                 restorationEpoch: controller.recoveryRestoreEpoch) else {
+            return XCTFail("Started ZIP must restore as uncertain")
+        }
+        XCTAssertEqual(controller.phase, .uncertain); XCTAssertFalse(controller.canSend)
+        controller.send()
+        let pointer = try await sourceFactsLoad(store)
+        XCTAssertEqual(pointer, setup.draft)
+        controller.bind(provider: nil)
+        for file in setup.bundle.items.map(\.file) + [try XCTUnwrap(setup.bundle.archive?.file)] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.url.path))
+        }
+        let retained = try await sourceFactsLoad(store)
+        XCTAssertEqual(retained, setup.draft)
+        XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+    }
+
+    // Catches silently dropping the ZIP on controller destruction.
+    func testControllerDeinitDiscardsArchiveAndCanonicalStages() async throws {
+        let setup = try await prepared(accountID: -1, disposition: .prepared)
+        defer { try? setup.bundle.discard() }
+        do {
+            let controller = TelegramUploadController()
+            controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box),
+                recoveryStore: setup.fixture.session(setup.box), requiresRecovery: true)
+            guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+                                     restorationEpoch: controller.recoveryRestoreEpoch) else {
+                return XCTFail("Prepared archive must transfer its whole lifetime")
+            }
+        }
+        for file in setup.bundle.items.map(\.file) + [try XCTUnwrap(setup.bundle.archive?.file)] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.url.path))
+        }
+        let retained = try await sourceFactsLoad(setup.fixture.session(setup.box))
+        XCTAssertEqual(retained, setup.draft)
+    }
+
+    // Catches overwriting a ZIP stage whose cleanup failed with a later preparation.
+    func testFailedArchiveCleanupRetainsItsStageAndBlocksReplacementUntilRetry() async throws {
+        let setup = try await prepared(accountID: -1, disposition: .prepared)
+        defer { try? setup.bundle.discard() }
+        let archive = try XCTUnwrap(setup.bundle.archive), controller = TelegramUploadController()
+        controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box),
+            recoveryStore: setup.fixture.session(setup.box), requiresRecovery: true)
+        guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+                                 restorationEpoch: controller.recoveryRestoreEpoch) else {
+            return XCTFail("Archive must restore before its cleanup can be exercised")
+        }
+        var refuseZIP = true, staged = 0
+        controller.discard = { file in
+            if file.id == archive.file.id, refuseZIP { throw TelegramUploadFileError.stagingFailed }
+            try TelegramUploadFileIO.discard(file)
+        }
+        controller.stage = { _, _ in staged += 1; throw TelegramUploadFileError.unavailable }
+        controller.cancelPreparation()
+        XCTAssertNotNil(controller.error)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archive.file.url.path))
+        controller.prepare(sources: [.init(source: setup.fixture.root.appendingPathComponent("new.txt"), mode: .file)],
+            isGrouped: false, target: setup.fixture.target, captionInput: .empty)
+        await Task.yield()
+        XCTAssertEqual(staged, 0)
+        XCTAssertEqual(controller.phase, .failed)
+        refuseZIP = false; controller.clear()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: archive.file.url.path))
+        XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+    }
+
+    // Catches accepting an incomplete bundle or transferring ownership from an obsolete recovery epoch.
+    func testControllerBundleAdmissionRefusesMissingZIPChangedMembersAndStaleEpoch() async throws {
+        let setup = try await prepared(accountID: -1, disposition: .prepared)
+        defer { try? setup.bundle.discard() }
+        let archive = try XCTUnwrap(setup.bundle.archive)
+        for mutation in ["missingZIP", "members", "epoch", "array"] {
+            let controller = TelegramUploadController()
+            controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box),
+                recoveryStore: setup.fixture.session(setup.box), requiresRecovery: true)
+            var bundle = setup.bundle, epoch = controller.recoveryRestoreEpoch
+            if mutation == "missingZIP" { bundle = .init(items: bundle.items, archive: nil) }
+            if mutation == "members" { bundle = .init(items: bundle.items, archive: .init(file: archive.file, members: archive.members.reversed())) }
+            if mutation == "epoch" { epoch = UUID() }
+            let restored = mutation == "array"
+                ? controller.restore(draft: setup.draft, items: bundle.items, target: setup.fixture.target, restorationEpoch: epoch)
+                : controller.restore(draft: setup.draft, bundle: bundle, target: setup.fixture.target, restorationEpoch: epoch)
+            XCTAssertFalse(restored, mutation); XCTAssertEqual(controller.phase, .idle)
+            XCTAssertEqual(try Data(contentsOf: archive.file.url), setup.zipBytes)
+        }
+    }
+
+    // Catches the model calling array-only recovery and losing the separately restored ZIP.
+    func testModelRecoversWholeArchiveThroughRealSessionAndReleasesItOnDisconnect() async throws {
+        let setup = try await prepared(accountID: -1, disposition: .prepared)
+        defer { try? setup.bundle.discard() }
+        let model = TelegramModel.syntheticPreview(), store = setup.fixture.session(setup.box)
+        model.selectedChatID = 42
+        model.upload.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box), recoveryStore: store, requiresRecovery: true)
+        model.bindPendingUploadRecovery(store, replyProvider: nil)
+        await archiveEventually { !model.isRestoringPendingUpload }
+        XCTAssertNil(model.pendingUploadRecoveryError)
+        XCTAssertEqual(model.upload.phase, .ready)
+        guard let zip = model.upload.file else { return XCTFail("Model must own one recovered ZIP") }
+        XCTAssertEqual(zip.name, "Telegram Archive.zip")
+        XCTAssertEqual(try Data(contentsOf: zip.url), setup.zipBytes)
+        let canonical = model.upload.items.map(\.file)
+        XCTAssertEqual(canonical.count, 2)
+        model.disconnect()
+        for file in canonical + [zip] { XCTAssertFalse(FileManager.default.fileExists(atPath: file.url.path)) }
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(setup.bundle.archive?.file.url)), setup.zipBytes)
+        XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+        XCTAssertEqual(try eventCount(setup.fixture), setup.events)
+    }
+
+    private func archiveEventually(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !condition(), ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertTrue(condition())
+    }
+
     // Catches the provider expanding a retained bundle into originals or recapturing it in S3.
     func testWholeBundleSubmissionQueuesOneZIPWithoutNewArchiveCopies() async throws {
         for enabled in [false, true] {
@@ -314,11 +510,12 @@ import SwiftSignalKit
         let events: [[String]]
     }
 
-    private func prepared(enabled: Bool = false, chatTTL: Bool = false, includePhoto: Bool = false, accountID: Int64 = 1) async throws -> Setup {
+    private func prepared(enabled: Bool = false, chatTTL: Bool = false, includePhoto: Bool = false, accountID: Int64 = 1,
+                          disposition: TelegramPendingUploadDisposition = .submissionStarted, firstName: String = "first.txt") async throws -> Setup {
         let fixture = try await sourceFactsArchive(accountID: accountID), box = try await sourceFactsOpen(fixture.postboxPath)
         try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: enabled)
         try await sourceFactsValue(archiveReceiptPeers(box, chatTTL: chatTTL))
-        let first = try await includePhoto ? sourceFactsSmallImage(fixture) : sourceFactsDocument(fixture, name: "first.txt", text: "First synthetic source")
+        let first = try await includePhoto ? sourceFactsSmallImage(fixture) : sourceFactsDocument(fixture, name: firstName, text: "First synthetic source")
         let items = [first,
                      try await sourceFactsDocument(fixture, name: "second.txt", text: "Second synthetic source")]
         defer { items.forEach { try? $0.discard() } }
@@ -338,7 +535,7 @@ import SwiftSignalKit
         _ = try await store.installArchive(preparationID: id, expectedRevision: pending.revision, archive: descriptor,
             target: fixture.target, admission: .init(accountID: accountID, chatID: 42, preparationID: id,
                 expectedRevision: pending.revision, generation: UUID()))
-        try await store.save(preparationID: id, chatID: 42, captionInput: input, disposition: .submissionStarted)
+        try await store.save(preparationID: id, chatID: 42, captionInput: input, disposition: disposition)
         let draft = try await sourceFactsLoad(store), bundle = try await store.restoreBundle(draft: draft)
         return .init(fixture: fixture, box: box, draft: draft, bundle: bundle,
             zipBytes: try Data(contentsOf: zip.file.url), localRecords: try fixture.localRecords(), events: try eventCount(fixture))
@@ -360,6 +557,44 @@ import SwiftSignalKit
 
     private func eventCount(_ fixture: SourceFactsTestArchive) throws -> [[String]] {
         try fixture.database.execute("SELECT count(*) FROM \"\(fixture.database.schema)\".archive_file_events")
+    }
+}
+
+/// Only the confirmation read is faulted; persistence and enqueue use the real isolated Postbox.
+@MainActor private final class ArchiveAcknowledgementRepository: TelegramPendingUploadRepository {
+    let accountID: Int64 = -1
+    let underlying: TelegramPostboxPendingUploadRepository
+    let canonicalEquivalent: Bool
+    var corruptAcknowledgement = true
+    var corruptedReads = 0
+    init(postbox: Postbox, canonicalEquivalent: Bool) {
+        underlying = .init(postbox: postbox, accountID: -1); self.canonicalEquivalent = canonicalEquivalent
+    }
+    func load(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
+        underlying.load(chatID: chatID) { [self] result in
+            do {
+                guard corruptAcknowledgement, let draft = try result.get(), case .acceptedBatch = draft.disposition else {
+                    completion(result); return
+                }
+                var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+                var archive = try XCTUnwrap(object["archive"] as? [String: Any])
+                var members = try XCTUnwrap(archive["members"] as? [[String: Any]])
+                let entryName = try XCTUnwrap(members[0]["entryName"] as? String)
+                let decomposed = entryName.decomposedStringWithCanonicalMapping
+                let equivalent = entryName.utf8.elementsEqual(decomposed.utf8) ? entryName.precomposedStringWithCanonicalMapping : decomposed
+                let changedName = canonicalEquivalent ? equivalent : "different-zip-member.txt"
+                if canonicalEquivalent {
+                    XCTAssertEqual(changedName, entryName); XCTAssertFalse(changedName.utf8.elementsEqual(entryName.utf8))
+                }
+                members[0]["entryName"] = changedName; archive["members"] = members; object["archive"] = archive
+                let changed = try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: object))
+                XCTAssertTrue(changed.isValid)
+                corruptedReads += 1; completion(.success(changed))
+            } catch { completion(.failure(.incompatibleData)) }
+        }
+    }
+    func save(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID?, completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
+        underlying.save(draft, expectedRevision: expectedRevision, completion: completion)
     }
 }
 

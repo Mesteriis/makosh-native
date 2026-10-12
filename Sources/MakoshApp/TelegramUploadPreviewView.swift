@@ -16,6 +16,7 @@ struct TelegramUploadPreviewView: View {
     private var canDismiss: Bool { upload.canCancel || upload.phase == .uncertain }
     private var canUseMediaOptions: Bool { upload.canUseMediaOptions }
     private var title: String {
+        if upload.presentation == .archive { return "Отправить архив" }
         if upload.items.count > 1 { return "Отправить вложения (\(upload.items.count))" }
         return switch upload.file?.mode {
         case .photo: "Отправить фото"
@@ -44,7 +45,7 @@ struct TelegramUploadPreviewView: View {
                     } label: { Image(systemName: "ellipsis.circle") }
                         .menuStyle(.borderlessButton).fixedSize()
                         .accessibilityLabel(upload.items.count > 1 ? "Действия с вложениями" : upload.file?.mode == .video ? "Действия с видео" : upload.file?.mode == .photo ? "Действия с фото" : "Действия с вложением").accessibilityIdentifier("telegram.upload.actions")
-                        .accessibilityValue(upload.presentation == .file ? "Файлы" : "Медиа")
+                        .accessibilityValue(upload.presentation == .archive ? "Архив" : upload.presentation == .file ? "Файлы" : "Медиа")
                 }
                 Button { upload.dismissPreparation(contextID: contextID) } label: { Image(systemName: "xmark") }
                     .buttonStyle(.plain).disabled(!canDismiss).keyboardShortcut(.cancelAction)

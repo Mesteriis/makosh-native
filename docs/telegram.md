@@ -1953,9 +1953,20 @@ recalls an inserted message. Legacy array submissions continue to refuse16;
 adapters without explicit bundle support refuse Archive. Submission creates no
 file records or S3 objects. Account/server delivery has not been exercised.
 
-Controller/model adoption, capture-receipt retention across pointer
-failure and existing-window Archive UI remain open; ordinary preparations still
-use schema15. Capture and pointer installation
+The model restores the authenticated bundle and transfers canonical resources
+and ZIP to the controller as one lifetime. Active schema16 Archive presents one
+ZIP, retains its canonical resources and raw caption, and submits through the
+bundle provider. Confirmation binds the exact encoded ZIP descriptor, presentation and caption
+rules as well as the canonical tuple. A changed confirmation keeps stages and
+permits only confirmation retry. Started submissions restore as uncertain,
+without automatic resend. Cancellation, rebinding and destruction release the
+whole temporary bundle; failed ZIP cleanup retains ownership and blocks a new
+preparation until cleanup succeeds. These paths create no file records or S3
+objects. Ordinary legacy recovery continues through the bundle adapter.
+
+Capture-receipt retention across pointer failure, fresh-Session lost-ACK install
+recovery and Archive generation/mode switching in the existing window remain
+open; ordinary preparations still use schema15. Capture and pointer installation
 are separate transactions; failed installation never purges immutable records.
 
 ### Versioned caption projection

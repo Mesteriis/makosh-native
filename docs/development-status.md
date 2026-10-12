@@ -1,6 +1,78 @@
 # Development status — 2026-10-12
 
-## Current stage: whole-bundle ZIP submission providers
+## Current stage: controller/model whole-bundle ZIP recovery
+
+The model restores a whole authenticated bundle. Controller admission binds
+canonical items, ordered ZIP metadata and the current recovery epoch; active
+Archive presents one ZIP and explicit send passes the whole bundle. Receipt
+confirmation also binds exact encoded archive bytes, presentation and caption rules.
+Changed confirmation retains all stages and retries only confirmation. Started
+submissions remain uncertain without automatic resend. Cleanup/cancellation,
+rebinding and deinit release canonical resources and ZIP; failed ZIP cleanup
+retains ownership and blocks replacement. No new file records or S3 objects.
+
+Compiled RED:6 tests,8 expected assertion failures,0 unexpected. Focused GREEN:
+33 XCTest/0 failures and45 Python tests. Receipt-corruption RED:1 test,5 expected
+assertion failures,0 unexpected; focused GREEN55 XCTest/0 failures and45 Python
+tests. Initial required DB up/full suite exit0: **1,298 XCTest (1,222 Telegram +76 core),
+1 skipped,0 failures;45 Python tests**. Three existing test compiler warnings
+and540 upstream t19 diagnostics remain separate; microphone authorization is
+the single skip. Initial required build exits0; the updated build includes the
+two UI label changes. These gates precede the final Unicode confirmation fix.
+
+Root review identifies Swift canonical String equality in the new archive ACK
+comparison. The first NFC/NFD regression also trips a fixture assertion because
+the source name already has decomposed bytes:1 test/6 failures. Corrected toggle
+fixture gives compiled RED1/5 expected controller failures,0 unexpected. Sorted
+JSON bytes now bind the exact descriptor, including Unicode spellings. Focused
+GREEN55 XCTest/0 failures and45 Python tests. Final required full/build gates
+exit0: **1,298 XCTest (1,222 Telegram +76 core),1 skipped,0 failures;45 Python
+tests**. No compiler warnings in this final run;541 upstream t19 diagnostics
+remain separate from passing assertions. Microphone authorization is the skip.
+
+Actual isolated common-window QA restores one ZIP with its caption. Native AX
+RED exposed a two-item/Media label; reference PreviewSenderController:480–488
+confirms a separate Archive title. Final build/AX/screenshot GREEN shows
+“Отправить архив”, “Архив”, one ZIP and the retained caption. Strict deep
+signatures pass; QA executable matches the built app apart from signing-related
+LINKEDIT virtual size. This uses a fresh synthetic Postbox and isolated schema,
+without Account/server sends or hardware access.
+Edited caption and ZIP survive a process restart. Explicit isolated GUI enqueue
+closes the modal; separate reopened Postbox readback confirms one accepted ID,
+two canonical resources, ZIP and edited caption, with exactly three local records
+and no S3 receipts. The first readback helper fails before reading Postbox because
+new boolean payload metadata invalidates its string-only dictionary; corrected
+private helper passes1 XCTest/0 failures and45 Python tests. Original FAIL retained.
+
+Fresh isolated QA repeated on the final Unicode-fix binary: strict signature
+and normalized executable payload checks pass, one ZIP and edited caption survive
+restart, explicit GUI enqueue closes the modal with S3 OFF. Reopened native
+Postbox readback passes1 XCTest/0 failures and45 Python tests with one accepted
+ID, two canonical resources plus ZIP, exact edited caption and three local
+records without S3 receipts. No Account/server sends or hardware access.
+
+Final project/reference XERJ freshness checks exit0. Focused own query retrieves
+the controller's retained archive field and guards, confirmed against source.
+Earlier broad queries retain separate coverage skips; the focused reference
+query retrieves the Archive title. The453-file/8-copy freeze matches after
+final gates and temporary QA removal:469 integrity checks,0 mismatches.
+
+Bounded read-only source review reports no additional actionable findings.
+Root independently verifies report/inventory hashes, current source/copies and
+all84 original executions:1,268 integrity checks,298 artifacts,6 nonzero runs,
+7 worker runtime/tool skips and2 query coverage skips. The nonzero runs retain
+the five root RED/helper failures above and one worker guessed-path inspection
+failure. Root's initial verifier rejects extra contract keys; the adapted private
+verifier checks their exact values and passes, preserving that original failure.
+Worker provider/model/usage/internal execution remain unknown; no quorum.
+Runtime gates belong to root. Inherited stale model cleanup still attempts all
+bundle resources with `try?`; cleanup-error reporting/retention there is not
+claimed solved by this slice.
+
+Capture-receipt retention/fresh Session lost-ACK install recovery and picker
+Archive generation/mode switching remain open. Full migration stays active.
+
+## Previous stage: whole-bundle ZIP submission providers
 
 The Account and isolated native providers accept a recovered bundle through a
 dedicated overload. Shared submission authenticates canonical/original/cover

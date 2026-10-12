@@ -1,5 +1,24 @@
 # Development status — 2026-10-12
 
+## Pre-merge CI repair and next stage: extended search
+
+Both hosted runs for block2 head8cbf794 failed before compilation because
+Gitiles regenerated libvpx tar/PAX timestamps. Two fresh downloads and the
+original capture have identical1,258 path/content pairs, including all126
+compiled inputs. The VPX pin now authenticates that complete canonical inventory;
+compressed12MiB and expanded64MiB limits run before tar metadata parsing. The
+original capture digest remains provenance. Prepared135-file fingerprint is
+unchanged; no decoder source, license or build configuration changes.
+
+The original focused regression exits1 (two assertion failures); the repaired
+8 Python tests exit0, including full-inventory tampering, bounded expansion and
+cold HTTP/offline reuse. A real uncached HTTP preparation produces the exact
+reviewed135-file output. `scripts/dev-db.sh up` and `scripts/build-app.sh` exit0.
+A full local suite is in progress at this commit. A read-only worker review finds
+no material VPX boundary defect; it does not establish hosted CI success.
+The existing PR remains unmerged until its repaired commit passes hosted CI.
+Extended-search implementation follows on the next feature branch.
+
 ## Current stage: Telegram extended messages (block 2, locally verified)
 
 The authorized sequence remains: (1) media polish; (2) selected reply quotes,

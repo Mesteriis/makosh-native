@@ -5,6 +5,7 @@
   "tree": "f83d33a1ba18b3a203e43596b5223042b62417a3",
   "sourceURL": "https://chromium.googlesource.com/webm/libvpx/+archive/6df3ec34557879fff673706f4a1d9fbd0f3a6f0e.tar.gz",
   "archiveSHA256": "3438fed428d5b272528b5e397cc3aa24cf080751933f600af3f8fcfcce1ab55b",
+  "archiveContentSHA256": "3c651e0bd66cc5e1efa243e195ad67fd7d508ece5a38f0d05a82dfba9d242c52",
   "sourceFilesSHA256": {
     "AUTHORS": "8a98b560e5314713550e6d3ba2d8acf3ef54dfc870fc448bef08a7c57648a0bd",
     "LICENSE": "8267348d5af1262c11d1a08de2f5afc77457755f1ac658627dd9acf71011d615",

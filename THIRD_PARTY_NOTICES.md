@@ -154,8 +154,14 @@ development ledger separately from source/license preparation.
 
 `Dependencies/VPX.lock.json` independently pins libvpx1.17.0 at
 `6df3ec34557879fff673706f4a1d9fbd0f3a6f0e`, tree
-`f83d33a1ba18b3a203e43596b5223042b62417a3`, official source archive SHA256
-`3438fed428d5b272528b5e397cc3aa24cf080751933f600af3f8fcfcce1ab55b`.
+`f83d33a1ba18b3a203e43596b5223042b62417a3`. The original compressed capture
+SHA256 is `3438fed428d5b272528b5e397cc3aa24cf080751933f600af3f8fcfcce1ab55b`.
+Gitiles regenerates tar timestamps. Preparation authenticates the complete
+1,258-file path/content inventory instead: canonical sorted compact JSON of
+path-to-SHA256 has digest
+`3c651e0bd66cc5e1efa243e195ad67fd7d508ece5a38f0d05a82dfba9d242c52`.
+Gzip expansion is bounded before parsing tar metadata; changed, missing or extra
+files are rejected, including files outside the compilation closure.
 The exact126-file portable VP9 decode closure includes48 C units,72 headers,
 three runtime-dispatch inputs and LICENSE/PATENTS/AUTHORS. Its prepared135-file
 inventory is fingerprinted. BSD source and patent notices are retained in

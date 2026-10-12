@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare independently pinned portable VP9 C11 sources; no upstream scripts."""
 import importlib.util
+import gzip
 import io
 import json
 from pathlib import Path, PurePosixPath
@@ -18,6 +19,7 @@ rtcd = importlib.util.module_from_spec(spec); spec.loader.exec_module(rtcd)
 REVISION = '6df3ec34557879fff673706f4a1d9fbd0f3a6f0e'
 TREE = 'f83d33a1ba18b3a203e43596b5223042b62417a3'
 ARCHIVE_SHA256 = '3438fed428d5b272528b5e397cc3aa24cf080751933f600af3f8fcfcce1ab55b'
+ARCHIVE_CONTENT_SHA256 = '3c651e0bd66cc5e1efa243e195ad67fd7d508ece5a38f0d05a82dfba9d242c52'
 URL = 'https://chromium.googlesource.com/webm/libvpx/+archive/' + REVISION + '.tar.gz'
 LEGAL = {'LICENSE', 'PATENTS', 'AUTHORS'}
 DECLARATIONS = {'vp9_rtcd': 'vp9/common/vp9_rtcd_defs.pl',
@@ -32,10 +34,11 @@ def safe_path(name):
 
 
 def validate_lock(lock):
-    keys = {'schemaVersion', 'version', 'revision', 'tree', 'sourceURL', 'archiveSHA256', 'sourceFilesSHA256', 'sources'}
+    keys = {'schemaVersion', 'version', 'revision', 'tree', 'sourceURL', 'archiveSHA256', 'archiveContentSHA256', 'sourceFilesSHA256', 'sources'}
     if set(lock) not in [keys, keys | {'preparedFilesSHA256'}] or lock['schemaVersion'] != 1 or \
             lock['version'] != '1.17.0' or lock['revision'] != REVISION or lock['tree'] != TREE or \
-            lock['sourceURL'] != URL or lock['archiveSHA256'] != ARCHIVE_SHA256:
+            lock['sourceURL'] != URL or lock['archiveSHA256'] != ARCHIVE_SHA256 or \
+            lock['archiveContentSHA256'] != ARCHIVE_CONTENT_SHA256:
         raise ValueError('Unreviewed VPX source origin or version')
     files = lock['sourceFilesSHA256']
     if not isinstance(files, dict) or len(files) != 126 or not (LEGAL | set(DECLARATIONS.values())).issubset(files):
@@ -51,11 +54,16 @@ def validate_lock(lock):
         raise ValueError('Invalid VPX prepared fingerprint')
 
 
-def archive_files(blob, expected_sha=ARCHIVE_SHA256):
-    if len(blob) > 12 * 1024 * 1024 or helpers.sha(blob) != expected_sha:
-        raise ValueError('VPX archive checksum or size mismatch')
+def archive_files(blob):
+    if len(blob) > 12 * 1024 * 1024:
+        raise ValueError('VPX archive exceeds compressed bounds')
+    # Bound PAX/header expansion before tarfile reads extension metadata.
+    with gzip.GzipFile(fileobj=io.BytesIO(blob)) as compressed:
+        expanded = compressed.read(64 * 1024 * 1024 + 1)
+    if len(expanded) > 64 * 1024 * 1024:
+        raise ValueError('VPX archive exceeds expanded bounds')
     files, names, total = {}, set(), 0
-    with tarfile.open(fileobj=io.BytesIO(blob), mode='r:gz') as archive:
+    with tarfile.open(fileobj=io.BytesIO(expanded), mode='r:') as archive:
         for member in archive:
             name = member.name.rstrip('/') if member.isdir() else member.name
             if not safe_path(name) or name in names or not (member.isfile() or member.isdir()):
@@ -64,6 +72,8 @@ def archive_files(blob, expected_sha=ARCHIVE_SHA256):
             if member.size < 0 or member.size > 20 * 1024 * 1024 or total > 64 * 1024 * 1024 or len(names) > 5000:
                 raise ValueError('VPX source archive exceeds bounds')
             if member.isfile(): files[name] = archive.extractfile(member).read()
+    if helpers.fingerprint({name: helpers.sha(data) for name, data in files.items()}) != ARCHIVE_CONTENT_SHA256:
+        raise ValueError('VPX archive content differs from pin')
     return files
 
 
@@ -130,13 +140,20 @@ def prepare(lock_path, cache, destination):
             raise ValueError('VPX output, recipe or pin changed; preserve before preparing')
         print('VPX: verified independent source preparation'); return
     helpers.plain_parent(cache); cache.mkdir(parents=True, exist_ok=True)
-    archive = cache / (ARCHIVE_SHA256 + '.tar.gz')
+    archive = cache / (ARCHIVE_CONTENT_SHA256 + '.tar.gz')
     if archive.is_symlink(): raise ValueError('VPX archive cache link refused')
     if not archive.exists():
-        with urllib.request.urlopen(URL, timeout=30) as response:
-            if not response.url.startswith('https://'): raise ValueError('VPX transport downgrade')
-            blob = response.read(12 * 1024 * 1024 + 1)
-        if len(blob) > 12 * 1024 * 1024 or helpers.sha(blob) != ARCHIVE_SHA256: raise ValueError('VPX archive differs from pin')
+        legacy = cache / (ARCHIVE_SHA256 + '.tar.gz')
+        if legacy.exists() or legacy.is_symlink():
+            if legacy.is_symlink() or not legacy.is_file() or legacy.stat().st_size > 12 * 1024 * 1024:
+                raise ValueError('Unsafe legacy VPX archive cache')
+            blob = legacy.read_bytes()
+        else:
+            with urllib.request.urlopen(URL, timeout=30) as response:
+                if not response.url.startswith('https://'): raise ValueError('VPX transport downgrade')
+                blob = response.read(12 * 1024 * 1024 + 1)
+        all_files = archive_files(blob)
+        build_inputs({n: all_files[n] for n in lock['sourceFilesSHA256']}, lock)
         with archive.open('xb') as output: output.write(blob)
     if not archive.is_file() or archive.stat().st_size > 12 * 1024 * 1024: raise ValueError('VPX source cache exceeds bounds')
     all_files = archive_files(archive.read_bytes())

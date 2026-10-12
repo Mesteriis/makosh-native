@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import importlib.util
+import io
+import gzip
+import tarfile
 import copy
 import json
 from pathlib import Path
@@ -15,9 +18,54 @@ class VPXPreparationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.lock = json.loads((ROOT / "Dependencies/VPX.lock.json").read_text())
-        archive = ROOT / ".local/vpx-archives" / (cls.lock["archiveSHA256"] + ".tar.gz")
+        archive = ROOT / ".local/vpx-archives" / (cls.lock["archiveContentSHA256"] + ".tar.gz")
+        if not archive.exists():
+            archive = archive.with_name(cls.lock["archiveSHA256"] + ".tar.gz")
         all_files = prep.archive_files(archive.read_bytes())
+        cls.all_files = all_files
         cls.files = {name: all_files[name] for name in cls.lock["sourceFilesSHA256"]}
+
+    def repacked(self, files=None, timestamp=1):
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+            for name, data in sorted((self.all_files if files is None else files).items()):
+                info = tarfile.TarInfo(name); info.size = len(data); info.mtime = timestamp
+                archive.addfile(info, io.BytesIO(data))
+        return stream.getvalue()
+
+    def testRegeneratedArchiveMetadataCannotRejectExactReviewedSourceContent(self):
+        # Gitiles assigns changing tar timestamps to an immutable source revision.
+        for timestamp in [1, 2_000_000_000]:
+            try: actual = prep.archive_files(self.repacked(timestamp=timestamp))
+            except ValueError as error: self.fail("Exact reviewed source rejected after tar metadata regeneration: " + str(error))
+            self.assertEqual(actual, self.all_files)
+
+    def testRegeneratedArchiveStillRejectsChangedUncompiledMissingAndExtraFiles(self):
+        name = next(n for n in self.all_files if n not in self.files)
+        candidates = [dict(self.all_files, **{name: self.all_files[name] + b"changed"}),
+            {n: b for n,b in self.all_files.items() if n != name},
+            dict(self.all_files, **{"unexpected-source.txt": b"extra"})]
+        for candidate in candidates:
+            with self.subTest(count=len(candidate)), self.assertRaises(ValueError):
+                prep.archive_files(self.repacked(candidate))
+
+    def testOversizedGzipExpansionIsRejectedBeforeTarMetadataParsing(self):
+        bomb = gzip.compress(b"0" * (64 * 1024 * 1024 + 1))
+        with patch.object(tarfile, "open", side_effect=AssertionError("parsed unbounded tar")), self.assertRaisesRegex(ValueError, "expanded bounds"):
+            prep.archive_files(bomb)
+
+    def testColdDownloadedRegeneratedArchiveProducesReviewedPackageAndReusesOffline(self):
+        class Response(io.BytesIO):
+            url = prep.URL
+        with tempfile.TemporaryDirectory() as temporary:
+            dest = Path(temporary) / "prepared"
+            with patch("urllib.request.urlopen", return_value=Response(self.repacked())):
+                try: prep.prepare(ROOT / "Dependencies/VPX.lock.json", Path(temporary) / "cache", dest)
+                except ValueError as error: self.fail("Fresh valid source preparation failed: " + str(error))
+            self.assertEqual((dest / "Sources/CVPX/vpx/vpx_decoder.h").read_bytes(), self.files["vpx/vpx_decoder.h"])
+            self.assertEqual((dest / "Licenses/PATENTS").read_bytes(), self.files["PATENTS"])
+            with patch("urllib.request.urlopen", side_effect=AssertionError("offline reuse downloaded")):
+                prep.prepare(ROOT / "Dependencies/VPX.lock.json", Path(temporary) / "absent-cache", dest)
 
     def testPreparedPortableDecoderRetainsExactSourcesLegalGrantAndPublicAPI(self):
         result = prep.build_inputs(self.files, self.lock)

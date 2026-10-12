@@ -407,8 +407,8 @@ not an Archive representation.
 
 Archive is connected to whole-bundle controller/model recovery and one-ZIP native
 enqueue with a complete receipt; the existing modal shows one ZIP and caption.
-Generic mode/prepare/plan entry points still refuse new Archive creation before
-state changes or copies. Dedicated
+Generic prepare/array-plan entry points still refuse an Archive without its
+authenticated complete bundle. Dedicated
 pointer installation now accepts an already durable descriptor, authenticates
 the complete bundle, cleans its temporary exports and upgrades only an exact
 prepared schema15 pointer to active16. It preserves raw rich input/selection,
@@ -435,7 +435,13 @@ clear it atomically, including cancellation/install/original-UUID A→B→A; exa
 no-ops preserve it. Conflicting candidates, corruption/foreign scope and cancelled
 admission refuse. The ordinary15 pointer stays unchanged until installation.
 
-Next connect Archive generation and mode switching to the existing picker/preview.
+The existing picker preview now exposes Archive alongside Media/File for several
+reference-caption sources. Session creates the ZIP from durable originals,
+retains/installs the candidate and supports all three mode transitions with the
+same cache. Recovery accepts inactive caches; native submission authenticates
+the complete bundle and enqueues the selected ZIP, raw files or media.
+Next implement cache invalidation/rebuild for item/group/cover editing and finish
+the remaining caption/classifier/visual parity.
 PostgreSQL/S3 capture, native receipt retention and active Postbox CAS
 are distinct transactions. Process loss before retention commit still requires
 the caller's descriptor; that earlier handoff remains open. Preserve immutable

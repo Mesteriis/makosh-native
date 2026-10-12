@@ -161,7 +161,7 @@ struct TelegramUploadPreviewView: View {
                 upload.updatePresentation(.media, contextID: contextID, revision: revision)
             } label: {
                 Label("Отправить как медиа", systemImage: upload.presentation == .media ? "checkmark" : "photo.on.rectangle")
-            }.disabled(!upload.canEditItems).accessibilityIdentifier("telegram.upload.asMedia")
+            }.disabled(!upload.canEditPresentation).accessibilityIdentifier("telegram.upload.asMedia")
         }
         if upload.canUseFilePresentation {
             Button {
@@ -169,9 +169,16 @@ struct TelegramUploadPreviewView: View {
             } label: {
                 Label(upload.items.count > 1 ? "Отправить как файлы" : "Отправить как файл",
                       systemImage: upload.presentation == .file ? "checkmark" : "doc")
-            }.disabled(!upload.canEditItems).accessibilityIdentifier("telegram.upload.asFile")
+            }.disabled(!upload.canEditPresentation).accessibilityIdentifier("telegram.upload.asFile")
         }
-        if upload.canSwitchPresentation || upload.canUseFilePresentation { Divider() }
+        if upload.canUseArchivePresentation {
+            Button {
+                upload.updatePresentation(.archive, contextID: contextID, revision: revision)
+            } label: {
+                Label("Отправить как архив", systemImage: upload.presentation == .archive ? "checkmark" : "archivebox")
+            }.disabled(!upload.canEditPresentation).accessibilityIdentifier("telegram.upload.asArchive")
+        }
+        if upload.canSwitchPresentation || upload.canUseFilePresentation || upload.canUseArchivePresentation { Divider() }
     }
     @ViewBuilder private func groupingButton(revision: UUID) -> some View {
         if upload.items.count > 1 {

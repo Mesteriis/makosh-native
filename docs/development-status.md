@@ -1,6 +1,70 @@
 # Development status — 2026-10-12
 
-## Current stage: captured ZIP candidate retention
+## Current stage: Archive picker and mode switching
+
+The existing upload actions menu now offers Archive for two or more reference-
+caption preparations, alongside Media and File, following TelegramSwift's
+PreviewSenderController:281–293. Session builds one ZIP from authenticated durable
+originals rather than picker paths, retains its candidate and installs it through
+the existing native admission/CAS. A failed installation can reuse retained
+metadata. File/Media/Archive switches keep the same ZIP cache and raw caption.
+Active Archive normalizes grouping, spoiler and caption-above to false. Ordinary
+submission uses the selected canonical representation even with an inactive ZIP
+cache; the shared provider authenticates the whole bundle before enqueue.
+No new member captures or mode-switch file records; OFF remains local-only and
+does not promote after enable. Existing standalone prepare/array-only boundaries
+still refuse an Archive without its authenticated complete bundle.
+
+Initial test compilation failed on an ambiguous tuple type; corrected before
+behavioral RED. Compiled RED2 tests/2 unexpected incompatibleData failures expose
+the missing native mode transition. Controller RED1 test/3 expected failures,
+0 unexpected exposes the refused picker action. Initial GREEN3 tests and45 Python
+tests pass. Expanded native message readback initially exits with signal5 at a
+direct actor-isolated test transaction; a nonisolated helper matching existing
+native tests replaces it. Final focused GREEN150 XCTest/0 failures and45 Python
+tests passes, including exact native ZIP/File/Image representation and restored
+inactive cache. No compiler warnings;248 upstream t19 diagnostics remain separate.
+Required full suite exits0: **1,312 XCTest (1,236 Telegram +76 core),1 skipped,
+0 failures;45 Python tests**. No compiler warnings;602 upstream t19 diagnostics
+remain separate. The skip is the microphone-authorization precondition test.
+Required final build and strict deep signature exit0. Actual common-window
+AX/screenshots show ordinary Media→Archive→File, edited caption, File recovery
+after exact owned-process restart, then Media→Archive with the same ZIP ID.
+Explicit synthetic GUI enqueue closes the modal while S3 is OFF. Reopened
+native readback passes1 XCTest/0 failures and45 Python tests:one accepted ZIP ID,
+two canonical items, exact caption and five encrypted local records, without
+S3 receipt/pending files. QA executable matches the final build except signing-
+related LINKEDIT virtual size. No Account/server send or hardware access.
+An intermediate XERJ refresh refuses freshness because source changed while it
+ran; original exit1 retained. The next refresh exits0 on the unchanged source.
+The first setPresentation query has no match; corrected updatePresentation and
+reference ArchiverSenderContainer are source-confirmed. Final project refresh/
+check and locked reference check exit0:472 files,434/434 code. Final archiveCandidate
+query is confirmed at Session:375. Temporary QA source is removed. The original
+455-file/13-copy freeze passes481 checks after QA; a replacement freeze retains
+the same source set and records only the reference-interface UI evidence update.
+Final replacement verification also passes481 checks. Bounded source review
+reports no actionable findings. Independent root consistency verification passes
+1,388 checks over267 artifacts and65 original executions, including38 root
+commands. The five nonzero root invocations above, one harmless manifest-guarded
+worker filename lookup failure, seven unrun worker checks and the initial query
+coverage skip remain distinct. Observed worker provider/model/usage/internal
+execution remain unknown; no quorum or sandbox attestation is inferred. Source
+read ownership is released. No Archive-specific held-generation cancel/rebind
+runtime test was added; existing generic detached-mode/native admission coverage
+and source guards do not replace that missing scenario.
+
+Publication audit checks477 publishable files and the proposed PR body against
+five selected credential fields:zero matches. Private QA, credentials, runtime
+configuration, indexes and frozen evidence remain ignored.
+
+Item reorder/removal/grouping/cover editing with a retained ZIP cache remains
+disabled pending explicit cache invalidation/rebuild. Process loss before native
+capture-receipt commit, exhaustive caption/classifier/visual parity and sequential
+later services remain open. No personal Account/server sends or hardware access.
+Full migration active.
+
+## Previous stage: captured ZIP candidate retention
 
 After authenticating the already captured bundle, Session retains its exact
 schema16 candidate in a separate encrypted Postbox preference before installing

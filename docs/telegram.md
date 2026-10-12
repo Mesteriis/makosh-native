@@ -1993,12 +1993,25 @@ corrupt/foreign receipts and cancelled admission refuse. Native receipt metadata
 is bounded to512KiB plus a fixed header; file bytes remain in their original
 encrypted local/S3 store. Authentication runs again before installation.
 
-Archive generation/mode switching in the existing window remains open;
-ordinary preparations still use schema15. Capture, receipt retention and pointer
+Archive generation/mode switching is now connected to the existing upload menu.
+For two or more schema15 sources, Session builds the ZIP from authenticated
+durable originals, retains its exact candidate and installs it under native CAS.
+It does not recapture members or depend on picker stages. A retained candidate
+is reused after a failed native installation. Switching File/Media/Archive keeps
+the same schema16 ZIP cache and raw caption; active Archive clears grouping,
+spoiler and caption-above. Recovery accepts inactive caches. Shared submission
+authenticates the whole bundle, then selects one ZIP or the ordinary File/Media
+resources according to the active presentation. Mode changes create no further
+file records or S3 objects. The existing menu layout follows the reference.
+Item/group/cover editing with a retained ZIP remains disabled pending explicit
+cache invalidation/rebuild. New ordinary preparations still use schema15.
+Capture, receipt retention and pointer
 installation are separate transactions. A process loss before receipt commit
 still needs the caller's descriptor; this earlier handoff is not claimed recovered.
-Failed installation never purges immutable records. This continuation adds no UI
-action, schema version, dependency or automatic resend.
+Failed installation never purges immutable records. Mode writes retain the
+existing original-context serialization; cancellation subsequently tombstones
+the preparation and never enqueues. No schema version, dependency or automatic
+resend is added.
 
 ### Versioned caption projection
 

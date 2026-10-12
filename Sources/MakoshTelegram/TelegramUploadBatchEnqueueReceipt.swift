@@ -42,7 +42,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
         }
         let plan: TelegramUploadBatchPlan
         var ids: [Int64] = []
-        if draft.schemaVersion == 16 {
+        if draft.presentation == .archive {
             guard draft.presentation == .archive, let archive = draft.archive, resources.count == 1,
                   let resource = resources.first else { throw TelegramPendingUploadPersistenceError.incompatibleData }
             let file = resource.item.file

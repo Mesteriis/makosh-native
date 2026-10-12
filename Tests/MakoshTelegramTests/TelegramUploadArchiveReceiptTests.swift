@@ -59,7 +59,7 @@ import SwiftSignalKit
             XCTAssertEqual(controller.captionInput, setup.draft.captionInput)
             XCTAssertFalse(controller.canEditItems); XCTAssertFalse(controller.canEditVideoCover)
             XCTAssertFalse(controller.updateGrouping(true, contextID: setup.draft.id, revision: controller.itemsRevision))
-            XCTAssertFalse(controller.updatePresentation(.file, contextID: setup.draft.id, revision: controller.itemsRevision))
+            XCTAssertFalse(controller.updatePresentation(.file, contextID: setup.draft.id, revision: UUID()))
             controller.send()
             await archiveEventually { controller.phase == .queued(nil) || controller.phase == .uncertain || controller.phase == .rejected }
             XCTAssertEqual(controller.phase, .queued(nil))

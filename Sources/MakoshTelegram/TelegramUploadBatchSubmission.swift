@@ -74,8 +74,8 @@ enum TelegramUploadBatchAdmission {
          observe: (([MessageId]) -> Signal<TelegramUploadBatchEvent, NoError>)? = nil,
          receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) {
         self.postbox = postbox
-        self.archive = archive
-        if let archive, let descriptor = draft.archive {
+        self.archive = draft.presentation == .archive ? archive : nil
+        if draft.presentation == .archive, let archive, let descriptor = draft.archive {
             self.items = [.init(id: descriptor.id, file: archive.file)]
         } else {
             self.items = draft.schemaVersion >= 8 ? items.compactMap { $0.presented(as: draft.presentation) } : items
@@ -91,7 +91,7 @@ enum TelegramUploadBatchAdmission {
                   $0.sourceFacts == $1.sourceFacts && $1.matchesOriginal($0.originalFile) }) else {
             finish(.rejected); return
         }
-        if let archive {
+        if draft.presentation == .archive, let archive {
             guard draft.schemaVersion == 16, draft.presentation == .archive, let descriptor = draft.archive,
                   archive.file.name.utf8.elementsEqual(descriptor.file.attachment.name.utf8),
                   archive.file.size == descriptor.file.plaintextByteCount,
@@ -120,14 +120,26 @@ enum TelegramUploadBatchAdmission {
             }
             return
         }
-        guard draft.archive == nil, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(draft.schemaVersion),
+        guard (draft.archive == nil) == (archive == nil), (6...16).contains(draft.schemaVersion),
               self.items.count == items.count,
               (try? TelegramUploadBatchPlan(items: self.items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
                 captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,
                 presentation: draft.schemaVersion >= 8 ? draft.presentation : nil, captionRules: draft.captionRules)) != nil else {
             finish(.rejected); return
         }
-        prepareNext()
+        if let archive {
+            validation = Task { [weak self] in
+                do {
+                    try await Self.validateArchive(archive, canonical: items, draft: draft)
+                    try Task.checkCancellation()
+                    guard let self, !self.stopped else { return }
+                    self.prepareNext()
+                } catch {
+                    guard let self, !self.stopped, !Task.isCancelled else { return }
+                    self.finish(.rejected)
+                }
+            }
+        } else { prepareNext() }
     }
 
     private static func validateArchive(_ archive: TelegramUploadArchiveIO.Archive,

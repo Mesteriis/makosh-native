@@ -29,8 +29,8 @@ import Foundation
         let pointer = try await fixture.session(box).load(chatID: 42); XCTAssertNil(pointer)
     }
 
-    // Catches mutating preview mode/revisions before the generic store refuses Archive without a ZIP.
-    func testGenericPresentationSwitchCannotPartiallyEnterArchive() async throws {
+    // Catches a stale preview action changing mode or starting a ZIP capture.
+    func testStalePresentationSwitchCannotPartiallyEnterArchive() async throws {
         let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
         let fixtures = [try await sourceFactsPhoto(fixture, name: "first.jpg"),
                         try await sourceFactsPhoto(fixture, name: "second.jpg")]
@@ -45,7 +45,7 @@ import Foundation
         XCTAssertEqual(controller.phase, .ready); XCTAssertTrue(controller.canSwitchPresentation)
         let id = try XCTUnwrap(controller.preparationContextID), revision = controller.itemsRevision
         let before = try await sourceFactsLoad(store), paths = controller.items.map(\.file.url)
-        XCTAssertFalse(controller.updatePresentation(.archive, contextID: id, revision: revision))
+        XCTAssertFalse(controller.updatePresentation(.archive, contextID: id, revision: UUID()))
         XCTAssertEqual(controller.presentation, .file); XCTAssertEqual(controller.itemsRevision, revision)
         XCTAssertEqual(controller.items.map(\.file.url), paths)
         let after = try await sourceFactsLoad(store)

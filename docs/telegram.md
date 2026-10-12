@@ -1978,10 +1978,27 @@ Schemas1–16 are unchanged; older schema16 pointers
 without this receipt remain restorable/sendable, but cannot use this install-replay
 path. No automatic migration, recapture or enqueue occurs.
 
-Capture-receipt retention across pointer failure before native commit and
-Archive generation/mode switching in the existing window remain
-open; ordinary preparations still use schema15. Capture and pointer installation
-are separate transactions; failed installation never purges immutable records.
+After bundle authentication, Session now retains the exact schema16 candidate
+in a separate encrypted native preference before installing the active pointer.
+The bounded metadata receipt binds the predecessor revision and SHA256 of its
+exact encoded state. `loadArchiveCapture` exposes that retained candidate to an
+explicit retry after reopen; loading does not install or enqueue. A failed native
+installation or lost retention ACK reuses the same candidate and captured ZIP,
+without the original caller's descriptor or a new capture/S3 object. The plain
+schema15 pointer stays unchanged until guarded installation succeeds. Conflicting
+candidates cannot replace the retained result. Exact no-op writes preserve it;
+non-idempotent ordinary writes, including cancellation and installation, remove
+it in the pointer transaction. Changed predecessor bytes with a reused UUID,
+corrupt/foreign receipts and cancelled admission refuse. Native receipt metadata
+is bounded to512KiB plus a fixed header; file bytes remain in their original
+encrypted local/S3 store. Authentication runs again before installation.
+
+Archive generation/mode switching in the existing window remains open;
+ordinary preparations still use schema15. Capture, receipt retention and pointer
+installation are separate transactions. A process loss before receipt commit
+still needs the caller's descriptor; this earlier handoff is not claimed recovered.
+Failed installation never purges immutable records. This continuation adds no UI
+action, schema version, dependency or automatic resend.
 
 ### Versioned caption projection
 

@@ -1,6 +1,58 @@
 # Development status — 2026-10-12
 
-## Current stage: fresh-Session Archive install acknowledgement
+## Current stage: captured ZIP candidate retention
+
+After authenticating the already captured bundle, Session retains its exact
+schema16 candidate in a separate encrypted Postbox preference before installing
+the active pointer. The receipt binds the predecessor UUID and SHA256 of its
+exact encoded state. A fresh Session can read the retained descriptor/revision
+after reopen and explicitly retry without the original caller's descriptor.
+Failed native installation or lost retention ACK preserves the same candidate;
+the ordinary schema15 pointer stays unchanged. Replay exports/authenticates the
+immutable resources without capturing or creating S3 objects. OFF records remain
+local after enable. Exact no-op writes preserve the receipt; changing writes,
+including cancellation, successful install and original-UUID A→B→A, remove it.
+Wrong predecessor, conflicting candidate, cancelled admission, corruption and
+foreign scope fail closed. Schemas1–16 and existing UI remain unchanged.
+
+Compiled RED1 test/2 expected failures,0 unexpected reproduces candidate loss
+after encrypted reopen under both storage policies. Initial GREEN11 XCTest and
+45 Python tests pass. Expanded focused suite passes; predecessor-digest mutation
+then compiles RED1 test/1 expected failure,0 unexpected. Exact production guard
+restored afterward. Final focused GREEN94 XCTest/0 failures and45 Python tests.
+Required full suite exits0: **1,308 XCTest (1,232 Telegram +76 core),1 skipped,
+0 failures;45 Python tests**. No compiler warnings;587 upstream t19 diagnostics
+remain separate. The skip is the microphone-authorization precondition test.
+Required build and strict deep signature exit0. Actual final-binary compatibility
+QA shows one277-byte ZIP and edited caption after process restart in the existing
+common window. Explicit synthetic GUI enqueue closes the modal with S3 OFF.
+Reopened native readback passes1 XCTest/0 failures and45 Python tests:one accepted
+ID, two canonical resources plus ZIP, three encrypted local records/no S3 receipts.
+QA payload matches the build except signing-related LINKEDIT virtual size.
+This is existing UI compatibility evidence; retained-capture retry is internal.
+
+Fresh final project/reference XERJ checks exit0; corrected saveArchive/native
+capture-read and ArchiverSenderContainer queries are source-confirmed. The first
+storeArchive query has no matches and remains a separate coverage skip. The
+454-file/11-copy freeze matches after gates and temporary QA removal:476 integrity
+checks,0 mismatches. Bounded source review reports no actionable findings. Root
+contract verification passes1,124 integrity checks over186 artifacts and47
+recorded executions, including28 original root commands and the two compiled
+RED exits retained above. Seven worker checks remain unrun; root owns the runtime
+gates. The storeArchive coverage skip remains separate. The initial root verifier
+expected the previous report schema and failed with KeyError; a schema-matched
+verifier validates the pinned report/inventory and unchanged sources. Original
+failure retained. Observed worker provider/model/usage/internal execution remain
+unknown; no quorum.
+
+Capture, receipt retention and active pointer installation are separate
+transactions. This protects a committed retained receipt before pointer failure;
+a process loss before receipt commit still needs the caller's descriptor and is
+not claimed recovered. Immutable files are never purged on these failures.
+Archive generation/picker/mode switching and that earlier handoff remain open.
+No Account/server sends or hardware access. Full migration active.
+
+## Previous stage: fresh-Session Archive install acknowledgement
 
 Guarded installation commits an account/chat-scoped native receipt in the same
 transaction as the schema16 pointer. It binds the predecessor UUID and SHA256

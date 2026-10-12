@@ -6,6 +6,70 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramPendingUploadArchiveAdmissionTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches stale capture metadata surviving an edit/cancellation/install or original-UUID A→B→A.
+    func testCaptureReceiptPreservesExactNoOpAndClearsOnChangingPointerWrites() async throws {
+        for mutation in ["caption", "roundTrip", "cancel", "install"] {
+            let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+            let (current, candidate) = try await makeCandidate(fixture, box: box)
+            let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            try await retain(repository, candidate, current.revision, admission(current)).get()
+            try await save(repository, current, current.revision)
+            let retained = try await fixture.session(box).loadArchiveCapture(chatID: 42)
+            XCTAssertEqual(retained?.candidate, candidate)
+            let pointer = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(pointer, current)
+            if mutation == "install" {
+                try await install(repository, candidate, current.revision, admission(current)).get()
+            } else {
+                let changed = current.updating(captionInput: try .init(formattedText: .init(text: "Later edit")),
+                    captionAboveMedia: false, mediaSpoiler: false, disposition: mutation == "cancel" ? .cancelled : .prepared)
+                try await save(repository, changed, current.revision)
+                if mutation == "roundTrip" { try await save(repository, current, changed.revision) }
+            }
+            let removed = try await fixture.session(box).loadArchiveCapture(chatID: 42); XCTAssertNil(removed)
+        }
+    }
+
+    // Catches overwriting the retained ZIP candidate, or retaining through cancelled/stale native admission.
+    func testCaptureRetentionRefusesReplacementWrongRevisionAndCancelledAdmission() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let (current, candidate) = try await makeCandidate(fixture, box: box)
+        let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+        let cancelled = admission(current); cancelled.cancel()
+        assertConflict(await retain(repository, candidate, current.revision, cancelled))
+        let absent = try await fixture.session(box).loadArchiveCapture(chatID: 42); XCTAssertNil(absent)
+        try await retain(repository, candidate, current.revision, admission(current)).get()
+        try await retain(repository, candidate, current.revision, admission(current)).get()
+        let replacement = try TelegramPendingUploadDraft(id: candidate.id, accountID: 1, chatID: 42,
+            title: candidate.title, captionInput: candidate.captionInput, originalDraft: candidate.originalDraft,
+            replyTarget: candidate.replyTarget, items: candidate.items, isGrouped: false,
+            presentation: .archive, archive: candidate.archive)
+        assertConflict(await retain(repository, replacement, current.revision, admission(current)))
+        let foreign = UUID(), foreignToken = TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 42,
+            preparationID: current.id, expectedRevision: foreign, generation: UUID())
+        assertConflict(await retain(repository, candidate, foreign, foreignToken))
+        let retained = try await fixture.session(box).loadArchiveCapture(chatID: 42)
+        XCTAssertEqual(retained?.candidate, candidate)
+        let pointer = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(pointer, current)
+    }
+
+    // Catches accepting corrupted receipts, foreign scopes or changed predecessor bytes with the same UUID.
+    func testCaptureReadRejectsCorruptionForeignScopeAndChangedPredecessorBytes() async throws {
+        for mutation in ["corrupt", "foreign", "base"] {
+            let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+            let (current, candidate) = try await makeCandidate(fixture, box: box)
+            let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            try await retain(repository, candidate, current.revision, admission(current)).get()
+            let changed = try await sourceFactsValue(archiveCaptureMutate(box, current: current, mutation: mutation))
+            XCTAssertTrue(changed)
+            do {
+                _ = try await fixture.session(box).loadArchiveCapture(chatID: mutation == "foreign" ? 43 : 42)
+                XCTFail("An invalid capture receipt was exposed: \(mutation)")
+            } catch let error as TelegramPendingUploadPersistenceError {
+                XCTAssertEqual(error, mutation == "corrupt" ? .incompatibleData : .conflict)
+            }
+        }
+    }
+
     // Catches treating any predecessor revision as the origin of an already installed candidate.
     func testExactReplayRejectsForeignPredecessorRevision() async throws {
         let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
@@ -230,8 +294,38 @@ import SwiftSignalKit
         }
         try result.get()
     }
+    private func retain(_ repository: TelegramPostboxPendingUploadRepository, _ draft: TelegramPendingUploadDraft,
+                        _ expected: UUID, _ token: TelegramPendingUploadArchiveAdmission)
+        async -> Result<Void, TelegramPendingUploadPersistenceError> {
+        await withCheckedContinuation { continuation in
+            repository.retainArchiveCapture(draft, expectedRevision: expected, admission: token) { continuation.resume(returning: $0) }
+        }
+    }
     private func assertConflict(_ result: Result<Void, TelegramPendingUploadPersistenceError>, file: StaticString = #filePath, line: UInt = #line) {
         guard case .failure(.conflict) = result else { return XCTFail("Expected conflict, got \(result)", file: file, line: line) }
+    }
+}
+
+private nonisolated func archiveCaptureMutate(_ box: Postbox, current: TelegramPendingUploadDraft, mutation: String) -> Signal<Bool, NoError> {
+    box.transaction { transaction in
+        let key = telegramPendingUploadArchiveCaptureKey(accountID: 1, chatID: 42)
+        guard let entry = transaction.getPreferencesEntry(key: key) else { return false }
+        if mutation == "corrupt" {
+            transaction.setPreferencesEntry(key: key, value: PreferencesEntry(data: Data([0])))
+        } else if mutation == "foreign" {
+            transaction.setPreferencesEntry(key: telegramPendingUploadArchiveCaptureKey(accountID: 1, chatID: 43), value: entry)
+        } else {
+            // Deliberately bypass ordinary-write invalidation to exercise the stored base digest.
+            guard let changed = try? TelegramPendingUploadDraft(id: current.id, revision: current.revision,
+                accountID: 1, chatID: 42, title: current.title, captionInput: current.captionInput,
+                originalDraft: current.originalDraft, replyTarget: current.replyTarget, items: current.items,
+                isGrouped: !current.isGrouped, presentation: current.presentation) else { return false }
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+            guard let bytes = try? encoder.encode(changed) else { return false }
+            transaction.setPreferencesEntry(key: telegramPendingUploadKey(accountID: 1, chatID: 42),
+                value: PreferencesEntry(data: Data("Makosh.PendingUpload.JSON.v1\n".utf8) + bytes))
+        }
+        return true
     }
 }
 

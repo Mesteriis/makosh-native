@@ -6,6 +6,53 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramPendingUploadArchiveInstallTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches losing a successful ZIP capture when native pointer installation fails before commit.
+    func testFailedNativeInstallRetainsExactCandidateAcrossEncryptedReopenWithoutRecapture() async throws {
+        for (enabled, fault) in [(false, "install"), (true, "install"), (false, "retentionACK"), (true, "retentionACK")] {
+            let fixture = try await sourceFactsArchive()
+            try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: enabled)
+            var retained: PreparedArchive?, attempted: TelegramPendingUploadDraft?
+            weak var previous: Postbox?
+            do {
+                let box = try await sourceFactsOpen(fixture.postboxPath); previous = box
+                let setup = try await preparedArchive(fixture, box: box); retained = setup
+                let repository = ArchiveInstallGateRepository(box)
+                repository.failNextInstallBeforeCommit = fault == "install"
+                repository.failNextCaptureAcknowledgement = fault == "retentionACK"
+                do { _ = try await install(session(fixture, repository: repository), setup: setup); XCTFail("Native refusal must be reported") }
+                catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .unavailable) }
+                attempted = try XCTUnwrap(repository.refusedCandidate)
+                let unchanged = try await sourceFactsLoad(fixture.session(box))
+                XCTAssertEqual(unchanged, setup.draft)
+            }
+            let setup = try XCTUnwrap(retained)
+            defer { setup.discard() }
+            for _ in 0..<100 where previous != nil { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertNil(previous)
+            let local = try fixture.localRecords(), events = try fileEvents(fixture), stages = try ownedDirectories()
+            let box = try await sourceFactsOpen(fixture.postboxPath), store = fixture.session(box)
+            let recovered = try await store.loadArchiveCapture(chatID: 42)
+            let receipt = try XCTUnwrap(recovered)
+            let descriptor = try XCTUnwrap(receipt.candidate.archive)
+            XCTAssertEqual(receipt.expectedRevision, setup.draft.revision)
+            if !enabled {
+                try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: true)
+                let promoted = try await fixture.archive.resume(); XCTAssertEqual(promoted, 0)
+                let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: descriptor.file.objectKey)
+                XCTAssertNil(object)
+            }
+            let installed = try await store.installArchive(preparationID: receipt.candidate.id,
+                expectedRevision: receipt.expectedRevision, archive: descriptor,
+                target: setup.target, admission: token(setup.draft))
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+            XCTAssertEqual(try encoder.encode(installed), try encoder.encode(XCTUnwrap(attempted)),
+                "A successful capture must retain its exact installation candidate, not mint another revision after reopen")
+            let consumed = try await store.loadArchiveCapture(chatID: 42); XCTAssertNil(consumed)
+            XCTAssertEqual(try fixture.localRecords(), local); XCTAssertEqual(try fileEvents(fixture), events)
+            XCTAssertEqual(try ownedDirectories(), stages)
+        }
+    }
+
     // Catches recapturing or refusing the committed ZIP when its ACK was lost and the encrypted Postbox reopened.
     func testLostAcknowledgementReplaysExactInstallationAfterEncryptedReopenWithoutRecapture() async throws {
         for enabled in [false, true] {
@@ -376,6 +423,9 @@ import SwiftSignalKit
     let accountID: Int64 = 1
     let base: TelegramPostboxPendingUploadRepository
     var holdNextLoad = false, holdNextInstall = false, holdNextAcknowledgement = false, failNextAcknowledgement = false
+    var failNextInstallBeforeCommit = false
+    var failNextCaptureAcknowledgement = false
+    var refusedCandidate: TelegramPendingUploadDraft?
     var heldLoad: (Int64, @MainActor (Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>) -> Void)?
     var heldInstall: (TelegramPendingUploadDraft, UUID, TelegramPendingUploadArchiveAdmission,
                       @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void)?
@@ -391,10 +441,30 @@ import SwiftSignalKit
               completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
         base.save(draft, expectedRevision: expectedRevision, completion: completion)
     }
+    func loadArchiveCapture(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadArchiveCapture?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
+        base.loadArchiveCapture(chatID: chatID, completion: completion)
+    }
+    func retainArchiveCapture(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID,
+                              admission: TelegramPendingUploadArchiveAdmission,
+                              completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
+        if failNextCaptureAcknowledgement {
+            failNextCaptureAcknowledgement = false; refusedCandidate = draft
+            base.retainArchiveCapture(draft, expectedRevision: expectedRevision, admission: admission) { result in
+                if case .success = result { completion(.failure(.unavailable)) }
+                else { completion(result) }
+            }
+        } else {
+            base.retainArchiveCapture(draft, expectedRevision: expectedRevision, admission: admission, completion: completion)
+        }
+    }
     func installArchive(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID,
                         admission: TelegramPendingUploadArchiveAdmission,
                         completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
         if holdNextInstall { holdNextInstall = false; heldInstall = (draft, expectedRevision, admission, completion); return }
+        if failNextInstallBeforeCommit {
+            failNextInstallBeforeCommit = false; refusedCandidate = draft
+            completion(.failure(.unavailable)); return
+        }
         if failNextAcknowledgement {
             failNextAcknowledgement = false
             base.installArchive(draft, expectedRevision: expectedRevision, admission: admission) { result in

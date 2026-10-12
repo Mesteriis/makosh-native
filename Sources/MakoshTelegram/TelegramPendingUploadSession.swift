@@ -19,6 +19,10 @@ import SwiftSignalKit
         try await serial { [self] in try await read(chatID: chatID) }
     }
 
+    func loadArchiveCapture(chatID: Int64) async throws -> TelegramPendingUploadArchiveCapture? {
+        try await serial { [self] in try await readArchiveCapture(chatID: chatID) }
+    }
+
     func installArchive(preparationID: UUID, expectedRevision: UUID, archive: TelegramPendingUploadArchive,
                         target: TelegramUploadTarget, admission: TelegramPendingUploadArchiveAdmission) async throws -> TelegramPendingUploadDraft {
         try await withTaskCancellationHandler {
@@ -41,11 +45,20 @@ import SwiftSignalKit
                     }
                     let candidate: TelegramPendingUploadDraft
                     if current.schemaVersion == 15, current.revision == expectedRevision {
-                        candidate = try TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: current.chatID,
-                            title: current.title, captionInput: current.captionInput, captionAboveMedia: false, mediaSpoiler: false,
-                            originalDraft: current.originalDraft, replyTarget: current.replyTarget,
-                            items: current.items, isGrouped: false, presentation: .archive,
-                            captionRules: current.captionRules, archive: archive)
+                        if let retained = try await readArchiveCapture(chatID: target.chatID) {
+                            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+                            guard retained.expectedRevision == expectedRevision,
+                                  try encoder.encode(retained.candidate.archive) == encoder.encode(archive) else {
+                                throw TelegramPendingUploadPersistenceError.conflict
+                            }
+                            candidate = retained.candidate
+                        } else {
+                            candidate = try TelegramPendingUploadDraft(id: current.id, accountID: accountID, chatID: current.chatID,
+                                title: current.title, captionInput: current.captionInput, captionAboveMedia: false, mediaSpoiler: false,
+                                originalDraft: current.originalDraft, replyTarget: current.replyTarget,
+                                items: current.items, isGrouped: false, presentation: .archive,
+                                captionRules: current.captionRules, archive: archive)
+                        }
                     } else if current.schemaVersion == 16, current.presentation == .archive {
                         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
                         guard try encoder.encode(current.archive) == encoder.encode(archive) else {
@@ -62,6 +75,15 @@ import SwiftSignalKit
                     try bundle.discard()
                     try admission.check(accountID: accountID, chatID: target.chatID,
                         preparationID: preparationID, expectedRevision: expectedRevision)
+                    if current.schemaVersion == 15 {
+                        let _: Void = try await awaitResult { [repository] completion in
+                            repository.retainArchiveCapture(candidate, expectedRevision: expectedRevision,
+                                admission: admission, completion: completion)
+                            return nil
+                        }
+                        try admission.check(accountID: accountID, chatID: target.chatID,
+                            preparationID: preparationID, expectedRevision: expectedRevision)
+                    }
                     let _: Void = try await awaitResult { [repository] completion in
                         repository.installArchive(candidate, expectedRevision: expectedRevision,
                             admission: admission, completion: completion)
@@ -541,6 +563,12 @@ import SwiftSignalKit
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         return result
+    }
+
+    private func readArchiveCapture(chatID: Int64) async throws -> TelegramPendingUploadArchiveCapture? {
+        try await awaitResult { [repository] completion in
+            repository.loadArchiveCapture(chatID: chatID, completion: completion)
+        }
     }
 
     private func write(_ value: TelegramPendingUploadDraft, expectedRevision: UUID?) async throws {

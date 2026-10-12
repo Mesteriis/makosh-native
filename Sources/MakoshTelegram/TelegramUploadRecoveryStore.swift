@@ -4,6 +4,7 @@ import Foundation
 /// after UI cancellation or account replacement. It never submits to Telegram.
 @MainActor protocol TelegramUploadRecoveryStore: AnyObject {
     var accountID: Int64 { get }
+    func loadArchiveCapture(chatID: Int64) async throws -> TelegramPendingUploadArchiveCapture?
     func installArchive(preparationID: UUID, expectedRevision: UUID, archive: TelegramPendingUploadArchive,
                         target: TelegramUploadTarget, admission: TelegramPendingUploadArchiveAdmission) async throws -> TelegramPendingUploadDraft
     func load(chatID: Int64) async throws -> TelegramPendingUploadDraft?
@@ -34,6 +35,9 @@ import Foundation
 }
 
 extension TelegramUploadRecoveryStore {
+    func loadArchiveCapture(chatID: Int64) async throws -> TelegramPendingUploadArchiveCapture? {
+        throw TelegramPendingUploadPersistenceError.incompatibleData
+    }
     func installArchive(preparationID: UUID, expectedRevision: UUID, archive: TelegramPendingUploadArchive,
                         target: TelegramUploadTarget, admission: TelegramPendingUploadArchiveAdmission) async throws -> TelegramPendingUploadDraft {
         throw TelegramPendingUploadPersistenceError.incompatibleData

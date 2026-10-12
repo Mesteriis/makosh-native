@@ -426,11 +426,20 @@ an earlier UUID is later restored. Exact ordinary no-ops preserve it.
 The pointer schema stays16. Older16 pointers without a receipt still recover
 and send, but install replay refuses; no automatic rewrite or recapture occurs.
 
-Next retain successful capture receipts across pointer failure before native
-commit, then connect Archive generation and mode switching to the existing
-picker/preview. PostgreSQL/S3 capture and Postbox CAS
-are distinct transactions; preserve immutable files if pointer installation
-fails. Native stale CAS/queued cancellation and authenticated install now have
+Session now retains the exact authenticated ZIP candidate in a separate native
+preference before active installation. It binds the full predecessor digest and
+revision, survives failed installation/lost retention ACK and can be loaded by a
+fresh Session after reopen. Explicit retry uses that descriptor/candidate without
+recapture or new S3 objects; OFF records never promote. Changing pointer writes
+clear it atomically, including cancellation/install/original-UUID A→B→A; exact
+no-ops preserve it. Conflicting candidates, corruption/foreign scope and cancelled
+admission refuse. The ordinary15 pointer stays unchanged until installation.
+
+Next connect Archive generation and mode switching to the existing picker/preview.
+PostgreSQL/S3 capture, native receipt retention and active Postbox CAS
+are distinct transactions. Process loss before retention commit still requires
+the caller's descriptor; that earlier handoff remains open. Preserve immutable
+files if pointer installation fails. Native stale CAS/queued cancellation and authenticated install now have
 regression coverage. Controller/model recovery, native resource integrity,
 confirmation-only retry and no automatic resend have integration regressions.
 Actual isolated common-window QA covers restored ZIP/caption, process restart

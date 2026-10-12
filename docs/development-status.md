@@ -1,6 +1,68 @@
 # Development status — 2026-10-12
 
-## Current stage: Archive picker and mode switching
+## Current stage: editing with an inactive Archive cache
+
+Existing File/Media reorder/remove actions now work after leaving Archive. Changed
+ordered members atomically drop only the ZIP descriptor back to schema15; the old
+immutable archive stays retained. Selecting Archive again builds one new ZIP from
+the edited durable originals, without recapturing member files. Same-member
+grouping and canonical video-cover replacement retain the ZIP because its raw
+bytes are unchanged. Active Archive remains one noneditable ZIP row, confirmed
+against PreviewSenderController:867–872 and1590–1631. Controller authenticates the
+resulting bundle and releases its old ZIP export only after durable confirmation.
+Lost pointer ACK blocks send until an idempotent retry confirms the new state.
+
+Initial session RED compiles3 tests/4 failures,1 unexpected from a mixed-media
+fixture that refuses before the changed behavior. Corrected video MIME/second
+photo fixture gives compiled RED3 tests/4 expected failures,0 unexpected.
+Session GREEN3 XCTest/0 failures and45 Python tests. Controller RED2 tests/2
+expected failures,0 unexpected; GREEN5 XCTest/0 failures and45 Python tests.
+Expanded GREEN passes155 XCTest/0 failures and45 Python tests, including lost
+native pointer ACK/retry, active-Archive refusal, retained cover/grouping cache,
+member invalidation/rebuild and S3 OFF/no promotion. Required full suite exits0:
+**1,317 XCTest (1,241 Telegram +76 core),1 skipped,0 failures;45 Python tests**.
+No compiler warnings;613 upstream SQL-prefixed t19 lines plus one bare t19
+line remain separate from XCTest results. The skip is the microphone-authorization
+precondition test. Required build and strict deep
+signature exit0. Actual isolated common-window AX/screenshots show Media grouping
+keeps the old ZIP, then File reorder/remove and changed-caption restart preserve
+third.jpg/first.jpg. Selecting Archive creates a new ZIP ID. Explicit synthetic
+GUI enqueue closes the modal with S3 OFF. Reopened Postbox readback passes1
+XCTest/0 failures and45 Python tests:one accepted ID, exact ordered ZIP members
+and caption, eight encrypted local records without S3 receipts/pending. QA payload
+matches the final build except signing-related LINKEDIT virtual size. Temporary
+QA source is removed. No Account/server send or hardware access.
+
+Initial reference query uses the wrong prefix and returns no matches; the
+corrected locked query retrieves SenderController:39, source-confirmed with
+PreviewSenderController workflows. Final project refresh exits0:473 files,
+435/435 code. One premature freshness check reports STALE/exit1 while that
+refresh is running; after its terminal0 the freshness check exits0. Final
+updateStoredItems query is confirmed at Session:442. The original coverage miss
+and failed freshness invocation remain separate. Initial freeze passes474
+checks after QA. Replacement freeze keeps the same456-file source set and9
+review copies, changing only reference-interface UI evidence/remaining gaps;
+its474 checks also pass. Bounded source review reports no actionable findings
+and releases source ownership. Original report/inventory are preserved; a
+format-only V2 supplies the common contract fields. Root consistency verification
+passes3,989 checks over268 artifacts and65 recorded invocations, including33 root
+commands/four nonzero outcomes before the review cutoff. Five worker checks are
+unrun; wrong-prefix coverage SKIP is separate. Two later root-verifier attempts
+fail on format assumptions (extra snapshot fields, root-only execution ledger);
+both are retained before the corrected verifier exits0. These are verification-
+script failures, not product runtime failures. Observed provider/model/usage and
+internal execution remain unknown; no quorum, sandbox or approval is inferred.
+Publication audit checks478 publishable files and the proposed PR body against
+five selected credential fields:zero matches. Private evidence/configuration
+stays ignored. No schema version, dependency or copied reference code is added.
+
+Cover-cache retention has Session-level regression evidence; batch video-cover
+controls remain absent from the current UI. Process loss before capture-receipt
+commit, Archive-specific held-generation cancel/rebind runtime evidence,
+exhaustive caption/classifier/visual parity and later services remain open.
+Full migration remains active.
+
+## Previous stage: Archive picker and mode switching
 
 The existing upload actions menu now offers Archive for two or more reference-
 caption preparations, alongside Media and File, following TelegramSwift's

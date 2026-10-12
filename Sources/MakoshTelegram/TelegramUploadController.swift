@@ -53,7 +53,7 @@ enum TelegramUploadEvent {
     private var recoveredArchive: TelegramUploadArchiveIO.Archive?
     private var archiveDescriptor: TelegramPendingUploadArchive?
     public var canEditItems: Bool {
-        usesBatchRecovery && recoveredArchive == nil && !containsRecordedRoundVideo && phase == .ready && recoveryPrepared && !isRecoveryBusy &&
+        usesBatchRecovery && presentation != .archive && !containsRecordedRoundVideo && phase == .ready && recoveryPrepared && !isRecoveryBusy &&
             videoCoverEditingID == nil && !isVideoCoverSaving
     }
     public var isVisualMedia: Bool { !containsRecordedRoundVideo && presentation == .media && !items.isEmpty && items.allSatisfy { $0.file.mode != .file } }
@@ -147,22 +147,28 @@ enum TelegramUploadEvent {
                         presentation: write.presentation, isGrouped: write.isGrouped, target: write.target)
                 }
                 if write.presentation == .archive || write.previousPresentation == .archive || write.cachedArchive != nil {
+                    let invalidated = write.previousIDs.map { $0 != write.orderedIDs } ?? false
                     guard let saved = try await write.store.load(chatID: write.target.chatID), saved.isValid,
                           saved.id == write.id, saved.accountID == write.target.accountID,
                           saved.chatID == write.target.chatID, saved.disposition == .prepared,
                           saved.items.map(\.id) == write.orderedIDs, saved.presentation == write.presentation,
-                          saved.isGrouped == write.isGrouped, saved.archive != nil else {
+                          saved.isGrouped == write.isGrouped else {
                         throw TelegramPendingUploadPersistenceError.conflict
                     }
-                    if let expected = write.cachedArchive {
-                        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-                        guard try encoder.encode(saved.archive) == encoder.encode(expected) else {
-                            throw TelegramPendingUploadPersistenceError.conflict
+                    if invalidated {
+                        guard saved.archive == nil else { throw TelegramPendingUploadPersistenceError.conflict }
+                    } else {
+                        guard saved.archive != nil else { throw TelegramPendingUploadPersistenceError.conflict }
+                        if let expected = write.cachedArchive {
+                            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+                            guard try encoder.encode(saved.archive) == encoder.encode(expected) else {
+                                throw TelegramPendingUploadPersistenceError.conflict
+                            }
                         }
                     }
                     let bundle = try await write.store.restoreBundle(draft: saved)
                     do {
-                        guard Self.matchesArchive(bundle.archive, draft: saved) else {
+                        guard saved.archive == nil ? bundle.archive == nil : Self.matchesArchive(bundle.archive, draft: saved) else {
                             throw TelegramPendingUploadPersistenceError.incompatibleData
                         }
                         for item in bundle.items { try item.discard() }

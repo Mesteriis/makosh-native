@@ -2003,8 +2003,15 @@ spoiler and caption-above. Recovery accepts inactive caches. Shared submission
 authenticates the whole bundle, then selects one ZIP or the ordinary File/Media
 resources according to the active presentation. Mode changes create no further
 file records or S3 objects. The existing menu layout follows the reference.
-Item/group/cover editing with a retained ZIP remains disabled pending explicit
-cache invalidation/rebuild. New ordinary preparations still use schema15.
+After returning to File/Media, existing reorder/remove actions are available.
+Changed ordered members atomically invalidate the ZIP descriptor and produce a
+schema15 pointer; immutable old ZIP/member records are retained. Selecting Archive
+again creates only the new ZIP from the edited durable originals. Same-member
+grouping and canonical video-cover edits retain the authenticated raw-source
+cache. Active Archive itself remains one noneditable ZIP row, as in the reference.
+Controller authenticates the resulting bundle and releases its old temporary ZIP
+only after confirmation; a lost pointer ACK blocks send until idempotent retry.
+New ordinary preparations still use schema15.
 Capture, receipt retention and pointer
 installation are separate transactions. A process loss before receipt commit
 still needs the caller's descriptor; this earlier handoff is not claimed recovered.

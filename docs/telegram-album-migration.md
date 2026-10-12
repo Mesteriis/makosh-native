@@ -440,8 +440,14 @@ reference-caption sources. Session creates the ZIP from durable originals,
 retains/installs the candidate and supports all three mode transitions with the
 same cache. Recovery accepts inactive caches; native submission authenticates
 the complete bundle and enqueues the selected ZIP, raw files or media.
-Next implement cache invalidation/rebuild for item/group/cover editing and finish
-the remaining caption/classifier/visual parity.
+Inactive File/Media now permits item edits: a changed ordered member list drops
+the cache atomically back to schema15 without purging immutable files. Selecting
+Archive again builds only the new ZIP. Unchanged members with different grouping
+or canonical video covers retain the same cache because raw ZIP bytes are
+unchanged. Active Archive stays one noneditable ZIP row, matching the reference.
+Controller confirmation authenticates the resulting bundle and releases its old
+ZIP export only after the pointer edit is confirmed, including lost-ACK retry.
+Next finish the earlier capture handoff and remaining caption/classifier/visual parity.
 PostgreSQL/S3 capture, native receipt retention and active Postbox CAS
 are distinct transactions. Process loss before retention commit still requires
 the caller's descriptor; that earlier handoff remains open. Preserve immutable

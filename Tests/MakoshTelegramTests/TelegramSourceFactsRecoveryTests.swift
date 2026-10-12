@@ -14,13 +14,14 @@ struct SourceFactsTestArchive {
     let root: URL
     let configuration: S3ObjectStoreConfiguration
     let archive: ArchiveFileRepository
+    var accountID: Int64 = 1
     var postboxPath: URL { root.appendingPathComponent("postbox") }
-    var target: TelegramUploadTarget { .init(accountID: 1, chatID: 42, title: "Synthetic source facts") }
+    var target: TelegramUploadTarget { .init(accountID: accountID, chatID: 42, title: "Synthetic source facts") }
     var identity: MessageArchiveIdentity {
-        .init(service: "telegram", accountID: "1", conversationID: "42", messageID: "synthetic-policy")
+        .init(service: "telegram", accountID: String(accountID), conversationID: "42", messageID: "synthetic-policy")
     }
     @MainActor func session(_ box: Postbox) -> TelegramPendingUploadSession {
-        TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1),
+        TelegramPendingUploadSession(repository: TelegramPostboxPendingUploadRepository(postbox: box, accountID: accountID),
             files: { TelegramPendingUploadFiles(repository: archive) })
     }
     func localRecords() throws -> [String] {
@@ -32,7 +33,7 @@ struct SourceFactsTestArchive {
 }
 
 @MainActor class TelegramSourceFactsIntegrationTestCase: XCTestCase {
-    func sourceFactsArchive() async throws -> SourceFactsTestArchive {
+    func sourceFactsArchive(accountID: Int64 = 1) async throws -> SourceFactsTestArchive {
         let database = try PendingFilesTestDatabase()
         addTeardownBlock { try database.cleanup() }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -43,7 +44,7 @@ struct SourceFactsTestArchive {
         let archive = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
             configuration: configuration, spoolDirectory: root.appendingPathComponent("queue"),
             keyProvider: { _, _ in Data(repeating: 0x59, count: 32) })
-        let result = SourceFactsTestArchive(database: database, root: root, configuration: configuration, archive: archive)
+        let result = SourceFactsTestArchive(database: database, root: root, configuration: configuration, archive: archive, accountID: accountID)
         try await archive.setConversationFileSavingEnabled(identity: result.identity, enabled: false)
         return result
     }

@@ -7,6 +7,153 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadArchiveReceiptTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches the provider expanding a retained bundle into originals or recapturing it in S3.
+    func testWholeBundleSubmissionQueuesOneZIPWithoutNewArchiveCopies() async throws {
+        for enabled in [false, true] {
+            let setup = try await prepared(enabled: enabled, includePhoto: enabled, accountID: -1)
+            defer { try? setup.bundle.discard() }
+            let terminal = expectation(description: "Whole bundle native admission")
+            var events: [TelegramUploadBatchEvent] = []
+            let provider: any TelegramUploadBatchProvider = TelegramSyntheticUploadProvider(postbox: setup.box, loseAcknowledgement: !enabled)
+            let lease = provider.submit(bundle: setup.bundle, draft: setup.draft, target: setup.fixture.target, receive: { event in
+                    events.append(event)
+                    switch event { case .accepted, .uncertain, .rejected: terminal.fulfill(); default: break }
+                })
+            defer { lease.stop() }
+            await fulfillment(of: [terminal], timeout: 20)
+            XCTAssertEqual(events.first, .committing)
+            if enabled {
+                guard case let .accepted(ids) = events.last, ids.count == 1 else {
+                    XCTFail("Provider must acknowledge one native ZIP"); continue
+                }
+            } else { XCTAssertEqual(events.last, .uncertain) }
+            let accepted = try await sourceFactsLoad(setup.fixture.session(setup.box))
+            guard case let .acceptedBatch(ids) = accepted.disposition, ids.count == 1 else {
+                XCTFail("Lost ACK must retain the complete one-ZIP receipt"); continue
+            }
+            XCTAssertEqual(accepted.items, setup.draft.items)
+            XCTAssertEqual(accepted.archive, setup.draft.archive)
+            XCTAssertEqual(accepted.captionInput, setup.draft.captionInput)
+            let queuedValue = try await sourceFactsValue(archiveReceiptMessage(setup.box, id: ids[0].nativeID))
+            let queued = try XCTUnwrap(queuedValue), zip = try XCTUnwrap(queued.media.first as? TelegramMediaFile)
+            XCTAssertEqual(queued.media.count, 1)
+            XCTAssertEqual(queued.text, "😀 Bold")
+            XCTAssertNil(queued.groupingKey)
+            XCTAssertEqual(zip.fileName, "Telegram Archive.zip")
+            XCTAssertEqual(zip.mimeType, "application/zip")
+            let cached = try await sourceFactsValue(setup.box.mediaBox.resourceData(zip.resource,
+                pathExtension: nil, option: .complete(waitUntilFetchStatus: false), attemptSynchronously: true) |> take(1))
+            XCTAssertTrue(cached.complete)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cached.path)), setup.zipBytes)
+            let replayed = expectation(description: "Frozen bundle replay refused")
+            let replay = provider.submit(bundle: setup.bundle, draft: setup.draft, target: setup.fixture.target,
+                receive: { if $0 == .rejected { replayed.fulfill() } })
+            defer { replay.stop() }
+            await fulfillment(of: [replayed], timeout: 20)
+            let retained = try await sourceFactsLoad(setup.fixture.session(setup.box))
+            XCTAssertEqual(retained, accepted)
+            XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+            XCTAssertEqual(try eventCount(setup.fixture), setup.events)
+            if !enabled {
+                for record in setup.draft.items.map(\.file) + [try XCTUnwrap(setup.draft.archive?.file)] {
+                    let object = try await S3ObjectStore(configuration: setup.fixture.configuration).head(key: record.objectKey)
+                    XCTAssertNil(object)
+                }
+            }
+            // Stopping the provider does not own/discard the caller's recovered stages.
+            lease.stop()
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(setup.bundle.archive?.file.url)), setup.zipBytes)
+        }
+    }
+
+    // Catches accidentally opening the legacy array route when adding whole-bundle support.
+    func testArraySubmissionCannotDropTheRetainedArchive() async throws {
+        let setup = try await prepared()
+        defer { try? setup.bundle.discard() }
+        var events: [TelegramUploadBatchEvent] = []
+        let lease = TelegramUploadBatchSubmission(postbox: setup.box, accountID: 1, items: setup.bundle.items,
+            draft: setup.draft, target: setup.fixture.target, enqueue: { receipt, messages in
+                telegramUploadBatchEnqueueLocally(postbox: setup.box, receipt: receipt, messages: messages)
+            }, receive: { events.append($0) })
+        defer { lease.stop() }
+        XCTAssertEqual(events, [.rejected])
+        let pointer = try await sourceFactsLoad(setup.fixture.session(setup.box))
+        XCTAssertEqual(pointer, setup.draft)
+        XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+        XCTAssertEqual(try eventCount(setup.fixture), setup.events)
+    }
+
+    // Catches trusting a ZIP's existence without binding its members and the whole canonical bundle.
+    func testWholeBundleSubmissionRejectsSubstitutedOrDamagedResources() async throws {
+        for mutation in ["missingZIP", "missingItem", "order", "memberName", "memberDigest", "rawBytes", "zipBytes", "canonicalBytes", "scope"] {
+            let setup = try await prepared(includePhoto: mutation == "canonicalBytes")
+            defer { try? setup.bundle.discard() }
+            let archive = try XCTUnwrap(setup.bundle.archive)
+            var items = setup.bundle.items, members = archive.members
+            var zip: TelegramUploadArchiveIO.Archive? = archive
+            var target = setup.fixture.target
+            switch mutation {
+            case "missingZIP": zip = nil
+            case "missingItem": items.removeLast()
+            case "order": items.reverse()
+            case "memberName", "memberDigest":
+                let first = members[0]
+                members[0] = .init(itemID: first.itemID, sourceName: first.sourceName,
+                    entryName: mutation == "memberName" ? "substituted.txt" : first.entryName,
+                    byteCount: first.byteCount, plaintextSHA256: mutation == "memberDigest" ? String(repeating: "0", count: 64) : first.plaintextSHA256)
+                zip = .init(file: archive.file, members: members)
+            case "rawBytes", "zipBytes", "canonicalBytes":
+                let file = mutation == "zipBytes" ? archive.file : mutation == "canonicalBytes" ? items[0].file : items[0].rawSource
+                var bytes = try Data(contentsOf: file.url); bytes[bytes.count / 2] ^= 1
+                try bytes.write(to: file.url)
+            case "scope": target = .init(accountID: 2, chatID: 42, title: "Other synthetic account")
+            default: XCTFail("Unknown mutation")
+            }
+            let terminal = expectation(description: "Reject \(mutation)")
+            var events: [TelegramUploadBatchEvent] = []
+            let lease = TelegramUploadBatchSubmission(postbox: setup.box, accountID: 1,
+                bundle: .init(items: items, archive: zip), draft: setup.draft, target: target,
+                enqueue: { receipt, messages in
+                    telegramUploadBatchEnqueueLocally(postbox: setup.box, receipt: receipt, messages: messages)
+                }, receive: { event in events.append(event); if event == .rejected { terminal.fulfill() } })
+            defer { lease.stop() }
+            await fulfillment(of: [terminal], timeout: 20)
+            XCTAssertEqual(events, [.rejected], mutation)
+            let pointer = try await sourceFactsLoad(setup.fixture.session(setup.box))
+            XCTAssertEqual(pointer, setup.draft, mutation)
+            XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+            XCTAssertEqual(try eventCount(setup.fixture), setup.events)
+        }
+    }
+
+    // Catches asynchronous validation committing after its lease has been stopped.
+    func testStoppingWholeBundleBeforePreparationOrAtCommitBoundaryDoesNotEnqueue() async throws {
+        for atCommit in [false, true] {
+            let setup = try await prepared()
+            defer { try? setup.bundle.discard() }
+            let boundary = expectation(description: "Stopped bundle")
+            boundary.isInverted = !atCommit
+            var lease: TelegramUploadBatchSubmission?
+            var events: [TelegramUploadBatchEvent] = []
+            lease = TelegramUploadBatchSubmission(postbox: setup.box, accountID: 1, bundle: setup.bundle,
+                draft: setup.draft, target: setup.fixture.target, enqueue: { receipt, messages in
+                    telegramUploadBatchEnqueueLocally(postbox: setup.box, receipt: receipt, messages: messages)
+                }, receive: { event in
+                    events.append(event)
+                    if atCommit, event == .committing { lease?.stop(); boundary.fulfill() }
+                    else if !atCommit { boundary.fulfill() }
+                })
+            defer { lease?.stop() }
+            if !atCommit { lease?.stop() }
+            await fulfillment(of: [boundary], timeout: atCommit ? 20 : 0.1)
+            XCTAssertEqual(events, atCommit ? [.committing] : [])
+            let pointer = try await sourceFactsLoad(setup.fixture.session(setup.box))
+            XCTAssertEqual(pointer, setup.draft)
+            XCTAssertEqual(try setup.fixture.localRecords(), setup.localRecords)
+            XCTAssertEqual(try eventCount(setup.fixture), setup.events)
+        }
+    }
+
     // Catches sending N originals or a separate caption instead of one authenticated ZIP.
     func testOneZIPEnqueuesAndRetainsCanonicalPreparationUnderBothStoragePolicies() async throws {
         for enabled in [false, true] {
@@ -167,11 +314,12 @@ import SwiftSignalKit
         let events: [[String]]
     }
 
-    private func prepared(enabled: Bool = false, chatTTL: Bool = false) async throws -> Setup {
-        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+    private func prepared(enabled: Bool = false, chatTTL: Bool = false, includePhoto: Bool = false, accountID: Int64 = 1) async throws -> Setup {
+        let fixture = try await sourceFactsArchive(accountID: accountID), box = try await sourceFactsOpen(fixture.postboxPath)
         try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: enabled)
         try await sourceFactsValue(archiveReceiptPeers(box, chatTTL: chatTTL))
-        let items = [try await sourceFactsDocument(fixture, name: "first.txt", text: "First synthetic source"),
+        let first = try await includePhoto ? sourceFactsSmallImage(fixture) : sourceFactsDocument(fixture, name: "first.txt", text: "First synthetic source")
+        let items = [first,
                      try await sourceFactsDocument(fixture, name: "second.txt", text: "Second synthetic source")]
         defer { items.forEach { try? $0.discard() } }
         let store = fixture.session(box), id = UUID()
@@ -184,11 +332,11 @@ import SwiftSignalKit
         let zip = try await TelegramUploadArchiveIO.prepare(sources)
         defer { try? TelegramUploadFileIO.discard(zip.file) }
         let record = try await TelegramPendingUploadFiles(repository: fixture.archive).saveArchive(zip,
-            sources: sources, archiveID: zip.file.id, accountID: 1, chatID: 42, preparationID: id)
+            sources: sources, archiveID: zip.file.id, accountID: accountID, chatID: 42, preparationID: id)
         let descriptor = TelegramPendingUploadArchive(id: zip.file.id, file: record,
             members: zip.members.map { .init(itemID: $0.itemID, entryName: $0.entryName) })
         _ = try await store.installArchive(preparationID: id, expectedRevision: pending.revision, archive: descriptor,
-            target: fixture.target, admission: .init(accountID: 1, chatID: 42, preparationID: id,
+            target: fixture.target, admission: .init(accountID: accountID, chatID: 42, preparationID: id,
                 expectedRevision: pending.revision, generation: UUID()))
         try await store.save(preparationID: id, chatID: 42, captionInput: input, disposition: .submissionStarted)
         let draft = try await sourceFactsLoad(store), bundle = try await store.restoreBundle(draft: draft)

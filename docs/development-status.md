@@ -1,6 +1,52 @@
 # Development status — 2026-10-12
 
-## Current stage: one-ZIP native enqueue receipt
+## Current stage: whole-bundle ZIP submission providers
+
+The Account and isolated native providers accept a recovered bundle through a
+dedicated overload. Shared submission authenticates canonical/original/cover
+resources and the ordered descriptor-bound ZIP before copying exactly one ZIP
+to MediaBox; copied bytes are digest-checked before native admission. The old
+array route still refuses16. Legacy adapters fail closed for Archive. Stopping
+before admission prevents insertion and leaves caller-owned stages intact.
+Submission creates no file records or S3 objects under either policy.
+
+Compiled shared-path RED:3 tests,9 expected assertion/expectation failures,
+0 unexpected. Focused GREEN30 XCTest/0 failures and45 Python tests. Protocol
+dispatch then compiles RED:1 test,5 expected assertion failures,0 unexpected;
+explicit provider adoption passes34 focused XCTest/0 failures and45 Python
+tests. Recompilation reports3 existing test warnings; upstream t19 diagnostics
+remain separate. Final focused tests pass35 XCTest/0 failures and45 Python tests,
+including a photo/original bundle and continued refusal of the legacy array route.
+Required DB up and full test suite exit0: **1,291 XCTest (1,215 Telegram +76 core),
+1 skipped,0 failures;45 Python tests**. No compile warnings;523 existing upstream
+t19 diagnostics remain without test failures. The microphone-authorization skip
+is separate. Required build and strict deep signature exit0; the453-file/9-copy
+freeze matches after gates (471 integrity checks). Bounded source review reports
+no actionable code findings. Root independently verifies its original contract,
+current source/copies and raw commands:816 integrity checks,35 original recorded
+invocations,2 nonzero compiled RED runs,4 unrun checks,1 query coverage skip and
+148 artifacts. Requested worker route is inherited; observed provider/model/
+usage/internal execution remain unknown, with no quorum. Runtime gates belong
+to root. A docs-only clarification now says submission creates no file records
+or S3 objects; read-only ArchiveFileCapture hashing is deliberately still used.
+Docs delta review reports no findings. Root verifies its final contract/current
+source/copies:569 integrity checks,9 original recorded invocations,0 nonzero,
+4 unrun checks and44 artifacts. Final refresh/check/query exit0 and the final
+453-file/9-copy freeze matches; production/test hashes are unchanged, so runtime
+gates are retained without an unnecessary rerun.
+
+Project v6 refresh/check exit0:470 files,432/432 classified code. Fresh own query
+retrieves Submission.validateArchive and is source-confirmed. Reference freshness
+check passes; corrected reference query retrieves one ArchiverSenderContainer,
+confirmed against PreviewSenderController/SenderController. The initial wrong
+prefix query exited0 without matches and remains a coverage skip. Source freeze
+contains453 files and9 review copies.
+
+No visible screen changes or Account/server sends. Controller/model bundle
+adoption, capture-receipt retention/fresh Session lost-ACK recovery and the
+existing-window Archive UI remain open. Full migration stays active.
+
+## Previous stage: one-ZIP native enqueue receipt
 
 Active schema16 Archive now produces one plain ZIP message with one normalized
 caption and one complete native receipt. Descriptor ID/name/size/digest are

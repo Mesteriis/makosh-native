@@ -1943,7 +1943,17 @@ write no archive records or S3 objects. A queued ZIP cannot acquire explicit
 media TTL/view-once attributes. Ordinary chat auto-delete is a separate native
 attribute and remains supported; neither mechanism purges Makosh's archive.
 
-Controller/model and provider adoption, capture-receipt retention across pointer
+Account and isolated native providers now accept an explicit recovered bundle.
+The shared submission authenticates every canonical resource, retained original
+and cover, binds ordered ZIP members to the durable descriptor, and validates
+the ZIP against raw bytes and its saved digest before copying one ZIP to MediaBox.
+The copied cache is digest-checked again before enqueue. Cancellation before
+admission prevents insertion; stopping never discards the caller's bundle or
+recalls an inserted message. Legacy array submissions continue to refuse16;
+adapters without explicit bundle support refuse Archive. Submission creates no
+file records or S3 objects. Account/server delivery has not been exercised.
+
+Controller/model adoption, capture-receipt retention across pointer
 failure and existing-window Archive UI remain open; ordinary preparations still
 use schema15. Capture and pointer installation
 are separate transactions; failed installation never purges immutable records.

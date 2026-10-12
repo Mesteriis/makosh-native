@@ -14,6 +14,16 @@ final class TelegramSyntheticUploadProvider: TelegramUploadBatchProvider {
     init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false) {
         self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement
     }
+    func submit(bundle: TelegramRecoveredUploadBundle, draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
+                receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
+        guard let postbox else { receive(.rejected); return SyntheticUploadLease() }
+        let loseAcknowledgement = self.loseAcknowledgement
+        return TelegramUploadBatchSubmission(postbox: postbox, accountID: accountID, bundle: bundle, draft: draft,
+            target: target, enqueue: { receipt, messages in
+                syntheticUploadBatchCommit(postbox: postbox, receipt: receipt, messages: messages,
+                    loseAcknowledgement: loseAcknowledgement)
+            }, receive: receive)
+    }
     func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
                 receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
         guard let postbox else { receive(.rejected); return SyntheticUploadLease() }

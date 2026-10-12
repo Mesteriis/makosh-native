@@ -124,6 +124,15 @@ final class TelegramEngineUploadProvider: TelegramUploadBatchProvider {
     var accountID: Int64 { account.peerId.toInt64() }
     init(account: Account) { self.account = account }
 
+    func submit(bundle: TelegramRecoveredUploadBundle, draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
+                receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
+        let account = self.account
+        return TelegramUploadBatchSubmission(postbox: account.postbox, accountID: accountID, bundle: bundle, draft: draft,
+            target: target, enqueue: { receipt, messages in
+                enqueueBatchUploadWithReceipt(account: account, receipt: receipt, messages: messages)
+            }, observe: { ids in observeBatchUpload(account: account, ids: ids) }, receive: receive)
+    }
+
     func submit(items: [TelegramUploadBatchItem], draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
                 receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {
         let account = self.account

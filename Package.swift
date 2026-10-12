@@ -32,6 +32,7 @@ let package = Package(
         .target(name: "MakoshCustomEmojiControl", dependencies: [.product(name: "CRLottie", package: "MakoshRLottie"),
             .product(name: "CVPX", package: "MakoshVPX")]),
         .target(name: "MakoshTelegram", dependencies: ["MakoshCore",
+            .product(name: "TelegramApi", package: "TelegramApi"),
             "MakoshJPEGControl",
             "MakoshCodeHighlight",
             "MakoshCustomEmojiControl",

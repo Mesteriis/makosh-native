@@ -21,6 +21,7 @@ from telegram_selection_adaptation import adapt_selection_source
 from telegram_delete_adaptation import DELETE, adapt_delete_source
 from telegram_draft_adaptation import DRAFT_HELPERS, adapt_draft_source
 from telegram_topic_adaptation import TOPIC_SOURCES, adapt_topic_source
+from telegram_peer_management_adaptation import STATE_MANAGER, adapt_peer_management_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -33,7 +34,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 18
+RECIPE = 19
 
 
 def run(*args):
@@ -153,6 +154,8 @@ def main():
     extract_committed(archive, DEST)
     search = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Messages/SearchMessages.swift"
     search.write_text(adapt_search_source(search.read_text()))
+    state_manager = DEST / STATE_MANAGER
+    state_manager.write_text(adapt_peer_management_source(STATE_MANAGER, state_manager.read_text()))
     for relative in (POSTBOX, HISTORY):
         source = DEST / relative
         source.write_text(adapt_retention_source(relative, source.read_text()))
@@ -236,6 +239,7 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
                         "Selected-message fresh admission and exact-ID deletion share one Postbox transaction",
                         "Existing native draft update and synchronization-operation helpers are public for same-transaction local/cloud persistence",
                         "Native seed rendering and forum operations validate bounded topic wire structure before legacy Postbox decoding",
+                        "AccountStateManager exposes its unchanged update replay wrapper for freshly admitted peer-management RPC acknowledgements",
                         "FlatSerialization generated with pinned official flatc 24.12.23"]}, indent=2) + "\n")
     print(f"Telegram engine: prepared {len(packages)} pinned packages in ignored local storage")
 

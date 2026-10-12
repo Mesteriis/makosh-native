@@ -219,6 +219,8 @@ public final class TelegramModel: ObservableObject {
     }
     public let search = TelegramSearchModel()
     public let globalSearch = TelegramSearchModel(global: true)
+    public let sharedMedia = TelegramSearchModel()
+    public let peerManagement = TelegramPeerManagementController()
     public let media = TelegramMediaController()
     public let avatars = TelegramAvatarStore()
     public let peerStatus = TelegramPeerStatusController()
@@ -663,6 +665,7 @@ public final class TelegramModel: ObservableObject {
         }
         search.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
         globalSearch.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
+        sharedMedia.mediaSourcesDidChange = { [weak self] in self?.refreshMediaSources() }
         search.selectionDidChange = { [weak self] id, context in
             guard let self, self.search.resultContextID == context,
                   let index = self.search.messageIndex(id: id, inChat: self.selectedChatID, threadID: self.selectedThreadID) else { return }
@@ -1336,6 +1339,7 @@ public final class TelegramModel: ObservableObject {
                 : TelegramContactProfile(accountID: accountID, peerID: chat.id,
                 displayName: chat.title, username: "synthetic_\(chat.id)", phone: "10000000000",
                 isBot: false, observedAt: Date())
+            if !profile.isPerson && !profile.isBot { peerManagement.bind(TelegramSyntheticPeerManagementProvider(profile: profile)) }
             receiveContactProfile(profile, requestID: requestID,
                 contextID: contextID, accountID: accountID, chatID: chat.id)
             return
@@ -1365,6 +1369,7 @@ public final class TelegramModel: ObservableObject {
               accountID == draftAccountID, chatID == selectedChatID,
               profile == nil || (profile?.accountID == accountID && profile?.peerID == chatID) else { return }
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
+        if let profile, !profile.isPerson, !profile.isBot, peerManagement.peerID != chatID { peerManagement.open(peerID: chatID) }
         // The same guarded request owns subsequent native peer/cache updates.
         contactProfileState = profile.map(TelegramContactProfileState.ready)
             ?? .unavailable("Сведения о диалоге пока недоступны. Секретные чаты в этой карточке ещё не поддерживаются.")
@@ -1381,8 +1386,31 @@ public final class TelegramModel: ObservableObject {
         return true
     }
 
+    public func openSharedMedia(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
+        guard isCurrentContactProfile(profile, contextID: contextID) else { return false }
+        sharedMedia.selectChat(profile.peerID)
+        sharedMedia.mediaFilter = .photoVideo
+        return true
+    }
+
+    public func openSharedMediaMessage(id: String, contextID: UUID, profileContextID: UUID) -> Bool {
+        guard phase == .ready, profileContextID == contactProfileContextID, !isBusy,
+              !messageActions.isBusy, upload.phase == .idle, !isComposerSuspended,
+              !isForwardComposerLocked, !selectedMessagesDeletionBlocksActions,
+              case let .ready(profile) = contactProfileState,
+              isCurrentContactProfile(profile, contextID: profileContextID),
+              let (chat, index, thread) = sharedMedia.resultDestination(id: id, contextID: contextID),
+              chat.id == selectedChatID else { return false }
+        cancelContactProfile()
+        if selectedThreadID != thread { selectThread(thread) }
+        isForumTopicsListPresented = false
+        loadHistory(anchor: index, clear: false, focusID: id)
+        return true
+    }
+
     public func cancelContactProfile() {
-        profilePhotos.close()
+        profilePhotos.close(); peerManagement.close()
+        sharedMedia.selectChat(nil); sharedMedia.clearMessageSearch()
         contactProfileSubscription.set(nil)
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
         contactProfileRequestID = nil
@@ -1965,6 +1993,7 @@ public final class TelegramModel: ObservableObject {
         peerStatus.bind(account: account)
         forumTopics.bind(account: account); forumTopics.selectChat(selectedChatID)
         profilePhotos.bind(TelegramEngineProfilePhotoProvider(account: account))
+        peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
@@ -1976,7 +2005,7 @@ public final class TelegramModel: ObservableObject {
         selectedMessagesDelete.bind(provider: TelegramEngineSelectedMessagesDeleteProvider(account: account))
         savedMessagesForward.bind(TelegramEngineSavedMessagesForwardProvider(account: account, approval: sendApproval))
         historyRead.bind(TelegramEngineHistoryReadProvider(account: account))
-        search.bind(account: account); globalSearch.bind(account: account)
+        search.bind(account: account); globalSearch.bind(account: account); sharedMedia.bind(account: account)
         search.setFolder(chatFolder)
         let accountToken = accountGeneration
         uploadCaptionLimit.set((telegramUploadCaptionLimit(postbox: account.postbox, accountID: account.peerId.toInt64())
@@ -2020,7 +2049,7 @@ public final class TelegramModel: ObservableObject {
         bindMessageSelectionRangeProvider(nil)
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
-        profilePhotos.bind(nil)
+        profilePhotos.bind(nil); peerManagement.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -2039,7 +2068,7 @@ public final class TelegramModel: ObservableObject {
         pendingForwardStage = nil
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
-        search.bind(account: nil); globalSearch.bind(account: nil)
+        search.bind(account: nil); globalSearch.bind(account: nil); sharedMedia.bind(account: nil)
         accountGeneration = UUID(); conversationGeneration = UUID()
         messageEditSessions = [:]; messageEditSession = nil; submittedEditSession = nil; editDrafts = [:]
         account?.shouldBeServiceTaskMaster.set(.single(.never))
@@ -2123,9 +2152,9 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func refreshMediaSources() {
-        let sources = historyMediaSources + Array(search.mediaSources.values) + Array(globalSearch.mediaSources.values)
+        let sources = historyMediaSources + Array(search.mediaSources.values) + Array(globalSearch.mediaSources.values) + Array(sharedMedia.mediaSources.values)
         mediaProvider?.sources = Dictionary(sources.map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
-        let attachments = (messages + search.messages + globalSearch.messages).flatMap(\.attachments)
+        let attachments = (messages + search.messages + globalSearch.messages + sharedMedia.messages).flatMap(\.attachments)
         playback.retain(attachments: attachments)
         media.retain(attachments: attachments)
         if let accountID = draftAccountID, !isSyntheticPreview {
@@ -2283,6 +2312,7 @@ public final class TelegramModel: ObservableObject {
         model.preview = pages
         model.search.useSyntheticPreview(albums: albums, forum: forum)
         model.globalSearch.useSyntheticPreview(albums: albums, forum: forum)
+        model.sharedMedia.useSyntheticPreview(albums: albums, forum: forum)
         model.media.bind(provider: TelegramSyntheticMediaProvider())
         model.upload.bind(provider: TelegramSyntheticUploadProvider())
         model.messageActions.bind(provider: TelegramSyntheticMessageActionsProvider())

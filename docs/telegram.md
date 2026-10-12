@@ -762,8 +762,8 @@ and the engine can refresh the peer data. The timestamp describes a local cache
 observation, not an acknowledged server fetch. No contact-list scan or system
 Contacts access is performed. Groups, channels and bots cannot be linked to a
 person dossier; a person without a name can be viewed but not linked yet.
-Secret-chat profiles, animated video avatars, member lists,
-administration and other reference profile actions remain open. The static
+Secret-chat profiles and animated video avatars remain open. Member lists,
+administration and shared media are described below. The static
 profile-photo gallery below is available from the card's avatar.
 
 The profile offers explicit creation of a new dossier or selection of an existing
@@ -804,6 +804,70 @@ The DEBUG-only `--telegram-peer-profiles-synthetic-preview` flag uses that same
 workspace and explicit isolated database contract. Dialogs 1–7 cover a person,
 group, channel, supergroup, bot, unknown-count scam channel and zero-count fake
 supergroup. These are in-memory fixtures, not server-refresh acceptance.
+
+### Group/channel administration and shared media (block 4)
+
+The profile contains member/admin directories, restrictions/removals, title and
+description editors, group default permissions and shared media. Native roles,
+membership, migration, access hashes and available cached data determine which
+actions appear. Missing/inaccessible/monoforum peers fail closed. Lists use
+native64-member pages and raw server offsets; basic groups use their complete
+cached participant list. Administrator name filtering is local over fetched
+pages, so more pages may be required for a match. Empty results are distinguished
+from failed or timed-out requests.
+
+Immutable account/peer/context/request tokens reject late reads and stale UI
+actions. Writes re-read actor rights and cached peer data in Postbox after a
+fresh channel-participant lookup, comparing the exact selected participant.
+No UI snapshot alone authorizes a write. Granted rights cannot exceed the
+actor's rights; self/owner edits and implicit administrator demotion through
+restriction are prohibited. Basic groups use boolean admin rights and removal
+without history revocation. Default permissions compare their old value and
+cannot ban everyone from reading. The server is the final authority for edits
+concurrent with admission; this is not a distributed CAS guarantee.
+
+Title/about limits are255 UTF16 and rank16. Title and about save separately,
+so partial success cannot appear as an atomic combined save. Explicit member
+and default-permission confirmation freezes the submitted change. Finite bans
+are limited to60seconds through365days and revalidated at native admission;
+only an explicit permanent choice uses Int32.max. This margin avoids the
+[Telegram forever conversion](https://core.telegram.org/constructor/chatBannedRights)
+for dates outside the server's finite window. Expired custom dates must be
+selected again. Native legacy aggregate ban bits are not sent; nonzero admin
+rights include the pinned engine's required other bit, while demotion clears it.
+
+RPCs use the pinned TelegramApi with automatic flood waiting disabled. A
+30-second outer deadline bounds each read/write.4xx rejections are definite;
+transport/server uncertainty, timeout or closing during a write requires an
+explicit refresh before another write. Requests are never automatically
+resent. Refresh shows the current available observations; it cannot prove that
+a still-running server operation did not execute. The uncertainty ledger lasts
+for the controller lifetime and is not a durable outbox. A confirmed basic-group
+admin Bool updates cached membership only while its exact old basis matches;
+Updates ACKs replay through recipe19's unchanged public wrapper. Cache refresh
+is requested after Updates/basic-admin ACKs, without claiming synchronous
+server-refresh completion.
+
+Shared media has independent query, media filter, pagination and source leases;
+it does not replace conversation or global search. All-chat native search can
+open the exact source thread/index. Closing or changing accounts clears results
+and cancels stale activations. Photo/video viewing uses the existing bounded
+decoder, file borrowing and playback; spoilers require explicit reveal. Save
+uses the existing native panel. Gallery downloads inherit the existing per-chat
+S3 policy: OFF prohibits every new S3 copy, and no PostgreSQL byte storage or
+archive deletion path is added.
+
+GIF results use the existing file rows and their supported preview/playback
+actions. Files without a supported visual decoder are not put in an indefinitely
+loading photo tile. Animated-GIF grid/player parity remains open.
+
+The DEBUG-only peer-appearance preview uses the existing explicit isolated
+`qa_telegram_dossier_` database contract and synthetic administration fixtures.
+Native UI QA exercises confirmation, role/rank refresh, default permissions,
+information editing, media tabs and photo→video→source-message navigation.
+Real account/network/admin acceptance remains block6. Invites/member addition,
+join requests, admin logs, ownership, statistics, avatar editing/stories and
+full reference-gallery parity remain open in `reference-interface.md`.
 
 ## Peer avatars and cached status
 

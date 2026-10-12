@@ -26,6 +26,7 @@ python3 scripts/test-telegram-selection-adaptation.py
 python3 scripts/test-telegram-delete-adaptation.py
 python3 scripts/test-telegram-draft-adaptation.py
 python3 scripts/test-telegram-topic-adaptation.py
+python3 scripts/test-telegram-peer-management-adaptation.py
 python3 - "$@" <<'PYTHON'
 import json
 import os

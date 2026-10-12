@@ -68,7 +68,7 @@ enum TelegramUploadEvent {
     }
     public var presentedItems: [TelegramUploadBatchItem] { items.compactMap { $0.presented(as: presentation) } }
     @discardableResult public func updatePresentation(_ presentation: TelegramUploadPresentation, contextID: UUID, revision: UUID) -> Bool {
-        guard preparationID == contextID, itemsRevision == revision, canEditItems else { return false }
+        guard presentation != .archive, preparationID == contextID, itemsRevision == revision, canEditItems else { return false }
         if self.presentation == presentation { return true }
         guard presentation == .file ? canUseFilePresentation : canSwitchPresentation else { return false }
         let previousPresentation = self.presentation, previousGrouping = isGrouped

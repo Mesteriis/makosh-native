@@ -384,12 +384,31 @@ Count/name/catalog preflight precedes source path IO. The inspector streams
 inflated bytes without extracting files and compares exact local/central/EOCD
 structure, names/order/count, CRC/SHA256 and freshly read owned raw sources.
 Cancellation and inode snapshots prevent publishing partial or changed input.
-An outer authenticated ZIP record digest is still required from its future caller.
+The optional outer digest check hashes the same held ZIP inode used for structural
+inspection. Policy-aware save and whole-bundle restore supply that digest, binding
+the archived record to the inspected bytes without a separate-path capture gap.
 
-Archive is not connected to the controller, durable preparation or native queue
-yet. Next retain N ordered immutable originals plus one ZIP record under strict
-schema16, send only one ZIP with one complete native receipt, and preserve atomic
-publication on cancellation/I/O/bounds. S3 OFF forbids ZIP and member uploads,
-including preparation; local encrypted records never promote after enable.
-A photo/GIF `originalFile` pair is not an Archive representation. Restart, stale
-CAS, native resource integrity and no automatic resend need real regressions.
+Strict schema16 now retains N ordered canonical items plus one versioned ZIP
+descriptor: stable archive ID, outgoing scoped ZIP record and ordered item/name
+bindings. Complete raw source facts and existing photo/GIF originals remain
+required. Metadata validation is separate from byte authentication. Active
+Archive permits no grouping, caption-above or spoiler and expects one accepted
+message; inactive File/Media may retain the cache. Schemas1–15 reject Archive
+fields, including null, and preserve their previous projection.
+
+The storage leaf validates before capture and uses the existing outgoing policy.
+S3 OFF forbids ZIP and member uploads, including preparation; local encrypted
+records never promote after enable. Whole-bundle restoration authenticates and
+inspects the restored ZIP against restored raw sources, owns all stages together,
+and cleans exports on failure/cancellation. Real PostgreSQL/S3 and encrypted
+Postbox reopen tests cover both policies, deleted source paths, tampered names,
+array-only refusal and no recapture/promotion. A photo/GIF `originalFile` pair is
+not an Archive representation.
+
+Archive is not connected to the controller/model or native queue yet. Generic
+mode/prepare/plan entry points refuse it before state changes or copies. Next
+implement dedicated install/generation CAS and whole-bundle adoption, then send
+one ZIP with one complete native receipt. PostgreSQL/S3 capture and Postbox CAS
+are distinct transactions; preserve immutable files if pointer installation
+fails. Stale CAS, lost acknowledgement, native resource integrity, no automatic
+resend and actual existing-window Archive UI still need integration regressions.

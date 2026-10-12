@@ -1,6 +1,58 @@
 # Development status — 2026-10-12
 
-## Current stage: internal ZIP codec
+## Current stage: Archive schema and complete recovery foundation
+
+Strict schema16 retains ordered canonical items plus a versioned ZIP descriptor,
+stable item/name bindings and an outgoing scoped record. It requires complete raw
+source facts and preserves prepared photo/GIF pairs. Schemas1–15 reject Archive
+fields, including null. Active Archive has one accepted-message count and forbids
+grouping, caption-above and spoiler; inactive File/Media may retain its cache.
+
+Policy-aware ZIP save and whole-bundle restore authenticate the outer digest on
+the same held inode used for member inspection. S3 OFF forbids all new copies,
+including preparation; encrypted local records never promote after enable.
+Whole-bundle restore owns canonical/original/cover/ZIP stages and cleans exports
+on failure. Array-only restoration refuses16. Generic prepare/mode/plan paths
+refuse Archive before copies or state changes. Ordinary preparations remain15;
+dedicated install/generation CAS, controller/model adoption, one native ZIP
+resource/receipt and actual existing-window Archive UI are still open.
+
+Compiled behavioral RED precedes each behavior change. Focused whole-bundle,
+storage, digest and boundary run:31 XCTest,0 failures;45 Python tests. Real
+PostgreSQL/S3 plus encrypted Postbox reopen covers both policies, deleted sources,
+tampered member names, complete cleanup and no recapture/promotion. Initial test
+setup had a MainActor transaction closure SIGTRAP; its original raw run is kept.
+A test-only nonisolated transaction helper fixes that setup; repeated compiled
+RED then reports4 expected failures,0 unexpected. Production transaction behavior
+is unchanged. Prior hosted064cd13 CI exposed an ambiguous test buffer overload;
+the closure now explicitly uses UnsafeMutableRawBufferPointer. New hosted CI is
+not yet verified.
+
+Root independently verifies both worker deliveries:592 integrity checks,
+75 original commands,8 nonzero and6 explicitly unrun checks. Requested route is
+inherited; observed provider/model/usage/internal transfer remain unknown, with
+no quorum.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` exit0:
+**1,270 XCTest (1,194 Telegram +76 core),1 skipped,0 failures;45 Python tests**.
+Warm gates emit no compile warnings;451 upstream t19 diagnostics remain without
+test failures. Strict deep signature, system libz linkage and bundled notice
+equality pass. All449 source/test/dependency/script/license/reference-lock files
+and22 review copies remain frozen through gates. Project v6 refresh/check exit0:
+466 files,428/428 classified code. Unchanged reference579cebbf/engine a24bbe45
+checks pass; active own/reference results are source-confirmed. An early check
+while refresh still ran reported STALE; an initial wrong-prefix query returned
+no match. Both originals remain separate from corrected evidence. Final bounded
+source review reports no actionable findings; root also reviews the worker's
+model changes. The worker's self-authored model portion is not an independent
+review or quorum. Root verifies the final report's source/copy/artifact hashes,
+all56 original worker commands and8 delegated XERJ commands. Launcher127, two
+read-path2 errors, early STALE1 and wrong-prefix no-match0 remain classified
+separately. Runtime gates belong to root. Deterministic mid-export/mid-inflate
+cancellation and concurrent mutation schedules remain unrun. Full Telegram and
+later services remain the active goal.
+
+## Previous stage: internal ZIP codec
 
 This Archive slice adds independently authored ZIP32 writer/inspection over
 the SDK's system zlib module. Ordered owned raw stages become one private

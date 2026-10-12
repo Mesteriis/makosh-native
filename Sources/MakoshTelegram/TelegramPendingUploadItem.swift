@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 /// Presentation changes select an existing resource; they never rename JPEG bytes into an original.
 public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
-    case media, file
+    case media, file, archive
 
     func allowsGrouping(_ items: [TelegramUploadBatchItem]) -> Bool {
         allowsGrouping(facts: items.map(\.sourceFacts), files: items.map {
@@ -18,6 +18,7 @@ public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
         })
     }
     private func allowsGrouping(facts: [TelegramUploadSourceFacts?], files: [(name: String, isVisual: Bool, metadata: TelegramUploadMetadata?)]) -> Bool {
+        guard self != .archive else { return false }
         guard facts.contains(where: { $0 != nil }) else { return allowsGrouping(files) }
         let complete = facts.compactMap { $0 }
         guard complete.count == files.count, TelegramUploadSourceClassifier.allowsGrouping(for: complete, presentation: self),
@@ -30,13 +31,14 @@ public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
     }
 
     func allowsGrouping(_ files: [(name: String, isVisual: Bool)]) -> Bool {
-        guard !files.isEmpty, !files.contains(where: { ($0.name as NSString).pathExtension.lowercased() == "webp" }),
+        guard self != .archive, !files.isEmpty, !files.contains(where: { ($0.name as NSString).pathExtension.lowercased() == "webp" }),
               self != .media || files.allSatisfy(\.isVisual) else { return false }
         let audio = files.map { UTType(filenameExtension: ($0.name as NSString).pathExtension)?.conforms(to: .audio) == true }
         return !audio.contains(true) || audio.allSatisfy { $0 }
     }
 
     func allowsGrouping(_ files: [(name: String, isVisual: Bool, metadata: TelegramUploadMetadata?)]) -> Bool {
+        guard self != .archive else { return false }
         if files.contains(where: { $0.metadata?.voice != nil || $0.metadata?.roundVideo != nil }) { return false }
         if files.contains(where: { if case .webP = $0.metadata { true } else { false } }) { return false }
         if files.contains(where: { if case .audio = $0.metadata { true } else { false } }) {
@@ -165,7 +167,8 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
     }
 
     func payload(for presentation: TelegramUploadPresentation) -> ArchiveFileRecord? {
-        presentation == .file && (file.attachment.kind == "photo" || metadata?.gif != nil) ? originalFile : file
+        guard presentation != .archive else { return nil }
+        return presentation == .file && (file.attachment.kind == "photo" || metadata?.gif != nil) ? originalFile : file
     }
 
     static func isDurable(_ file: ArchiveFileRecord) -> Bool {
@@ -173,7 +176,7 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
         guard file.state == .local, case .some(.outgoing) = file.purpose else { return false }
         return true
     }
-    private static func validRecord(_ file: ArchiveFileRecord, identity: MessageArchiveIdentity, attachmentID: String) -> Bool {
+    static func validRecord(_ file: ArchiveFileRecord, identity: MessageArchiveIdentity, attachmentID: String) -> Bool {
         isDurable(file) && file.id != TelegramPendingUploadDraft.zeroUUID && file.identity == identity &&
             file.attachment.id == attachmentID &&
             ["file", "photo", "video"].contains(file.attachment.kind) &&
@@ -230,6 +233,7 @@ public struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
         }
     }
     public func presented(as presentation: TelegramUploadPresentation) -> Self? {
+        guard presentation != .archive else { return nil }
         guard presentation == .file else { return self }
         guard file.metadata?.roundVideo == nil else { return nil }
         if file.mode == .photo || file.metadata?.gif != nil {

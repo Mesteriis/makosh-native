@@ -5,15 +5,18 @@ import zlib
 
 enum TelegramUploadArchiveValidation {
     static func validate(_ archive: TelegramUploadArchiveIO.Archive,
-                         sources: [TelegramUploadArchiveIO.Source]) async throws {
+                         sources: [TelegramUploadArchiveIO.Source], expectedPlaintextSHA256: String? = nil) async throws {
         try Task.checkCancellation()
+        guard expectedPlaintextSHA256.map(validDigest) ?? true else { throw TelegramUploadFileError.unavailable }
         guard sources.count <= TelegramUploadArchiveLimits.members,
               archive.members.count <= TelegramUploadArchiveLimits.members,
               sources.allSatisfy({ $0.file.name.utf8.count <= TelegramUploadArchiveLimits.sourceNameBytes }) else {
             throw TelegramUploadFileError.tooLarge
         }
         try TelegramUploadArchiveLimits.validateEntryNames(archive.members.map(\.entryName))
-        let worker = Task.detached(priority: .utility) { try inspect(archive, sources: sources) }
+        let worker = Task.detached(priority: .utility) {
+            try inspect(archive, sources: sources, expectedPlaintextSHA256: expectedPlaintextSHA256)
+        }
         try await withTaskCancellationHandler {
             try await worker.value
             try Task.checkCancellation()
@@ -23,7 +26,7 @@ enum TelegramUploadArchiveValidation {
     // Only the independently authored writer's ZIP32 profile is admitted.
     // Allocated names are durable input; validation never reruns the allocator.
     private static func inspect(_ archive: TelegramUploadArchiveIO.Archive,
-                                sources: [TelegramUploadArchiveIO.Source]) throws {
+                                sources: [TelegramUploadArchiveIO.Source], expectedPlaintextSHA256: String?) throws {
         try Task.checkCancellation()
         guard sources.count > 1, sources.count < Int(UInt16.max), archive.members.count == sources.count,
               archive.file.id != TelegramPendingUploadDraft.zeroUUID,
@@ -58,6 +61,17 @@ enum TelegramUploadArchiveValidation {
         }
         let zip = try open(archive.file)
         defer { zip.close() }
+        // Bind the authenticated outer record to the same held inode used by
+        // structural inspection; a separate path capture cannot establish this.
+        if let expectedPlaintextSHA256 {
+            var hash = SHA256(), offset: Int64 = 0
+            while offset < archive.file.size {
+                let count = Int(min(65_536, archive.file.size - offset))
+                hash.update(data: try read(zip.fd, offset: offset, count: count))
+                offset += Int64(count)
+            }
+            guard digest(hash.finalize()) == expectedPlaintextSHA256 else { throw TelegramUploadFileError.unavailable }
+        }
         let endOffset = archive.file.size - 22
         let end = try read(zip.fd, offset: endOffset, count: 22)
         guard u32(end, 0) == 0x06054b50, u16(end, 4) == 0, u16(end, 6) == 0,

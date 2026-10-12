@@ -45,6 +45,65 @@ actor TelegramPendingUploadFiles {
         }
     }
 
+    static func captureArchive(_ file: TelegramUploadFile) throws -> ArchiveFileCapture {
+        try Task.checkCancellation()
+        try validateArchiveStage(file)
+        return try ArchiveFileCapture(file: file.url, byteCount: file.size)
+    }
+
+    private static func validateArchiveStage(_ file: TelegramUploadFile) throws {
+        guard file.id != TelegramPendingUploadDraft.zeroUUID, file.name == "Telegram Archive.zip",
+              file.mode == .file, file.metadata == nil, file.video == nil, file.videoCover == nil,
+              file.pixelWidth == nil, file.pixelHeight == nil,
+              file.size >= 22, file.size < Int64(UInt32.max) else { throw TelegramUploadFileError.unavailable }
+        try TelegramUploadFileIO.validateOwnedStage(file)
+    }
+
+    func saveArchive(_ archive: TelegramUploadArchiveIO.Archive, sources: [TelegramUploadArchiveIO.Source],
+                     archiveID: UUID, accountID: Int64, chatID: Int64, preparationID: UUID,
+                     capture: ArchiveFileCapture? = nil) async throws -> ArchiveFileRecord {
+        try Task.checkCancellation()
+        guard archiveID != TelegramPendingUploadDraft.zeroUUID, preparationID != TelegramPendingUploadDraft.zeroUUID,
+              !sources.contains(where: { $0.itemID == archiveID || $0.file.id == archiveID }) else {
+            throw TelegramUploadFileError.unavailable
+        }
+        // A supplied held capture never bypasses the plain owned ZIP profile.
+        try Self.validateArchiveStage(archive.file)
+        let frozen = try capture ?? Self.captureArchive(archive.file)
+        let digest = try frozen.plaintextSHA256()
+        try Task.checkCancellation()
+        // Validate and hash the same held ZIP inode before the first storage write.
+        try await TelegramUploadArchiveValidation.validate(archive, sources: sources, expectedPlaintextSHA256: digest)
+        try Task.checkCancellation()
+        let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
+        let record = try await repository.capture(frozen, identity: identity,
+            attachment: .init(id: TelegramPendingUploadArchive.attachmentID(archiveID), kind: "file",
+                              name: archive.file.name, size: archive.file.size),
+            defaultEnabled: TelegramConversationFilePolicyController.defaultEnabled(identity: identity))
+        guard record.plaintextByteCount == archive.file.size, record.plaintextSHA256 == digest else {
+            throw TelegramUploadFileError.unavailable
+        }
+        return record
+    }
+
+    func restoreArchive(record: ArchiveFileRecord, archiveID: UUID, accountID: Int64, chatID: Int64,
+                        preparationID: UUID) async throws -> TelegramUploadFile {
+        try Task.checkCancellation()
+        let identity = TelegramPendingUploadDraft.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: preparationID)
+        let attachmentID = TelegramPendingUploadArchive.attachmentID(archiveID)
+        guard archiveID != TelegramPendingUploadDraft.zeroUUID, preparationID != TelegramPendingUploadDraft.zeroUUID,
+              case .some(.outgoing) = record.purpose,
+              record.attachment.kind == "file", record.attachment.name == "Telegram Archive.zip",
+              record.plaintextByteCount >= 22, record.plaintextByteCount < Int64(UInt32.max),
+              TelegramPendingUploadItem.validRecord(record, identity: identity, attachmentID: attachmentID) else {
+            throw TelegramUploadFileError.unavailable
+        }
+        // Export authenticates the entire immutable record; the bundle owner
+        // inspects this restored ZIP against its separately restored sources.
+        return try await restorePayload(record: record, accountID: accountID, chatID: chatID,
+            preparationID: preparationID, video: nil, attachmentID: attachmentID)
+    }
+
     static func captureFile(_ file: TelegramUploadFile) throws -> ArchiveFileCapture {
         try TelegramUploadFileIO.validateOwnedStage(file)
         try TelegramUploadFileIO.validateMetadata(file)

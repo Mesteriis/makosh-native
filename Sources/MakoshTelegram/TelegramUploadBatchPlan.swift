@@ -26,6 +26,7 @@ struct TelegramUploadBatchPlan: Equatable, Sendable {
     init(items: [TelegramUploadBatchItem], isGrouped: Bool, caption: TelegramFormattedText,
          captionAboveMedia: Bool = false, mediaSpoiler: Bool = false, presentation: TelegramUploadPresentation? = nil,
          captionRules: TelegramUploadCaptionRules = .reference) throws {
+        guard presentation != .archive else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         if items.contains(where: { $0.file.metadata?.roundVideo != nil }) {
             guard items.count == 1, !isGrouped, caption.text.isEmpty, !captionAboveMedia, !mediaSpoiler,
                 presentation == .media, items[0].file.mode == .video, items[0].originalFile == nil else {

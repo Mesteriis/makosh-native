@@ -124,7 +124,7 @@ import SwiftSignalKit
         let presentation = presentation ?? (items.contains(where: { $0.file.metadata != nil })
             ? (items.allSatisfy { $0.file.mode == .file } ? TelegramUploadPresentation.file : .media) : nil)
         try await serial { [self] in
-            guard target.accountID == accountID, target.hasValidReplySource, !items.isEmpty,
+            guard presentation != .archive, target.accountID == accountID, target.hasValidReplySource, !items.isEmpty,
                   preparationID != TelegramPendingUploadDraft.zeroUUID,
                   Set(items.map(\.id)).count == items.count,
                   items.allSatisfy({ item in item.id != TelegramPendingUploadDraft.zeroUUID &&
@@ -370,10 +370,49 @@ import SwiftSignalKit
     }
 
     func restoreItems(draft: TelegramPendingUploadDraft) async throws -> [TelegramUploadBatchItem] {
+        guard draft.isValid, draft.accountID == accountID, draft.archive == nil else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        let storage = try files()
+        return try await restoreCanonicalItems(draft: draft, storage: storage)
+    }
+
+    func restoreBundle(draft: TelegramPendingUploadDraft) async throws -> TelegramRecoveredUploadBundle {
+        try Task.checkCancellation()
         guard draft.isValid, draft.accountID == accountID else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
         let storage = try files()
+        let restored = try await restoreCanonicalItems(draft: draft, storage: storage)
+        var archiveFile: TelegramUploadFile?
+        do {
+            let archive: TelegramUploadArchiveIO.Archive?
+            if let descriptor = draft.archive {
+                let file = try await storage.restoreArchive(record: descriptor.file, archiveID: descriptor.id,
+                    accountID: accountID, chatID: draft.chatID, preparationID: draft.id)
+                archiveFile = file
+                let members = try zip(descriptor.members, draft.items).map { member, item in
+                    guard let facts = item.sourceFacts else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+                    return TelegramUploadArchiveIO.Member(itemID: member.itemID, sourceName: facts.name,
+                        entryName: member.entryName, byteCount: facts.byteCount, plaintextSHA256: facts.plaintextSHA256)
+                }
+                let complete = TelegramUploadArchiveIO.Archive(file: file, members: members)
+                try await TelegramUploadArchiveValidation.validate(complete,
+                    sources: restored.map { .init(itemID: $0.id, file: $0.rawSource) },
+                    expectedPlaintextSHA256: descriptor.file.plaintextSHA256)
+                archive = complete
+            } else { archive = nil }
+            try Task.checkCancellation()
+            return .init(items: restored, archive: archive)
+        } catch {
+            restored.forEach { try? $0.discard() }
+            if let archiveFile { try? TelegramUploadFileIO.discard(archiveFile) }
+            throw error
+        }
+    }
+
+    private func restoreCanonicalItems(draft: TelegramPendingUploadDraft,
+                                       storage: TelegramPendingUploadFiles) async throws -> [TelegramUploadBatchItem] {
         var restored: [TelegramUploadBatchItem] = []
         do {
             for item in draft.items {

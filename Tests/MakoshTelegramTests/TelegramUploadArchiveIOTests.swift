@@ -187,7 +187,7 @@ final class TelegramUploadArchiveIOTests: XCTestCase {
         var values = [Data(repeating: 65, count: 65_536), Data(repeating: 66, count: 131_072)]
         for count in counts {
             var bytes = Data(count: count)
-            bytes.withUnsafeMutableBytes { buffer in
+            bytes.withUnsafeMutableBytes { (buffer: UnsafeMutableRawBufferPointer) in
                 for index in 0..<count {
                     state ^= state << 13; state ^= state >> 7; state ^= state << 17
                     buffer[index] = UInt8(truncatingIfNeeded: state >> 24)

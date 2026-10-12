@@ -18,6 +18,7 @@ import Foundation
                  target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool,
                  mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws
     func restoreItems(draft: TelegramPendingUploadDraft) async throws -> [TelegramUploadBatchItem]
+    func restoreBundle(draft: TelegramPendingUploadDraft) async throws -> TelegramRecoveredUploadBundle
     func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool, orderedIDs: [UUID],
                      isGrouped: Bool, target: TelegramUploadTarget) async throws
     func updateItems(preparationID: UUID, previousIDs: [UUID], previousGrouping: Bool,
@@ -31,6 +32,20 @@ import Foundation
 }
 
 extension TelegramUploadRecoveryStore {
+    func restoreBundle(draft: TelegramPendingUploadDraft) async throws -> TelegramRecoveredUploadBundle {
+        try Task.checkCancellation()
+        guard draft.isValid, draft.accountID == accountID, draft.archive == nil else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
+        let items = try await restoreItems(draft: draft)
+        do {
+            try Task.checkCancellation()
+            return .init(items: items, archive: nil)
+        } catch {
+            items.forEach { try? $0.discard() }
+            throw error
+        }
+    }
     func prepare(preparationID: UUID, items: [TelegramUploadBatchItem], isGrouped: Bool, presentation: TelegramUploadPresentation,
                  target: TelegramUploadTarget, captionInput: TelegramComposerInput, captionAboveMedia: Bool,
                  mediaSpoiler: Bool, originalDraft: TelegramComposerDraft?) async throws {

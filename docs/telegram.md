@@ -1902,9 +1902,22 @@ empty files and allocated collision names; verifies exact headers, CRC/SHA and
 fresh owned source bytes without extraction. Count/name/catalog memory limits
 are separate from the1500MiB raw-byte cap. See telegram-album-migration.md and
 THIRD_PARTY_NOTICES.md for the profile, limits and SDK notice.
-This codec is not yet used by the controller, storage or native queue. Strict
-schema16, N-originals-plus-ZIP recovery, S3 policy reuse and one-ZIP receipt remain
-the next integration work; existing ordinary preparations still use schema15.
+Strict schema16 now retains N ordered canonical items and one versioned ZIP
+descriptor. The descriptor binds stable item IDs, allocated member names and a
+scoped outgoing file record; it cannot authenticate bytes by itself. Save and
+whole-bundle restoration verify both member bytes and the outer record digest
+against the same held ZIP inode. Restoration owns originals, prepared files,
+covers and ZIP together and cleans temporary exports on failure. Array-only
+restoration refuses16 rather than omitting its ZIP. Schemas1–15 reject Archive
+fields and retain their existing behavior.
+
+ZIP capture reuses the existing outgoing-file policy: S3 OFF forbids every new
+S3 copy, including preparation, and encrypted local records never promote after
+enable. Restoration reads existing immutable records without recapture. Generic
+mode/prepare/plan entry points refuse Archive before changing state or copying
+files. The dedicated install/generation CAS, controller/model bundle adoption,
+one native ZIP resource/complete receipt and existing-window Archive UI remain
+open; existing ordinary preparations still use schema15.
 
 ### Versioned caption projection
 

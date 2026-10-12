@@ -23,7 +23,7 @@ public enum TelegramUploadSourceClassifier {
     }
 
     public static func allowsGrouping(for facts: [TelegramUploadSourceFacts], presentation: TelegramUploadPresentation) -> Bool {
-        guard !facts.isEmpty, facts.allSatisfy(\.isValid),
+        guard presentation != .archive, !facts.isEmpty, facts.allSatisfy(\.isValid),
               !facts.contains(where: { $0.selectionMIME == "image/webp" }),
               presentation != .media || options(for: facts) == [.media] else { return false }
         if facts.contains(where: { $0.grouping == .music }) { return facts.allSatisfy { $0.grouping == .music } }

@@ -2,11 +2,62 @@ import SwiftUI
 import MakoshTelegram
 
 struct TelegramSettingsView: View {
+    @StateObject private var systemAppearance = TelegramSystemAppearance()
+    var sessions: TelegramSessionsController? = nil
+    var synthetic = false
+    var close: (() -> Void)? = nil
+    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства" }
+    @State private var page: Page?
+    @AppStorage(TelegramLocalTheme.preferenceKey) private var theme = TelegramLocalTheme.system.rawValue
+    @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                if page != nil {
+                    Button { page = nil } label: { Label("Назад", systemImage: "chevron.left") }
+                        .accessibilityIdentifier("telegram.settings.back")
+                }
+                Spacer()
+                Text(page?.rawValue ?? "Настройки Telegram").font(.headline)
+                Spacer()
+                if let close { Button("Готово", action: close).accessibilityIdentifier("telegram.settings.close") }
+            }.padding().frame(height: 55)
+            Divider()
+            if synthetic { Text("Синтетический аккаунт · изменения устройств симулируются").font(.caption).foregroundStyle(.secondary).padding(10) }
+            switch page {
+            case .general: TelegramGeneralSettingsView()
+            case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme)
+            case .devices:
+                if let sessions { TelegramSessionsView(controller: sessions, synthetic: synthetic) }
+                else { ContentUnavailableView("Откройте Telegram", systemImage: "desktopcomputer", description: Text("Устройства доступны в настройках выбранного аккаунта Telegram.")) }
+            case nil:
+                Form {
+                    Section {
+                        settingsRow(.general, symbol: "gearshape", id: "general")
+                        settingsRow(.appearance, symbol: "paintpalette", id: "appearance")
+                        if sessions != nil { settingsRow(.devices, symbol: "desktopcomputer", id: "devices") }
+                    }
+                }.formStyle(.grouped)
+            }
+        }.frame(width: 560, height: 630)
+            .tint(TelegramAccent(preference: accent).color)
+            .accentColor(TelegramAccent(preference: accent).color)
+            .preferredColorScheme(telegramWorkspaceScheme(theme: theme, telegramSelected: true, system: systemAppearance.scheme))
+    }
+    private func settingsRow(_ value: Page, symbol: String, id: String) -> some View {
+        Button { page = value } label: {
+            HStack { Label(value.rawValue, systemImage: symbol); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
+                .frame(height: 38).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier("telegram.settings.\(id)")
+    }
+}
+
+private struct TelegramGeneralSettingsView: View {
     @AppStorage(TelegramSendKey.preferenceKey) private var sendKeyPreference = TelegramSendKey.enter.rawValue
     @AppStorage(TelegramUploadPhotoSize.preferenceKey) private var sendLargePhotos = false
     var body: some View {
         Form {
-            Section("Telegram") {
+            Section("Сообщения") {
                 Picker("Отправка сообщений", selection: Binding(
                     get: { TelegramSendKey(preferenceValue: sendKeyPreference).rawValue },
                     set: { sendKeyPreference = $0 }
@@ -21,6 +72,6 @@ struct TelegramSettingsView: View {
                     .help("Увеличенный размер применяется к новым подготовкам фотографий.")
                     .accessibilityIdentifier("telegram.settings.sendLargePhotos")
             }
-        }.formStyle(.grouped).frame(width: 440, height: 220)
+        }.formStyle(.grouped)
     }
 }

@@ -2811,3 +2811,43 @@ Pending object recovery rechecks the conversation policy. OFF forbids every new
 S3 copy, including ZIP/outgoing preparation and retry. Encrypted local records
 remain local after enable. Single-Media cover actions follow the reference's
 `totalCount == 1` guard; batch cover controls are not a missing migration feature.
+
+## Account settings, local appearance and devices (2026-10-12)
+
+The common workspace opens Telegram settings from its chat-list header. The
+existing send-key/photo-size preferences remain shared with system Settings.
+Local system/classic/day/night themes and four accents persist in app preferences;
+only the selected Telegram workspace uses this appearance. A small MainActor
+AppKit observer tracks application effectiveAppearance and explicitly resolves
+system mode when leaving Telegram, avoiding a retained SwiftUI window override. No reference source,
+assets, API credentials, dependency or engine preparation changes are introduced.
+
+The selected authorized Account binds an independent sessions controller. Opening
+Devices performs a bounded getAuthorizations read; closing or account replacement
+cancels requests and invalidates captured confirmations. Immutable DTOs retain
+current/pending/other devices, native disabled-bit inversion, timestamps and TTL.
+Missing/duplicate current devices or hashes and oversized lists fail closed.
+Before a mutation, a new list must match the confirmed account/current device and
+target identity; terminate-all requires the identical confirmed device set.
+Activity timestamps may advance; recreated devices and changed toggle/TTL bases
+are rejected. Current-device termination is refused. TTL choices follow the
+reference:7/31/93/186days. Picker selection is a draft until Apply and confirmation.
+
+Typed pinned TelegramApi requests perform resetAuthorization/resetAuthorizations,
+setAuthorizationTTL and changeAuthorizationSettings. No application-level retry
+or flood-wait wrapper is used. A30s controller deadline cancels unresolved work,
+marks the account uncertain and refuses another write until explicit refresh.
+Closing during a write preserves that barrier across reopening/rebinding. Native
+MTProto transport behavior remains upstream; cancellation is not server rollback.
+Bool false and empty completion are never successful acknowledgements. Fresh-login
+406 termination rejection is distinguished from uncertain transport/server failure;
+TTL and acceptance-setting406 errors remain ordinary failures. UI changes
+only after an ACK followed by a fresh list, with failure feedback in device details.
+
+DEBUG synthetic workspace fixtures have three in-memory devices and no network
+or personal account access. Native UI QA uses a distinct bundle/preferences and
+explicit qa_telegram_dossier_ PostgreSQL schema. Session management does not delete
+archived messages, change per-chat S3 policy, or store file bytes in PostgreSQL.
+Cloud themes, wallpaper/night scheduling, privacy/2FA, notifications, storage/
+download/proxy settings, QR linking and web sessions remain unimplemented. Actual
+Telegram device acceptance requires separately authorized real-account testing.

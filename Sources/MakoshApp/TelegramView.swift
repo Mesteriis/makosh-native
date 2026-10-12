@@ -3,6 +3,7 @@ import AppKit
 import MakoshTelegram
 
 struct TelegramDetailView: View {
+    @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
     @ObservedObject var model: TelegramModel
     @ObservedObject private var search: TelegramSearchModel
     @ObservedObject private var media: TelegramMediaController
@@ -77,7 +78,7 @@ struct TelegramDetailView: View {
                 Text("Вложение сохранено в выбранный файл.").font(.caption).foregroundStyle(.secondary).padding(12)
                     .accessibilityIdentifier("telegram.media.saved")
             }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(TelegramLocalTheme(preference: telegramTheme).chatBackground)
             .modifier(TelegramUploadDropModifier(model: model))
             .overlay {
                 TelegramRoundVideoRecorderView(recording: model.voiceRecording, upload: upload,

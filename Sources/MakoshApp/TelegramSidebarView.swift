@@ -7,6 +7,7 @@ struct TelegramSidebarView: View {
     @ObservedObject private var globalSearch: TelegramSearchModel
     @ObservedObject private var forumTopics: TelegramForumTopicsController
     @State private var connectionPresented = false
+    @State private var settingsPresented = false
     @FocusState private var searchFocused: Bool
     init(model: TelegramModel) { self.model = model; self.search = model.search; self.globalSearch = model.globalSearch; self.forumTopics = model.forumTopics }
     private var searching: Bool { search.hasChatQuery || globalSearch.hasMessageQuery }
@@ -32,6 +33,9 @@ struct TelegramSidebarView: View {
                     .font(.headline).lineLimit(1)
                 Spacer(minLength: 4)
                 TelegramArchiveButton(archive: model.archive)
+                Button { settingsPresented = true } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).help("Настройки Telegram").accessibilityLabel("Настройки Telegram")
+                    .accessibilityIdentifier("telegram.settings.open")
                 Button { connectionPresented = true } label: { Image(systemName: "info.circle") }
                     .buttonStyle(.plain).help("О подключении")
                     .accessibilityLabel("О подключении Telegram").accessibilityIdentifier("telegram.connection.open")
@@ -107,6 +111,9 @@ struct TelegramSidebarView: View {
                     .padding(12)
             }
         }.frame(maxHeight: .infinity, alignment: .top)
+            .sheet(isPresented: $settingsPresented) {
+                TelegramSettingsView(sessions: model.accountSessions, synthetic: model.isSyntheticPreview) { settingsPresented = false }
+            }
             .onAppear { forumTopics.setVisible(true) }
             .onDisappear { forumTopics.setVisible(false) }
             .onChange(of: model.selectedChatID) { _, _ in model.isForumTopicsListPresented = true }

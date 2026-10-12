@@ -183,7 +183,10 @@ private enum Destination: String, CaseIterable, Identifiable {
 private struct EditorSelection: Identifiable { let id = UUID(); let contact: Contact? }
 
 struct WorkspaceView: View {
+    @StateObject private var systemAppearance = TelegramSystemAppearance()
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
+    @AppStorage(TelegramAccent.preferenceKey) private var telegramAccent = TelegramAccent.blue.rawValue
     @StateObject private var model: WorkspaceModel
     @StateObject private var telegram: TelegramModel
     @State private var destination: Destination? = .contacts
@@ -265,7 +268,10 @@ struct WorkspaceView: View {
             else if destination == .meetings { MeetingsView() }
             else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
         }
-        .tint(accent).background(Color(nsColor: .windowBackgroundColor))
+        .tint(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
+        .accentColor(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
+        .preferredColorScheme(telegramWorkspaceScheme(theme: telegramTheme, telegramSelected: destination == .telegram, system: systemAppearance.scheme))
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             if !telegram.isSyntheticPreview { model.configureArchive(telegram.archive) }
             #if DEBUG

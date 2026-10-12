@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,7 +22,8 @@ class VPXPreparationTests(unittest.TestCase):
         archive = ROOT / ".local/vpx-archives" / (cls.lock["archiveContentSHA256"] + ".tar.gz")
         if not archive.exists():
             archive = archive.with_name(cls.lock["archiveSHA256"] + ".tar.gz")
-        all_files = prep.archive_files(archive.read_bytes())
+        cls.archive_blob = archive.read_bytes()
+        all_files = prep.archive_files(cls.archive_blob)
         cls.all_files = all_files
         cls.files = {name: all_files[name] for name in cls.lock["sourceFilesSHA256"]}
 
@@ -66,6 +68,100 @@ class VPXPreparationTests(unittest.TestCase):
             self.assertEqual((dest / "Licenses/PATENTS").read_bytes(), self.files["PATENTS"])
             with patch("urllib.request.urlopen", side_effect=AssertionError("offline reuse downloaded")):
                 prep.prepare(ROOT / "Dependencies/VPX.lock.json", Path(temporary) / "absent-cache", dest)
+
+    def assertPreparedFingerprint(self, destination):
+        hashes = prep.helpers.prepared_hashes(destination)
+        self.assertEqual(len(hashes), 135)
+        self.assertEqual(prep.helpers.fingerprint(hashes), self.lock["preparedFilesSHA256"])
+
+    def testTransientHTTPDownloadFailuresRetryAndPublishOnlyVerifiedPackage(self):
+        class Response(io.BytesIO):
+            url = prep.URL
+        for status in [408, 429, 500, 503, 599]:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary:
+                cache, dest = Path(temporary) / "cache", Path(temporary) / "prepared"
+                failures = [urllib.error.HTTPError(prep.URL, status, "temporary", {}, io.BytesIO()) for _ in range(2)]
+                with patch("urllib.request.urlopen", side_effect=failures + [Response(self.archive_blob)]) as request, \
+                        patch("time.sleep") as sleep:
+                    try: prep.prepare(ROOT / "Dependencies/VPX.lock.json", cache, dest)
+                    except urllib.error.HTTPError as error: self.fail("Transient download did not recover: " + str(error))
+                self.assertPreparedFingerprint(dest)
+                self.assertEqual((cache / (prep.ARCHIVE_CONTENT_SHA256 + ".tar.gz")).read_bytes(), self.archive_blob)
+                self.assertEqual(request.call_count, 3)
+                self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.25, 0.5])
+
+    def testNetworkAndMidBodyTimeoutsRestartBoundedDownloadWithoutPartialCache(self):
+        class Response(io.BytesIO):
+            url = prep.URL
+        class InterruptedResponse(Response):
+            def read(self, size=-1):
+                super().read(4)
+                raise TimeoutError("body deadline")
+        cases = [TimeoutError("connect deadline"), urllib.error.URLError(TimeoutError("socket deadline")),
+            InterruptedResponse(self.archive_blob)]
+        for initial in cases:
+            with self.subTest(initial=type(initial).__name__), tempfile.TemporaryDirectory() as temporary:
+                cache, dest = Path(temporary) / "cache", Path(temporary) / "prepared"
+                replacement = Response(self.archive_blob)
+                with patch("urllib.request.urlopen", side_effect=[initial, replacement]) as request, patch("time.sleep") as sleep:
+                    try: prep.prepare(ROOT / "Dependencies/VPX.lock.json", cache, dest)
+                    except (TimeoutError, urllib.error.URLError) as error: self.fail("Download timeout did not recover: " + str(error))
+                self.assertPreparedFingerprint(dest)
+                self.assertEqual(list(cache.iterdir()), [cache / (prep.ARCHIVE_CONTENT_SHA256 + ".tar.gz")])
+                self.assertEqual(next(cache.iterdir()).read_bytes(), self.archive_blob)
+                self.assertEqual(request.call_count, 2)
+                self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.25])
+                self.assertTrue(replacement.closed)
+                if isinstance(initial, InterruptedResponse): self.assertTrue(initial.closed)
+
+    def testExhaustedTransientDownloadsLeaveNoPublishedArchiveOrOutput(self):
+        for failure in [urllib.error.HTTPError(prep.URL, 503, "temporary", {}, io.BytesIO()),
+                        urllib.error.URLError(TimeoutError("socket deadline")), TimeoutError("connect deadline")]:
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as temporary:
+                cache, dest = Path(temporary) / "cache", Path(temporary) / "prepared"
+                with patch("urllib.request.urlopen", side_effect=failure) as request, patch("time.sleep") as sleep, \
+                        self.assertRaises(type(failure)):
+                    prep.prepare(ROOT / "Dependencies/VPX.lock.json", cache, dest)
+                self.assertFalse(dest.exists())
+                self.assertEqual(list(cache.iterdir()), [])
+                self.assertEqual(request.call_count, 3)
+                self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.25, 0.5])
+
+    def testPermanentHTTPAndOtherNetworkFailuresDoNotRetryOrPublish(self):
+        failures = [urllib.error.HTTPError(prep.URL, status, "permanent", {}, io.BytesIO()) for status in [400, 401, 403, 404]]
+        failures += [urllib.error.URLError(OSError("certificate verification failed")),
+            urllib.error.URLError("name resolution failed"), ConnectionResetError("reset")]
+        for failure in failures:
+            with self.subTest(failure=str(failure)), tempfile.TemporaryDirectory() as temporary:
+                cache, dest = Path(temporary) / "cache", Path(temporary) / "prepared"
+                with patch("urllib.request.urlopen", side_effect=failure) as request, patch("time.sleep") as sleep, \
+                        self.assertRaises(type(failure)):
+                    prep.prepare(ROOT / "Dependencies/VPX.lock.json", cache, dest)
+                self.assertFalse(dest.exists())
+                self.assertEqual(list(cache.iterdir()), [])
+                self.assertEqual(request.call_count, 1)
+                sleep.assert_not_called()
+                if isinstance(failure, urllib.error.HTTPError): failure.close()
+
+    def testUntrustedDownloadedBytesAndTransportNeverRetryOrPublish(self):
+        class Response(io.BytesIO):
+            url = prep.URL
+        class DowngradedResponse(Response):
+            url = "http://example.invalid/archive"
+        changed = dict(self.all_files, LICENSE=self.all_files["LICENSE"] + b"changed")
+        cases = [Response(b"not gzip"), Response(b"0" * (12 * 1024 * 1024 + 1)),
+            Response(self.repacked(changed)), DowngradedResponse(self.archive_blob)]
+        for response in cases:
+            with self.subTest(size=response.getbuffer().nbytes, url=response.url), tempfile.TemporaryDirectory() as temporary:
+                cache, dest = Path(temporary) / "cache", Path(temporary) / "prepared"
+                with patch("urllib.request.urlopen", return_value=response) as request, patch("time.sleep") as sleep, \
+                        self.assertRaises((ValueError, OSError, tarfile.TarError, EOFError)):
+                    prep.prepare(ROOT / "Dependencies/VPX.lock.json", cache, dest)
+                self.assertFalse(dest.exists())
+                self.assertEqual(list(cache.iterdir()), [])
+                self.assertEqual(request.call_count, 1)
+                sleep.assert_not_called()
+                self.assertTrue(response.closed)
 
     def testPreparedPortableDecoderRetainsExactSourcesLegalGrantAndPublicAPI(self):
         result = prep.build_inputs(self.files, self.lock)

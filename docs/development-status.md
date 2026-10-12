@@ -25,7 +25,13 @@ emits its approval handshake synchronously, as the real provider does. Real
 timeouts, negative human-wait checks and late-ACK/receipt assertions remain.
 The focused27 XCTest pass locally on the working search branch; this does not
 establish an isolated block2 or hosted result. Hosted CI must pass the exact
-new PR1 commit before merging. Extended search continues separately.
+new PR1 commit before merging. The next hosted attempts stop on Gitiles HTTP503
+before compilation. VPX preparation now retries transient HTTP408/429/5xx and
+network timeouts at most3 times, with250/500ms backoff. Permanent HTTP errors,
+size/content/parser failures still fail closed. The valid regression RED has
+13 tests/11 ordinary failures; the final13 Python tests and an actual uncached
+HTTP preparation pass. The prepared135-file fingerprint remains unchanged.
+Extended search continues separately.
 
 ## Current stage: Telegram extended messages (block 2, locally verified)
 

@@ -8,6 +8,8 @@ from pathlib import Path, PurePosixPath
 import re
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 RECIPE = Path(__file__).resolve()
@@ -124,6 +126,25 @@ let package = Package(name: "MakoshVPX", platforms: [.macOS("26.0")],
     return result
 
 
+
+def download_archive():
+    # Retry transport failures only; source/size validation remains outside this loop.
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(URL, timeout=30) as response:
+                if not response.url.startswith('https://'): raise ValueError('VPX transport downgrade')
+                return response.read(12 * 1024 * 1024 + 1)
+        except (urllib.error.URLError, TimeoutError) as error:
+            if isinstance(error, urllib.error.HTTPError):
+                transient = error.code in (408, 429) or 500 <= error.code <= 599
+            elif isinstance(error, urllib.error.URLError):
+                transient = isinstance(error.reason, TimeoutError)
+            else:
+                transient = True
+            if not transient or attempt == 2: raise
+            if isinstance(error, urllib.error.HTTPError): error.close()
+            time.sleep(0.25 * (2 ** attempt))
+
 def prepare(lock_path, cache, destination):
     raw = lock_path.read_bytes()
     if len(raw) > 64 * 1024: raise ValueError('Oversized VPX pin')
@@ -149,9 +170,7 @@ def prepare(lock_path, cache, destination):
                 raise ValueError('Unsafe legacy VPX archive cache')
             blob = legacy.read_bytes()
         else:
-            with urllib.request.urlopen(URL, timeout=30) as response:
-                if not response.url.startswith('https://'): raise ValueError('VPX transport downgrade')
-                blob = response.read(12 * 1024 * 1024 + 1)
+            blob = download_archive()
         all_files = archive_files(blob)
         build_inputs({n: all_files[n] for n in lock['sourceFilesSHA256']}, lock)
         with archive.open('xb') as output: output.write(blob)

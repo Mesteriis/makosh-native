@@ -674,6 +674,9 @@ enum TelegramUploadEvent {
         return true
     }
     public var captionValidationUTF16Count: Int { captionRules.validationUTF16Count(captionInput.formattedText) }
+    public var usesCaptionPlaceholder: Bool {
+        TelegramUploadCaptionRules.usesCaptionPlaceholder(items: items, presentation: presentation, isGrouped: isGrouped)
+    }
     public var canSend: Bool { phase == .ready && videoCoverEditingID == nil && !isVideoCoverSaving && !isRecoveryBusy && ((!usesBatchRecovery && !requiresRecovery && recoveryStore == nil) || recoveryPrepared) && provider?.accountID == target?.accountID && captionRules.canSend(captionInput.formattedText) }
     public var canCancel: Bool { phase == .preparing || phase == .ready || phase == .storing }
     public var captionContextID: UUID { token }

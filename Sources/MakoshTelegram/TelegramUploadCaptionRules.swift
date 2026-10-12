@@ -5,6 +5,18 @@ import Foundation
 enum TelegramUploadCaptionRules: Sendable {
     case legacy, reference
 
+    /// PreviewSenderController uses preview entries, not outgoing message count.
+    static func usesCaptionPlaceholder(items: [TelegramUploadBatchItem], presentation: TelegramUploadPresentation,
+                                      isGrouped: Bool) -> Bool {
+        guard !items.isEmpty else { return false }
+        if presentation == .archive { return true }
+        if presentation == .media && isGrouped { return items.count <= 10 }
+        guard items.count == 1, let item = items.first?.presented(as: presentation),
+              item.file.metadata?.voice == nil, item.file.metadata?.roundVideo == nil else { return false }
+        return canHaveCaption(kind: item.file.mode.rawValue, metadata: item.file.metadata,
+                              selectionMIME: item.sourceFacts?.selectionMIME)
+    }
+
     func projection(_ value: TelegramFormattedText) throws -> TelegramFormattedText {
         guard self == .reference else { return value }
         guard value.isEditable, !value.entities.contains(where: {

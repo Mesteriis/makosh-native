@@ -10,13 +10,15 @@ struct TelegramRichTextEditor: View {
     var selection: TelegramInputSelection? = nil
     var accessibilityID = "telegram.actions.editText"
     var placeholder: String? = nil
+    var accessibilityLabel: String? = nil
     var inputChanged: ((TelegramComposerInput) -> Void)? = nil
     var submit: (() -> Void)? = nil
     @AppStorage(TelegramSendKey.preferenceKey) private var sendKeyPreference = TelegramSendKey.enter.rawValue
     @State private var height: CGFloat = 52
     var body: some View {
         NativeTelegramText(value: $value,error: $error,height: $height,selection: selection,
-            accessibilityID: accessibilityID,inputChanged: inputChanged,submit: submit,
+            accessibilityID: accessibilityID,accessibilityLabel: accessibilityLabel ?? defaultAccessibilityLabel,
+            inputChanged: inputChanged,submit: submit,
             sendKey: TelegramSendKey(preferenceValue: sendKeyPreference))
             .frame(height: height)
             .disabled(!value.isEditable)
@@ -28,6 +30,10 @@ struct TelegramRichTextEditor: View {
                 }
             }
     }
+    private var defaultAccessibilityLabel: String {
+        accessibilityID == "telegram.composer" ? "Сообщение в Telegram" :
+            accessibilityID == "telegram.upload.caption" ? "Подпись к вложению" : "Изменить сообщение"
+    }
 }
 private struct NativeTelegramText: NSViewRepresentable {
     @Binding var value: TelegramFormattedText
@@ -35,6 +41,7 @@ private struct NativeTelegramText: NSViewRepresentable {
     @Binding var height: CGFloat
     let selection: TelegramInputSelection?
     let accessibilityID: String
+    let accessibilityLabel: String
     let inputChanged: ((TelegramComposerInput) -> Void)?
     let submit: (() -> Void)?
     let sendKey: TelegramSendKey
@@ -60,8 +67,7 @@ private struct NativeTelegramText: NSViewRepresentable {
             coordinator.measure(text,in: scroll)
         }
         text.setAccessibilityIdentifier(accessibilityID)
-        text.setAccessibilityLabel(accessibilityID == "telegram.composer" ? "Сообщение в Telegram" :
-            accessibilityID == "telegram.upload.caption" ? "Подпись к вложению" : "Изменить сообщение")
+        text.setAccessibilityLabel(accessibilityLabel)
         text.delegate = context.coordinator
         text.format = { [weak coordinator = context.coordinator,weak text] kind in
             guard let coordinator,let text else { return }
@@ -82,6 +88,7 @@ private struct NativeTelegramText: NSViewRepresentable {
         coordinator.value = $value; coordinator.error = $error; coordinator.height = $height
         coordinator.selection = selection; coordinator.inputChanged = inputChanged
         guard let text = scroll.documentView as? NSTextView else { return }
+        text.setAccessibilityLabel(accessibilityLabel)
         (text as? TelegramNativeInput)?.submit = submit
         (text as? TelegramNativeInput)?.sendKey = sendKey
         text.isEditable = value.isEditable && context.environment.isEnabled

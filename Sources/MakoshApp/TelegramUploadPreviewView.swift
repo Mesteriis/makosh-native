@@ -77,13 +77,16 @@ struct TelegramUploadPreviewView: View {
             else { ProgressView("Подготовка вложения…").frame(maxWidth: .infinity, minHeight: 140) }
             if upload.file != nil {
                 let captionContext = upload.captionContextID
+                let usesCaption = upload.usesCaptionPlaceholder
                 TelegramRichTextEditor(value: Binding(get: { upload.captionInput.formattedText }, set: { _ in }),
                     error: $captionError, selection: upload.captionInput.selection, accessibilityID: "telegram.upload.caption",
-                    placeholder: "Подпись к вложению", inputChanged: { input in
+                    placeholder: usesCaption ? "Добавить подпись…" : "Добавить комментарий…",
+                    accessibilityLabel: usesCaption ? "Подпись к вложению" : "Комментарий к вложениям", inputChanged: { input in
                         _ = upload.updateCaptionInput(input, contextID: captionContext)
                     }, submit: send)
                     .id(captionContext).disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving)
-                Text("Подпись: \(upload.captionValidationUTF16Count)/1024").font(.caption).foregroundStyle(.secondary)
+                Text("\(usesCaption ? "Подпись" : "Комментарий"): \(upload.captionValidationUTF16Count)/1024")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             if let error = upload.error {
                 Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.error")

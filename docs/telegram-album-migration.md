@@ -359,7 +359,7 @@ WebP/generic image/webp sends leading text plus captionless media; grouped chunk
 retain first-visual/last-file placement. Complete receipts/counts share the same
 rules. Old preparations retain their exact projection after reorder/mode/cover;
 recorder11–13 reject raw nonempty caption before archive capture. Markdown,
-detected/resolved entities, premium limits and precise placeholder UI remain open.
+detected/resolved entities and premium limits remain open; placeholder progress is recorded below.
 Original WebP-named typed GIF/music can get conservative extra-leading text.
 Actual local/S3 reopen/native tests and existing-window AX/screenshots are recorded
 in development-status.md. This supersedes the earlier whitespace-leading rejection
@@ -482,3 +482,15 @@ confirmation-only retry and no automatic resend have integration regressions.
 Actual isolated common-window QA covers restored ZIP/caption, process restart
 and explicit synthetic enqueue; Account/server delivery and full visual/gesture
 parity remain unverified.
+
+## Preview text purpose — 2026-10-12
+
+The placeholder now follows the locked PreviewSenderController entry shape:
+Caption for one caption-capable media row, one Media group (at most10 items),
+or one Archive ZIP; Comment for multiple entries, including grouped File mode,
+and single WebP File. The same role updates the counter and native accessibility
+label without replacing the editor or changing stored input/send projection.
+Media grouping follows reference entry count even for mixed selections; Makosh's
+current mixed-list renderer still differs from the reference collage. Existing
+conservative WebP MIME classification and incomplete premium/special-media
+parity remain open. No storage policy, schema or dependency change.

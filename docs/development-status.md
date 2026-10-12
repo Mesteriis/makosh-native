@@ -1,6 +1,41 @@
 # Development status — 2026-10-12
 
-## Current stage: Archive cancellation/rebind regression coverage
+## Current stage: reference caption/comment placeholder
+
+Upload text now follows locked PreviewSenderController preview-entry rules:
+one caption-capable row, one Media group up to10 items or one Archive ZIP uses
+Caption; multiple entries and single WebP File use Comment. The visible hint,
+counter and native AX label update without replacing the editor. Send projection,
+storage policy, schemas and dependency pins are unchanged. Mixed grouped Media
+uses reference entry count; its existing list renderer still differs from the
+reference collage. Premium/classifier/special-media/pixel parity remains open.
+
+Actual isolated native File UI reproduces the old always-Caption label, then
+shows Comment after the fix. Media grouping, separate items, regrouping, File
+and Archive update the label while retaining a bold emoji and UTF16 selection.
+An exact owned-process restart restores the same ZIP, text, selection and Caption
+label. Reopened native readback passes1 XCTest and45 Python tests:prepared ZIP,
+exact rich input/selection, five local encrypted records, no receipt/pending or
+remote ZIP object. The owned runtime is stopped and temporary QA source removed.
+No personal Account, Telegram server send or hardware is used.
+
+Focused GREEN25 XCTest and45 Python tests. Initial fixture mistakes are retained
+in raw logs:1 failure from a photo lacking a File resource, then11 assertions
+from confusing editor context with preparation ID; corrected fixtures pass.
+Required database startup, full tests, app build and strict deep signature exit0.
+Full suite: **1,331 XCTest (1,252 Telegram +79 core),1 microphone-authorization
+precondition skip,0 failures;45 Python tests**. Cached full/build compilation
+has no warnings;647 SQL-prefixed t19 diagnostics plus one bare line remain separate.
+The skip uses no hardware and applies because the process already has permission.
+
+XERJ refresh/freshness/query exit0:477 files,439/439 classified code; new text
+purpose hits are source-confirmed. Bounded frozen review reports no actionable
+findings. Root checks16 recorded exits/argv,70 artifacts and six frozen/live source
+hashes; five worker runtime checks are skipped, observed route/usage unknown.
+Hosted CI remains a separate gate. Full migration remains active; continue the
+remaining caption/classifier/visual/gesture work before later services.
+
+## Previous stage: Archive cancellation/rebind regression coverage
 
 Two native controller tests cover eight cancellation/rebind cases: both S3
 policies, with install dispatch held before commit or success ACK held afterward.

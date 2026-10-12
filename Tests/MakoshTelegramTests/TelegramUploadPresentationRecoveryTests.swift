@@ -5,6 +5,43 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramUploadPresentationRecoveryTests: XCTestCase {
+    // Catches a stale text role after grouping/mode/member changes, or resetting rich input with it.
+    func testPlaceholderChangesPreserveRichInputAcrossEditsAndRestore() async throws {
+        let fixture = try await fixture(), repository = Repository(fixture.draft), store = session(repository)
+        let controller = TelegramUploadController()
+        controller.bind(provider: Provider(), recoveryStore: store, requiresRecovery: true)
+        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch))
+        defer { controller.clear() }
+        let context = controller.captionContextID, preparation = fixture.draft.id
+        let input = try TelegramComposerInput(formattedText: .init(text: "Exact 😀", entities: [.init(offset: 6, length: 2, kind: .bold)]),
+            selection: .init(location: 6, length: 2))
+        XCTAssertTrue(controller.updateCaptionInput(input, contextID: context))
+        XCTAssertTrue(controller.usesCaptionPlaceholder)
+        XCTAssertTrue(controller.updateGrouping(false, contextID: preparation, revision: controller.itemsRevision))
+        await drain()
+        XCTAssertFalse(controller.usesCaptionPlaceholder)
+        XCTAssertTrue(controller.updateGrouping(true, contextID: preparation, revision: controller.itemsRevision))
+        await drain()
+        XCTAssertTrue(controller.usesCaptionPlaceholder)
+        XCTAssertTrue(controller.updatePresentation(.file, contextID: preparation, revision: controller.itemsRevision))
+        await drain()
+        XCTAssertFalse(controller.usesCaptionPlaceholder, "Grouped File mode still has two individual preview rows")
+        XCTAssertEqual(controller.captionInput, input); XCTAssertEqual(controller.captionContextID, context)
+        XCTAssertTrue(controller.removeItem(id: fixture.items[1].id, contextID: preparation, revision: controller.itemsRevision))
+        await drain()
+        XCTAssertTrue(controller.usesCaptionPlaceholder)
+        let saved = try XCTUnwrap(repository.value)
+        XCTAssertEqual(saved.captionInput, input); XCTAssertEqual(saved.id, preparation)
+        let reopened = TelegramUploadController()
+        reopened.bind(provider: Provider(), recoveryStore: store, requiresRecovery: true)
+        defer { reopened.clear() }
+        XCTAssertTrue(reopened.restore(draft: saved, items: [fixture.items[0]], target: target,
+            restorationEpoch: reopened.recoveryRestoreEpoch))
+        XCTAssertTrue(reopened.usesCaptionPlaceholder)
+        XCTAssertEqual(reopened.captionInput, input); XCTAssertEqual(reopened.preparationContextID, preparation)
+    }
+
     // Catches treating whole-list mosaic eligibility as media-option eligibility.
     func testMixedMediaKeepsCaptionAndSpoilerActionsWithExactStaleGuards() async throws {
         let fixture = try await fixture(mixed: true), controller = TelegramUploadController(), provider = Provider()

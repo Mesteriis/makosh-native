@@ -1,5 +1,7 @@
 import XCTest
 import Foundation
+import CoreGraphics
+import ImageIO
 import MakoshCore
 import TelegramCore
 import SwiftSignalKit
@@ -37,6 +39,11 @@ private nonisolated func sourceFactsNativeRead(_ box: Postbox, ids: [MessageId])
     box.transaction { transaction in ids.compactMap { transaction.getMessage($0) } }
 }
 
+private nonisolated func sourceFactsNativeInstall(_ box: Postbox, draft: TelegramPendingUploadDraft, revision: UUID)
+    -> Signal<Result<Void, TelegramPendingUploadPersistenceError>, NoError> {
+    box.transaction { telegramPendingUploadWrite(transaction: $0, accountID: 1, draft: draft, expectedRevision: revision) }
+}
+
 private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnqueueReceipt,
                                                 messages: [EnqueueMessage]) -> Signal<TelegramUploadBatchAdmission, NoError> {
     telegramUploadBatchEnqueue(receipt: receipt, messages: messages, now: { 100 }) { messages, admission, commit in
@@ -46,6 +53,155 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
 }
 
 @MainActor final class TelegramSourceFactsNativeQueueTests: TelegramSourceFactsIntegrationTestCase {
+    private func lowDPIItems(_ fixture: SourceFactsTestArchive) async throws -> [TelegramUploadBatchItem] {
+        let sources = try ["first.png", "second.png"].map { name in
+            let url = fixture.root.appendingPathComponent(name)
+            let context = try XCTUnwrap(CGContext(data: nil, width: 32, height: 32, bitsPerComponent: 8,
+                bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
+            let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+            CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()),
+                [kCGImagePropertyDPIWidth: 36, kCGImagePropertyDPIHeight: 36] as CFDictionary)
+            XCTAssertTrue(CGImageDestinationFinalize(destination)); return url
+        }
+        let controller = TelegramUploadController(); controller.bind(provider: SourceFactsPickerProvider())
+        controller.prepare(sources: sources.map { .init(source: $0, mode: .photo) }, isGrouped: true,
+            target: fixture.target, captionInput: .empty)
+        for _ in 0..<500 where controller.phase == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .ready); XCTAssertEqual(controller.presentation, .media)
+        XCTAssertTrue(controller.isGrouped); XCTAssertEqual(controller.items.map(\.file.mode), [.file, .file])
+        let items = controller.items
+        // The returned copies own these stages; clearing the picker must not discard them here.
+        controller.discard = { _ in }; controller.clear()
+        return items
+    }
+
+    // Catches losing all-document Media at capture/restore/CAS/native admission, or making new S3 copies during retries.
+    func testVersionedAllDocumentMediaRestoresAndQueuesOriginalBytesUnderBothStoragePolicies() async throws {
+        for enabled in [false, true] {
+            let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+            try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: enabled)
+            let items = try await lowDPIItems(fixture), bytes = try items.map { try Data(contentsOf: $0.file.url) }
+            defer { items.forEach { try? $0.discard() } }
+            let store = fixture.session(box), id = UUID(), input = try TelegramComposerInput(formattedText: .init(text: "Source 😀"))
+            do {
+                try await store.prepare(preparationID: id, items: items, isGrouped: true, presentation: .media,
+                    target: fixture.target, captionInput: input, originalDraft: nil)
+            } catch { XCTFail("Source-selected Media must persist even with only document payloads: \(error)"); continue }
+            let initial = try await sourceFactsLoad(store)
+            XCTAssertEqual(initial.schemaVersion, 17); XCTAssertTrue(initial.isValid)
+            XCTAssertEqual(initial.items.map(\.sourceFacts), items.map(\.sourceFacts))
+            XCTAssertEqual(initial.items.map { $0.file.attachment.kind }, ["file", "file"])
+            XCTAssertTrue(initial.items.allSatisfy { $0.originalFile == nil })
+            try await store.prepare(preparationID: id, items: items, isGrouped: true, presentation: .media,
+                target: fixture.target, captionInput: input, originalDraft: nil)
+            let retried = try await sourceFactsLoad(store); XCTAssertEqual(retried.items, initial.items)
+            let ids = items.map(\.id)
+            for (from, to) in [(TelegramUploadPresentation.media, TelegramUploadPresentation.file), (.file, .media)] {
+                try await store.updatePresentation(preparationID: id, orderedIDs: ids, previousPresentation: from,
+                    previousGrouping: true, presentation: to, isGrouped: true, target: fixture.target)
+            }
+            for source in ["first.png", "second.png"] { try FileManager.default.removeItem(at: fixture.root.appendingPathComponent(source)) }
+            let frozen = try await sourceFactsLoad(store), restored = try await fixture.session(box).restoreItems(draft: frozen)
+            let controller = TelegramUploadController()
+            controller.bind(provider: SourceFactsPickerProvider(), recoveryStore: store, requiresRecovery: true)
+            defer { controller.clear() }
+            XCTAssertTrue(controller.restore(draft: frozen, items: restored, target: fixture.target,
+                restorationEpoch: controller.recoveryRestoreEpoch))
+            XCTAssertEqual(controller.presentation, .media); XCTAssertTrue(controller.canSwitchPresentation)
+            XCTAssertTrue(controller.canGroupItems); XCTAssertTrue(controller.isGrouped)
+            XCTAssertFalse(controller.canUseMediaOptions); XCTAssertFalse(controller.isVisualMedia)
+            XCTAssertEqual(controller.captionInput, input)
+            guard let (saved, messages) = try await submit(fixture, box: box, items: restored, presentation: .media,
+                grouped: true, caption: "Source 😀", existingPreparationID: id) else { continue }
+            XCTAssertEqual(saved.schemaVersion, 17); XCTAssertEqual(saved.items, initial.items)
+            XCTAssertEqual(messages.map(\.text), ["", "Source 😀"])
+            XCTAssertNotNil(messages.first?.groupingKey); XCTAssertEqual(messages.first?.groupingKey, messages.last?.groupingKey)
+            for (index, message) in messages.enumerated() {
+                let file = try XCTUnwrap(message.media.first as? TelegramMediaFile)
+                let cached = try await cachedBytes(box, resource: file.resource)
+                XCTAssertEqual(cached, bytes[index])
+            }
+            for record in initial.items.map(\.file) {
+                let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: record.objectKey)
+                XCTAssertEqual(object != nil, enabled)
+            }
+            if !enabled {
+                XCTAssertEqual(try fixture.localRecords().count, 2)
+                try await fixture.archive.setConversationFileSavingEnabled(identity: fixture.identity, enabled: true)
+                let resumed = try await fixture.archive.resume(); XCTAssertEqual(resumed, 0)
+                XCTAssertEqual(try fixture.database.execute("SELECT count(*) FROM \"\(fixture.database.schema)\".archive_file_events"), [["0"]])
+            }
+        }
+    }
+
+    // Catches downgrading the source policy when installing/caching/removing a ZIP or removing the last other item.
+    func testVersionedAllDocumentMediaKeepsItsPolicyThroughArchiveAndRemoval() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let items = try await lowDPIItems(fixture)
+        defer { items.forEach { try? $0.discard() } }
+        let store = fixture.session(box), id = UUID(), ids = items.map(\.id)
+        try await store.prepare(preparationID: id, items: items, isGrouped: true, presentation: .media,
+            target: fixture.target, captionInput: .empty, originalDraft: nil)
+        let initial = try await sourceFactsLoad(store)
+        try await store.updatePresentation(preparationID: id, orderedIDs: ids, previousPresentation: .media,
+            previousGrouping: true, presentation: .archive, isGrouped: false, target: fixture.target)
+        let archived = try await sourceFactsLoad(store)
+        XCTAssertEqual(archived.schemaVersion, 18); XCTAssertNotNil(archived.archive)
+        let bundle = try await store.restoreBundle(draft: archived); defer { try? bundle.discard() }
+        XCTAssertEqual(bundle.items.map(\.id), ids); XCTAssertNotNil(bundle.archive)
+        let copies = try fixture.localRecords(); XCTAssertEqual(copies.count, 3)
+        try await store.updatePresentation(preparationID: id, orderedIDs: ids, previousPresentation: .archive,
+            previousGrouping: false, presentation: .media, isGrouped: true, target: fixture.target)
+        let media = try await sourceFactsLoad(store)
+        XCTAssertEqual(media.schemaVersion, 18); XCTAssertEqual(media.items, initial.items)
+        XCTAssertEqual(media.archive, archived.archive)
+        try await store.updateItems(preparationID: id, previousIDs: ids, previousGrouping: true,
+            previousPresentation: .media, orderedIDs: [ids[1]], isGrouped: false, presentation: .media, target: fixture.target)
+        let removed = try await sourceFactsLoad(store)
+        XCTAssertEqual(removed.schemaVersion, 17); XCTAssertEqual(removed.presentation, .media)
+        XCTAssertNil(removed.archive); XCTAssertEqual(removed.items, [initial.items[1]])
+        XCTAssertEqual(try fixture.localRecords(), copies, "Removing a cached descriptor retains encrypted resources")
+        for record in initial.items.map(\.file) + [try XCTUnwrap(archived.archive?.file)] {
+            let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: record.objectKey)
+            XCTAssertNil(object)
+        }
+    }
+
+    // Catches silently upgrading a frozen schema15 File preparation during retry, edit or controller restoration.
+    func testOldAllDocumentFilePreparationRetainsItsMediaRestriction() async throws {
+        let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+        let items = try await lowDPIItems(fixture)
+        defer { items.forEach { try? $0.discard() } }
+        let store = fixture.session(box), id = UUID(), ids = items.map(\.id)
+        try await store.prepare(preparationID: id, items: items, isGrouped: true, presentation: .file,
+            target: fixture.target, captionInput: .empty, originalDraft: nil)
+        let captured = try await sourceFactsLoad(store)
+        let legacy = try TelegramPendingUploadDraft(id: id, accountID: 1, chatID: 42, title: captured.title,
+            captionInput: .empty, originalDraft: nil, replyTarget: nil,
+            items: captured.items, isGrouped: true, presentation: .file)
+        XCTAssertEqual(legacy.schemaVersion, 15)
+        let seeded = try await sourceFactsValue(sourceFactsNativeInstall(box, draft: legacy, revision: captured.revision))
+        try seeded.get()
+        try await store.prepare(preparationID: id, items: items, isGrouped: true, presentation: .file,
+            target: fixture.target, captionInput: .empty, originalDraft: nil)
+        let retried = try await sourceFactsLoad(store); XCTAssertEqual(retried.schemaVersion, 15)
+        do {
+            try await store.updatePresentation(preparationID: id, orderedIDs: ids, previousPresentation: .file,
+                previousGrouping: true, presentation: .media, isGrouped: true, target: fixture.target)
+            XCTFail("Existing all-document File must not acquire the newer Media allowance")
+        } catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .incompatibleData) }
+        try await store.updateItems(preparationID: id, previousIDs: ids, previousGrouping: true, previousPresentation: .file,
+            orderedIDs: [ids[1]], isGrouped: false, presentation: .file, target: fixture.target)
+        let removed = try await sourceFactsLoad(store); XCTAssertEqual(removed.schemaVersion, 15)
+        let restored = try await store.restoreItems(draft: removed), controller = TelegramUploadController()
+        controller.bind(provider: SourceFactsPickerProvider(), recoveryStore: store, requiresRecovery: true)
+        defer { controller.clear() }
+        XCTAssertTrue(controller.restore(draft: removed, items: restored, target: fixture.target,
+            restorationEpoch: controller.recoveryRestoreEpoch))
+        XCTAssertEqual(controller.presentation, .file); XCTAssertFalse(controller.canSwitchPresentation)
+        XCTAssertEqual(try fixture.localRecords().count, 2)
+    }
+
     private func submit(_ fixture: SourceFactsTestArchive, box: Postbox, items: [TelegramUploadBatchItem],
                         presentation: TelegramUploadPresentation, grouped: Bool, caption: String,
                         existingPreparationID: UUID? = nil) async throws -> (TelegramPendingUploadDraft, [Message])? {
@@ -115,7 +271,7 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
             try await store.prepare(preparationID: id, items: items, isGrouped: true, presentation: .media,
                 target: fixture.target, captionInput: input, originalDraft: nil)
             let prepared = try await sourceFactsLoad(store)
-            XCTAssertEqual(prepared.schemaVersion, 15)
+            XCTAssertEqual(prepared.schemaVersion, 17)
             XCTAssertEqual(prepared.items.map { $0.file.attachment.kind }, ["photo", "photo"])
             let records = prepared.items.flatMap { [$0.file] + ($0.originalFile.map { [$0] } ?? []) }
             XCTAssertEqual(records.count, 4)
@@ -168,7 +324,7 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
         defer { items.forEach { try? $0.discard() } }
         guard let (saved, messages) = try await submit(fixture, box: box, items: items, presentation: .media,
             grouped: true, caption: "Caption 😀") else { return }
-        XCTAssertEqual(saved.schemaVersion, 15); XCTAssertEqual(saved.items.map(\.sourceFacts), items.map(\.sourceFacts))
+        XCTAssertEqual(saved.schemaVersion, 17); XCTAssertEqual(saved.items.map(\.sourceFacts), items.map(\.sourceFacts))
         XCTAssertEqual(messages.count, 3)
         guard messages.count == 3 else { return }
         XCTAssertEqual(messages.map(\.text), ["", "Caption 😀", ""])

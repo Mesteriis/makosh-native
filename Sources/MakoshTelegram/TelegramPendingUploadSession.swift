@@ -44,7 +44,7 @@ import SwiftSignalKit
                         throw TelegramPendingUploadPersistenceError.conflict
                     }
                     let candidate: TelegramPendingUploadDraft
-                    if current.schemaVersion == 15, current.revision == expectedRevision {
+                    if current.canCaptureArchive, current.revision == expectedRevision {
                         if let retained = try await readArchiveCapture(chatID: target.chatID) {
                             let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
                             guard retained.expectedRevision == expectedRevision,
@@ -57,9 +57,9 @@ import SwiftSignalKit
                                 title: current.title, captionInput: current.captionInput, captionAboveMedia: false, mediaSpoiler: false,
                                 originalDraft: current.originalDraft, replyTarget: current.replyTarget,
                                 items: current.items, isGrouped: false, presentation: .archive,
-                                captionRules: current.captionRules, archive: archive)
+                                captionRules: current.captionRules, mediaRules: current.mediaRules, archive: archive)
                         }
-                    } else if current.schemaVersion == 16, current.presentation == .archive {
+                    } else if current.hasArchiveSchema, current.presentation == .archive {
                         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
                         guard try encoder.encode(current.archive) == encoder.encode(archive) else {
                             throw TelegramPendingUploadPersistenceError.conflict
@@ -75,7 +75,7 @@ import SwiftSignalKit
                     try bundle.discard()
                     try admission.check(accountID: accountID, chatID: target.chatID,
                         preparationID: preparationID, expectedRevision: expectedRevision)
-                    if current.schemaVersion == 15 {
+                    if current.canCaptureArchive {
                         let _: Void = try await awaitResult { [repository] completion in
                             repository.retainArchiveCapture(candidate, expectedRevision: expectedRevision,
                                 admission: admission, completion: completion)
@@ -228,7 +228,7 @@ import SwiftSignalKit
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             if let presentation {
-                guard presentation != .media || TelegramUploadBatchItem.allowsMedia(items),
+                guard presentation != .media || TelegramUploadBatchItem.allowsMedia(items, rules: items.allSatisfy({ $0.sourceFacts != nil }) ? .reference : .legacy),
                       !isGrouped || presentation.allowsGrouping(items) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
             }
             guard !items.contains(where: { $0.sourceFacts != nil }) || (presentation != nil && items.allSatisfy { $0.sourceFacts != nil }) else {
@@ -309,7 +309,8 @@ import SwiftSignalKit
             let draft = try TelegramPendingUploadDraft(id: preparationID, accountID: accountID, chatID: target.chatID,
                 title: target.title, captionInput: captionInput, captionAboveMedia: captionAboveMedia, mediaSpoiler: mediaSpoiler,
                 originalDraft: originalDraft, replyTarget: target.replySource.map(TelegramComposerReplyTarget.init(source:)),
-                items: stored, isGrouped: isGrouped, presentation: presentation)
+                items: stored, isGrouped: isGrouped, presentation: presentation,
+                mediaRules: stored.allSatisfy({ $0.sourceFacts != nil }) ? .reference : .legacy)
             try await write(draft, expectedRevision: previous?.revision)
         }
     }
@@ -323,7 +324,7 @@ import SwiftSignalKit
               Set(orderedIDs).count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  (6...16).contains(current.schemaVersion), current.disposition == .prepared,
+                  (6...18).contains(current.schemaVersion), current.disposition == .prepared,
                   current.items.map(\.id) == orderedIDs,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -332,11 +333,11 @@ import SwiftSignalKit
             guard current.presentation == previousPresentation, current.isGrouped == previousGrouping else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
-            guard presentation != .media || TelegramPendingUploadItem.allowsMedia(current.items) else {
+            guard presentation != .media || TelegramPendingUploadItem.allowsMedia(current.items, rules: current.mediaRules) else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             if presentation == .archive, current.archive == nil {
-                guard current.schemaVersion == 15, !isGrouped else {
+                guard current.canCaptureArchive, !isGrouped else {
                     throw TelegramPendingUploadPersistenceError.incompatibleData
                 }
                 let captured = try await archiveCandidate(current), candidate = captured.candidate
@@ -366,7 +367,7 @@ import SwiftSignalKit
                 mediaSpoiler: presentation == .archive ? false : current.mediaSpoiler,
                 originalDraft: current.originalDraft, replyTarget: current.replyTarget,
                 items: current.items, isGrouped: isGrouped, presentation: presentation,
-                captionRules: current.captionRules, archive: current.archive)
+                captionRules: current.captionRules, mediaRules: current.mediaRules, archive: current.archive)
             try await write(updated, expectedRevision: current.revision)
         }
     }
@@ -375,7 +376,7 @@ import SwiftSignalKit
     /// immutable object even if native candidate retention never committed.
     private func archiveCandidate(_ current: TelegramPendingUploadDraft) async throws
         -> (candidate: TelegramPendingUploadDraft, intentRecordID: UUID?) {
-        guard current.schemaVersion == 15, current.items.count > 1,
+        guard current.canCaptureArchive, current.items.count > 1,
               current.items.count <= TelegramUploadArchiveLimits.members else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
@@ -475,7 +476,7 @@ import SwiftSignalKit
               Set(orderedIDs).isSubset(of: Set(previousIDs)) else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  (6...16).contains(current.schemaVersion), current.disposition == .prepared,
+                  (6...18).contains(current.schemaVersion), current.disposition == .prepared,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {
                 throw TelegramPendingUploadPersistenceError.conflict
             }
@@ -485,7 +486,7 @@ import SwiftSignalKit
             guard ordered.count == orderedIDs.count else { throw TelegramPendingUploadPersistenceError.conflict }
             let oldPresentation = previousPresentation ?? current.presentation
             let normalized: TelegramUploadPresentation = oldPresentation == .media &&
-                !TelegramPendingUploadItem.allowsMedia(ordered) ? .file : oldPresentation
+                !TelegramPendingUploadItem.allowsMedia(ordered, rules: current.mediaRules) ? .file : oldPresentation
             guard presentation == nil || presentation == normalized else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
@@ -498,7 +499,7 @@ import SwiftSignalKit
                 title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
                 mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
                 items: ordered, isGrouped: isGrouped, presentation: current.schemaVersion >= 8 ? normalized : nil,
-                captionRules: current.captionRules, archive: currentIDs == orderedIDs ? current.archive : nil)
+                captionRules: current.captionRules, mediaRules: current.mediaRules, archive: currentIDs == orderedIDs ? current.archive : nil)
             try await write(updated, expectedRevision: current.revision)
         }
     }
@@ -513,7 +514,7 @@ import SwiftSignalKit
         let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
-                  (6...16).contains(current.schemaVersion), current.disposition == .prepared, current.presentation != .archive,
+                  (6...18).contains(current.schemaVersion), current.disposition == .prepared, current.presentation != .archive,
                   current.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)),
                   let index = current.items.firstIndex(where: { $0.id == itemID }) else {
                 throw TelegramPendingUploadPersistenceError.conflict
@@ -542,7 +543,7 @@ import SwiftSignalKit
                 title: current.title, captionInput: current.captionInput, captionAboveMedia: current.captionAboveMedia,
                 mediaSpoiler: current.mediaSpoiler, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
                 items: items, isGrouped: current.isGrouped, presentation: current.schemaVersion >= 8 ? current.presentation : nil,
-                captionRules: current.captionRules, archive: current.archive)
+                captionRules: current.captionRules, mediaRules: current.mediaRules, archive: current.archive)
             try await write(updated, expectedRevision: current.revision)
         }
     }

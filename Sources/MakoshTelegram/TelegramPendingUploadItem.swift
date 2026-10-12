@@ -2,6 +2,19 @@ import Foundation
 import MakoshCore
 import UniformTypeIdentifiers
 
+/// Old pointers require a visual payload; new picker preparations follow source options even for documents.
+enum TelegramUploadMediaRules: Equatable, Sendable {
+    case legacy, reference
+
+    func allowsMedia(hasVisual: Bool, facts: [TelegramUploadSourceFacts?]) -> Bool {
+        let complete = facts.compactMap { $0 }
+        if self == .legacy || complete.isEmpty {
+            guard hasVisual else { return false }
+        }
+        return complete.isEmpty || (complete.count == facts.count && TelegramUploadSourceClassifier.options(for: complete).contains(.media))
+    }
+}
+
 /// Presentation changes select an existing resource; they never rename JPEG bytes into an original.
 public enum TelegramUploadPresentation: String, Codable, Equatable, Sendable {
     case media, file, archive
@@ -133,10 +146,9 @@ internal struct TelegramPendingUploadItem: Codable, Equatable, Sendable, Identif
             facts.plaintextSHA256 == raw.plaintextSHA256
     }
 
-    static func allowsMedia(_ items: [Self]) -> Bool {
-        guard items.contains(where: { ["photo", "video"].contains($0.file.attachment.kind) }) else { return false }
-        let facts = items.compactMap(\.sourceFacts)
-        return facts.isEmpty || (facts.count == items.count && TelegramUploadSourceClassifier.options(for: facts).contains(.media))
+    static func allowsMedia(_ items: [Self], rules: TelegramUploadMediaRules = .legacy) -> Bool {
+        rules.allowsMedia(hasVisual: items.contains(where: { ["photo", "video"].contains($0.file.attachment.kind) }),
+            facts: items.map(\.sourceFacts))
     }
 
     private var validRoundVideo: Bool {
@@ -213,11 +225,9 @@ public struct TelegramUploadBatchItem: Equatable, Sendable, Identifiable {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
     }
-    static func allowsMedia(_ items: [Self]) -> Bool {
-        guard items.contains(where: { $0.file.mode != .file }),
-              items.allSatisfy({ $0.file.mode != .photo || $0.originalFile != nil }) else { return false }
-        let facts = items.compactMap(\.sourceFacts)
-        return facts.isEmpty || (facts.count == items.count && TelegramUploadSourceClassifier.options(for: facts).contains(.media))
+    static func allowsMedia(_ items: [Self], rules: TelegramUploadMediaRules = .legacy) -> Bool {
+        guard items.allSatisfy({ $0.file.mode != .photo || $0.originalFile != nil }) else { return false }
+        return rules.allowsMedia(hasVisual: items.contains(where: { $0.file.mode != .file }), facts: items.map(\.sourceFacts))
     }
     func verifyGIFPair() async throws {
         guard let gif = file.metadata?.gif else { return }

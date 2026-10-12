@@ -124,7 +124,7 @@ nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, acc
     draft: TelegramPendingUploadDraft, expectedRevision: UUID, admission: TelegramPendingUploadArchiveAdmission)
     -> Result<Void, TelegramPendingUploadPersistenceError> {
     admission.withAdmission(accountID: accountID, chatID: draft.chatID, preparationID: draft.id, expectedRevision: expectedRevision) {
-        guard draft.isValid, draft.accountID == accountID, draft.schemaVersion == 16,
+        guard draft.isValid, draft.accountID == accountID, draft.hasArchiveSchema,
               draft.presentation == .archive, draft.disposition == .prepared,
               let archive = draft.archive, let encoded = encodePendingUpload(draft) else { return .failure(.incompatibleData) }
         guard draft.revision != expectedRevision else { return .failure(.conflict) }
@@ -140,7 +140,7 @@ nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, acc
                 guard transaction.getPreferencesEntry(key: receiptKey)?.data == receipt else { return .failure(.conflict) }
                 return .success(())
             }
-            guard current.schemaVersion == 15, current.disposition == .prepared,
+            guard current.canCaptureArchive, current.disposition == .prepared,
                   current.revision == expectedRevision, current.id == draft.id,
                   telegramPendingUploadArchiveIntentMatches(transaction: transaction, current: current, candidate: draft,
                     requiredRecordID: admission.archiveIntentRecordID) else { return .failure(.conflict) }
@@ -149,7 +149,7 @@ nonisolated func telegramPendingUploadArchiveWrite(transaction: Transaction, acc
             guard let expected = try? TelegramPendingUploadDraft(id: current.id, revision: draft.revision,
                 accountID: current.accountID, chatID: current.chatID, title: current.title,
                 captionInput: current.captionInput, originalDraft: current.originalDraft, replyTarget: current.replyTarget,
-                items: current.items, isGrouped: false, presentation: .archive, archive: archive),
+                items: current.items, isGrouped: false, presentation: .archive, mediaRules: current.mediaRules, archive: archive),
                 encodePendingUpload(expected) == encoded else { return .failure(.conflict) }
             let result = telegramPendingUploadWrite(transaction: transaction, accountID: accountID,
                 draft: draft, expectedRevision: expectedRevision)

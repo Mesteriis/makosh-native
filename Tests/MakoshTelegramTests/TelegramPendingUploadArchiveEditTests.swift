@@ -131,7 +131,7 @@ import SwiftSignalKit
                     previousPresentation: .file, orderedIDs: reordered, isGrouped: false, presentation: .file, target: fixture.target)
             } catch { XCTFail("Inactive Archive cache must permit reorder: \(error)"); continue }
             let moved = try await sourceFactsLoad(store)
-            XCTAssertEqual(moved.schemaVersion, 15); XCTAssertNil(moved.archive)
+            XCTAssertEqual(moved.schemaVersion, 17); XCTAssertNil(moved.archive)
             XCTAssertEqual(moved.items.map(\.id), reordered); XCTAssertEqual(moved.captionInput, input)
             let remaining = Array(reordered.prefix(2))
             try await store.updateItems(preparationID: id, previousIDs: reordered, previousGrouping: false,
@@ -182,7 +182,7 @@ import SwiftSignalKit
         } catch { return XCTFail("Inactive Archive cache must permit grouping: \(error)") }
         let grouped = try await sourceFactsLoad(store)
         XCTAssertTrue(grouped.isGrouped); XCTAssertEqual(grouped.archive, before.archive)
-        XCTAssertEqual(grouped.schemaVersion, 16); XCTAssertEqual(try recordCount(fixture), count)
+        XCTAssertEqual(grouped.schemaVersion, 18); XCTAssertEqual(try recordCount(fixture), count)
         let bundle = try await store.restoreBundle(draft: grouped); try bundle.discard()
     }
 

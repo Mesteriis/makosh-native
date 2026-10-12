@@ -30,15 +30,15 @@ private func archiveCaptureEncoding(_ draft: TelegramPendingUploadDraft) -> Data
 private func archiveCaptureMatches(_ capture: TelegramPendingUploadArchiveCapture,
                                    current: TelegramPendingUploadDraft, accountID: Int64, chatID: Int64) -> Bool {
     let candidate = capture.candidate
-    guard current.isValid, current.schemaVersion == 15, current.disposition == .prepared,
+    guard current.isValid, current.canCaptureArchive, current.disposition == .prepared,
           current.accountID == accountID, current.chatID == chatID, current.revision == capture.expectedRevision,
-          candidate.isValid, candidate.schemaVersion == 16, candidate.disposition == .prepared,
+          candidate.isValid, candidate.hasArchiveSchema, candidate.disposition == .prepared,
           candidate.accountID == accountID, candidate.chatID == chatID,
           candidate.revision != capture.expectedRevision, let archive = candidate.archive,
           let expected = try? TelegramPendingUploadDraft(id: current.id, revision: candidate.revision,
             accountID: accountID, chatID: chatID, title: current.title, captionInput: current.captionInput,
             originalDraft: current.originalDraft, replyTarget: current.replyTarget, items: current.items,
-            isGrouped: false, presentation: .archive, captionRules: current.captionRules, archive: archive),
+            isGrouped: false, presentation: .archive, captionRules: current.captionRules, mediaRules: current.mediaRules, archive: archive),
           let expectedBytes = archiveCaptureEncoding(expected), let candidateBytes = archiveCaptureEncoding(candidate) else { return false }
     return expectedBytes == candidateBytes
 }

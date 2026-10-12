@@ -92,7 +92,7 @@ enum TelegramUploadBatchAdmission {
             finish(.rejected); return
         }
         if draft.presentation == .archive, let archive {
-            guard draft.schemaVersion == 16, draft.presentation == .archive, let descriptor = draft.archive,
+            guard draft.hasArchiveSchema, draft.presentation == .archive, let descriptor = draft.archive,
                   archive.file.name.utf8.elementsEqual(descriptor.file.attachment.name.utf8),
                   archive.file.size == descriptor.file.plaintextByteCount,
                   archive.members.count == descriptor.members.count,
@@ -120,7 +120,7 @@ enum TelegramUploadBatchAdmission {
             }
             return
         }
-        guard (draft.archive == nil) == (archive == nil), (6...16).contains(draft.schemaVersion),
+        guard (draft.archive == nil) == (archive == nil), (6...18).contains(draft.schemaVersion),
               self.items.count == items.count,
               (try? TelegramUploadBatchPlan(items: self.items, isGrouped: draft.isGrouped, caption: draft.captionInput.formattedText,
                 captionAboveMedia: draft.captionAboveMedia, mediaSpoiler: draft.mediaSpoiler,

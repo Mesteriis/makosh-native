@@ -26,7 +26,10 @@ final class TelegramUploadWebPPipelineTests: XCTestCase {
                 XCTAssertEqual(item.file.metadata, expected); XCTAssertEqual(item.file.mode, .file)
                 XCTAssertEqual(item.file.name, name); XCTAssertNil(item.originalFile)
                 XCTAssertEqual(try Data(contentsOf: item.file.url), fixture.data)
-                XCTAssertEqual(controller.presentation, .file); XCTAssertFalse(controller.canGroupItems)
+                // The original .jpg name contributes Media; content still stays an unchanged WebP document.
+                XCTAssertEqual(controller.presentation, name == "Picture.jpg" ? .media : .file)
+                XCTAssertEqual(controller.canSwitchPresentation, name == "Picture.jpg")
+                XCTAssertFalse(controller.canGroupItems)
                 XCTAssertFalse(controller.isGrouped)
                 controller.clear()
             }

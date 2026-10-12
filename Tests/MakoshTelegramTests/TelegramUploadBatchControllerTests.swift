@@ -119,11 +119,11 @@ import ImageIO
         XCTAssertEqual(try Data(contentsOf: XCTUnwrap(item.originalFile?.url)), bytes)
     }
 
-    // Catches DPI changing payload pixels or loss of raw bytes. The existing all-File Media guard remains versioned separately.
+    // Catches using generated payload kinds to override the original source's Media option.
     func testPhotoPickerSeparatesSourceOptionsFromPixelPayloads() async throws {
         let root = try makeSources()[0].deletingLastPathComponent()
         let cases: [(Int, Int, TelegramUploadPresentation, TelegramUploadMode)] = [
-            (64, 144, .file, .photo), (32, 36, .file, .file)
+            (64, 144, .file, .photo), (32, 36, .media, .file)
         ]
         for (pixels, dpi, presentation, mode) in cases {
             let source = root.appendingPathComponent("dpi-\(dpi).png")
@@ -144,7 +144,7 @@ import ImageIO
             try FileManager.default.removeItem(at: source)
             XCTAssertEqual(controller.presentation, presentation)
             XCTAssertEqual(item.file.mode, mode)
-            XCTAssertFalse(controller.canSwitchPresentation)
+            XCTAssertEqual(controller.canSwitchPresentation, dpi == 36)
             XCTAssertEqual(item.sourceFacts?.image, dpi == 144 ? .decoded(width: 32, height: 32) : .decoded(width: 64, height: 64))
             let raw = try XCTUnwrap(mode == .photo ? item.originalFile : item.file)
             XCTAssertEqual(raw.name, "dpi-\(dpi).png")

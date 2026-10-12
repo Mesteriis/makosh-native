@@ -6,6 +6,30 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 @MainActor final class TelegramPendingUploadArchiveAdmissionTests: TelegramSourceFactsIntegrationTestCase {
+    // Catches a guarded ZIP install/retention silently upgrading or downgrading the predecessor's Media policy.
+    func testArchiveAdmissionRefusesChangingThePredecessorMediaPolicy() async throws {
+        for oldPredecessor in [false, true] {
+            let fixture = try await sourceFactsArchive(), box = try await sourceFactsOpen(fixture.postboxPath)
+            let (captured, candidate) = try await makeCandidate(fixture, box: box)
+            let repository = TelegramPostboxPendingUploadRepository(postbox: box, accountID: 1)
+            let current: TelegramPendingUploadDraft
+            if oldPredecessor {
+                current = try TelegramPendingUploadDraft(id: captured.id, accountID: 1, chatID: 42, title: captured.title,
+                    captionInput: captured.captionInput, originalDraft: captured.originalDraft, replyTarget: captured.replyTarget,
+                    items: captured.items, isGrouped: captured.isGrouped, presentation: captured.presentation)
+                try await save(repository, current, captured.revision)
+            } else { current = captured }
+            let forged = try TelegramPendingUploadDraft(id: candidate.id, accountID: 1, chatID: 42, title: candidate.title,
+                captionInput: candidate.captionInput, originalDraft: candidate.originalDraft, replyTarget: candidate.replyTarget,
+                items: candidate.items, isGrouped: false, presentation: .archive,
+                mediaRules: oldPredecessor ? .reference : .legacy, archive: candidate.archive)
+            XCTAssertTrue(forged.isValid)
+            assertConflict(await retain(repository, forged, current.revision, admission(current)))
+            assertConflict(await install(repository, forged, current.revision, admission(current)))
+            let unchanged = try await sourceFactsLoad(fixture.session(box)); XCTAssertEqual(unchanged, current)
+        }
+    }
+
     // Catches stale capture metadata surviving an edit/cancellation/install or original-UUID A→B→A.
     func testCaptureReceiptPreservesExactNoOpAndClearsOnChangingPointerWrites() async throws {
         for mutation in ["caption", "roundTrip", "cancel", "install"] {
@@ -42,7 +66,7 @@ import SwiftSignalKit
         let replacement = try TelegramPendingUploadDraft(id: candidate.id, accountID: 1, chatID: 42,
             title: candidate.title, captionInput: candidate.captionInput, originalDraft: candidate.originalDraft,
             replyTarget: candidate.replyTarget, items: candidate.items, isGrouped: false,
-            presentation: .archive, archive: candidate.archive)
+            presentation: .archive, mediaRules: candidate.mediaRules, archive: candidate.archive)
         assertConflict(await retain(repository, replacement, current.revision, admission(current)))
         let foreign = UUID(), foreignToken = TelegramPendingUploadArchiveAdmission(accountID: 1, chatID: 42,
             preparationID: current.id, expectedRevision: foreign, generation: UUID())
@@ -135,7 +159,7 @@ import SwiftSignalKit
         guard case .success = first else { return XCTFail("A valid Archive install was refused: \(first)") }
         let installed = try await sourceFactsLoad(fixture.session(box))
         XCTAssertEqual(installed, candidate)
-        XCTAssertEqual(installed.schemaVersion, 16)
+        XCTAssertEqual(installed.schemaVersion, 18)
         XCTAssertEqual(installed.items, current.items)
         XCTAssertEqual(installed.captionInput, current.captionInput)
         XCTAssertEqual(installed.originalDraft, current.originalDraft)
@@ -196,7 +220,7 @@ import SwiftSignalKit
                 let terminalCandidate = try TelegramPendingUploadDraft(id: changed.id, accountID: 1, chatID: 42,
                     title: changed.title, captionInput: changed.captionInput, originalDraft: changed.originalDraft,
                     replyTarget: changed.replyTarget, items: changed.items, isGrouped: false,
-                    presentation: .archive, archive: candidate.archive)
+                    presentation: .archive, mediaRules: changed.mediaRules, archive: candidate.archive)
                 assertConflict(await install(repository, terminalCandidate, changed.revision, admission(changed)))
             }
             let after = try await sourceFactsLoad(fixture.session(box))
@@ -212,7 +236,7 @@ import SwiftSignalKit
         let forged = try TelegramPendingUploadDraft(id: candidate.id, revision: candidate.revision,
             accountID: 1, chatID: 42, title: "Caf\u{e9}", captionInput: candidate.captionInput,
             originalDraft: candidate.originalDraft, replyTarget: candidate.replyTarget, items: candidate.items,
-            isGrouped: false, presentation: .archive, archive: candidate.archive)
+            isGrouped: false, presentation: .archive, mediaRules: candidate.mediaRules, archive: candidate.archive)
         XCTAssertTrue(forged.isValid)
         XCTAssertEqual(forged.title, current.title)
         XCTAssertNotEqual(Data(forged.title.utf8), Data(current.title.utf8))
@@ -220,7 +244,7 @@ import SwiftSignalKit
         let replaced = try TelegramPendingUploadDraft(id: candidate.id, revision: UUID(), accountID: 1,
             chatID: 42, title: current.title, captionInput: try .init(formattedText: .init(text: "substituted caption")),
             originalDraft: candidate.originalDraft, replyTarget: candidate.replyTarget, items: candidate.items,
-            isGrouped: false, presentation: .archive, archive: candidate.archive)
+            isGrouped: false, presentation: .archive, mediaRules: candidate.mediaRules, archive: candidate.archive)
         XCTAssertTrue(replaced.isValid)
         assertConflict(await install(repository, replaced, current.revision, admission(current)))
         let after = try await sourceFactsLoad(fixture.session(box))
@@ -271,7 +295,8 @@ import SwiftSignalKit
             members: zip.members.map { .init(itemID: $0.itemID, entryName: $0.entryName) })
         let candidate = try TelegramPendingUploadDraft(id: current.id, accountID: 1, chatID: 42,
             title: current.title, captionInput: current.captionInput, originalDraft: current.originalDraft,
-            replyTarget: current.replyTarget, items: current.items, isGrouped: false, presentation: .archive, archive: descriptor)
+            replyTarget: current.replyTarget, items: current.items, isGrouped: false, presentation: .archive,
+            mediaRules: current.mediaRules, archive: descriptor)
         XCTAssertTrue(current.isValid); XCTAssertTrue(candidate.isValid)
         return (current, candidate)
     }

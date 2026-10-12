@@ -18,7 +18,7 @@ struct TelegramPendingUploadArchiveIntent: Codable, Sendable {
     func isValid(for current: TelegramPendingUploadDraft) -> Bool {
         let ids = [archiveID, recordID, candidateRevision]
         let resources = current.items.flatMap { [$0.file] + ($0.originalFile.map { [$0] } ?? []) + ($0.videoCover.map { [$0.file] } ?? []) }
-        return current.isValid && current.schemaVersion == 15 && current.disposition == .prepared &&
+        return current.isValid && current.canCaptureArchive && current.disposition == .prepared &&
             current.captionRules == .reference && preparationID == current.id && expectedRevision == current.revision &&
             (2...TelegramUploadArchiveLimits.members).contains(current.items.count) &&
             Set(ids).count == ids.count && ids.allSatisfy { $0 != TelegramPendingUploadDraft.zeroUUID && $0 != current.id && $0 != current.revision &&
@@ -35,7 +35,7 @@ struct TelegramPendingUploadArchiveIntent: Codable, Sendable {
         return try TelegramPendingUploadDraft(id: current.id, revision: candidateRevision, accountID: current.accountID,
             chatID: current.chatID, title: current.title, captionInput: current.captionInput,
             originalDraft: current.originalDraft, replyTarget: current.replyTarget, items: current.items,
-            isGrouped: false, presentation: .archive, captionRules: current.captionRules,
+            isGrouped: false, presentation: .archive, captionRules: current.captionRules, mediaRules: current.mediaRules,
             archive: .init(id: archiveID, file: record, members: members))
     }
 }

@@ -588,11 +588,24 @@ height≥40px и width/10≤height после transformation. Width<40px и tall
 сами по себе не запрещают photo. Probe и staging используют общий2560px maximum;
 orientation/non-square DPI проверены по настоящему JPEG. Source options остаются
 симметричными logical40-point/10:1. Существующие frozen File/photo подготовки
-не переклассифицируются. Отдельно открыты all-File Media (reference initial state
-в `PreviewSenderController.swift:1744–1745` выбирается только по options), default
-1280/large2560 setting и JPEG.75 (`FastSettings.swift:301–308`, SenderController).
-Без version gate новый all-File допуск изменил бы прежний fail-closed смысл
-schema14–16, поэтому этот переход не включён в изменение генерации payload.
+не переклассифицируются. Новый source-only Media допуск соответствует initial
+state в `PreviewSenderController.swift:1744–1745`, который выбирается только по
+options. Он включён только в новых schema17/18; прежние1–16 сохраняют visual-payload
+требование, включая retry/edits/restore. Cached ZIP сохраняет ту же policy family;
+переходы15→18 и17→16 через guarded install/capture запрещены. Default1280/large2560
+setting и JPEG.75 (`FastSettings.swift:301–308`, SenderController) ещё открыты.
+Typed WebP под исходным .jpg теперь сохраняет Media с unchanged document bytes;
+его grouping всё ещё запрещён и требует отдельной сверки с reference workflows.
+
+Native picker QA новой policy 2026-10-12: два PNG32×32@36DPI при S3 OFF.
+Предыдущая сборка показывает File; новая — Media с теми же document rows и
+исходными байтами. Один AX predicate воспроизводит RED→GREEN. Media→Archive→
+Media и exact restart без исходных picker paths сохраняют оба UUID и emoji
+caption. Reopened readback подтверждает cached18, два encrypted local файла
+плюс ZIP,26 retained records с прежними/cancelled preparations, отсутствие
+receipt/pending/S3 objects и отсутствие promotion после enable/resume.
+Native queue original bytes/grouping/caption/receipt отдельно покрыты regression
+под обеими storage policies; Account/server delivery не утверждается.
 
 Native picker QA 2026-10-12 на final built payload: S3 OFF, PNG39×48 и PNG40×80.
 До изменения narrow PNG — File row; после — два JPEG/photo в mosaic. Screenshot

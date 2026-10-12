@@ -115,7 +115,7 @@ private nonisolated func archiveModeNativeMessages(_ box: Postbox, ids: [Telegra
             try await store.updatePresentation(preparationID: id, orderedIDs: items.map(\.id), previousPresentation: .file,
                 previousGrouping: false, presentation: .archive, isGrouped: false, target: fixture.target)
             let after = try await sourceFactsLoad(store)
-            XCTAssertEqual(after.schemaVersion, 16); XCTAssertEqual(after.presentation, .archive)
+            XCTAssertEqual(after.schemaVersion, 18); XCTAssertEqual(after.presentation, .archive)
             XCTAssertEqual(after.id, before.id); XCTAssertEqual(after.captionInput, input)
             XCTAssertEqual(after.items, before.items); XCTAssertEqual(after.originalDraft, before.originalDraft)
             XCTAssertFalse(after.isGrouped); XCTAssertFalse(after.captionAboveMedia); XCTAssertFalse(after.mediaSpoiler)
@@ -160,7 +160,7 @@ private nonisolated func archiveModeNativeMessages(_ box: Postbox, ids: [Telegra
             try await store.updatePresentation(preparationID: id, orderedIDs: items.map(\.id), previousPresentation: old,
                 previousGrouping: false, presentation: new, isGrouped: false, target: fixture.target)
             let changed = try await sourceFactsLoad(store)
-            XCTAssertEqual(changed.schemaVersion, 16); XCTAssertEqual(changed.presentation, new)
+            XCTAssertEqual(changed.schemaVersion, 18); XCTAssertEqual(changed.presentation, new)
             XCTAssertEqual(changed.items, archived.items); XCTAssertEqual(changed.archive, descriptor)
             XCTAssertEqual(changed.captionInput, input)
             XCTAssertFalse(changed.captionAboveMedia); XCTAssertFalse(changed.mediaSpoiler)

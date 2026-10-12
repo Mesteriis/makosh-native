@@ -4,6 +4,33 @@ import MakoshCore
 @testable import MakoshTelegram
 
 final class TelegramPendingUploadArchiveDraftTests: XCTestCase {
+    // Catches losing the new source-only Media allowance while retaining an authenticated ZIP descriptor.
+    func testSchema18KeepsAllDocumentMediaWithStrictCachedArchiveFields() async throws {
+        var json = try await fixtureJSON(), items = json["items"] as! [[String: Any]]
+        for index in items.indices {
+            var facts = items[index]["sourceFacts"] as! [String: Any]
+            facts["selectionMIME"] = "image/png"; facts["image"] = ["kind": "decoded", "width": 64, "height": 64]
+            items[index]["sourceFacts"] = facts
+        }
+        json["items"] = items; json["presentation"] = "media"
+        XCTAssertFalse(try decode(json).isValid, "Schema16 must retain its visual payload requirement")
+        json["schemaVersion"] = 18
+        let draft: TelegramPendingUploadDraft
+        do { draft = try decode(json) } catch { return XCTFail("Complete schema18 must decode: \(error)") }
+        XCTAssertTrue(draft.isValid); XCTAssertEqual(draft.items.map { $0.file.attachment.kind }, ["file", "file"])
+        XCTAssertEqual(try decode(object(draft)), draft)
+        for mutation in 0..<4 {
+            var invalid = json
+            switch mutation {
+            case 0: invalid.removeValue(forKey: "archive")
+            case 1: invalid["archive"] = NSNull()
+            case 2: invalid["futureMediaPolicy"] = true
+            default: invalid["schemaVersion"] = 19
+            }
+            try refused(invalid)
+        }
+    }
+
     // Catches treating Archive as N ordinary native items, dropping its originals, or rewriting raw editor input.
     func testLiteralSchema16RetainsAllOriginalItemsArchiveAndRichCaption() async throws {
         let json = try await fixtureJSON()

@@ -1854,11 +1854,15 @@ symmetric40-point/10:1 `NSImage.size` rule from `ThumbUtils.swift:222–260`.
 For example64×64 pixels at144DPI now retains a64×64 photo plus raw source but
 defaults to File (32×32 logical points). A32×32-pixel source at36DPI retains
 only raw File bytes even though its64×64 logical source contributes Media.
-The existing all-File Media guard still normalizes that latter case to File;
-reference mode parity requires a separately versioned allowance, because an
-ungated helper change would retroactively admit invalid schema14–16 pointers.
-The current2560/.85 staging recipe also still differs from the reference's
-default1280/.75 and optional large-photo setting. These are explicit next gaps.
+New schema17 preparations retain Media in that latter case, as selected by the
+ordered logical-source options. Schema18 retains the same allowance with a cached
+ZIP. Schemas1–16 keep their visual-payload requirement; no old pointer is upgraded
+by retry, caption/mode/list/cover edits or restore. Native payload kinds and bytes
+remain independent. New typed WebP with an original .jpg name may likewise retain
+Media while sending the unchanged document; its grouping remains disabled.
+The current2560/.85 staging recipe still differs from the reference's
+default1280/.75 and optional large-photo setting. Typed WebP grouping under
+misleading names and exhaustive MIME/recorder parity remain separate gaps.
 Existing frozen preparations retain their kind, raw roles, facts and bytes;
 restore never reruns new photo eligibility. Both representations survive source
 removal. S3 OFF forbids every new copy, including either preparation resource;
@@ -1879,7 +1883,7 @@ a newer preparation cannot be overwritten. Cancelling also releases a retained
 failed mode request. The latest caption/options remain bound to the original chat.
 
 Schema8 rejects missing/unknown presentation and Media with only documents.
-Removing the final visual item normalizes the remaining set to File in one
+For schemas1–16, removing the final visual item normalizes the remaining set to File in one
 metadata write, guarded by the exact previous mode/order/grouping. An exact
 committed retry reuses that pointer; stale mode, cancellation and a newer
 preparation cannot be overwritten. Legacy schema6/7 writes remain compatible.
@@ -1889,9 +1893,10 @@ never create S3 copies; the per-chat prohibition also covers every initial resou
 
 ### Ordered original sources
 
-New ordinary picker preparations use strict schema15, preserving schema1–14
+New ordinary picker preparations use strict schema17, preserving schema1–16
 payload meanings. Schema14 introduced source facts;15 adds the versioned caption
-projection described below. Every item requires its UUID, raw resource role/name/size/
+projection described below;17 permits Media from source options even with only
+document payloads. Every item requires its UUID, raw resource role/name/size/
 SHA256, original-name selection MIME, bounded logical-image result and grouping
 result. Photo/GIF facts bind the retained raw resource. Partial/unknown/null or
 cross-resource facts are refused and independently re-probed before persistence,
@@ -1915,14 +1920,15 @@ empty files and allocated collision names; verifies exact headers, CRC/SHA and
 fresh owned source bytes without extraction. Count/name/catalog memory limits
 are separate from the1500MiB raw-byte cap. See telegram-album-migration.md and
 THIRD_PARTY_NOTICES.md for the profile, limits and SDK notice.
-Strict schema16 now retains N ordered canonical items and one versioned ZIP
-descriptor. The descriptor binds stable item IDs, allocated member names and a
+Schema16 introduced N ordered canonical items and one versioned ZIP
+descriptor; new schema18 adds the source-only Media policy while keeping the same
+strict descriptor format. The descriptor binds stable item IDs, allocated member names and a
 scoped outgoing file record; it cannot authenticate bytes by itself. Save and
 whole-bundle restoration verify both member bytes and the outer record digest
 against the same held ZIP inode. Restoration owns originals, prepared files,
 covers and ZIP together and cleans temporary exports on failure. Array-only
-restoration refuses16 rather than omitting its ZIP. Schemas1–15 reject Archive
-fields and retain their existing behavior.
+restoration refuses16/18 rather than omitting its ZIP. Schemas1–15 and17 reject
+Archive fields and retain their existing behavior.
 
 ZIP capture reuses the existing outgoing-file policy: S3 OFF forbids every new
 S3 copy, including preparation, and encrypted local records never promote after
@@ -1930,7 +1936,8 @@ enable. Restoration reads existing immutable records without recapture. Generic
 mode/prepare/plan entry points refuse Archive before changing state or copying
 files. A dedicated `installArchive` authenticates an already durable ZIP and all
 canonical/raw resources, discards authentication stages, then upgrades the exact
-prepared schema15 pointer to16. Rich raw input/selection, original draft, reply,
+prepared schema15 pointer to16, or schema17 to18. Cross-family installation and
+capture retention refuse; the predecessor fixes the Media policy. Rich raw input/selection, original draft, reply,
 title and canonical records remain byte-bound; Archive clears grouping, caption
 placement and spoiler. It does not capture files or create new storage records.
 
@@ -2007,24 +2014,25 @@ is bounded to512KiB plus a fixed header; file bytes remain in their original
 encrypted local/S3 store. Authentication runs again before installation.
 
 Archive generation/mode switching is now connected to the existing upload menu.
-For two or more schema15 sources, Session builds the ZIP from authenticated
+For two or more schema15/17 sources, Session builds the ZIP from authenticated
 durable originals, retains its exact candidate and installs it under native CAS.
 It does not recapture members or depend on picker stages. A retained candidate
 is reused after a failed native installation. Switching File/Media/Archive keeps
-the same schema16 ZIP cache and raw caption; active Archive clears grouping,
+the same schema16/18 ZIP cache and raw caption; active Archive clears grouping,
 spoiler and caption-above. Recovery accepts inactive caches. Shared submission
 authenticates the whole bundle, then selects one ZIP or the ordinary File/Media
 resources according to the active presentation. Mode changes create no further
 file records or S3 objects. The existing menu layout follows the reference.
 After returning to File/Media, existing reorder/remove actions are available.
 Changed ordered members atomically invalidate the ZIP descriptor and produce a
-schema15 pointer; immutable old ZIP/member records are retained. Selecting Archive
+schema15/17 pointer in the same policy family; immutable old ZIP/member records are retained. Selecting Archive
 again creates only the new ZIP from the edited durable originals. Same-member
 grouping and canonical video-cover edits retain the authenticated raw-source
 cache. Active Archive itself remains one noneditable ZIP row, as in the reference.
 Controller authenticates the resulting bundle and releases its old temporary ZIP
 only after confirmation; a lost pointer ACK blocks send until idempotent retry.
-New ordinary preparations still use schema15.
+New ordinary preparations use schema17; archive installation produces18. Older
+15→16 preparations retain their policy and their exact frozen resource kinds.
 Capture, receipt retention and pointer
 installation are separate transactions. A process loss before receipt commit
 still needs the caller's descriptor; this earlier handoff is not claimed recovered.

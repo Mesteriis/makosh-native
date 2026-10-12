@@ -16,6 +16,39 @@ func pendingUploadSourceFactsJSON() throws -> [String: Any] {
 }
 
 final class TelegramPendingUploadSourceFactsTests: XCTestCase {
+    // Catches broadening old Media pointers or requiring a visual payload after the new source policy is explicit.
+    func testAllDocumentMediaIsVersionedAndRoundTripsWithoutChangingPayloadKinds() throws {
+        var json = try pendingUploadSourceFactsJSON(), items = json["items"] as! [[String: Any]]
+        for index in items.indices {
+            var facts = items[index]["sourceFacts"] as! [String: Any]
+            facts["selectionMIME"] = "image/png"
+            facts["image"] = ["kind": "decoded", "width": 64, "height": 64]
+            items[index]["sourceFacts"] = facts
+        }
+        json["items"] = items; json["presentation"] = "media"
+        for version in [14, 15] {
+            json["schemaVersion"] = version
+            XCTAssertFalse(try decode(json).isValid, "Old all-document Media must remain invalid")
+        }
+        json["schemaVersion"] = 17
+        let draft: TelegramPendingUploadDraft
+        do { draft = try decode(json) }
+        catch { return XCTFail("The versioned source-only Media policy must decode: \(error)") }
+        XCTAssertTrue(draft.isValid); XCTAssertEqual(draft.items.map { $0.file.attachment.kind }, ["file", "file"])
+        let saved = try JSONEncoder().encode(draft)
+        XCTAssertEqual(try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: saved), draft)
+        var unknown = json; unknown["futureMediaPolicy"] = true; try assertRefused(unknown)
+        var incomplete = items; incomplete[0].removeValue(forKey: "sourceFacts")
+        var invalid = json; invalid["items"] = incomplete; try assertRefused(invalid)
+        var noMedia = items
+        for index in noMedia.indices {
+            var facts = noMedia[index]["sourceFacts"] as! [String: Any]
+            facts["selectionMIME"] = "text/plain"; facts["image"] = ["kind": "notImage"]
+            noMedia[index]["sourceFacts"] = facts
+        }
+        invalid["items"] = noMedia; try assertRefused(invalid)
+    }
+
     private func decode(_ json: [String: Any]) throws -> TelegramPendingUploadDraft {
         try JSONDecoder().decode(TelegramPendingUploadDraft.self, from: JSONSerialization.data(withJSONObject: json))
     }

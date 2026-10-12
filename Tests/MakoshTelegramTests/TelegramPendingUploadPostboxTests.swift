@@ -117,7 +117,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
                 try written.get()
             }
             let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
-            XCTAssertEqual(first.schemaVersion, legacy ? 10 : 15); XCTAssertEqual(first.presentation, .file)
+            XCTAssertEqual(first.schemaVersion, legacy ? 10 : 17); XCTAssertEqual(first.presentation, .file)
             XCTAssertEqual(first.items[0].sourceFacts?.name, legacy ? nil : source.lastPathComponent)
             mp4 = try Data(contentsOf: controller.items[0].file.url)
             // Retry must reuse both resources; selecting Media never creates another archive copy.
@@ -273,7 +273,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             for _ in 0..<1000 where !controller.canSend && controller.phase != .failed { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertTrue(controller.canSend)
             let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
-            XCTAssertEqual(draft.schemaVersion, 15); XCTAssertEqual(draft.items[0].metadata, expected)
+            XCTAssertEqual(draft.schemaVersion, 17); XCTAssertEqual(draft.items[0].metadata, expected)
             XCTAssertEqual(draft.presentation, .file); XCTAssertEqual(draft.items[0].file.state, enabled ? .stored : .local)
             // A lost initial write acknowledgement must reuse the typed pointer and receipt.
             try await store.prepare(preparationID: draft.id, items: controller.items, isGrouped: false, presentation: .file,
@@ -474,7 +474,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         XCTAssertTrue(controller.moveItem(id: initial.items[1].id, to: 0, contextID: id, revision: controller.itemsRevision))
         for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
         let reorderedLoad = try await store.load(chatID: 42), reordered = try XCTUnwrap(reorderedLoad)
-        XCTAssertEqual(reordered.schemaVersion, 15); XCTAssertEqual(reordered.presentation, .file)
+        XCTAssertEqual(reordered.schemaVersion, 17); XCTAssertEqual(reordered.presentation, .file)
         XCTAssertTrue(reordered.isGrouped); XCTAssertEqual(reordered.items, initial.items.reversed())
     }
 
@@ -671,7 +671,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(controller.canSend)
         let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
-        XCTAssertEqual(draft.schemaVersion, 15, "The explicit presentation, source facts and raw originals must survive together")
+        XCTAssertEqual(draft.schemaVersion, 17, "The explicit presentation, source facts and raw originals must survive together")
         let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
         let items = try XCTUnwrap(encoded["items"] as? [[String: Any]])
         let original = try XCTUnwrap(items.first?["originalFile"] as? [String: Any], "A normalized JPEG cannot stand in for its original")
@@ -735,7 +735,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         let acceptedLoad = try await store.load(chatID: 42), accepted = try XCTUnwrap(acceptedLoad)
         guard case let .acceptedBatch(ids) = accepted.disposition else { return XCTFail("Raw originals must survive complete native queue acceptance") }
         XCTAssertEqual(ids.count, 2); XCTAssertEqual(accepted.items, reordered.items)
-        XCTAssertEqual(accepted.schemaVersion, 15)
+        XCTAssertEqual(accepted.schemaVersion, 17)
         for item in initial + restored {
             XCTAssertFalse(FileManager.default.fileExists(atPath: item.file.directory.path))
             XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(item.originalFile).directory.path))
@@ -785,7 +785,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         controller.bind(provider: nil)
         let loaded = try await store.load(chatID: 42), draft = try XCTUnwrap(loaded)
         XCTAssertEqual(draft.items.map(\.id), [initial[2].id, initial[0].id]); XCTAssertFalse(draft.isGrouped)
-        XCTAssertEqual(draft.captionInput, input); XCTAssertEqual(draft.schemaVersion, 15)
+        XCTAssertEqual(draft.captionInput, input); XCTAssertEqual(draft.schemaVersion, 17)
         let retained = try await archive.files(identity: before.items[1].file.identity, attachmentID: before.items[1].file.attachment.id)
         XCTAssertEqual(retained, [before.items[1].file], "Removing a preparation item preserves its archived original")
         let restored = try await store.restoreItems(draft: draft)
@@ -1216,7 +1216,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             for _ in 0..<1000 where !controller.canSend { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.captionInput, raw)
             let firstLoad = try await store.load(chatID: 42), first = try XCTUnwrap(firstLoad)
-            XCTAssertEqual(first.schemaVersion, 15)
+            XCTAssertEqual(first.schemaVersion, 17)
             if kind == "legacy" {
                 var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(first)) as? [String: Any])
                 json["schemaVersion"] = 14; json["revision"] = UUID().uuidString
@@ -1226,7 +1226,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
                     orderedIDs: first.items.reversed().map(\.id), isGrouped: false, presentation: .file, target: target)
             }
             frozen = try await store.load(chatID: 42)
-            XCTAssertEqual(frozen?.schemaVersion, kind == "legacy" ? 14 : 15)
+            XCTAssertEqual(frozen?.schemaVersion, kind == "legacy" ? 14 : 17)
             XCTAssertEqual(frozen?.captionInput, raw)
             for source in sources { try FileManager.default.removeItem(at: source) }
         }

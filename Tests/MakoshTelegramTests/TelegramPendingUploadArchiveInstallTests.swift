@@ -68,7 +68,7 @@ import SwiftSignalKit
                 do { _ = try await install(session(fixture, repository: repository), setup: setup); XCTFail("Lost ACK must be reported") }
                 catch let error as TelegramPendingUploadPersistenceError { XCTAssertEqual(error, .unavailable) }
                 committed = try await sourceFactsLoad(fixture.session(box))
-                XCTAssertEqual(committed?.schemaVersion, 16)
+                XCTAssertEqual(committed?.schemaVersion, 18)
             }
             let setup = try XCTUnwrap(retained)
             defer { setup.discard() }
@@ -138,7 +138,7 @@ import SwiftSignalKit
                 let relabeledTarget = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Later chat label", replySource: setup.target.replySource)
                 do { result = try await install(store, setup: setup, target: relabeledTarget) }
                 catch { return XCTFail("An already authenticated archive must install: \(error)") }
-                XCTAssertEqual(result.schemaVersion, 16); XCTAssertEqual(result.presentation, .archive)
+                XCTAssertEqual(result.schemaVersion, 18); XCTAssertEqual(result.presentation, .archive)
                 XCTAssertEqual(result.disposition, .prepared); XCTAssertNotEqual(result.revision, setup.draft.revision)
                 XCTAssertEqual(result.id, setup.draft.id); XCTAssertEqual(result.title, setup.draft.title)
                 XCTAssertEqual(result.items, setup.draft.items); XCTAssertEqual(result.archive, setup.descriptor)
@@ -337,7 +337,7 @@ import SwiftSignalKit
             return XCTFail("Successful native installation must await its completion")
         }
         let committed = try await sourceFactsLoad(fixture.session(box))
-        XCTAssertEqual(committed.schemaVersion, 16); XCTAssertEqual(committed.archive, setup.descriptor)
+        XCTAssertEqual(committed.schemaVersion, 18); XCTAssertEqual(committed.archive, setup.descriptor)
         operation.cancel(); repository.releaseAcknowledgement()
         do {
             let returned = try await operation.value
@@ -371,7 +371,7 @@ import SwiftSignalKit
             try await store.prepare(preparationID: id, items: items, isGrouped: visual, presentation: visual ? .media : .file,
                 target: target, captionInput: input, captionAboveMedia: visual, mediaSpoiler: visual, originalDraft: original)
             let draft = try await sourceFactsLoad(store)
-            XCTAssertEqual(draft.schemaVersion, 15); XCTAssertTrue(draft.isValid)
+            XCTAssertEqual(draft.schemaVersion, 17); XCTAssertTrue(draft.isValid)
             let sources = items.map { TelegramUploadArchiveIO.Source(itemID: $0.id, file: $0.rawSource) }
             let zip = try await TelegramUploadArchiveIO.prepare(sources)
             do {

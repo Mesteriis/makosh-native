@@ -1,6 +1,75 @@
 # Development status — 2026-10-12
 
-## Current stage: static-photo payload pixels separated from source options
+## Current stage: versioned source-only Media preparation
+
+New ordinary picker preparations use schema17; a cached ZIP uses schema18.
+Media follows ordered logical-source options even when every canonical payload
+is a document (for example32px PNG at36DPI, logical64px). Payload kinds, names,
+bytes and native attributes remain frozen. The new allowance does not enable
+visual-only controls or a photo mosaic for document rows. A misleading .jpg WebP
+may retain Media while sending its original document; typed WebP grouping stays
+disabled and is a remaining reference difference.
+
+Schemas1–16 retain the visual-payload requirement. Retry and caption/mode/member/
+cover edits preserve the original policy; restoration never reclassifies or
+upgrades old resources. Guarded Archive capture/install reconstructs the candidate
+under its predecessor's policy:15→16 or17→18. Cross-family transitions refuse.
+New cached18 can return to source-selected Media; changed members invalidate the
+ZIP descriptor back to17 and retain all old encrypted records. Storage policy,
+byte recipe, dependency pins and native message attributes are unchanged.
+
+Compiled RED5 tests/3 expected failures reproduces the missing schema17 codec
+and low-DPI File normalization. GREEN18 tests passes. Native test development
+exposes one async-XCTest-autoclosure compilation error and a fixture SIGTRAP:
+its transaction closure inherited MainActor. A nonisolated fixture helper fixes
+the actor boundary; the three native regressions then pass. Initial full suite
+runs1,350 XCTest with79 failures (3 unexpected): old15/16 expectations, seven
+Archive admission fixtures missing the predecessor policy, and the old misleading-
+.jpg WebP mode expectation. These are corrected without weakening the old-schema
+regressions; focused156 XCTest/45 Python tests passes. The new source-policy
+mutation fails one native regression with4 expected failures under both storage
+policies; production source is restored byte for byte.
+
+New regression coverage includes schema17/18 strict fields/source completeness,
+old all-document Media refusal, immutable retry, mode changes, Archive cache/
+member removal, cross-family capture/install rejection, old15 File restoration,
+and actual local native queue original bytes, grouping, caption and complete
+receipt under S3 ON/OFF. OFF resources never promote after enable/resume.
+
+Final database startup, full tests and app build exit0. Full suite:
+**1,352 XCTest (1,273 Telegram +79 core),1 microphone-authorization precondition
+skip,0 failures;45 Python tests**. Full compilation, build and UI readback have
+no compiler warnings.663 SQL-prefixed t19 teardown diagnostics plus one bare
+line remain separate from compiler warnings.
+
+Actual native picker QA with S3 OFF reproduces File in the preceding app and
+Media in the final build for two32px PNG at36DPI. The same AX predicate is
+RED→GREEN. Both remain document rows with exact original bytes. Media→Archive→
+Media retains two stable IDs and the emoji caption. Exact owned-process restart
+without the original picker paths restores cached18 Media. Reopened readback
+passes1 XCTest/45 Python tests: two files plus ZIP are encrypted local resources,
+26 retained records include earlier/cancelled preparations, no receipt/pending
+or S3 objects, and no promotion after enable/resume. Strict deep signatures and
+normalized built/QA Mach-O payload comparison pass. The runtime is stopped and
+temporary QA source removed; no personal Account, Telegram server send or hardware.
+
+Bounded frozen review finds no actionable issues. Root verifies26 frozen/live
+source/reference hashes,20 base files,20 patch reconstructions and20 original
+worker argv/exits. This is manual recorded-consistency validation; the portable
+helper is unavailable in the exposed skill tree. Worker runtime gates stay
+skipped and observed route/usage unknown. Final XERJ refresh/freshness/query exit0:
+482 files,444/444 classified code. The Media rules hit is confirmed against
+current source. One premature freshness check reports STALE while refresh is
+still running; the post-completion check exits0. Locked-reference freshness also
+exits0. Indexes, runtime configuration and raw evidence remain ignored.
+Hosted CI for preceding a4ae70f succeeds in both
+[PR run38204982918](https://github.com/Mesteriis/makosh-native/actions/runs/38204982918)
+and [push run38204979706](https://github.com/Mesteriis/makosh-native/actions/runs/38204979706).
+New-head CI remains a separate gate. Full migration remains active; default1280/
+optional2560 and JPEG.75, typed WebP grouping and later reference workflows/services
+remain open.
+
+## Previous stage: static-photo payload pixels separated from source options
 
 New static-photo preparation follows SenderController's transformed-pixel
 predicate: height≥40 and width/10≤height. Width<40 and reciprocal tall aspect

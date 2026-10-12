@@ -48,20 +48,24 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
          originalDraft: TelegramComposerDraft?, replyTarget: TelegramComposerReplyTarget?,
          items: [TelegramPendingUploadItem], isGrouped: Bool, presentation: TelegramUploadPresentation? = nil,
          captionRules: TelegramUploadCaptionRules = .reference,
+         mediaRules: TelegramUploadMediaRules = .legacy,
          archive: TelegramPendingUploadArchive? = nil,
          disposition: TelegramPendingUploadDisposition = .prepared) throws {
         guard !items.isEmpty else { throw TelegramPendingUploadPersistenceError.incompatibleData }
         guard presentation != .archive || archive != nil else { throw TelegramPendingUploadPersistenceError.incompatibleData }
+        guard mediaRules != .reference || (captionRules == .reference && presentation != nil && items.allSatisfy({ $0.sourceFacts != nil })) else {
+            throw TelegramPendingUploadPersistenceError.incompatibleData
+        }
         if archive != nil {
             guard captionRules == .reference, presentation != nil, items.allSatisfy({ $0.sourceFacts != nil }) else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
-            schemaVersion = 16
+            schemaVersion = mediaRules == .reference ? 18 : 16
         } else if items.contains(where: { $0.sourceFacts != nil }) {
             guard items.allSatisfy({ $0.sourceFacts != nil }), presentation != nil else {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
-            schemaVersion = captionRules == .reference ? 15 : 14
+            schemaVersion = mediaRules == .reference ? 17 : captionRules == .reference ? 15 : 14
         } else if items.contains(where: { $0.metadata?.roundVideo != nil }) {
             schemaVersion = 13
         } else if let voice = items.first(where: { $0.metadata?.voice != nil })?.metadata?.voice {
@@ -97,16 +101,16 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
-        if [14, 15, 16].contains(schemaVersion) {
+        if [14, 15, 16, 17, 18].contains(schemaVersion) {
             let fields = try decoder.container(keyedBy: FieldKey.self)
             guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: Set(CodingKeys.allCases.map(\.rawValue))) else {
                 throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown source preparation field"))
             }
         }
-        guard schemaVersion == 16 || !c.contains(.archive) else {
+        guard [16, 18].contains(schemaVersion) || !c.contains(.archive) else {
             throw DecodingError.dataCorruptedError(forKey: .archive, in: c, debugDescription: "Archive in an older preparation")
         }
-        archive = schemaVersion == 16 ? try c.decode(TelegramPendingUploadArchive.self, forKey: .archive) : nil
+        archive = [16, 18].contains(schemaVersion) ? try c.decode(TelegramPendingUploadArchive.self, forKey: .archive) : nil
         id = try c.decode(UUID.self, forKey: .id); revision = try c.decode(UUID.self, forKey: .revision)
         accountID = try c.decode(Int64.self, forKey: .accountID); chatID = try c.decode(Int64.self, forKey: .chatID)
         title = try c.decode(String.self, forKey: .title)
@@ -123,7 +127,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         guard schemaVersion >= 8 || !c.contains(.presentation) else {
             throw DecodingError.dataCorruptedError(forKey: .presentation, in: c, debugDescription: "Presentation in an older preparation")
         }
-        if [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].contains(schemaVersion) {
+        if (6...18).contains(schemaVersion) {
             guard !c.contains(.file), !c.contains(.video), !c.contains(.videoCover) else {
                 throw DecodingError.dataCorruptedError(forKey: .items, in: c, debugDescription: "Ambiguous preparation resources")
             }
@@ -132,7 +136,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
                 throw DecodingError.dataCorruptedError(forKey: .items, in: c, debugDescription: "Empty preparation")
             }
             isGrouped = try c.decode(Bool.self, forKey: .isGrouped)
-            guard [14, 15, 16].contains(schemaVersion) ? items.allSatisfy({ $0.sourceFacts != nil }) : items.allSatisfy({ $0.sourceFacts == nil }) else {
+            guard [14, 15, 16, 17, 18].contains(schemaVersion) ? items.allSatisfy({ $0.sourceFacts != nil }) : items.allSatisfy({ $0.sourceFacts == nil }) else {
                 throw DecodingError.dataCorruptedError(forKey: .items, in: c, debugDescription: "Incomplete or downgraded source facts")
             }
         } else {
@@ -146,7 +150,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         }
         presentation = schemaVersion >= 8 ? try c.decode(TelegramUploadPresentation.self, forKey: .presentation)
             : items.allSatisfy({ $0.file.attachment.kind == "file" }) ? .file : .media
-        guard schemaVersion == 16 || presentation != .archive else {
+        guard [16, 18].contains(schemaVersion) || presentation != .archive else {
             throw DecodingError.dataCorruptedError(forKey: .presentation, in: c, debugDescription: "Archive presentation in an older preparation")
         }
         disposition = try c.decode(TelegramPendingUploadDisposition.self, forKey: .disposition)
@@ -158,10 +162,10 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
         try c.encode(captionInput, forKey: .captionInput); try c.encode(captionAboveMedia, forKey: .captionAboveMedia)
         try c.encode(mediaSpoiler, forKey: .mediaSpoiler); try c.encodeIfPresent(originalDraft, forKey: .originalDraft)
         try c.encodeIfPresent(replyTarget, forKey: .replyTarget); try c.encode(disposition, forKey: .disposition)
-        if [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].contains(schemaVersion) {
+        if (6...18).contains(schemaVersion) {
             try c.encode(items, forKey: .items); try c.encode(isGrouped, forKey: .isGrouped)
             if schemaVersion >= 8 { try c.encode(presentation, forKey: .presentation) }
-            if schemaVersion == 16 {
+            if [16, 18].contains(schemaVersion) {
                 guard let archive else { throw TelegramPendingUploadPersistenceError.incompatibleData }
                 try c.encode(archive, forKey: .archive)
             }
@@ -174,17 +178,20 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               messageID: "pending-upload:" + preparationID.uuidString.lowercased())
     }
     var captionRules: TelegramUploadCaptionRules { schemaVersion >= 15 ? .reference : .legacy }
+    var mediaRules: TelegramUploadMediaRules { schemaVersion >= 17 ? .reference : .legacy }
+    var canCaptureArchive: Bool { [15, 17].contains(schemaVersion) }
+    var hasArchiveSchema: Bool { [16, 18].contains(schemaVersion) }
     var isValid: Bool {
-        guard [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
-              (schemaVersion == 16) == (archive != nil),
-              presentation != .archive || (schemaVersion == 16 && !isGrouped && !captionAboveMedia && !mediaSpoiler),
-              [14, 15, 16].contains(schemaVersion) ? items.allSatisfy({ $0.sourceFacts != nil && $0.metadata?.voice == nil && $0.metadata?.roundVideo == nil }) : items.allSatisfy({ $0.sourceFacts == nil }),
+        guard (1...18).contains(schemaVersion), !(schemaVersion == 1 && captionAboveMedia),
+              hasArchiveSchema == (archive != nil),
+              presentation != .archive || (hasArchiveSchema && !isGrouped && !captionAboveMedia && !mediaSpoiler),
+              [14, 15, 16, 17, 18].contains(schemaVersion) ? items.allSatisfy({ $0.sourceFacts != nil && $0.metadata?.voice == nil && $0.metadata?.roundVideo == nil }) : items.allSatisfy({ $0.sourceFacts == nil }),
               schemaVersion == 13 || items.allSatisfy({ $0.metadata?.roundVideo == nil }),
               schemaVersion >= 6 || (items.count == 1 && (schemaVersion >= 4) == (video != nil) && (schemaVersion == 5) == (videoCover != nil)),
               (schemaVersion >= 7
                 ? (schemaVersion >= 8 || items.contains(where: { $0.originalFile != nil })) && items.allSatisfy({ $0.file.attachment.kind != "photo" || $0.originalFile != nil })
                 : items.allSatisfy({ $0.originalFile == nil })),
-              ([14, 15, 16].contains(schemaVersion) ? true : schemaVersion == 13 ? items.count == 1 && items[0].metadata?.roundVideo != nil && !isGrouped && presentation == .media && captionInput.formattedText.text.isEmpty && !captionAboveMedia && !mediaSpoiler
+              ([14, 15, 16, 17, 18].contains(schemaVersion) ? true : schemaVersion == 13 ? items.count == 1 && items[0].metadata?.roundVideo != nil && !isGrouped && presentation == .media && captionInput.formattedText.text.isEmpty && !captionAboveMedia && !mediaSpoiler
                 : [11, 12].contains(schemaVersion) ? items.count == 1 && items[0].metadata?.voice?.isOneTime == (schemaVersion == 12) && !isGrouped && presentation == .file && captionInput.formattedText.text.isEmpty && !captionAboveMedia && !mediaSpoiler
                 : items.allSatisfy({ $0.metadata?.voice == nil }) && (schemaVersion == 10 ? items.contains(where: { $0.metadata?.gif != nil })
                 : schemaVersion == 9 ? items.contains(where: { $0.metadata != nil }) && items.allSatisfy({ $0.metadata?.gif == nil })
@@ -193,7 +200,7 @@ internal struct TelegramPendingUploadDraft: Codable, Equatable, Sendable {
               items.allSatisfy({ $0.isValid(identity: Self.archiveIdentity(accountID: accountID, chatID: chatID, preparationID: id), legacy: schemaVersion < 6) }),
               !(schemaVersion < 3 && mediaSpoiler),
               schemaVersion >= 8 || (!mediaSpoiler && !captionAboveMedia) || items.allSatisfy({ ["photo", "video"].contains($0.file.attachment.kind) }),
-              schemaVersion < 8 || presentation != .media || TelegramPendingUploadItem.allowsMedia(items),
+              schemaVersion < 8 || presentation != .media || TelegramPendingUploadItem.allowsMedia(items, rules: mediaRules),
               schemaVersion < 8 || !isGrouped || presentation.allowsGrouping(items),
               id != Self.zeroUUID, revision != Self.zeroUUID,
               title.utf8.count <= 4096, !title.utf8.contains(0),

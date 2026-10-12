@@ -29,7 +29,15 @@ import SwiftSignalKit
         XCTAssertTrue(controller.updatePresentation(.file, contextID: id, revision: controller.itemsRevision))
         try await ready(controller)
         let ids = controller.items.map(\.id), stale = controller.itemsRevision, count = try recordCount(fixture)
-        persistence.failNextSaveACK = true
+        persistence.failSaveACKForItems = (id, [ids[2], ids[0], ids[1]])
+        // A caption save queued by the previous mode switch may finish first.
+        // It must not consume the lost ACK intended for the reordered pointer.
+        do {
+            try await store.save(preparationID: id, chatID: fixture.target.chatID,
+                captionInput: .empty, disposition: .prepared)
+        } catch {
+            return XCTFail("A caption-only write consumed the item-reorder ACK fault: \(error)")
+        }
         guard controller.moveItem(id: ids[2], to: 0, contextID: id, revision: stale) else {
             return XCTFail("File mode must permit edits with an inactive Archive cache")
         }
@@ -236,13 +244,14 @@ import SwiftSignalKit
 @MainActor private final class ArchiveEditACKRepository: TelegramPendingUploadRepository {
     let base: TelegramPostboxPendingUploadRepository
     var accountID: Int64 { base.accountID }
-    var failNextSaveACK = false
+    var failSaveACKForItems: (preparationID: UUID, ids: [UUID])?
     init(_ base: TelegramPostboxPendingUploadRepository) { self.base = base }
     func load(chatID: Int64, completion: @escaping @MainActor (Result<TelegramPendingUploadDraft?, TelegramPendingUploadPersistenceError>) -> Void) -> Disposable {
         base.load(chatID: chatID, completion: completion)
     }
     func save(_ draft: TelegramPendingUploadDraft, expectedRevision: UUID?, completion: @escaping @MainActor (Result<Void, TelegramPendingUploadPersistenceError>) -> Void) {
-        let loseACK = failNextSaveACK; failNextSaveACK = false
+        let loseACK = failSaveACKForItems.map { $0.preparationID == draft.id && $0.ids == draft.items.map(\.id) } ?? false
+        if loseACK { failSaveACKForItems = nil }
         base.save(draft, expectedRevision: expectedRevision) { result in
             if loseACK, case .success = result { completion(.failure(.unavailable)) }
             else { completion(result) }

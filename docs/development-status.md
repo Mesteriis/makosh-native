@@ -1,6 +1,54 @@
 # Development status — 2026-10-12
 
-## Current stage: reserving ZIP identities before capture
+## Current stage: Archive cancellation/rebind regression coverage
+
+Two native controller tests cover eight cancellation/rebind cases: both S3
+policies, with install dispatch held before commit or success ACK held afterward.
+They preserve the original cancellation/latest rich input and the other chat's
+pointer, caption and staged bytes, without recapture. OFF ZIPs stay local after
+enable. Production behavior, schemas, UI and dependency pins are unchanged.
+
+Initial focused run passes2 XCTest and45 Python tests. Temporarily omitting the
+cancellation/latest-input saves produces2 tests/16 expected failures; source is
+restored byte for byte. Review identifies a missing byte-read assertion; the
+added literal read detects wrong-current-stage cleanup with4 thrown file-read
+failures (XCTest classifies these as unexpected). Production is restored again.
+The first two full runs each pass **1,327 XCTest (1,248 Telegram +79 core),
+1 microphone-authorization precondition skip,0 failures;45 Python tests**.
+Their cached compilation has no warnings;647 SQL-prefixed t19 diagnostics plus
+one bare t19 line remain separate. Initial test compilation repeats three
+pre-existing compiler diagnostics (six warning lines).
+
+Prior-head hosted CI38197667876 succeeds;38197670482 fails at ArchiveEdit's
+retry/send assertions. Its global next-save ACK fault can hit the previous mode's
+queued caption save. A real preceding caption save deterministically reproduces
+1 test/1 expected failure. The fault now matches preparation ID and exact reordered
+item IDs. Focused GREEN7 XCTest/0 failures and45 Python tests preserves durable
+cache invalidation, blocked send, explicit retry and rebuilt one-ZIP acceptance.
+Final integration full run also exits0:1,327 XCTest (1,248 Telegram +79 core),
+1 skipped,0 failures;45 Python tests. No compiler warnings;647 SQL-prefixed t19
+diagnostics plus one bare t19 line remain separate. Hosted CI for the next head
+is a separate gate.
+
+Required development database startup, app build and strict deep signature exit0.
+Actual isolated native UI shows ZIP cancellation, chat switch/return and restart
+without reopening the ZIP; another chat's draft survives restart. Native reopened
+readback passes1 XCTest/0 failures and45 Python tests:cancelled, exact caption/ZIP
+ID, five encrypted local records, no S3 receipt/pending and no remote ZIP object.
+The ZIP remains authenticated/readable locally. Temporary QA source is removed;
+the exact owned runtime is stopped. Held callbacks are verified separately by
+native integration tests. No personal Account, Telegram server send or hardware.
+
+XERJ refresh/freshness exit0:476 files,438/438 classified code; controller tests
+and the ACK fixture query are source-confirmed. Frozen read-only review closes
+its byte-read coverage finding; final ACK-delta review reports no new actionable
+findings. Root validates all three recorded reports/artifact inventories and the
+final seven frozen copies against live source. Worker runtime checks remain
+skipped and observed execution/usage unknown. Legacy unreserved
+handoff, remaining caption/classifier/visual/gesture parity and later services
+remain open. Full migration remains active.
+
+## Previous stage: reserving ZIP identities before capture
 
 New ordinary Archive mode attempts reserve exact ZIP/storage/candidate IDs and
 raw member names/size/digest in encrypted Postbox before capture. Reopened explicit
@@ -52,9 +100,9 @@ Observed provider/model/internal execution and usage remain unknown. Root owns
 runtime evidence, with no quorum or sandbox attestation. An initial UI artifact
 verifier incorrectly assumes PNG while native CUA returns JPEG; extension correction
 preserves identical image bytes and the corrected evidence verifier exits0.
-Archive-specific held-generation cancel/rebind runtime evidence, legacy unreserved
-handoff, remaining caption/classifier/visual/gesture parity and later services
-remain open. Full migration remains active.
+At that stage, Archive-specific held-generation cancel/rebind evidence remained
+open; the current stage above adds it. Legacy unreserved handoff, remaining
+caption/classifier/visual/gesture parity and later services remain open.
 
 ## Previous stage: editing with an inactive Archive cache
 

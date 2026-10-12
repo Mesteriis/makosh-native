@@ -467,8 +467,15 @@ payloads refuse recapture; immutable files remain retained on refusal. Pending
 recovery rechecks the chat's S3 flag before upload. OFF forbids all new S3 copies,
 including ZIP preparation; records captured locally never promote after enable.
 No schema16 rewrite, new UI, dependency or third-party code is introduced.
-Remaining caption/classifier/visual parity and Archive-specific held-generation
-cancel/rebind runtime evidence remain open. Preserve immutable
+Archive controller integration now holds the real native install dispatch or
+its committed success acknowledgement while cancelling/rebinding to another
+chat. Both S3 policies preserve the original cancellation/latest rich input and
+the other preparation; the old callback creates no additional file records.
+OFF ZIPs stay local after enable. Already committed immutable captures remain
+retained. Ordinary native UI separately verifies cancel, switch/return and
+restart without reopening the cancelled ZIP, plus the other chat's draft.
+The held-boundary proof comes from integration tests, not an injected GUI delay.
+Remaining caption/classifier/visual parity stays open. Preserve immutable
 files if pointer installation fails. Native stale CAS/queued cancellation and authenticated install now have
 regression coverage. Controller/model recovery, native resource integrity,
 confirmation-only retry and no automatic resend have integration regressions.

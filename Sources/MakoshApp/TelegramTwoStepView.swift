@@ -128,7 +128,10 @@ struct TelegramTwoStepView: View {
         if let date = state.resetAt {
             Text("Сброс доступен после \(Date(timeIntervalSince1970: TimeInterval(date)).formatted(date: .abbreviated,time: .shortened))").font(.caption).foregroundStyle(.secondary)
             action(.declineReset,"Отменить сброс",detail: "Запрос на сброс пароля будет отменён.")
-            action(.requestReset,"Завершить сброс",detail: "Текущий пароль будет удалён, если назначенное Telegram время ожидания истекло." + secureWarning(state),destructive: true)
+            TimelineView(.periodic(from: .now,by: 1)) { timeline in
+                action(.requestReset,"Завершить сброс",detail: "Текущий пароль будет удалён, если назначенное Telegram время ожидания истекло." + secureWarning(state),destructive: true,
+                       valid: timeline.date.timeIntervalSince1970 >= TimeInterval(date))
+            }
         } else {
             action(.requestReset,"Запросить сброс пароля",detail: "Используйте, если не можете восстановить доступ по почте. Telegram может назначить время ожидания. После сброса текущий пароль будет удалён." + secureWarning(state),destructive: true)
         }

@@ -3008,9 +3008,13 @@ uses `auth.recoverPassword(flags:0, newSettings:nil)` to remove the forgotten
 password and admits only a full authorization ACK with the already selected raw
 self ID; no recovered login/future-auth token is installed. Reset requested-wait
 is displayed as a date, not password removal; completion requires a later explicit
-action after manually refreshing the settings when that date has passed. There
-is no automatic reset or per-second countdown; this is a remaining reference
-difference. All application writes are single attempts without automatic flood-wait
+action. While a reset date is present, a native TimelineView recalculates only the
+completion button once per second, following the reference's recurring refresh.
+The button becomes available when the date passes without manual Refresh or a
+server polling request; unsubmitted fields and controller context are retained.
+Click/confirmation still require current controller eligibility and a fresh server
+snapshot before the write. Time passing never performs a password reset or clears
+an uncertainty barrier. All application writes are single attempts without automatic flood-wait
 retry. Known RPC rejections require their expected numeric error code; malformed,
 false, empty or unknown write results remain uncertain. Every read/action has a
 30s cancellation deadline. Closing during a write preserves a process-local
@@ -3026,3 +3030,8 @@ native synthetic UI QA covers all ordinary forms and confirmation cancellation.
 These checks do not establish real-account acceptance, actual Telegram recovery
 email delivery, server reset timing or live password/Passport preservation.
 No PostgreSQL/S3 schema, permanent message retention or per-chat S3 policy changes.
+
+For DEBUG-only isolated deadline QA, combine `--telegram-dossier-synthetic-preview`
+with `--telegram-two-step-short-reset` and an isolated `--database-config`. Only
+the in-memory synthetic provider then waits20seconds; ordinary synthetic fixtures
+retain seven days. The flag does not configure the native account provider.

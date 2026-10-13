@@ -1,6 +1,6 @@
 # Development status — 2026-10-13
 
-## Current stage: extended Telegram privacy (block 12, hosted integration in progress)
+## Current stage: extended Telegram privacy (block 12)
 
 The authorized continuation extends the existing common native privacy flow in
 source-confirmed TelegramSwift order: voice/video-message rules, gift autosave,
@@ -55,7 +55,8 @@ tests across19 suites**. All22 new cases pass. Final focused52 pass, build exits
 and all768 frozen public file hashes/file set plus22 reviewed hashes still match.
 Existing upstream framework/SQLite diagnostics remain in private raw logs and are
 not XCTest failures or live-account acceptance. Exact-head hosted/publication
-gates remain in progress; local results do not substitute for hosted CI.
+evidence is tracked on [PR12](https://github.com/Mesteriis/makosh-native/pull/12);
+local results do not substitute for hosted CI.
 Reference differences and remaining flows are in docs/reference-interface.md and
 docs/telegram.md.
 

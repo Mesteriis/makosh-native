@@ -256,6 +256,8 @@ public final class TelegramModel: ObservableObject {
     public let peerStatus = TelegramPeerStatusController()
     public let profilePhotos = TelegramProfilePhotosController()
     public let avatarEditing = TelegramAvatarEditingController()
+    public let groupMembership = TelegramGroupMembershipController()
+    public let groupMemberSearch = TelegramRemotePeerSearch()
     public let playback = TelegramPlaybackController()
     public let upload = TelegramUploadController()
     public let voiceRecording = TelegramVoiceRecordingController()
@@ -1423,6 +1425,7 @@ public final class TelegramModel: ObservableObject {
               profile == nil || (profile?.accountID == accountID && profile?.peerID == chatID) else { return }
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
         if let profile, !profile.isPerson, !profile.isBot, peerManagement.peerID != chatID { peerManagement.open(peerID: chatID) }
+        if let profile, !profile.isPerson, !profile.isBot, groupMembership.peerID != chatID { groupMembership.open(peerID: chatID) }
         // The same guarded request owns subsequent native peer/cache updates.
         contactProfileState = profile.map(TelegramContactProfileState.ready)
             ?? .unavailable("Сведения о диалоге пока недоступны. Секретные чаты в этой карточке ещё не поддерживаются.")
@@ -1443,6 +1446,22 @@ public final class TelegramModel: ObservableObject {
         guard isCurrentContactProfile(profile, contextID: contextID), avatarEditing.accountID == profile.accountID,
               profile.peerID == profile.accountID || (!profile.isPerson && !profile.isBot) else { return nil }
         return .init(accountID: profile.accountID, peerID: profile.peerID, kind: .main)
+    }
+
+    public func openGroupMembership(_ profile: TelegramContactProfile, contextID: UUID, section: TelegramGroupMembershipSection) -> Bool {
+        guard isCurrentContactProfile(profile, contextID: contextID), !profile.isPerson, !profile.isBot,
+              groupMembership.accountID == profile.accountID, groupMembership.peerID == profile.peerID else { return false }
+        groupMemberSearch.search("")
+        return groupMembership.show(section)
+    }
+
+    public func inviteGroupMember(_ peer: TelegramDiscoveredPeer, searchContextID: UUID,
+        basis: TelegramGroupMembershipSnapshot, contextID: UUID) -> Bool {
+        guard phase == .ready, draftAccountID == basis.accountID, selectedChatID == basis.peerID,
+              case let .ready(profile) = contactProfileState, profile.accountID == basis.accountID, profile.peerID == basis.peerID,
+              groupMemberSearch.accountID == basis.accountID, groupMemberSearch.contextID == searchContextID,
+              groupMemberSearch.status == .ready, groupMemberSearch.results.contains(peer) else { return false }
+        return groupMembership.apply(.invite(peer), basis: basis, contextID: contextID)
     }
 
     public func openSharedMedia(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
@@ -1468,7 +1487,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func cancelContactProfile() {
-        profilePhotos.close(); peerManagement.close()
+        profilePhotos.close(); peerManagement.close(); groupMembership.close(); groupMemberSearch.search("")
         sharedMedia.selectChat(nil); sharedMedia.clearMessageSearch()
         contactProfileSubscription.set(nil)
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
@@ -2069,6 +2088,8 @@ public final class TelegramModel: ObservableObject {
         forumTopics.bind(account: account); forumTopics.selectChat(selectedChatID)
         profilePhotos.bind(TelegramEngineProfilePhotoProvider(account: account))
         avatarEditing.bind(TelegramEngineAvatarEditingProvider(account: account))
+        groupMembership.bind(TelegramEngineGroupMembershipProvider(account: account))
+        groupMemberSearch.bind(TelegramEngineRemotePeerProvider(account: account))
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
@@ -2132,7 +2153,7 @@ public final class TelegramModel: ObservableObject {
         bindMessageSelectionRangeProvider(nil)
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
-        profilePhotos.bind(nil); avatarEditing.bind(nil); peerManagement.bind(nil)
+        profilePhotos.bind(nil); avatarEditing.bind(nil); peerManagement.bind(nil); groupMembership.bind(nil); groupMemberSearch.bind(nil)
         accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
@@ -2500,6 +2521,13 @@ public final class TelegramModel: ObservableObject {
             .init(id: group, title: "Synthetic avatar group", preview: "Группа QA", unreadCount: 0),
             .init(id: channel, title: "Synthetic avatar channel", preview: "Канал QA", unreadCount: 0)]
         for chat in model.chats { model.knownChats[chat.id] = chat }
+        return model
+    }
+
+    public static func syntheticGroupMembershipPreview() -> TelegramModel {
+        let model = syntheticAvatarEditingPreview()
+        model.groupMembership.bind(TelegramSyntheticGroupMembershipProvider())
+        model.groupMemberSearch.bind(TelegramSyntheticRemotePeerProvider(accountID: 101))
         return model
     }
 

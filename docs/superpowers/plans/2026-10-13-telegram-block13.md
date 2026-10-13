@@ -25,29 +25,29 @@ or copied outer UI. Missing media implementation cannot be reported as a call.
 
 **Files:** Create Sources/MakoshTelegram/TelegramRemotePeerSearch.swift and TelegramEngineRemotePeerSearch.swift; modify TelegramSearchModel.swift, TelegramModel.swift, Sources/MakoshApp/TelegramGlobalSearchResultsView.swift; test TelegramRemotePeerSearchTests.swift and TelegramRemotePeerSearchControllerTests.swift. Add a preparation-recipe helper only if required for native cache accumulation.
 **Interfaces:** Consumes existing Account/Postbox, TelegramChat, TelegramSearchScope/Tracker. Produces remote peer result DTOs, independent cancellable search controller and context-validated activation for later member/secret workflows.
-- [ ] Test query admission, local/remote deduplication, malformed/min peer rejection, independent namespace identity, stale callback/activation, error/empty distinction and reconnect.
-- [ ] Run focused remote tests and observe RED; classify compilation/setup failures separately.
-- [ ] Implement typed contacts.search with native peer accumulation, explicit errors/deadline and the reference local-first result groups; preserve local suggestions and message search.
-- [ ] Run focused search/native Postbox tests: PASS. Inspect actual synthetic search/open/retry/rebind UI.
-- [ ] Commit this complete slice; record actual checks in the execution ledger.
+- [x] Test query admission, local/remote deduplication, malformed/min peer rejection, independent namespace identity, stale callback/activation, error/empty distinction and reconnect.
+- [x] Run focused remote tests and observe RED; classify compilation/setup failures separately.
+- [x] Implement typed contacts.search with native peer accumulation, explicit errors/deadline and the reference local-first result groups; preserve local suggestions and message search.
+- [x] Run focused search/native Postbox tests: PASS. Inspect actual synthetic search/open/retry/rebind UI.
+- [x] Commit this complete slice; record actual checks in the execution ledger.
 
 ### Task 2: Editable avatars and fallback photo
 
 **Files:** Create TelegramAvatarEditing.swift, TelegramEngineAvatarEditing.swift, Sources/MakoshApp/TelegramAvatarEditingView.swift and corresponding Tests/MakoshTelegramTests/TelegramAvatarEditingTests.swift; modify existing profile presentation/model binding and docs/reference-interface.md.
 **Interfaces:** Consumes existing photo preparation, immutable input/stage and profile identity/rights. Produces account-bound photo draft/change controller with explicit confirmation and refresh/uncertainty feedback.
-- [ ] Source-confirm own/fallback/group update and removal APIs/reference controls, then freeze their signatures and immutable basis in a task brief.
-- [ ] Test wrong account/rights/photo basis, malformed source, cancelled picker, ACK/error/timeout and account replacement; observe RED.
-- [ ] Implement native upload/update/removal and reference-derived UI using existing bounded preparation; never overwrite a later photo edit from stale consent.
-- [ ] Focused avatar/profile/native tests: PASS; synthetic native picker/draft/confirm/cancel/refresh QA; commit and ledger.
+- [x] Source-confirm own/fallback/group update and removal APIs/reference controls, then freeze their signatures and immutable basis in a task brief.
+- [x] Test wrong account/rights/photo basis, malformed source, cancelled picker, ACK/error/timeout and account replacement; observe RED.
+- [x] Implement native upload/update/removal and reference-derived UI using existing bounded preparation; never overwrite a later photo edit from stale consent.
+- [x] Focused avatar/profile/native tests: PASS; synthetic native picker/draft/confirm/cancel/refresh QA; commit and ledger.
 
 ### Task 3: Invites, membership requests and admin history
 
 **Files:** Create TelegramGroupMembership.swift, TelegramEngineGroupMembership.swift, Sources/MakoshApp/TelegramGroupMembershipView.swift and TelegramGroupMembershipTests.swift; modify existing peer-management view/model binding.
 **Interfaces:** Consumes existing peer rights/snapshot/native actor identity plus task1 discovery. Produces cancellable member/link/request/event pages and fresh-confirmed membership mutations.
-- [ ] Verify pinned engine/native RPC signatures and reference list/navigation/confirmations in the brief.
-- [ ] Test pagination offsets/duplicates/incomplete responses, rights revocation, exact targets, stale context, false/empty ACK and uncertain writes; observe RED.
-- [ ] Implement add/invite, link create/revoke, requests approve/decline and admin-event history; explicitly show read errors and preserve current member/draft state.
-- [ ] Focused rights/membership/native tests: PASS; synthetic native lists/actions/cancellation/rebind QA; commit and ledger.
+- [x] Verify pinned engine/native RPC signatures and reference list/navigation/confirmations in the brief.
+- [x] Test pagination offsets/duplicates/incomplete responses, rights revocation, exact targets, stale context, false/empty ACK and uncertain writes; observe RED.
+- [x] Implement add/invite, link create/revoke, requests approve/decline and admin-event history; explicitly show read errors and preserve current member/draft state.
+- [x] Focused rights/membership/native tests: PASS; synthetic native lists/actions/cancellation/rebind QA; commit and ledger.
 
 ### Task 4: Secret-chat lifecycle, formatting, media and TTL
 

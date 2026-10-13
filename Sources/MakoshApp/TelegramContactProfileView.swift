@@ -7,29 +7,50 @@ struct TelegramContactProfileView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var peerStatus: TelegramPeerStatusController
     @ObservedObject private var management: TelegramPeerManagementController
+    @ObservedObject private var membership: TelegramGroupMembershipController
     let dossier: WorkspaceModel?
     let contextID: UUID
     let openDossier: (UUID) -> Void
-    private enum Page { case overview, edit, members, media, permissions }
+    private enum Page { case overview, edit, members, media, permissions, groupInvite, groupLinks, groupRequests, groupHistory }
     @State private var page = Page.overview
     @State private var photoGallery: TelegramProfilePhotosPresentation?
 
     init(model: TelegramModel, dossier: WorkspaceModel?, contextID: UUID, openDossier: @escaping (UUID) -> Void) {
         self.model = model; self.peerStatus = model.peerStatus; self.management = model.peerManagement
+        self.membership = model.groupMembership
         self.dossier = dossier; self.contextID = contextID; self.openDossier = openDossier
+    }
+
+    private var groupMode: TelegramGroupViewMode? {
+        switch page { case .groupInvite: .invite; case .groupLinks: .links; case .groupRequests: .requests; case .groupHistory: .history; default: nil }
+    }
+    private var pageTitle: String {
+        switch page {
+        case .overview: "Информация"
+        case .edit: "Редактирование"
+        case .members: "Участники"
+        case .media: "Общие медиа"
+        case .permissions: "Разрешения"
+        case .groupInvite: "Добавить участника"
+        case .groupLinks: "Пригласительные ссылки"
+        case .groupRequests: "Заявки на вступление"
+        case .groupHistory: "Недавние действия"
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 if page != .overview {
-                    Button("Назад") { page = .overview }.disabled(management.mutationStatus == .saving)
+                    Button("Назад") { if groupMode != nil { _ = membership.show(.overview) }; page = .overview }
+                        .disabled(management.mutationStatus == .saving || membership.isBusy)
                         .accessibilityIdentifier("telegram.profile.back")
                 }
-                Text(page == .media ? "Общие медиа" : page == .members ? "Участники" : page == .edit ? "Редактирование" : page == .permissions ? "Разрешения" : "Информация").font(.headline)
+                Text(pageTitle).font(.headline)
                 Spacer()
                 if page != .overview && page != .media {
-                    Button("Обновить", action: management.refresh).disabled(management.mutationStatus == .saving)
+                    Button("Обновить") { if groupMode != nil { membership.refresh() } else { management.refresh() } }
+                        .disabled(management.mutationStatus == .saving || membership.isBusy)
                         .accessibilityIdentifier("telegram.profile.management.refresh")
                 }
                 if page == .overview, management.snapshot?.canEditInfo == true {
@@ -53,7 +74,12 @@ struct TelegramContactProfileView: View {
                 let current = management.snapshot.flatMap { $0.accountID == profile.accountID && $0.peerID == profile.peerID ? $0 : nil }
                 let displayName = current?.title ?? profile.displayName
                 let displayAbout = profile.isScam || profile.isFake ? nil : (current.map(\.about) ?? profile.about)
-                if page == .permissions { TelegramPeerPermissionsView(controller: management) }
+                if let groupMode {
+                    TelegramGroupMembershipView(controller: membership, search: model.groupMemberSearch, mode: groupMode) { peer, searchContext, basis, groupContext in
+                        model.inviteGroupMember(peer, searchContextID: searchContext, basis: basis, contextID: groupContext)
+                    }
+                }
+                else if page == .permissions { TelegramPeerPermissionsView(controller: management) }
                 else if page == .edit { TelegramPeerInfoEditor(controller: management, avatarEditing: model.avatarEditing, avatarTarget: model.avatarTarget(profile, contextID: contextID)) }
                 else if page == .members { TelegramPeerMembersView(controller: management, avatars: model.avatars) }
                 else if page == .media {
@@ -118,6 +144,29 @@ struct TelegramContactProfileView: View {
                         if management.snapshot?.canViewMembers == true {
                             Button("Участники") { management.show(.members); page = .members }
                                 .accessibilityIdentifier("telegram.profile.members")
+                        }
+                        if membership.snapshot?.canInvite == true {
+                            Button("Добавить участника") {
+                                if model.openGroupMembership(profile, contextID: contextID, section: .overview) { page = .groupInvite }
+                            }.accessibilityIdentifier("telegram.profile.addMember")
+                        }
+                        if membership.snapshot?.canManageLinks == true {
+                            Button("Пригласительные ссылки") {
+                                if model.openGroupMembership(profile, contextID: contextID, section: .activeLinks) { page = .groupLinks }
+                            }.accessibilityIdentifier("telegram.profile.inviteLinks")
+                        }
+                        if membership.snapshot?.canRequests == true {
+                            Button("Заявки на вступление") {
+                                if model.openGroupMembership(profile, contextID: contextID, section: .requests) { page = .groupRequests }
+                            }.accessibilityIdentifier("telegram.profile.joinRequests")
+                        }
+                        if membership.snapshot?.canHistory == true {
+                            Button("Недавние действия") {
+                                if model.openGroupMembership(profile, contextID: contextID, section: .history) { page = .groupHistory }
+                            }.accessibilityIdentifier("telegram.profile.adminHistory")
+                        }
+                        if !profile.isPerson && !profile.isBot && (membership.status == .failed || membership.status == .timedOut) {
+                            Button("Обновить приглашения и заявки", action: membership.refresh)
                         }
                         if management.snapshot?.canViewAdministrators == true {
                             Button("Администраторы") { management.show(.administrators); page = .members }

@@ -59,8 +59,47 @@ ordinary RED1/3 verifies preserved draft, idle phase and revoked late commit.
 Commit-phase cancellation is refused. Final focused55 pass (18 new cases).
 The delayed synthetic provider verifies actual0.5 progress/cancel, idle retained
 draft, no late save, and new explicit confirmation. Final cancellation QA is
-observed; full Task2 suite remains pending. Earlier UI compilation errors (computed synthetic identity assignment,
+observed. Task2 full suite exits0:1986 XCTest (1907 Telegram +79 core),
+one microphone-precondition skip,zero failures;95 Python across21 suites pass.
+Commit7bf9c83 completes this slice; Tasks3–5 continue in the same approved block. Earlier UI compilation errors (computed synthetic identity assignment,
 compound @State) are recorded separately; they are repaired, not passing builds.
+
+Task3 group administration is implemented in source: fresh native rights/member
+basis, single-user invitations, owner-scoped active/revoked links with creation/
+revocation, pending join decisions and admin history in the existing profile.
+Typed semantic ACKs and post-write rereads gate success. Complete bounded native
+request scans distinguish absence from failed/partial reads; no automatic write
+retry. Closing/rebinding revokes authority and retains unknown-write barriers.
+Recipe24 keeps the exact engine/crypto pin and adds bounded own peer/admin-log
+helpers plus a journal-only native observation entry point. Real encrypted
+Postbox tests retain edited/deleted message versions without history resurrection;
+foreign packets fail before append and unavailable bodies never invent an empty
+version. Permanent PostgreSQL/S3 and per-chat storage policies remain intact.
+Focused31 then36 pass during integration; the final broader focused72 pass
+(group42 plus existing discovery/management coverage),zero failures. Canonical
+preparation4 pass; final signed build exits0 with equal unsigned QA payload. Ordinary REDs also reproduce short-page pagination,
+created-link destination and missing admin subject/rights/link details. Compiler
+errors in typed namespace/synthetic initializer/error annotation are classified
+and repaired separately.
+
+Initial signed native synthetic QA confirms common sidebar, group entry points,
+create limit0 refusal/2 success, cancel preserving draft, revoke cancel/confirmed
+revoked-list placement, owner switching and exact individual approve/decline.
+Native AXScrollToBottom then exposes two SwiftUI LazyVStack SIGTRAPs; the tool
+automatically relaunches the owned QA bundle without fixture arguments. Those
+instances are stopped immediately; no private content/account action is used.
+PostgreSQL is healthy and its isolated QA state reads successfully. The private
+launcher now performs one explicit scoped launch. An opt-in DEBUG QA-bundle
+metadata gate rejects missing/ambiguous synthetic/config arguments before any
+workspace/account construction; normal product/release behavior is unchanged.
+This list now follows the existing eager peer-list pattern. Final native QA
+verifies opt-in unscoped-launch refusal before workspace construction; repeated
+accessible Scroll Down reaches row50 without a crash, loads rows51–55 and
+processes exact row51. It also confirms member search/invite/error, channel
+admin text versions/search, and creation from another owner revoked list changing
+to own active list with the new link. Screenshots are inspected. Final process
+remains the single scoped synthetic/configured instance; owned QA is stopped
+and isolated data retained. Full Task3 gate remains pending.
 
 Native-call research only: exact reference tgcalls/tg_owt source pins are fetched
 into independent bare caches. Native wrapper needs a reviewed WebRTC dependency

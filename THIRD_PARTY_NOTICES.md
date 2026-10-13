@@ -38,6 +38,14 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe24 adds independently authored MIT `MakoshGroupMembership.swift` for
+  bounded typed peer directories, full group/member observations and validation
+  of admin-log message packets. The existing GPL-3.0-or-later retention adapter
+  exposes a transaction-only journal observation method: messages are retained
+  without insertion into live history. Original attributes/media/protection and
+  removal observations remain native. Canonical source and complete file hashes
+  gate reuse; source revision, cryptography and file-storage policy are unchanged.
+
 - Recipe23 adds independently authored MIT `MakoshAvatarEditing.swift`, a narrow
   native multipart-upload and typed full-photo/ACK conversion bridge. It uses the
   pinned engine's existing transport, resource and peer/photo conversion. Canonical

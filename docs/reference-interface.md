@@ -1516,3 +1516,32 @@ editor; stale/rebound/uncertain contexts require fresh admission. Current-photo
 header thumbnails, animated/video avatars, decorations and the complete upstream
 editor styling remain block14 reference polish. No full pixel parity is claimed;
 no outer GPLv2 UI or assets are copied. No S3 or PostgreSQL file-byte path is added.
+
+## Telegram block13 task3: invitations, requests and history
+
+На закреплённом TelegramSwift SHA сверены отдельные пункты
+`GroupInfoEntries.swift:2119–2124,2253–2269`, права `PeerInfoUtils.swift`,
+активные/отозванные ссылки и владельцы `InviteLinksController.swift`,
+заявки `RequestJoinMemberListController.swift:270–298,336`, события и поиск
+`ChannelEventLogController.swift:415`. Они перенесены отдельными страницами
+существующей карточки в общей оболочке; внешний GPLv2-only UI/assets не копируются.
+Это завершает функциональные пункты приглашений/заявок/журнала, которые в описании
+раннего этапа карточки выше ещё перечислялись как будущие.
+
+Создание ссылки сохраняет предел названия32 и положительный Int32 usage limit;
+одобрение исключает лимит. Создатель выбирает владельца ссылок, остальные
+управляют своими. Публичный маркер заявок остаётся readonly. Ссылки никогда
+не отправляются автоматически. Запросы и события допускают поиск; страницы
+используют собственные native cursors, включая короткую непустую страницу.
+Явные подтверждения точных целей, свежие права/typed ACK/post-read, полный
+bounded scan отсутствия заявки и барьер неизвестного результата — адаптации
+Макоша вместо оптимистических NoError-комплитов.
+
+Собственные Form/sheets, кнопка дозагрузки и системные подтверждения отличаются
+от reference InputData/table навигации. Подробные media/декоративные карточки
+admin events, их thumbnails, полная фильтрация по типам/администраторам и точная
+визуальная parity остаются в блоке14. Тексты прав, выбранные участники, ссылки и
+наблюдённые edit/delete message bodies сохраняются; CopyProtected запрещает
+выделение содержимого события. Native UI исходы/обнаруженный scroll crash и
+его повторная проверка фиксируются в development-status.md без заявления
+реальной записи в личный аккаунт.

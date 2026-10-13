@@ -17,6 +17,7 @@ public struct TelegramDiscoveredPeer: Equatable, Identifiable, Sendable {
     public var id: Int64 { chat.id }
     public let chat: TelegramChat
     public let username: String?
+    public var isUser: Bool { telegramManagementPeerID(id)?.namespace == Namespaces.Peer.CloudUser }
     var isValid: Bool {
         let native = PeerId(chat.id)
         return native.id._internalGetInt64Value() > 0 &&

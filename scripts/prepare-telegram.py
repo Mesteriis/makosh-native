@@ -7,12 +7,18 @@ from a separate bare source cache. No credentials or account data are read.
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 import tarfile
 import tempfile
+# Recipe source is the authority. Python timestamp/size bytecode caches can
+# survive same-second constant-length edits; never read or write them here.
+# These options affect only this preparation process, not the workstation.
+sys.dont_write_bytecode = True
+sys.pycache_prefix = os.devnull
 from telegram_search_adaptation import adapt_search_source
 from telegram_retention_adaptation import POSTBOX, HISTORY, adapt_retention_source, journal_source
 from telegram_read_adaptation import READ_SYNC, adapt_read_source
@@ -26,6 +32,7 @@ from telegram_two_step_adaptation import TWO_STEP, ACCOUNT_AUTH, adapt_two_step_
 from telegram_proxy_adaptation import NETWORK, ACCOUNT, adapt_proxy_source, proxy_helper_source
 from telegram_remote_peer_adaptation import remote_peer_helper_source
 from telegram_avatar_adaptation import avatar_helper_source
+from telegram_group_membership_adaptation import group_membership_helper_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -38,7 +45,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 23
+RECIPE = 24
 
 
 def run(*args):
@@ -127,6 +134,9 @@ def verify_prepared():
     avatar_helper = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshAvatarEditing.swift"
     if not avatar_helper.is_file() or avatar_helper.read_text() != avatar_helper_source():
         raise RuntimeError("Prepared avatar helper differs from the current recipe")
+    group_helper = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshGroupMembership.swift"
+    if not group_helper.is_file() or group_helper.read_text() != group_membership_helper_source():
+        raise RuntimeError("Prepared group helper differs from the current recipe")
     if prepared_files(DEST) != record["prepared_files"]:
         raise RuntimeError("Prepared engine file set or content changed; preserve it before preparing again")
     return True
@@ -199,6 +209,7 @@ def main():
     (DEST / "submodules/TelegramCore/Sources/Network/MakoshProxySettings.swift").write_text(proxy_helper_source())
     (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift").write_text(remote_peer_helper_source())
     (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshAvatarEditing.swift").write_text(avatar_helper_source())
+    (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshGroupMembership.swift").write_text(group_membership_helper_source())
     authorization = DEST / "submodules/TelegramCore/Sources/Authorization.swift"
     auth_text = authorization.read_text()
     start = auth_text.index('func storeFutureLoginToken(')

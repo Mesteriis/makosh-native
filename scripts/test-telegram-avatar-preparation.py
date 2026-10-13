@@ -13,7 +13,8 @@ spec.loader.exec_module(preparation)
 class AvatarPreparationTests(unittest.TestCase):
     def fixture(self, root):
         for name, source in [('MakoshRemotePeerSearch.swift', preparation.remote_peer_helper_source()),
-                             ('MakoshAvatarEditing.swift', preparation.avatar_helper_source())]:
+                             ('MakoshAvatarEditing.swift', preparation.avatar_helper_source()),
+                             ('MakoshGroupMembership.swift', preparation.group_membership_helper_source())]:
             path = root / 'submodules/TelegramCore/Sources/TelegramEngine/Peers' / name
             path.parent.mkdir(parents=True, exist_ok=True); path.write_text(source)
         self.mark(root)

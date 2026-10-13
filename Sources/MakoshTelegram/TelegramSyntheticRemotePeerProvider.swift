@@ -2,7 +2,8 @@
 import Foundation
 
 @MainActor final class TelegramSyntheticRemotePeerProvider: TelegramRemotePeerProvider {
-    let accountID: Int64 = -1
+    let accountID: Int64
+    init(accountID: Int64 = -1) { self.accountID = accountID }
     private let peers: [TelegramDiscoveredPeer] = [
         .init(chat: .init(id: 970001, title: "Synthetic Remote Alice", preview: "", unreadCount: 0), username: "alice_external"),
         .init(chat: .init(id: 970002, title: "Synthetic Remote Bob", preview: "", unreadCount: 0), username: "bob_external")

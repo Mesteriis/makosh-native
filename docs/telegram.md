@@ -3289,3 +3289,39 @@ never PostgreSQL byte storage or a new S3 copy. Explicit DEBUG
 namespaces in the common workspace with --database-config isolated fixtures.
 It simulates server writes without opening accounts or Telegram network. The
 usual preview identity stays-1. Real server/account acceptance is separately scoped.
+
+## Block13 task3: group invitations and administration (2026-10-13)
+
+The existing profile opens Add member, Invite links, Join requests and Recent
+actions according to fresh native permissions. Discovery has its own account/
+context; selecting a result imports no contact and sends no invitation until
+explicit confirmation. A fresh full user, group rights and negative membership
+check precede a single native invite with fwdLimit0. Exact missing-invitee privacy
+refusal stays explicit; typed InvitedUsers plus fresh membership confirms success.
+
+Active/revoked links preserve native date/link cursors and owner selection for
+creators. Creation supports title32UTF16, optional expiry/positive Int32 usage
+limit and administrator approval, without paid creation or implicit sharing.
+Revoke checks the exact fresh link/owner and typed old/replacement ACK; the
+follow-up read must show revoked. Creation redirects to the own active list.
+Requests use date/user cursors; filtered rows are revalidated using bounded
+unfiltered pages before a decision. Post-write absence requires a complete
+unique scan (maximum10k/deadline30s) plus correct membership. Failure/overlap is
+never treated as absence. Unknown writes block replay until an explicit fresh
+state check; reconciliation cannot prove remote rollback or attribute concurrency.
+
+Native channel admin history preserves actor/date, exact edited text, participant
+rights/rank and invitation changes. The complete packet and peer directory are
+admitted before cache/journal mutation. Observed deleted/edited message bodies,
+attributes/media and CopyProtected metadata enter the durable archive journal
+without resurrection in native chat history. Explicit unavailable content never
+creates a fake empty archived version. Forum conversion uses fresh native scope.
+No SQL byte payload, new S3 bypass, ownership transfer or group deletion is added.
+
+Recipe24 independently generates own MIT peer/admin helpers and extends the
+existing hash-checked GPL native retention adaptation. Python preparation/test
+processes bypass timestamp bytecode caches after an actual same-second/same-size
+stale-bytecode reproduction; no global Python configuration changes. Build/run/
+test still use independent pinned sources. Native/local QA and remaining checks
+are recorded in development-status.md; real-account/server acceptance remains
+separately scoped.

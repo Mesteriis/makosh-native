@@ -27,6 +27,9 @@ class PreparationTests(unittest.TestCase):
         destination = root / "engine"
         destination.mkdir()
         (destination / "One.swift").write_text("// synthetic\n")
+        helper = destination / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift"
+        helper.parent.mkdir(parents=True)
+        helper.write_text(preparation.remote_peer_helper_source())
         record = {"source_sha": preparation.SHA, "source_tree": preparation.TREE,
                   "source_url": preparation.URL, "recipe": preparation.RECIPE,
                   "prepared_files": preparation.prepared_files(destination)}

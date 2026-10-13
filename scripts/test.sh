@@ -18,6 +18,7 @@ python3 scripts/test-mozjpeg-preparation.py
 python3 scripts/test-opusfile-preparation.py
 python3 scripts/test-opus-preparation.py
 python3 scripts/test-telegram-preparation.py
+python3 scripts/test-telegram-remote-peer-preparation.py
 python3 scripts/test-telegram-search-adaptation.py
 python3 scripts/test-telegram-retention-adaptation.py
 python3 scripts/test-telegram-read-adaptation.py

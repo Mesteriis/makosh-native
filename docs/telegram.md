@@ -3228,7 +3228,36 @@ there is no purchase/upsell flow. DEBUG fixtures are in-memory only, with an
 explicit --telegram-privacy-basic-fixture for the non-Premium UI path.
 
 No PostgreSQL/S3 schema, file policy, message retention, engine pin/preparation or
-dependency change. Account/message auto-removal timers, local passcode, public
-fallback photo, remote peer search and the preceding UI parity gaps remain open.
+dependency change. Account/message auto-removal timers, public fallback photo,
+remote peer search and the preceding UI parity gaps remain open.
+Local Makosh passcode and automatic app locking are explicitly excluded by the
+user (2026-10-13), rather than deferred migration work.
 Native fixture/UI checks do not establish live account privacy mutations, Stars
 charging or real server normalization; account acceptance is separately scoped.
+
+
+## Block13 task1: remote peer discovery (2026-10-13)
+
+The existing common global-search view now keeps local dialogue matches first,
+then a separate remote-user/chat group. A bounded single text/username query
+admits typed contacts.search (limit20),300ms debounce and30s deadline. Archive,
+message-only media/scope filters, empty/control-bearing/oversized and #/$ queries
+do not initiate discovery. The native boundary preserves errors rather than
+converting network failure into an empty list; retry is explicit. Duplicate native
+IDs appear once; user/group namespaces stay distinct.
+
+An own MIT cache helper compiles inside independently pinned recipe22 TelegramCore.
+It validates bounded native results and required identities/hashes before native
+AccumulatedPeers/updatePeers. Invalid/unresolved/min results fail without partial
+cache publication. Canonical source and complete prepared-file hashes gate reuse.
+Opening freezes account/result context and resolves the current cached native peer
+again before using existing conversation/history/draft paths. It never sends,
+joins, imports communication contacts or changes archive/S3 policy. Reconnect,
+query replacement and disconnect revoke old result authority. The explicit DEBUG
+catalog contains synthetic remote Alice/Bob and a deterministic error query;
+fixtures never open a real account or network.
+
+Avatar editing, membership workflows, secret-chat expansion and native calls are
+subsequent tasks in this same approved block. The existing privacy exception
+picker's directory remains local at this slice. Real account/server acceptance is
+separate from synthetic/native-fixture validation. See development-status.md.

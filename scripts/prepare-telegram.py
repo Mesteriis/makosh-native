@@ -24,6 +24,7 @@ from telegram_topic_adaptation import TOPIC_SOURCES, adapt_topic_source
 from telegram_peer_management_adaptation import STATE_MANAGER, adapt_peer_management_source
 from telegram_two_step_adaptation import TWO_STEP, ACCOUNT_AUTH, adapt_two_step_source, adapt_two_step_account_source, acknowledgement_source
 from telegram_proxy_adaptation import NETWORK, ACCOUNT, adapt_proxy_source, proxy_helper_source
+from telegram_remote_peer_adaptation import remote_peer_helper_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -36,7 +37,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 21
+RECIPE = 22
 
 
 def run(*args):
@@ -119,6 +120,9 @@ def verify_prepared():
     record = json.loads(marker.read_text())
     if (record.get("source_sha"), record.get("source_tree"), record.get("source_url"), record.get("recipe")) != (SHA, TREE, URL, RECIPE):
         raise RuntimeError("Existing engine preparation uses another pin or recipe; preserve/rename it before preparing again")
+    remote_helper = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift"
+    if not remote_helper.is_file() or remote_helper.read_text() != remote_peer_helper_source():
+        raise RuntimeError("Prepared remote search helper differs from the current recipe")
     if prepared_files(DEST) != record["prepared_files"]:
         raise RuntimeError("Prepared engine file set or content changed; preserve it before preparing again")
     return True
@@ -189,6 +193,7 @@ def main():
         source = DEST / relative
         source.write_text(adapt_proxy_source(relative, source.read_text()))
     (DEST / "submodules/TelegramCore/Sources/Network/MakoshProxySettings.swift").write_text(proxy_helper_source())
+    (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift").write_text(remote_peer_helper_source())
     authorization = DEST / "submodules/TelegramCore/Sources/Authorization.swift"
     auth_text = authorization.read_text()
     start = auth_text.index('func storeFutureLoginToken(')

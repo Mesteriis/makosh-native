@@ -434,6 +434,15 @@ public final class TelegramModel: ObservableObject {
         didSet { if oldValue != chatFolder { loadChatList(clear: true); search.setFolder(chatFolder) } }
     }
     public var selectedChat: TelegramChat? { selectedChatID.flatMap { knownChats[$0] } }
+    @discardableResult public func openDiscoveredPeer(id: Int64, contextID: UUID) -> Bool {
+        guard let accountID = draftAccountID, search.discovery.accountID == accountID else { return false }
+        return search.discovery.activate(peerID: id, contextID: contextID) { [weak self] chat in
+            guard let self, self.draftAccountID == accountID, self.search.discovery.contextID == contextID else { return }
+            self.knownChats[chat.id] = chat
+            self.selectedChatID = chat.id
+        }
+    }
+
     public var uploadTarget: TelegramUploadTarget? {
         guard phase == .ready, !isBusy, !selectedMessagesDeletionBlocksActions, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft,
               composerForwardIntent == nil, let chat = selectedChat, let accountID = draftAccountID else { return nil }

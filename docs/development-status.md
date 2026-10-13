@@ -1,6 +1,44 @@
 # Development status — 2026-10-13
 
-## Current stage: extended Telegram privacy (block 12)
+## Product scope decision — 2026-10-13
+
+The user explicitly excludes a local Makosh passcode and automatic app locking.
+They are not migration backlog items; the earlier passcode proposal is withdrawn.
+
+## Current stage: Telegram communication capabilities (block 13, in progress)
+
+Approved scope: remote user/chat discovery; editable avatars and public fallback
+photo; invitations/membership requests/admin history; complete native secret-chat
+workflows; real native one-to-one audio/video calls. Block14 remains separate.
+The spec and sequential inline plan are in docs/superpowers/specs and plans.
+No passcode/autolock, personal-account QA or archive/S3-policy relaxation.
+
+Task1 remote discovery source and UI are implemented. Account/context-bound
+cancellable contacts.search distinguishes failure from empty success, deduplicates
+local/remote native identities and re-reads the cached peer before activation.
+Root ordinary queries/usernames admit discovery; archive/media/scope filters and
+#/$ queries exclude it. No contact import, join or send occurs on opening.
+Recipe22 keeps the exact engine pin/cryptography and adds one own MIT native
+cache helper. Canonical-helper validation refuses a changed/missing generated
+helper even with a consistent replacement marker: ordinary Python RED3 cases/2
+failures, then3 pass. Old recipe21 is preserved privately. New controller/native/
+Postbox/navigation tests include stale accounts, malformed/min peers, partial
+cache refusal and origin draft preservation. Initial interface compilation REDs
+and a repaired native fixture compilation error are recorded separately. The
+first Postbox run has signal5 from a MainActor-inferred test transaction; a
+nonisolated test helper repairs it and targeted2 pass. Combined focused38 pass.
+Both signed builds exit0; final separate QA bundle has equal unsigned payload.
+Actual native synthetic QA observes the common sidebar, username result/open,
+error/retry, successful zero, and media-filter suppression/restoration. The final
+error uses a distinct retry control and accurate text. Owned QA is stopped before
+full tests. Full Task1 suite/commit and subsequent Tasks2–5 remain in progress.
+No live search/server/account acceptance is claimed.
+
+Native-call research only: exact reference tgcalls/tg_owt source pins are fetched
+into independent bare caches. Native wrapper needs a reviewed WebRTC dependency
+closure/build; no signaling-only/fake-connected completion is claimed.
+
+## Completed stage: extended Telegram privacy (block 12)
 
 The authorized continuation extends the existing common native privacy flow in
 source-confirmed TelegramSwift order: voice/video-message rules, gift autosave,

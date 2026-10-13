@@ -5,7 +5,7 @@ import Postbox
 import SwiftSignalKit
 
 /// Search owns independent, cancellable requests. Binding is explicit and never
-/// opens an account; local search does not initiate remote peer discovery.
+/// opens an account. Remote discovery has its own request/context and status.
 @MainActor
 public final class TelegramSearchModel: ObservableObject {
     public let isGlobal: Bool
@@ -36,6 +36,8 @@ public final class TelegramSearchModel: ObservableObject {
     public var canSelectOlder: Bool {
         return selectedResultIndex.map { $0 + 1 < messages.count || canLoadMoreMessages } ?? !messages.isEmpty
     }
+    public let discovery = TelegramRemotePeerSearch()
+    private var remoteDiscoveryEnabled = true
     public let senders = TelegramSearchSenders()
     public var canLoadMoreMessages: Bool { messageTracker.canLoadMore }
     public var canRetryMessages: Bool { messageTracker.canRetry }
@@ -89,6 +91,7 @@ public final class TelegramSearchModel: ObservableObject {
     func bind(account: Account?) {
         cancelChats(); cancelMessages()
         self.account = account
+        discovery.bind(account.map { TelegramEngineRemotePeerProvider(account: $0) })
         chatID = nil; threadID = nil
         senders.bind(account: account, chatID: nil, threadID: nil)
         #if DEBUG
@@ -240,8 +243,15 @@ public final class TelegramSearchModel: ObservableObject {
         mediaSources = [:]; mediaSourcesDidChange?()
     }
 
+    public func setRemoteDiscoveryEnabled(_ enabled: Bool) {
+        guard remoteDiscoveryEnabled != enabled else { return }
+        remoteDiscoveryEnabled = enabled
+        discovery.search(chatQuery, enabled: enabled && folder == .inbox)
+    }
+
     private func searchChats() {
         cancelChats()
+        discovery.search(chatQuery, enabled: remoteDiscoveryEnabled && folder == .inbox)
         let query = chatQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
         let token = chatTracker.begin()
@@ -389,6 +399,7 @@ public final class TelegramSearchModel: ObservableObject {
     func useSyntheticPreview(presenceObservedAt: Date? = nil, albums: Bool = false, forum: Bool = false) {
         bind(account: nil)
         preview = TelegramSyntheticPages(presenceObservedAt: presenceObservedAt, albums: albums, forum: forum)
+        discovery.bind(TelegramSyntheticRemotePeerProvider())
     }
 
     public func failNextSyntheticMessageSearch() {

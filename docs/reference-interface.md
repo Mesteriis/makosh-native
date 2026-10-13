@@ -1482,3 +1482,17 @@ Group, selector and modal geometry still differ from upstream; pixel parity is n
 claimed. Whole-server snapshots/fresh conditional admission replace optimistic
 cached updates and automatic retries. Unknown wire bits/fees and local permanent
 archives are preserved. Actual acceptance evidence belongs to development-status.
+
+
+## Telegram block13 task1: remote discovery
+
+Pinned SearchController.swift:1055–1110 admits ordinary root queries through
+contacts.searchRemotePeers, excludes #/$ and active global tags, deduplicates
+local/my/remote peers and retains local matches first. Makosh adds that grouping
+inside its existing common search form. Its own typed contacts.search boundary
+shows network errors explicitly instead of the reference engine's empty fallback.
+Activation revalidates account/context and current native identity before opening.
+Ordinary usernames, error/retry, successful zero, filters and opening are checked
+in native synthetic QA; no real account/remote-server acceptance is inferred.
+Advertising, the full reference row renderer and historical geometry/animation
+gaps remain separate. No outer GPLv2 UI code or assets are copied.

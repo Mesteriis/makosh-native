@@ -38,6 +38,13 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe22 adds independently authored MIT `MakoshRemotePeerSearch.swift` to
+  TelegramCore. It validates bounded search result identities and performs native
+  AccumulatedPeers/updatePeers cache accumulation for Makosh's error-bearing RPC
+  boundary. Complete generated hashes plus canonical-helper comparison gate reuse.
+  No existing native search, cryptography, source pin or outer UI code changes.
+  The combined app and linked TelegramCore remain GPLv3.
+
 - Recipe21 adds a bounded in-memory proxy-settings signal to network initialization
   and native account updates. A new network takes its current initial value;
   external updates bypass AccountManager's stored proxy preferences. Explicit

@@ -9,6 +9,7 @@ struct TelegramSyntheticPages {
     var presenceObservedAt: Date? = nil
     var albums = false
     var forum = false
+    var dataSettings = false
 
     func chats(folder: TelegramChatFolder, anchor: ChatListIndex?) ->
         (items: [TelegramChat], previous: ChatListIndex?, next: ChatListIndex?) {
@@ -56,7 +57,7 @@ struct TelegramSyntheticPages {
                 let playbackName = id == 124 ? "Синтетическое круглое видео QA.mp4" : id == 125 ? "Синтетическое голосовое QA.ogg" : id == 126 ? "Синтетическое аудио QA.wav" : "Синтетическое видео QA.mp4"
                 message.attachments = [TelegramAttachment(id: "synthetic-attachment:\(chatID):\(id)", kind: kind,
                     name: playback != nil ? playbackName : kind == .photo ? "Синтетическое фото QA.png" : kind == .file ? "Синтетический файл QA.txt" : "Вложение не поддерживается",
-                    byteCount: nil, mimeType: kind == .file ? "text/plain" : nil,
+                    byteCount: dataSettings ? 1_048_576 : nil, mimeType: kind == .file ? "text/plain" : nil,
                     hasPreview: kind == .photo, canDownload: kind != .unsupported, playback: playback)]
             }
             let caption = !message.attachments.isEmpty

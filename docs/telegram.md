@@ -2908,8 +2908,8 @@ DEBUG synthetic workspace fixtures have three in-memory devices and no network
 or personal account access. Native UI QA uses a distinct bundle/preferences and
 explicit qa_telegram_dossier_ PostgreSQL schema. Session management does not delete
 archived messages, change per-chat S3 policy, or store file bytes in PostgreSQL.
-Cloud themes, wallpaper/night scheduling, privacy/2FA, notifications, storage/
-download/proxy settings, QR linking and web sessions remain unimplemented. Actual
+Cloud themes, wallpaper/night scheduling, QR linking and web sessions remain
+unimplemented. Subsequent settings blocks are documented below. Actual
 Telegram device acceptance requires separately authorized real-account testing.
 
 ## Privacy audiences (2026-10-12)
@@ -3095,3 +3095,81 @@ For DEBUG-only isolated deadline QA, combine `--telegram-dossier-synthetic-previ
 with `--telegram-two-step-short-reset` and an isolated `--database-config`. Only
 the in-memory synthetic provider then waits20seconds; ordinary synthetic fixtures
 retain seven days. The flag does not configure the native account provider.
+
+
+## Block11: data, cloud cache and proxies (2026-10-13)
+
+Data and Storage opens in the existing common Telegram settings. Account-scoped
+local automatic-download preferences cover photo/video/file size limits and
+contacts/other private chats/groups/channels. Master defaults OFF; photos and
+videos default10MiB/all peer classes, files default disabled10MiB. These are
+explicit conservative differences from the reference's enabled master/unlimited
+photos. Settings are versioned, bounded and account checked; corrupt values refuse
+automatic work until explicit reset. Frozen editor contexts reject cross-window
+changes. This feature does not alter server download preferences.
+
+Actual visible incoming history rows in an eligible native window feed at most
+100 candidates/three simultaneous automatic full transfers. There is no offscreen
+background downloader in this slice. Fresh encrypted-Postbox transactions check
+incoming cloud message, current exact resource descriptor, contact classification,
+peer protection and unsupported/spoiler/paid/unknown-size exclusions. The latest
+policy, account/history context and native window eligibility are checked again
+before fetch and before accepting completion. Leaving a page or disabling the
+policy cancels only automatic ownership; manual transfers remain independent.
+Completed files use the existing archive callback and its per-chat S3 policy.
+Enabling auto-download never enables S3; S3 OFF continues to prohibit every new
+copy there. Permanent message/version retention is unchanged.
+
+Cache usage is the verified cloud-media subset from native CacheUsageStats joined
+to fresh Postbox media/resource identities. It is NOT total application disk use.
+Photos/videos/audio/files can be selected; consent freezes the catalogue and byte
+estimate. A new scan and transaction must match before removal. Only confirmed
+CloudDocument/CloudPhotoSize/CloudDocumentSize/CloudFile IDs pass the allowlist;
+local originals, secret/unknown media, other/temp/immutable paths, sessions,
+drafts, PostgreSQL and S3 are excluded. Native MediaBox removal uses force:false
+and preserves occupied resources. Busy sending/recording/archiving or unconfirmed
+file archive state refuses the action. Refresh after removal reports actual
+remaining copies, without promising all selected bytes were freed. Unknown or late
+results require a fresh scan. Clearing is permanent for those temporary copies;
+redownload depends on their continued availability in Telegram. Existing retained
+archive objects are preserved; this action does not backfill uncaptured files.
+Automatic eviction, duration/size retention, per-chat cache browser and full disk
+inventory remain reference differences.
+
+One app-owned proxy coordinator is shared by normal Telegram windows. SOCKS5 and
+MTProto profiles are validated locally, at most32, and stored as a versioned,
+bounded, nonsynchronizing generic-password Keychain item. Password and secret
+fields are secure; summaries and debug descriptions redact credentials. No
+Keychain read occurs during ordinary model construction. Explicit opening of the
+proxy pane or Connect reads this local configuration. Keychain item revision is a
+real generic attribute, conditionally matched by SecItemUpdate; stale writers do
+not overwrite a later edit. Locked/corrupt/failed/uncertain storage never silently
+selects Direct. Add/connect/edit/remove/enable/disable require frozen explicit
+confirmation; removal of the selected server disables proxy without picking
+another. Successful local write is followed by runtime configuration ACKs from
+all currently owned networks; ACK is not a successful proxy handshake. A30s
+unknown/false ACK stops owned connections and requires explicit reread/reapply.
+Closing an editor revokes unsubmitted consent but cannot cancel confirmed global
+configuration work. No automatic retry is performed.
+
+Recipe21 retains the reviewed engine revision and all cryptography. Exact
+input/output hashes adapt only Network.swift/Account.swift and add an own MIT
+source helper. A dynamic in-memory Signal supplies both initial and managed proxy
+settings; Unauthorized-to-Authorized replacement reads its latest value. The
+owned path does not subscribe to AccountManager proxy credential storage, and
+disables the upstream proxy-issue probe that creates a direct reference ping.
+Disabled settings carry no inactive credentials into the network. MTContext
+application is observed on its serial queue before ACK. Existing callers with no
+external source retain their previous behavior. Prepared recipe20 and interim
+recipe21 trees are preserved under ignored backups; generated source is never
+edited by hand. MtProtoKit is the already pinned/reviewed transitive dependency,
+now declared directly for native proxy validation. See THIRD_PARTY_NOTICES.md.
+
+Proxy links/import/export/QR, latency probes and proxying calls are not implemented.
+DEBUG data-settings providers use synthetic in-memory cache and a separate fake
+proxy store in that QA bundle's preferences; they never open Keychain, accounts
+or transport. Native tests exercise actual Postbox/MediaBox cloud removal and a
+real transport-free MTContext, plus generated dynamic source helpers. These do not
+establish login-Keychain permissions, server reachability, live Telegram download
+or authentication through a real proxy; those require separately authorized
+account acceptance.

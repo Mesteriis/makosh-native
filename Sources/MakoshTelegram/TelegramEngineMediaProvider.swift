@@ -8,8 +8,23 @@ import SwiftSignalKit
 final class TelegramEngineMediaProvider: TelegramMediaProvider {
     var sources: [String: TelegramAttachmentSource] = [:]
     private let mediaBox: MediaBox
+    private let postbox: Postbox
 
-    init(account: Account) { mediaBox = account.postbox.mediaBox }
+    init(account: Account) { mediaBox = account.postbox.mediaBox; postbox = account.postbox }
+
+    func startAutomatically(attachmentID: String, preferences: TelegramAutoDownloadPreferences,
+        isCurrent: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
+        let lease = EngineAutomaticMediaLease()
+        guard let source = sources[attachmentID] else { receive(.failed); return lease }
+        lease.admission.set((telegramAutomaticDownloadAdmission(postbox: postbox, source: source, preferences: preferences)
+            |> deliverOnMainQueue).start(next: { [weak self, weak lease] allowed in
+            guard let self, let lease, !lease.cancelled else { return }
+            guard allowed, isCurrent(), self.sources[attachmentID]?.attachment == source.attachment else { receive(.failed); return }
+            lease.install(self.start(attachmentID: attachmentID, purpose: .full, receive: receive))
+        }))
+        return lease
+    }
 
     func start(attachmentID: String, purpose: TelegramMediaPurpose,
                receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
@@ -53,6 +68,20 @@ final class TelegramEngineMediaProvider: TelegramMediaProvider {
         }
         return lease
     }
+}
+
+@MainActor private final class EngineAutomaticMediaLease: TelegramMediaLease {
+    let admission = MetaDisposable()
+    private var inner: (any TelegramMediaLease)?
+    private(set) var cancelled = false
+    func install(_ lease: any TelegramMediaLease) {
+        if cancelled { lease.cancel() } else { inner = lease }
+    }
+    func cancel() {
+        guard !cancelled else { return }; cancelled = true
+        admission.dispose(); inner?.cancel(); inner = nil
+    }
+    isolated deinit { admission.dispose(); inner?.cancel() }
 }
 
 @MainActor

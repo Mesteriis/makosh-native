@@ -8,10 +8,13 @@ struct TelegramSettingsView: View {
     var blockedUsers: TelegramBlockedUsersController? = nil
     var twoStep: TelegramTwoStepController? = nil
     var notifications: TelegramNotificationController? = nil
+    var autoDownload: TelegramAutoDownloadSettings? = nil
+    var cache: TelegramCacheController? = nil
+    var proxy: TelegramProxyController? = nil
     var chats: [TelegramChat] = []
     var synthetic = false
     var close: (() -> Void)? = nil
-    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность", notifications = "Уведомления и звуки" }
+    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность", notifications = "Уведомления и звуки", data = "Данные и память" }
     @State private var page: Page?
     @AppStorage(TelegramLocalTheme.preferenceKey) private var theme = TelegramLocalTheme.system.rawValue
     @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
@@ -32,6 +35,8 @@ struct TelegramSettingsView: View {
             switch page {
             case .general: TelegramGeneralSettingsView()
             case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme)
+            case .data:
+                if let autoDownload, let cache, let proxy { TelegramDataSettingsView(settings: autoDownload, cache: cache, proxy: proxy) }
             case .notifications:
                 if let notifications, notifications.accountID != nil { TelegramNotificationSettingsView(controller: notifications, chats: chats, synthetic: synthetic) }
                 else { ContentUnavailableView("Подключите Telegram", systemImage: "bell", description: Text("Уведомления доступны для подключённого аккаунта.")) }
@@ -47,6 +52,7 @@ struct TelegramSettingsView: View {
                         settingsRow(.general, symbol: "gearshape", id: "general")
                         settingsRow(.appearance, symbol: "paintpalette", id: "appearance")
                         if notifications != nil { settingsRow(.notifications, symbol: "bell", id: "notifications") }
+                        if proxy != nil { settingsRow(.data, symbol: "externaldrive", id: "data") }
                         if sessions != nil { settingsRow(.devices, symbol: "desktopcomputer", id: "devices") }
                         if privacy != nil { settingsRow(.privacy, symbol: "hand.raised", id: "privacy") }
                     }

@@ -23,6 +23,18 @@ protocol TelegramMediaLease: AnyObject { func cancel() }
 protocol TelegramMediaProvider: AnyObject {
     func start(attachmentID: String, purpose: TelegramMediaPurpose,
                receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease
+    func startAutomatically(attachmentID: String, preferences: TelegramAutoDownloadPreferences,
+        isCurrent: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease
+}
+
+private final class RefusedAutomaticMediaLease: TelegramMediaLease { func cancel() {} }
+extension TelegramMediaProvider {
+    func startAutomatically(attachmentID: String, preferences: TelegramAutoDownloadPreferences,
+        isCurrent: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
+        receive(.failed); return RefusedAutomaticMediaLease()
+    }
 }
 
 enum TelegramMediaEvent {
@@ -56,6 +68,8 @@ public final class TelegramMediaController: ObservableObject {
         var holder = LeaseHolder()
         var deadline: Task<Void, Never>?
         var completedFile: (@MainActor (String,URL,Int64) -> Void)?
+        var automatic = false
+        var automaticIsCurrent: (@MainActor () -> Bool)?
     }
     @Published private var revision = 0
     private var provider: (any TelegramMediaProvider)?
@@ -111,32 +125,59 @@ public final class TelegramMediaController: ObservableObject {
     }
 
     public func start(_ attachment: TelegramAttachment, purpose: TelegramMediaPurpose) {
+        _ = start(attachment, purpose: purpose, automatic: nil)
+    }
+
+    @discardableResult func startAutomatically(_ attachment: TelegramAttachment, preferences: TelegramAutoDownloadPreferences,
+        isCurrent: @escaping @MainActor () -> Bool) -> Bool {
+        start(attachment, purpose: .full, automatic: preferences, isCurrent: isCurrent)
+    }
+    var automaticInFlightCount: Int {
+        jobs.values.filter { job in if case .downloading = job.phase { return job.automatic }; return false }.count
+    }
+    func cancelAutomaticDownloads(except retained: Set<String>) {
+        for key in jobs.keys.filter({ jobs[$0]?.automatic == true && !retained.contains($0.attachmentID) }) { remove(key) }
+    }
+    @discardableResult private func start(_ attachment: TelegramAttachment, purpose: TelegramMediaPurpose,
+        automatic: TelegramAutoDownloadPreferences?, isCurrent: (@MainActor () -> Bool)? = nil) -> Bool {
         guard let provider, attachments[attachment.id] == attachment,
-              purpose == .preview ? attachment.hasPreview : attachment.canDownload else { return }
+              purpose == .preview ? attachment.hasPreview : attachment.canDownload else { return false }
+        guard automatic == nil || isCurrent?() == true else { return false }
         let key = TelegramMediaKey(attachmentID: attachment.id, purpose: purpose)
         if let phase = jobs[key]?.phase {
-            if case .downloading = phase { return }
-            if phase == .ready { return }
+            if phase == .ready {
+                if automatic == nil { jobs[key]?.automatic = false }
+                return false
+            }
+            if case .downloading = phase {
+                if automatic != nil || jobs[key]?.automatic != true { return false }
+                // A manual action owns a new lease, independent of automatic admission.
+            }
         }
         remove(key)
         let token = UUID()
-        jobs[key] = Job(token: token, phase: .downloading(nil), completedFile: completedFullFile)
+        jobs[key] = Job(token: token, phase: .downloading(nil), completedFile: completedFullFile,
+            automatic: automatic != nil, automaticIsCurrent: isCurrent)
         jobs[key]?.deadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(60)) } catch { return }
             self?.timeout(key, token: token)
         }
         revision &+= 1
-        let lease = provider.start(attachmentID: attachment.id, purpose: purpose) { [weak self] event in
+        let receive: @MainActor (TelegramMediaEvent) -> Void = { [weak self] event in
             self?.receive(event, key: key, token: token)
         }
+        let lease = automatic.map { provider.startAutomatically(attachmentID: attachment.id, preferences: $0,
+            isCurrent: isCurrent ?? { false }, receive: receive) }
+            ?? provider.start(attachmentID: attachment.id, purpose: purpose, receive: receive)
         // A provider may emit completion, failure or cancellation synchronously.
-        guard let current = jobs[key], current.token == token else { lease.cancel(); return }
+        guard let current = jobs[key], current.token == token else { lease.cancel(); return true }
         switch current.phase {
         case .downloading, .ready:
             current.holder.lease = lease
             if current.holder.releasePending { current.holder.release() }
         default: lease.cancel()
         }
+        return true
     }
 
     public func cancel(_ key: TelegramMediaKey) { finish(key, phase: .cancelled) }
@@ -154,6 +195,7 @@ public final class TelegramMediaController: ObservableObject {
 
     private func receive(_ event: TelegramMediaEvent, key: TelegramMediaKey, token: UUID) {
         guard let job = jobs[key], job.token == token, case .downloading = job.phase else { return }
+        if job.automatic, job.automaticIsCurrent?() != true { finish(key, phase: .cancelled); return }
         switch event {
         case .progress(let value):
             jobs[key]?.phase = .downloading(value.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil })

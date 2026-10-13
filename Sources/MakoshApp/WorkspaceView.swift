@@ -193,9 +193,9 @@ struct WorkspaceView: View {
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
-    init() {
+    init(proxy: TelegramProxyController? = nil) {
         _model = StateObject(wrappedValue: WorkspaceModel())
-        _telegram = StateObject(wrappedValue: TelegramModel())
+        _telegram = StateObject(wrappedValue: TelegramModel(proxy: proxy))
     }
     #if DEBUG
     init(syntheticTelegram: TelegramModel) {

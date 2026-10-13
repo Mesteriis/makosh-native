@@ -38,6 +38,15 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe21 adds a bounded in-memory proxy-settings signal to network initialization
+  and native account updates. A new network takes its current initial value;
+  external updates bypass AccountManager's stored proxy preferences. Explicit
+  disablement remains authoritative and direct proxy-issue diagnostic pings are
+  disabled for this path. `scripts/telegram_proxy_adaptation.py` is a GPLv3
+  adaptation with exact input/output fingerprints. The independently authored
+  generated `MakoshProxySettings.swift` bridge retains MIT; TelegramCore and the
+  combined app remain GPLv3. MtProtoKit was already in the reviewed pinned engine;
+  declaring its existing product directly adds no new source revision or license.
 - Recipe20 adds bounded two-step verification guards. The exact-source/hash-checked
   `scripts/telegram_two_step_adaptation.py` is GPL-3.0-or-later: three password/email
   update branches require BoolTrue, invalid/unconfirmed email classifications

@@ -21,6 +21,7 @@ let package = Package(
         .package(name: "SSignalKit", path: ".local/telegram-engine/submodules/SSignalKit"),
         .package(name: "Postbox", path: ".local/telegram-engine/submodules/Postbox"),
         .package(name: "TelegramApi", path: ".local/telegram-engine/submodules/TelegramApi"),
+        .package(name: "MtProtoKit", path: ".local/telegram-engine/submodules/MtProtoKit"),
         .package(name: "EncryptionProvider", path: ".local/telegram-engine/submodules/EncryptionProvider")
     ],
     targets: [
@@ -33,6 +34,7 @@ let package = Package(
             .product(name: "CVPX", package: "MakoshVPX")]),
         .target(name: "MakoshTelegram", dependencies: ["MakoshCore",
             .product(name: "TelegramApi", package: "TelegramApi"),
+            .product(name: "MtProtoKit", package: "MtProtoKit"),
             "MakoshJPEGControl",
             "MakoshCodeHighlight",
             "MakoshCustomEmojiControl",
@@ -54,6 +56,7 @@ let package = Package(
             .product(name: "Postbox", package: "Postbox"),
             .product(name: "TelegramCore", package: "TelegramCore"),
             .product(name: "TelegramApi", package: "TelegramApi"),
+            .product(name: "MtProtoKit", package: "MtProtoKit"),
             .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
             .product(name: "EncryptionProvider", package: "EncryptionProvider")])
     ],

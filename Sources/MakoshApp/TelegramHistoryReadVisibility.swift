@@ -50,12 +50,13 @@ struct TelegramHistoryReadViewport: ViewModifier {
                 .allowsHitTesting(false).accessibilityHidden(true)
         }
         .onPreferenceChange(HistoryReadFrames.self) { frames = $0; schedule() }
-        .onChange(of: context) { _, _ in generation = UUID(); schedule() }
+        .onChange(of: context) { _, _ in model.cancelAutomaticDownloads(); generation = UUID(); schedule() }
         .onAppear { generation = UUID(); mounted = true; schedule() }
         .onDisappear {
             mounted = false; eligibility = nil; generation = UUID(); frames = []
             evaluation?.cancel(); evaluation = nil
             if let context { _ = model.markVisibleHistoryRead(messageIDs: [], context: context, windowIsActive: false) }
+            if let context { model.setVisibleAutomaticDownloads(messageIDs: [], context: context, windowIsActive: false, eligibility: { false }) }
         }
     }
     private func schedule() {
@@ -77,6 +78,7 @@ struct TelegramHistoryReadViewport: ViewModifier {
             // Notifications trigger reevaluation; only the current native state
             // authorizes it. No await may separate this check and the model call.
             let active = eligibility?() == true
+            model.setVisibleAutomaticDownloads(messageIDs: ids, context: context, windowIsActive: active, eligibility: eligibility ?? { false })
             _ = model.markVisibleHistoryRead(messageIDs: active ? ids : [], context: context, windowIsActive: active)
         }
     }

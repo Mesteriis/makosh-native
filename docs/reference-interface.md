@@ -153,7 +153,8 @@ effectiveAppearance приложения: возврат передаёт явн
 preferredColorScheme(nil) в проверке оставлял предыдущее светлое оформление. Точные upstream palettes/assets,
 облачные/custom темы, обои, расписание ночного режима, размер текста, переключение
 bubble/list mode, animated device icons, QR linking и web sessions не перенесены.
-Privacy/2FA/notifications/proxy/storage/download settings также остаются открыты.
+Privacy/2FA/notifications и data/storage/proxy продолжены последующими блоками;
+пределы переноса описаны ниже и в docs/telegram.md.
 Локальная проверка с синтетическим аккаунтом не подтверждает действия над
 реальными устройствами Telegram; они входят в отдельную account acceptance.
 
@@ -1420,3 +1421,35 @@ width/10 > height или height <40. Поэтому width39 сам по себе
 настоящий AVPlayer и immutable stage; обычные native integration tests сохраняют
 проверку реальных циклов. Это исправление собственного AVFoundation transport,
 а не заимствование reference player.
+
+
+### Данные и память — 2026-10-13
+
+Закреплённый TelegramSwift исследован через свежий XERJ и подтверждён исходниками:
+DataAndStorageViewController.swift:425–493 задаёт порядок storage usage,
+automatic master/photo/video/files/reset, затем proxy;
+packages/InAppSettings/Sources/InAppSettings/AutomaticMediaDownloadCategoryPeers.swift:149 задаёт reference defaults;
+ProxyListController.swift:317–355,445–479 задаёт список, выбор и добавление;
+StorageUsageController.swift:64–110,1341–1378 — категории и отдельное
+подтверждение очистки. Макош независимо использует этот порядок в существующей
+общей форме с боковой панелью сервисов. Внешний GPLv2-only код и assets не копируются.
+
+Own SwiftUI включает отдельные category/cache/proxy editors. Категории имеют
+четыре peer toggles и явное сохранение размера. Прокси включает SOCKS5/MTProto,
+выбор, добавление/редактирование/удаление, secure password/secret и отдельное
+подтверждение применения/Direct. Кэш показывает проверенные облачные копии по
+четырём категориям и повторно проверяет их перед очисткой. Постоянный архив,
+S3, исходники отправки и используемые ресурсы сохраняются.
+
+Явные отличия: master автозагрузки исходно OFF, фото ограничены10MiB, контакты
+выделены отдельно. Автозагрузка относится к видимой истории активного окна,
+максимум три файла одновременно; неизвестный размер требует ручного действия.
+Нет background auto-download, network-usage view, download-folder picker,
+autoplay preferences и sensitive-content controls. Кэш ограничен подтверждёнными
+cloud-media ID; нет полного disk inventory, pie chart, keep-media TTL/size,
+per-chat storage browser и широкого other/temp clear. Прокси глобален для окон
+Макоша и хранится в собственном Keychain; нет ссылок/QR, latency probes/calls.
+Локальные grouped forms/modals и геометрия отличаются от upstream table/navigation;
+полное визуальное совпадение не заявляется. Проверки и реальная UI-приёмка
+фиксируются в docs/development-status.md; синтетическая проверка не означает
+реальную доставку Telegram, доступность сервера прокси или Keychain acceptance.

@@ -1,6 +1,67 @@
 # Development status — 2026-10-13
 
-## Current stage: Telegram notifications on this Mac (block 10)
+## Completed stage: Telegram data and connection (block 11)
+
+The authorized item adds data/cache/proxy controls to the existing common native
+workspace, following source-confirmed TelegramSwift ordering. Account-local bounded
+auto-download rules drive visible incoming history with native Postbox admission,
+three-transfer concurrency, current-policy/window checks and independent manual
+ownership. Existing per-chat S3 admission and permanent retention remain unchanged.
+Cache selection is the verified cloud-media subset, fresh-confirmed and removed
+through force:false MediaBox; no broad disk/S3/PostgreSQL/session/original clear.
+One shared proxy coordinator validates SOCKS5/MTProto, conditionally stores its
+revision in Keychain and applies an in-memory dynamic source across network/auth
+replacement. False/unknown application stops owned connections; explicit reread/
+reapply is required. Actual proxy reachability is not inferred from local ACKs.
+
+Valid ordinary assertion REDs cover auto policy/queue/admission, cache selection/
+controller, config/vault/MTContext and dynamic source behavior. Harness compilation
+errors and a MainActor transaction SIGTRAP were classified separately; nonisolated
+signal construction repairs the test harness. The coordinator's valid RED has5
+ordinary failures; repaired native integration initially exposes a fixture with
+unknown sizes and reset media descriptors, fixed only in explicit synthetic data
+fixtures. Initial focused51 tests pass. Independent readonly review verifies46
+public hashes and finds an opening-timeout late-network race plus IP NUL parsing;
+root's new REDs have1 and3 ordinary failures respectively. Disconnect/generation
+invalidation plus late-registration rejection, and pre-C-parser control rejection
+repair them. Cache AX category labels/zero-byte-only button state are also repaired.
+The reviewer independently verifies all46 repaired hashes/seven changed paths and
+reports no remaining Critical/Important/Minor source finding; it runs no tests or
+native operations. Root's final focused52 XCTest pass. Python proxy adaptation3
+tests pass. Required PostgreSQL/S3 startup exits0; both containers healthy.
+
+Initial native synthetic QA confirms common settings order, master/category save,
+actual1MiB limit selection, clear cancellation preserving10MiB, photo-only clear
+leaving9MiB, invalid proxy URL refusal, secure password/secret, SOCKS5/MTProto
+add/select/edit and explicit active-profile removal disabling without selecting
+another. The first QA bundle is strictly signed and its unsigned executable equals
+the built payload. Native scroll/coordinate CUA calls fail with noWindowsAvailable;
+AX interactions still work. Owned LLDB diagnosis confirms a real WindowServer
+occlusion flag, not a gate defect; two initial debugger expressions fail from
+missing Objective-C receiver casts, then the typed diagnostic exits0. Ordinary
+bundle activation makes the gate active. Native scroll then reveals incoming
+fixture129: auto progress appears without pressing Download, followed by File
+Downloaded/Save and actual screenshot. The final repaired bundle passes build/
+strict signing and unsigned-payload equality. Restart preserves masterON, the
+private-file rule/1MiB limit and selected SOCKS5/edited1081 port/secure field.
+Final cache AX descriptions include category names; photo-only clear leaves9MiB
+and a zero-byte-only selection disables Clear. One QA assertion initially expects
+the category in AX label position; the actual Description is present and the
+corrected native assertion passes. Owned QA is stopped; isolated data retained.
+Final `scripts/test.sh` under per-process caffeinate exits0: **1929 XCTest
+(1850 Telegram +79 core),1 microphone precondition skip,0 failures;89 Python
+tests across19 suites**. All44 new block cases execute and pass. Existing macOS
+framework diagnostics remain in private raw logs; they are not XCTest failures
+or communication-account acceptance. The complete757-file frozen snapshot and
+file set match, excluding this mutable ledger. All three XERJ scopes are fresh;
+final retrieval confirms own proxy composition and generated dynamic-source
+helpers against current source. Exact-head hosted/publication evidence will be
+recorded on the attached block11 PR; local results do not substitute for hosted CI.
+No personal account, Telegram transport or real Keychain acceptance is claimed.
+Conservative reference differences and remaining broad settings flows are explicit
+in docs/reference-interface.md and docs/telegram.md.
+
+## Completed stage: Telegram notifications on this Mac (block 10)
 
 Own SwiftUI settings in the common workspace now cover account-local notification
 enablement, previews, system/silent sound, Dock attention, active-app suppression,

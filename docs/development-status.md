@@ -126,9 +126,41 @@ revoke it. Reading/model10 then pass, and actual reply/send-enabled/cancel-draft
 UI succeeds. Whole-suite gate and task commit follow below; no real
 Telegram handshake/delivery/call, personal account or physical capture is used.
 
+Task4 completion gate: first full run fails solely on an obsolete test that
+still treats all SecretChat peers as unsupported. That fixture now tests a
+native-representable oversized SecretID plus Empty namespace; the valid negative
+native album and invalid identity focused2 pass. Repaired whole suite exits0:
+2070 XCTest (1991 Telegram +79 core),one microphone-precondition skip,zero
+failures;104 Python tests across23 suites pass. Commits82717cd/caba6a8 complete
+this slice. Task5 native calls continue; no account/server acceptance is inferred.
+
 Native-call research only: exact reference tgcalls/tg_owt source pins are fetched
 into independent bare caches. Native wrapper needs a reviewed WebRTC dependency
 closure/build; no signaling-only/fake-connected completion is claimed.
+
+Task5 native call source is integrated; final full acceptance remains in progress.
+72 focused XCTest pass, including real encrypted Postbox boundary, native/session
+admission, camera refusal, bounded signaling/video, stale contexts, shared call
+reservation, async video ACK, current proxy and workspace peer selection. New
+ordinary REDs cover seven UI/proxy assertions, recording reservation, target
+selection and the first frame arriving before camera ACK. Retry interface RED
+then current-context retry green. Native source closure/licensing is pinned
+independently; preparation5 Python pass. Actual both-version native pairs pass
+nonzero PCM/decoded VP8, wrong key refusal, mute/video controls, logs disabled
+and final release. Rotation0/90/180/270 verifies exact pixel placement and portrait
+output. Strict reflector tags and seven noexcept C ABI contracts pass. Native
+allocator P2P/proxy and failed-audio-factory tests pass. No physical devices,
+personal accounts, actual Telegram calls or remote delivery are used. Signed
+build and actual isolated native UI pass. Source comparison confirms the call
+header belongs to the right content controller. Initial outer inset/stack attempts
+fail native UI (overlap/hidden headings); the final detail-column composition with
+an expanding content group preserves every heading and the top call bar in both
+Telegram and Contacts. Actual QA covers audio/video outgoing and incoming,
+audio-only answer to video, decline, microphone, camera/cleared previews,
+fingerprint, live duration, close/hide/reopen, service switching and End/release.
+72 focused tests also cover closing the owning workspace and cancellation before
+any queued permission request. Physical device/live account acceptance is unrun.
+Full suite and final independent review/hosted checks follow.
 
 ## Completed stage: extended Telegram privacy (block 12)
 

@@ -18,7 +18,7 @@ def git(*args, cwd=ROOT):
 
 def scope(name):
     if name == "project":
-        return ROOT, "mk-own-v9", "project-v9"
+        return ROOT, "mk-own-v11", "project-v11"
     if name == "telegram-engine":
         spec = importlib.util.spec_from_file_location("telegram_preparation", ROOT / "scripts/prepare-telegram.py")
         preparation = importlib.util.module_from_spec(spec)

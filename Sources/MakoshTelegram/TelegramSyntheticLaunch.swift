@@ -5,7 +5,7 @@ import Foundation
 /// Tool relaunches without explicit fixture arguments must not open normal data.
 public func telegramSyntheticLaunchAdmitted(arguments: [String]) -> Bool {
     let supported: Set<String> = [
-        "--telegram-group-synthetic-preview", "--telegram-avatar-synthetic-preview", "--telegram-secret-chats-synthetic-preview",
+        "--telegram-calls-synthetic-preview", "--telegram-group-synthetic-preview", "--telegram-avatar-synthetic-preview", "--telegram-secret-chats-synthetic-preview",
         "--telegram-server-draft-synthetic-preview", "--telegram-extended-messages-synthetic-preview",
         "--telegram-secret-synthetic-preview", "--telegram-paid-send-synthetic-preview",
         "--telegram-dossier-synthetic-preview", "--telegram-history-read-synthetic-preview",

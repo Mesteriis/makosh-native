@@ -13,6 +13,9 @@ python3 scripts/prepare-mozjpeg.py
 python3 scripts/prepare-code-highlight.py
 python3 scripts/prepare-rlottie.py
 python3 scripts/prepare-vpx.py
+python3 scripts/prepare-telegram-voip.py
+python3 scripts/test-telegram-voip-preparation.py
+python3 scripts/test-telegram-voip-native.py
 python3 scripts/test-vpx-preparation.py
 python3 scripts/test-vpx-rtcd-preparation.py
 python3 scripts/test-rlottie-preparation.py

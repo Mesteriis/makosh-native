@@ -2,6 +2,10 @@ import XCTest
 @testable import MakoshTelegram
 
 final class TelegramSyntheticLaunchTests: XCTestCase {
+    func testCallModeStillRequiresExplicitIsolatedDatabase() {
+        XCTAssertFalse(telegramSyntheticLaunchAdmitted(arguments: ["Makosh", "--telegram-calls-synthetic-preview"]))
+        XCTAssertTrue(telegramSyntheticLaunchAdmitted(arguments: ["Makosh", "--telegram-calls-synthetic-preview", "--database-config", "/synthetic/db.json"]))
+    }
     func testQABundleCannotFallBackToNormalAccountsAfterToolRelaunch() {
         XCTAssertFalse(telegramSyntheticLaunchAdmitted(arguments: ["Makosh"]))
         XCTAssertFalse(telegramSyntheticLaunchAdmitted(arguments: ["Makosh", "--telegram-group-synthetic-preview"]))

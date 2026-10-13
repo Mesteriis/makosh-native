@@ -53,18 +53,18 @@ or copied outer UI. Missing media implementation cannot be reported as a call.
 
 **Files:** Create TelegramSecretChatController.swift, TelegramEngineSecretChatProvider.swift and TelegramSecretChatLifecycleTests.swift; modify existing secret eligibility, composer/upload/history/archive boundaries and relevant profile/conversation UI. Native preparation changes go through the reviewed recipe only.
 **Interfaces:** Consumes task1 peer selection, existing secret status/fingerprint, durable native outbox and permanent archive. Produces native creation/negotiation, safe formatted/reply/media admission and fresh-confirmed TTL controls.
-- [ ] Verify all current secret restrictions/native APIs and archive deletion observation before relaxing any gate; freeze exact resource/layer/key rules in the brief.
-- [ ] Test create/handshake/invalid keys/layers, stale consent, formatting/media rejection/admission, missing enqueue ACK, TTL/deletion retention and S3 OFF; observe RED.
-- [ ] Implement using native protocol/encryption and existing prepared resources; unsupported states remain explicit errors, not successful placeholders.
-- [ ] Focused secret/outbox/archive/native tests: PASS; synthetic lifecycle/TTL/composer/retention UI QA; commit and ledger.
+- [x] Verify all current secret restrictions/native APIs and archive deletion observation before relaxing any gate; freeze exact resource/layer/key rules in the brief.
+- [x] Test create/handshake/invalid keys/layers, stale consent, formatting/media rejection/admission, missing enqueue ACK, TTL/deletion retention and S3 OFF; observe RED.
+- [x] Implement using native protocol/encryption and existing prepared resources; unsupported states remain explicit errors, not successful placeholders.
+- [x] Focused secret/outbox/archive/native tests: PASS; synthetic lifecycle/TTL/composer/retention UI QA; commit and ledger.
 
 ### Task 5: Reviewed native audio/video calls
 
 **Files:** Dependencies/TelegramVoip.lock.json, scripts/prepare-telegram-voip.py, native bridge target(s), TelegramCallController.swift, TelegramEngineCallProvider.swift, Sources/MakoshApp/TelegramCallView.swift, TelegramCallControllerTests.swift, native media boundary tests and build/notice integration.
 **Interfaces:** Consumes existing Account.callSessionManager and native media permissions. Produces real native encrypted audio/video transport, safe incoming/outgoing lifecycle and reference-derived controls.
-- [ ] Audit exact tgcalls/WebRTC source, licenses, submodule closure, platform/build recipes and headers; record reproducible source/binary hashes. Build/test must not read reference checkouts or credentials.
-- [ ] Freeze exact native bridge signatures in the brief after source confirmation. Test malformed session/version/endpoint/key input, P2P policy, permission refusal, late signaling, cancellation/rebind and capture release; observe RED.
-- [ ] Build reviewed transport/codecs independently, wire native session/key/signaling state, explicit capture controls and one-to-one call UI. No fake connected state or signaling-only completion claim.
+- [x] Audit exact tgcalls/WebRTC source, licenses, submodule closure, platform/build recipes and headers; record reproducible source/binary hashes. Build/test must not read reference checkouts or credentials.
+- [x] Freeze exact native bridge signatures in the brief after source confirmation. Test malformed session/version/endpoint/key input, P2P policy, permission refusal, late signaling, cancellation/rebind and capture release; observe RED.
+- [x] Build reviewed transport/codecs independently, wire native session/key/signaling state, explicit capture controls and one-to-one call UI. No fake connected state or signaling-only completion claim.
 - [ ] Focused call/native media tests: PASS; synthetic lifecycle and actual transport/media fixture proof; commit and ledger. Real Telegram calls are a separately scoped acceptance check.
 
 ### Task 6: Whole-block integration

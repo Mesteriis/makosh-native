@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var telegramNotificationRouter = TelegramSystemNotificationRouter()
     lazy var telegramProxy = TelegramProxyController()
+    let telegramCallCoordinator = TelegramCallCoordinator()
+    let telegramCallWindows = TelegramCallWindows()
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -27,8 +29,8 @@ struct MakoshApp: App {
                     .accessibilityIdentifier("telegram.qa.configurationRequired")
             } else if CommandLine.arguments.contains("--telegram-drafts-synthetic-preview") {
                 TelegramDraftsSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
-            } else if CommandLine.arguments.contains("--telegram-secret-chats-synthetic-preview") || CommandLine.arguments.contains("--telegram-group-synthetic-preview") || CommandLine.arguments.contains("--telegram-avatar-synthetic-preview") || CommandLine.arguments.contains("--telegram-server-draft-synthetic-preview") || CommandLine.arguments.contains("--telegram-extended-messages-synthetic-preview") || CommandLine.arguments.contains("--telegram-secret-synthetic-preview") || CommandLine.arguments.contains("--telegram-paid-send-synthetic-preview") || CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") || CommandLine.arguments.contains("--telegram-history-read-synthetic-preview") || CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview") || CommandLine.arguments.contains("--telegram-peer-appearance-synthetic-preview") {
-                WorkspaceView(syntheticTelegram: CommandLine.arguments.contains("--telegram-secret-chats-synthetic-preview") ? .syntheticSecretChatsPreview() : CommandLine.arguments.contains("--telegram-group-synthetic-preview") ? .syntheticGroupMembershipPreview() : CommandLine.arguments.contains("--telegram-avatar-synthetic-preview") ? .syntheticAvatarEditingPreview() : (CommandLine.arguments.contains("--telegram-server-draft-synthetic-preview") || CommandLine.arguments.contains("--telegram-extended-messages-synthetic-preview") || CommandLine.arguments.contains("--telegram-secret-synthetic-preview") || CommandLine.arguments.contains("--telegram-paid-send-synthetic-preview"))
+            } else if CommandLine.arguments.contains("--telegram-calls-synthetic-preview") || CommandLine.arguments.contains("--telegram-secret-chats-synthetic-preview") || CommandLine.arguments.contains("--telegram-group-synthetic-preview") || CommandLine.arguments.contains("--telegram-avatar-synthetic-preview") || CommandLine.arguments.contains("--telegram-server-draft-synthetic-preview") || CommandLine.arguments.contains("--telegram-extended-messages-synthetic-preview") || CommandLine.arguments.contains("--telegram-secret-synthetic-preview") || CommandLine.arguments.contains("--telegram-paid-send-synthetic-preview") || CommandLine.arguments.contains("--telegram-dossier-synthetic-preview") || CommandLine.arguments.contains("--telegram-history-read-synthetic-preview") || CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview") || CommandLine.arguments.contains("--telegram-peer-appearance-synthetic-preview") {
+                WorkspaceView(syntheticTelegram: CommandLine.arguments.contains("--telegram-calls-synthetic-preview") ? .syntheticCallsPreview() : CommandLine.arguments.contains("--telegram-secret-chats-synthetic-preview") ? .syntheticSecretChatsPreview() : CommandLine.arguments.contains("--telegram-group-synthetic-preview") ? .syntheticGroupMembershipPreview() : CommandLine.arguments.contains("--telegram-avatar-synthetic-preview") ? .syntheticAvatarEditingPreview() : (CommandLine.arguments.contains("--telegram-server-draft-synthetic-preview") || CommandLine.arguments.contains("--telegram-extended-messages-synthetic-preview") || CommandLine.arguments.contains("--telegram-secret-synthetic-preview") || CommandLine.arguments.contains("--telegram-paid-send-synthetic-preview"))
                     ? .syntheticExtendedMessagesPreview(specialConversation: CommandLine.arguments.contains("--telegram-server-draft-synthetic-preview") ? "draft" : CommandLine.arguments.contains("--telegram-secret-synthetic-preview") ? "secret" : CommandLine.arguments.contains("--telegram-paid-send-synthetic-preview") ? "paid" : nil) : CommandLine.arguments.contains("--telegram-history-read-synthetic-preview")
                     ? .syntheticHistoryReadPreview() : CommandLine.arguments.contains("--telegram-peer-appearance-synthetic-preview")
                     ? .syntheticPeerAppearancePreview() : CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview")
@@ -45,12 +47,12 @@ struct MakoshApp: App {
             } else if CommandLine.arguments.contains("--telegram-synthetic-preview") {
                 TelegramSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
             } else {
-                WorkspaceView(proxy: delegate.telegramProxy).frame(minWidth: 1000, minHeight: 640)
+                WorkspaceView(proxy: delegate.telegramProxy, callCoordinator: delegate.telegramCallCoordinator).frame(minWidth: 1000, minHeight: 640)
             }
             #else
-            WorkspaceView(proxy: delegate.telegramProxy).frame(minWidth: 1000, minHeight: 640)
+            WorkspaceView(proxy: delegate.telegramProxy, callCoordinator: delegate.telegramCallCoordinator).frame(minWidth: 1000, minHeight: 640)
             #endif
-            }.environmentObject(delegate.telegramNotificationRouter)
+            }.environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
         }
             .defaultSize(width: 1200, height: 800)
             .commands { TelegramSearchCommands(); TelegramSelectionCommands() }

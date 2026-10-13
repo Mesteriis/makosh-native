@@ -3359,3 +3359,49 @@ Recipe25 safety/visibility changes and exact hashes are documented in notices.
 Synthetic native UI and real local encrypted Postbox/PostgreSQL/S3 fixtures do
 not establish a real account handshake, encrypted server delivery or hardware
 capture acceptance; those remain separately scoped.
+
+
+## Block13 task5: native one-to-one calls (2026-10-14)
+
+A private user's chat offers an audio/video call after a fresh full-user read.
+An active secret chat calls its regular participant; self, groups, channels,
+bots and unavailable/terminated secret targets are excluded. Account-bound
+incoming IDs require explicit Answer/Decline; answering a video call with audio
+never starts the camera. Native CallSessionManager owns the authenticated key,
+versions and signaling. Only real native transport Established marks Connected.
+The app advertises the independently built versions2.7.7/5.0.0 and maxLayer92.
+
+AppDelegate supplies one explicit call coordinator to all real workspaces.
+Reservation precedes TCC and survives End/rebind/controller retirement until the
+native audio and AVFoundation camera both acknowledge release. Context/token
+checks reject late callbacks. Camera toggles await actual start/stop and recheck
+context. Incoming observation performs no permission request or capture. Native
+signaling is bounded to256 packets/1MiB,64KiB each; video retains only latest
+bounded NV12 frames. Decoded rotation is applied before display. No call media,
+keys, signaling or relay/proxy credentials are logged, recorded, archived or
+written to S3/PostgreSQL. Existing permanent message/file policies remain intact.
+
+The native module is built independently from Dependencies/TelegramVoip.lock.json
+by scripts/prepare-telegram-voip.py. It compiles the reviewed native tgcalls/OWT
+closure and VP8/Opus, has seven own C ABI exports and a private codec symbol
+namespace. H264/HEVC/FFmpeg, group calls and screen sharing are excluded. The
+existing restricted emoji VP9 decoder is unchanged. An injected audio factory
+failure never falls back to physical devices. Unexpected C++ allocation errors
+fail-stop at noexcept boundaries rather than returning a false capture-release
+acknowledgement; recoverable admission/permission/device failures remain explicit.
+
+P2P denial disables host UDP/TCP and STUN candidates in the real allocator.
+An enabled proxy applies to calls too: SOCKS5 requires an advertised TCP relay,
+with direct/UDP relay bypass disabled. MTProto-only proxies cannot carry calls;
+unsupported combinations fail rather than fall back to a direct connection.
+Proxy configuration is reread before wire/capture and monitored during the call.
+
+A separate nonmodal native window shows status, duration, native verification
+fingerprint, local/remote video, microphone/camera and End. Closing the window
+hides it; the compact bar in the content column of the common workspace reopens
+or ends it. Closing the owning workspace ends its call, including a pending
+permission step, and retains the media reservation until actual release. Physical
+camera/microphone and real Telegram remote-call acceptance remain separately
+authorized checks. Local acceptance uses actual encrypted native pairs with
+injected PCM/I420 and an explicitly labelled inert synthetic UI fixture selected
+with --telegram-calls-synthetic-preview and an isolated --database-config.

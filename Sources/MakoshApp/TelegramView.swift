@@ -52,6 +52,14 @@ struct TelegramDetailView: View {
             case .unsupported(let explanation):
                 ContentUnavailableView("Нужен дополнительный шаг входа", systemImage: "person.crop.circle.badge.exclamationmark", description: Text(explanation)).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            #if DEBUG
+            if model.isSyntheticPreview && model.calls.accountID == 101 {
+                HStack {
+                    Button("Синтетический входящий звонок") { model.syntheticIncomingCall(video: false) }.accessibilityIdentifier("telegram.call.qa.incomingAudio")
+                    Button("Синтетический входящий видеозвонок") { model.syntheticIncomingCall(video: true) }.accessibilityIdentifier("telegram.call.qa.incomingVideo")
+                }.font(.caption).padding(6)
+            }
+            #endif
             TelegramPlaybackView(playback: playback)
             TelegramUploadView(model: model)
             TelegramMessageActionsStatus(controller: messageActions, synthetic: model.isSyntheticPreview)
@@ -206,6 +214,7 @@ struct TelegramDetailView: View {
                             .buttonStyle(.plain).help("Открыть темы").accessibilityLabel("Открыть темы")
                             .accessibilityIdentifier("telegram.forum.open")
                     }
+                    TelegramCallButtons(controller: model.calls, hasTarget: model.callPeerID != nil)
                     TelegramConversationFilePolicyMenu(files: model.archive.files, chatID: chat.id)
                     Button {
                         if messageSearchPresented { closeMessageSearch() }

@@ -357,3 +357,24 @@ binary, provide the complete corresponding source for its exact engine/build,
 all selected dependency copyright notices and sources as required, and audited
 packaging of the actual libpq/OpenSSL versions. A local ignored checkout or a
 generic license URL alone does not fulfill binary-source delivery obligations.
+
+## Native one-to-one calls
+
+The native call module is built from independently pinned tgcalls
+`5ddc3ccf2086127722a06e3d836698fcd717f11b` (LGPLv3) and tg_owt
+`be39b8c8d0db1f377118f813f0c4bd331d341d5e` (WebRTC BSD3 and retained
+permissive in-tree notices). Its Abseil, crc32c, libsrtp and libyuv Gitlinks,
+complete source fingerprints and adaptation fingerprints are recorded in
+`Dependencies/TelegramVoip.lock.json`. Notices are retained as
+`LICENSES/TelegramVoIP-*`. The existing pinned Opus1.5.1, Mozjpeg4.1.4 and
+VPX1.17.0 sources provide its private codec closure; their notices above apply.
+The combined application remains GPLv3; Makosh's C ABI/platform/capture code is MIT.
+
+`python3 scripts/prepare-telegram-voip.py` retrieves the complete reviewed source
+closure from its independent public origins and builds a replaceable native dylib.
+`Native/TelegramVoIP` and the recipe are its corresponding build/adaptation source.
+No reference checkout, outer GPLv2-only UI, embedded API credentials or upstream
+installer is used. Native adaptations disable disk and memory logging, correct a
+Clang lifetime annotation and enforce relay/proxy candidate policy. They do not
+replace native cryptography, handshake or packet formats. Full call VP8/Opus codec
+symbols stay hidden inside this dylib; the existing512px/8MB emoji decoder is unchanged.

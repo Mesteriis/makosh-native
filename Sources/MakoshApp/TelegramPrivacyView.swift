@@ -37,7 +37,9 @@ private struct PrivacyExceptionDraft: Identifiable {
 
 struct TelegramPrivacyView: View {
     @ObservedObject var controller: TelegramPrivacyController
+    var blockedUsers: TelegramBlockedUsersController? = nil
     let synthetic: Bool
+    @State private var blockedPresented = false
     @State private var selected: TelegramPrivacyKind?
     var body: some View {
         VStack(spacing: 0) {
@@ -49,6 +51,14 @@ struct TelegramPrivacyView: View {
             }.padding(.horizontal, 20).padding(.vertical, 10)
             if let snapshot = controller.snapshot {
                 Form {
+                    if blockedUsers != nil {
+                        Section {
+                            Button { blockedPresented = true } label: {
+                                HStack { Label("Заблокированные пользователи", systemImage: "hand.raised.slash"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
+                                    .frame(minHeight: 36).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityIdentifier("telegram.privacy.blockedUsers")
+                        }
+                    }
                     Section("Приватность") {
                         ForEach(TelegramPrivacyKind.allCases.filter { $0 != .phoneDiscovery && $0 != .callP2P }) { kind in
                             Button { selected = kind } label: {
@@ -63,6 +73,9 @@ struct TelegramPrivacyView: View {
         }
         .onAppear { controller.open() }.onDisappear { controller.close() }
         .onChange(of: controller.snapshot?.accountID) { _, _ in selected = nil }
+        .sheet(isPresented: $blockedPresented) {
+            if let blockedUsers { TelegramBlockedUsersView(controller: blockedUsers, synthetic: synthetic) { blockedPresented = false } }
+        }
         .sheet(item: $selected) { kind in TelegramPrivacyDetailView(controller: controller, kind: kind, synthetic: synthetic) { selected = nil } }
     }
 }

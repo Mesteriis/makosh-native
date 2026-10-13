@@ -33,8 +33,14 @@ import MakoshTelegram
         customEmojiContext: TelegramCustomEmojiPlaybackContext? = nil, lineLimit: Int? = nil) {
         TelegramCustomEmojiTextSystem.install(in: self)
         let reset = sourceKey != key || source != value || sourceOffset != offset ||
+            source?.text.utf8.elementsEqual(value.text.utf8) != true ||
             copyAllowed != canCopy || spoilersRevealed != revealingSpoilers
-        generation = UUID()
+        let changedActions = self.actions.count != actions.count || zip(self.actions, actions).contains {
+            $0.title != $1.title || $0.enabled != $1.enabled
+        }
+        if reset || changedActions || quoteLimit != maximumQuoteLength || (quoteAction == nil) != (quote == nil) {
+            generation = UUID()
+        }
         source = value; sourceKey = key; sourceOffset = offset; copyAllowed = canCopy
         spoilersRevealed = revealingSpoilers; quoteLimit = maximumQuoteLength
         self.actions = actions; quoteAction = quote; activateAction = activate

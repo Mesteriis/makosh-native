@@ -7,7 +7,7 @@ nonisolated func telegramForumSendAuthorization(transaction: Transaction, accoun
     chatID: Int64, threadID: Int64?, messages: [EnqueueMessage]) -> Bool {
     let account = PeerId(accountID), id = PeerId(chatID)
     guard account.namespace == Namespaces.Peer.CloudUser, account.id._internalGetInt64Value() > 0,
-        id.id._internalGetInt64Value() > 0, !messages.isEmpty,
+        (telegramSecretPeerID(chatID) != nil || id.id._internalGetInt64Value() > 0), !messages.isEmpty,
         let peer = transaction.getPeer(id) else { return false }
     guard let channel = peer as? TelegramChannel else {
         return threadID == nil && messages.allSatisfy { forumSendMessageThread($0) == nil }

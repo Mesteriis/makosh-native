@@ -47,6 +47,9 @@ private nonisolated func specialAllowed(_ box: Postbox, context: TelegramSendCon
     messages: [EnqueueMessage], consentID: UUID? = nil) -> Signal<Bool, NoError> {
     box.transaction { telegramSendAuthorization(transaction: $0, context: context, messages: messages, consentID: consentID) }
 }
+private nonisolated func specialReadSecretSession(_ box: Postbox, chatID: Int64) -> Signal<TelegramSecretSessionSnapshot?, NoError> {
+    box.transaction { telegramSecretSessionSnapshot(transaction: $0, accountID: 1, chatID: chatID) }
+}
 
 private nonisolated func specialCreate(_ box: Postbox, context: TelegramSendContext,
     price: Int64 = 7, id: UUID) -> Signal<Result<TelegramPaidSendConsent, Error>, NoError> {
@@ -158,6 +161,35 @@ private nonisolated func specialContext(chat: Int64 = specialUser().id.toInt64()
 }
 
 @MainActor final class TelegramConversationCapabilitiesTests: TelegramSourceFactsIntegrationTestCase {
+    func testNegativeNativeSecretIDSupportsCapabilitiesAndPlainSend() async throws {
+        let box = try await box(), peer = specialSecret(number: -44)
+        _ = try await sourceFactsValue(specialSeed(box, peer: peer, cache: nil, state: specialSecretState()))
+        let capabilities = try await read(box, chat: peer.id.toInt64())
+        XCTAssertEqual(snapshot(capabilities)?.secret?.state, .active)
+        let allowed = try await sourceFactsValue(specialAllowed(box, context: specialContext(chat: peer.id.toInt64()), messages: [specialMessage()]))
+        XCTAssertTrue(allowed)
+    }
+    func testNativeSecretSessionFreezesLifecycleLayerTimerAndRevision() async throws {
+        let box = try await box(), peer = specialSecret(number: -44)
+        _ = try await sourceFactsValue(specialSeed(box, peer: peer, cache: nil, state: specialSecretState()))
+        let value = try await sourceFactsValue(specialReadSecretSession(box, chatID: peer.id.toInt64()))
+        let session = try XCTUnwrap(value)
+        XCTAssertTrue(session.isValid); XCTAssertTrue(session.canSetTTL); XCTAssertEqual(session.layer, 8)
+        XCTAssertEqual(session.regularPeerID, 42); XCTAssertNil(session.ttl); XCTAssertEqual(session.revision.count, 64)
+        _ = try await sourceFactsValue(specialState(box, variant: 1))
+        // The variant helper updates +44; a different native session must not change this session's frozen basis.
+        let unchanged = try await sourceFactsValue(specialReadSecretSession(box, chatID: peer.id.toInt64()))
+        XCTAssertEqual(unchanged, session)
+    }
+    func testNativeSessionCannotAuthorizeMalformedKeyOrMismatchedRole() async throws {
+        let box = try await box(), peer = specialSecret()
+        _ = try await sourceFactsValue(specialSeed(box, peer: peer, cache: nil, state: specialSecretState(keyBytes: 255)))
+        let value = try await sourceFactsValue(specialReadSecretSession(box, chatID: peer.id.toInt64()))
+        XCTAssertEqual(value?.state, .active); XCTAssertFalse(value?.canSetTTL ?? true)
+        _ = try await sourceFactsValue(specialSeed(box, peer: peer, cache: nil, state: specialSecretState(.terminated)))
+        let inconsistent = try await sourceFactsValue(specialReadSecretSession(box, chatID: peer.id.toInt64()))
+        XCTAssertNil(inconsistent)
+    }
     private func box() async throws -> Postbox {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: path, withIntermediateDirectories: false)

@@ -38,14 +38,9 @@ nonisolated func telegramSendAuthorization(transaction: Transaction, context: Te
         guard consentID == nil, secret.state == .active, secret.verification != nil,
             let peer = transaction.getPeer(PeerId(context.chatID)) as? TelegramSecretChat,
             let state = transaction.getPeerChatState(peer.id) as? SecretChatState,
-            secretSendKeyAvailable(transaction: transaction, peer: peer, state: state, count: messages.count) else { return false }
+            makoshSecretSendKeyAvailable(transaction: transaction, peer: peer, state: state, count: messages.count) else { return false }
         return messages.allSatisfy { message in
-            guard case let .message(text, attributes, stickers, media, _, reply, story, grouping, _, bubble) = message else { return false }
-            // The base secret boundary supports plain text only. Rich entities,
-            // replies and media require their own layer/retention validation.
-            return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.utf16.count <= 4096
-                && attributes.isEmpty && stickers.isEmpty && media == nil && reply == nil && story == nil
-                && grouping == nil && bubble.isEmpty
+            telegramSecretSendAuthorization(transaction: transaction, peer: peer, state: state, accountID: context.accountID, message: message)
         }
     }
     switch current.messageFee {
@@ -72,8 +67,8 @@ nonisolated func telegramSendContextIsValid(_ value: TelegramSendContext) -> Boo
     let namespaces = [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup,
         Namespaces.Peer.CloudChannel, Namespaces.Peer.SecretChat]
     return account.namespace == Namespaces.Peer.CloudUser && account.id._internalGetInt64Value() > 0
-        && chat.id._internalGetInt64Value() > 0 && namespaces.contains(chat.namespace)
-        && (chat.namespace != Namespaces.Peer.SecretChat || chat.id._internalGetInt64Value() <= Int64(Int32.max))
+        && namespaces.contains(chat.namespace)
+        && (chat.namespace == Namespaces.Peer.SecretChat ? telegramSecretPeerID(value.chatID) != nil : chat.id._internalGetInt64Value() > 0)
         && (1...100).contains(value.messageCount)
         && (value.threadID.map { chat.namespace == Namespaces.Peer.CloudChannel && $0 > 0 && $0 <= Int64(Int32.max) } ?? true)
 }
@@ -96,24 +91,4 @@ nonisolated func telegramPaidSendAttributesMatch(_ attributes: [MessageAttribute
     // paid sends need a separate reviewed receipt contract.
     return fees.count == 1 && fees[0].stars.value == price && fees[0].stars.nanos == 0
         && !fees[0].postponeSending && !attributes.contains { $0 is SendAsMessageAttribute }
-}
-
-private nonisolated func secretSendKeyAvailable(transaction: Transaction, peer: TelegramSecretChat,
-    state: SecretChatState, count: Int) -> Bool {
-    guard peer.embeddedState == .active, state.embeddedState.peerState == .active, state.role == peer.role,
-        state.keyFingerprint != nil, !state.keychain.keys.isEmpty,
-        Set(state.keychain.keys.map(\.fingerprint)).count == state.keychain.keys.count,
-        state.keychain.keys.allSatisfy({ $0.key.length == 256 && $0.useCount >= 0 && $0.useCount <= Int32.max - Int32(count) }) else { return false }
-    switch state.embeddedState {
-    case .terminated, .handshake: return false
-    case .basicLayer: return state.keychain.indefinitelyValidKey() != nil
-    case let .sequenceBasedLayer(sequence):
-        let index = transaction.operationLogGetNextEntryLocalIndex(peerId: peer.id, tag: OperationLogTags.SecretOutgoing)
-        let (canonical, overflow) = index.subtractingReportingOverflow(sequence.baseOutgoingOperationIndex)
-        guard !overflow, canonical >= 0 else { return false }
-        let (last, lastOverflow) = canonical.addingReportingOverflow(Int32(count - 1))
-        guard !lastOverflow else { return false }
-        return state.keychain.latestKey(validForSequenceBasedCanonicalIndex: canonical) != nil
-            && state.keychain.latestKey(validForSequenceBasedCanonicalIndex: last) != nil
-    }
 }

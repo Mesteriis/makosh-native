@@ -99,7 +99,32 @@ processes exact row51. It also confirms member search/invite/error, channel
 admin text versions/search, and creation from another owner revoked list changing
 to own active list with the new link. Screenshots are inspected. Final process
 remains the single scoped synthetic/configured instance; owned QA is stopped
-and isolated data retained. Full Task3 gate remains pending.
+and isolated data retained. Full Task3 suite exits0:2028 XCTest
+(1949 Telegram +79 core),one microphone-precondition skip,zero failures;99 Python
+tests across22 suites pass. Commita0b4e03 completes this slice; secret chats and
+native calls continue in the same approved block.
+
+Task4 native secret creation/session/TTL, negotiated formatting, same-session
+replies and prepared media are implemented. Recipe25 checks entropy/MTExp failure,
+reuses actual native entity encoders and supplies an atomic local TTL queue bridge;
+exact engine revision/protocol/encryption are unchanged. Canonical Python5 and
+warm fixtures pass. Valid signed negative native IDs are supported. Focused60
+XCTest pass (46 Telegram +14 core), including real native album queue, permanent
+secret removal journal and PostgreSQL/S3 personal defaultON/explicitOFF retention.
+An explicit fresh timer read also releases an obsolete queued receipt after a
+later participant change: ordinary RED1/1, then green. Native/synthetic compiler
+fixture failures are recorded separately from assertion REDs. Initial signed
+build exits0/equal QA payload. Actual isolated UI confirms creation/name/transition
+to handshake, disabled send/media for handshake/terminated, active bold input,
+TTL choices/custom0 refusal, cancel retaining selection and exact confirmed queued
+status. Final signed build exits0/equal QA payload; native comparison image/hash and
+reply/cancel/file-picker/preparation/cancel are observed. The fixture has no S3
+configuration and its queue action remains disabled; this is preparation proof.
+A native-menu refresh defect is reproduced by ordinary RED1case2failures and
+repaired: unchanged reading refresh preserves the action; changed permissions
+revoke it. Reading/model10 then pass, and actual reply/send-enabled/cancel-draft
+UI succeeds. Whole-suite gate and task commit follow below; no real
+Telegram handshake/delivery/call, personal account or physical capture is used.
 
 Native-call research only: exact reference tgcalls/tg_owt source pins are fetched
 into independent bare caches. Native wrapper needs a reviewed WebRTC dependency

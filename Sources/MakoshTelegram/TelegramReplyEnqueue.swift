@@ -7,13 +7,18 @@ nonisolated func telegramReplyEnqueueMessage(transaction: Transaction, accountID
     source: TelegramMessageActionSource, formatted: TelegramFormattedText) -> EnqueueMessage? {
     let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
     guard source.accountID == accountID,
-          [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(source.chatID).namespace),
+          ([Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(source.chatID).namespace) || telegramSecretPeerID(source.chatID) != nil),
           telegramFormattedTextCanPrepare(formatted, transaction: transaction),
           let message = transaction.getMessage(id),
           let fresh = TelegramMessageActionSource(metadata: telegramMessageActionMetadata(message,
               limits: currentLimitsConfiguration(transaction: transaction)), accountID: accountID, chatID: source.chatID)
               .quoting(source.replyQuote, maximumLength: telegramReplyQuoteLimit(transaction: transaction)),
           fresh.canReply, fresh.fingerprint == source.fingerprint, fresh.threadID == source.threadID else { return nil }
+    if let id = telegramSecretPeerID(source.chatID) {
+        guard source.peerID == source.chatID, source.replyQuote == nil, source.threadID == nil,
+              telegramSecretReplySource(message), let state = transaction.getPeerChatState(id) as? SecretChatState,
+              let layer = telegramSecretLayer(state), layer >= 46 else { return nil }
+    }
     if source.chatID != source.peerID {
         guard let group = transaction.getPeer(id.peerId) as? TelegramGroup,
               group.migrationReference?.peerId == PeerId(source.chatID) else { return nil }

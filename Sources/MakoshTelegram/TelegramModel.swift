@@ -158,7 +158,13 @@ public final class TelegramModel: ObservableObject {
     }
     private func refreshConversationCapabilities() {
         capabilityObservation.set(nil); conversationCapabilities = nil
+        secretChats.selectSession(chatID: selectedChatID.flatMap { telegramSecretPeerID($0) == nil ? nil : $0 })
         #if DEBUG
+        if secretChatsPreview, let chatID = selectedChatID, let session = secretChats.session {
+            conversationCapabilities = .init(accountID: syntheticAccountID, chatID: chatID, messageFee: .free,
+                secret: .init(regularPeerID: session.regularPeerID, participantTitle: session.title, state: session.state, verification: session.verification))
+            return
+        }
         if extendedMessagesPreview, isSyntheticPreview, let chatID = selectedChatID {
             let secret: TelegramSecretConversation? = chatID == 10002 ? .init(regularPeerID: 10004,
                 participantTitle: "Синтетический собеседник", state: .active,
@@ -183,6 +189,8 @@ public final class TelegramModel: ObservableObject {
     @Published public private(set) var replyQuoteMaximumUTF16Count = 1024
     private let replyQuoteLimitObservation = MetaDisposable()
     public let sendApproval = TelegramSendApprovalController()
+    public let secretChats = TelegramSecretChatController()
+    private var secretObservation: AnyCancellable?
     @Published public private(set) var conversationCapabilities: TelegramConversationCapabilities?
     public let forumTopics = TelegramForumTopicsController()
     @Published public var isForumTopicsListPresented = true
@@ -451,7 +459,7 @@ public final class TelegramModel: ObservableObject {
               composerForwardIntent == nil, let chat = selectedChat, let accountID = draftAccountID else { return nil }
         if !isSyntheticPreview {
             guard [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel]
-                .contains(PeerId(chat.id).namespace) else { return nil }
+                .contains(PeerId(chat.id).namespace) || (telegramSecretPeerID(chat.id) != nil && composerSupportsAttachments) else { return nil }
         }
         return TelegramUploadTarget(accountID: accountID, chatID: chat.id, title: chat.title, selectedThreadID: selectedThreadID)
     }
@@ -525,7 +533,11 @@ public final class TelegramModel: ObservableObject {
     }
     public var composerCanSend: Bool {
         guard composerHasTopicDestination, messageSelection.session == nil, !isRestoringPendingUpload, !isRestoringComposerDraft, composerDraftRecoveryError == nil, serverDraftConflict == nil, !isResolvingServerDraft, pendingUploadRecoveryError == nil else { return false }
-        if let secret = conversationCapabilities?.secret {
+        if selectedChatID.flatMap(telegramSecretPeerID) != nil {
+            guard let session = composerSecretSession, session.canSetTTL, let layer = session.layer,
+                  composerForwardIntent == nil, !composerReply.preventsSend,
+                  makoshSecretEntitiesAreLossless(composerInput.formattedText.engineEntities(), layer: layer) else { return false }
+        } else if let secret = conversationCapabilities?.secret {
             guard secret.state == .active, secret.verification != nil,
                   composerInput.formattedText.entities.isEmpty, composerForwardIntent == nil,
                   composerReply.state == .none else { return false }
@@ -550,11 +562,25 @@ public final class TelegramModel: ObservableObject {
         conversationCapabilities?.secret != nil ||
         selectedChatID.map { PeerId($0).namespace == Namespaces.Peer.SecretChat } == true
     }
+    public var composerSecretSession: TelegramSecretSessionSnapshot? {
+        guard secretChats.sessionStatus == .ready, let session = secretChats.session,
+              session.accountID == draftAccountID, session.chatID == selectedChatID,
+              conversationCapabilities?.secret?.regularPeerID == session.regularPeerID,
+              conversationCapabilities?.secret?.state == session.state,
+              conversationCapabilities?.secret?.verification == session.verification else { return nil }
+        return session
+    }
+    public var composerSupportsExtendedMediaOptions: Bool { !composerIsSecretChat }
+    public var secretComposerFormattingSupported: Bool {
+        guard let layer = composerSecretSession?.layer else { return false }
+        return makoshSecretEntitiesAreLossless(composerInput.formattedText.engineEntities(), layer: layer)
+    }
+    public var conversationReplyQuoteMaximum: Int { composerIsSecretChat ? 0 : replyQuoteMaximumUTF16Count }
     public var composerSupportsCustomEmoji: Bool {
-        composerHasTopicDestination && !composerIsSecretChat
+        composerHasTopicDestination && (!composerIsSecretChat || (composerSecretSession?.canSetTTL == true && composerSecretSession?.layer == 144))
     }
     public var composerSupportsAttachments: Bool {
-        composerHasTopicDestination && !composerIsSecretChat &&
+        composerHasTopicDestination && (!composerIsSecretChat || (composerSecretSession?.canSetTTL == true && (composerSecretSession?.layer ?? 0) >= 46)) &&
         composerInput.formattedText.isEditable && composerForwardIntent == nil &&
         serverDraftConflict == nil && !isResolvingServerDraft
     }
@@ -641,6 +667,7 @@ public final class TelegramModel: ObservableObject {
     #if DEBUG
     private var preview: TelegramSyntheticPages?
     private var peerProfilesPreview = false
+    private var secretChatsPreview = false
     private var syntheticAccountID: Int64 = -1
     #endif
     private var draftAccountID: Int64? {
@@ -665,6 +692,15 @@ public final class TelegramModel: ObservableObject {
     public init(proxy: TelegramProxyController? = nil, autoDownloadDefaults: UserDefaults = .standard) {
         autoDownloadSettings = TelegramAutoDownloadSettings(defaults: autoDownloadDefaults)
         self.proxy = proxy ?? TelegramProxyController()
+        secretObservation = secretChats.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        secretChats.didCreate = { [weak self] session, context in
+            guard let self, self.phase == .ready, self.draftAccountID == session.accountID,
+                  self.selectedChatID == session.regularPeerID, self.secretChats.creationContextID == context else { return }
+            let chat = TelegramChat(id: session.chatID, title: session.title, preview: "Секретный чат", unreadCount: 0)
+            self.knownChats[chat.id] = chat
+            if !self.chats.contains(where: { $0.id == chat.id }) { self.chats.insert(chat, at: 0) }
+            self.selectedChatID = chat.id
+        }
         automaticArchiveObservation = archive.files.objectWillChange.sink { [weak self] _ in self?.automaticDownloads.archiveCapacityChanged() }
         cache.permitsClear = { [weak self] in
             guard let self else { return false }
@@ -1487,12 +1523,19 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func cancelContactProfile() {
+        secretChats.closeCreation()
         profilePhotos.close(); peerManagement.close(); groupMembership.close(); groupMemberSearch.search("")
         sharedMedia.selectChat(nil); sharedMedia.clearMessageSearch()
         contactProfileSubscription.set(nil)
         contactProfileTimeout?.cancel(); contactProfileTimeout = nil
         contactProfileRequestID = nil
         contactProfileState = .idle
+    }
+    @discardableResult public func openSecretChatCreation(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
+        guard isCurrentContactProfile(profile, contextID: contextID), profile.isPerson, !profile.isBot,
+              profile.peerID != profile.accountID, telegramManagementPeerID(profile.peerID)?.namespace == Namespaces.Peer.CloudUser,
+              secretChats.accountID == profile.accountID else { return false }
+        secretChats.openCreation(peerID: profile.peerID); return true
     }
 
     private func projectMessageEditSession() {
@@ -2089,6 +2132,7 @@ public final class TelegramModel: ObservableObject {
         profilePhotos.bind(TelegramEngineProfilePhotoProvider(account: account))
         avatarEditing.bind(TelegramEngineAvatarEditingProvider(account: account))
         groupMembership.bind(TelegramEngineGroupMembershipProvider(account: account))
+        secretChats.bind(TelegramEngineSecretChatProvider(account: account))
         groupMemberSearch.bind(TelegramEngineRemotePeerProvider(account: account))
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
@@ -2154,6 +2198,7 @@ public final class TelegramModel: ObservableObject {
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
         profilePhotos.bind(nil); avatarEditing.bind(nil); peerManagement.bind(nil); groupMembership.bind(nil); groupMemberSearch.bind(nil)
+        secretChats.bind(nil)
         accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
@@ -2528,6 +2573,22 @@ public final class TelegramModel: ObservableObject {
         let model = syntheticAvatarEditingPreview()
         model.groupMembership.bind(TelegramSyntheticGroupMembershipProvider())
         model.groupMemberSearch.bind(TelegramSyntheticRemotePeerProvider(accountID: 101))
+        return model
+    }
+    public static func syntheticSecretChatsPreview() -> TelegramModel {
+        let model = syntheticPeerProfilesPreview()
+        model.syntheticAccountID = 101; model.secretChatsPreview = true
+        model.secretChats.bind(TelegramSyntheticSecretChatProvider())
+        model.preview = TelegramSyntheticPages(secretChats: true)
+        model.composerReply.bind(TelegramSyntheticComposerReplyProvider(accountID: 101, pages: model.preview!))
+        model.upload.bind(provider: TelegramSyntheticUploadProvider(accountID: 101))
+        model.chats = [.init(id: 42, title: "Synthetic Alice", preview: "Создание секретного чата", unreadCount: 0)] +
+            [44, 45, 46].map { number in
+                TelegramChat(id: PeerId(namespace: Namespaces.Peer.SecretChat, id: ._internalFromInt64Value(Int64(number))).toInt64(),
+                    title: [44: "Активный секретный чат", 45: "Ожидание секретного чата", 46: "Завершённый секретный чат"][number]!, preview: "Синтетическая проверка", unreadCount: 0)
+            }
+        for chat in model.chats { model.knownChats[chat.id] = chat }
+        model.selectedChatID = 42
         return model
     }
 

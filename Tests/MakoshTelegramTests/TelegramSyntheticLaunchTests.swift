@@ -14,4 +14,8 @@ final class TelegramSyntheticLaunchTests: XCTestCase {
         XCTAssertFalse(telegramSyntheticLaunchAdmitted(arguments: ["Makosh", "--telegram-group-synthetic-preview", "--telegram-avatar-synthetic-preview", "--database-config", "/synthetic/db.json"]))
         XCTAssertFalse(telegramSyntheticLaunchAdmitted(arguments: ["Makosh", "--telegram-group-synthetic-preview", "--database-config", "/synthetic/db.json", "--database-config", "/synthetic/other.json"]))
     }
+    func testNativeSecretFixtureRequiresExplicitDatabaseConfiguration() {
+        XCTAssertFalse(telegramSyntheticLaunchAdmitted(arguments: ["Makosh", "--telegram-secret-chats-synthetic-preview"]))
+        XCTAssertTrue(telegramSyntheticLaunchAdmitted(arguments: ["Makosh", "--telegram-secret-chats-synthetic-preview", "--database-config", "/synthetic/db.json"]))
+    }
 }

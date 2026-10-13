@@ -11,15 +11,18 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from telegram_preparation_test_support import write_secret_native_fixture
 spec=importlib.util.spec_from_file_location('preparation',Path(__file__).with_name('prepare-telegram.py'))
 preparation=importlib.util.module_from_spec(spec);spec.loader.exec_module(preparation)
 class GroupPreparationTests(unittest.TestCase):
     def fixture(self,root):
         for name,source in [('MakoshRemotePeerSearch.swift',preparation.remote_peer_helper_source()),
                             ('MakoshAvatarEditing.swift',preparation.avatar_helper_source()),
-                            ('MakoshGroupMembership.swift',preparation.group_membership_helper_source())]:
+                            ('MakoshGroupMembership.swift',preparation.group_membership_helper_source()),
+                            ('MakoshSecretChat.swift',preparation.secret_chat_helper_source())]:
             path=root/'submodules/TelegramCore/Sources/TelegramEngine/Peers'/name
             path.parent.mkdir(parents=True,exist_ok=True);path.write_text(source)
+        write_secret_native_fixture(root,preparation)
         self.marker(root)
     def marker(self,root):
         (root/'preparation.json').write_text(json.dumps(dict(source_sha=preparation.SHA,source_tree=preparation.TREE,

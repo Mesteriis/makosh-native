@@ -25,6 +25,7 @@ python3 scripts/test-telegram-preparation.py
 python3 scripts/test-telegram-remote-peer-preparation.py
 python3 scripts/test-telegram-avatar-preparation.py
 python3 scripts/test-telegram-group-preparation.py
+python3 scripts/test-telegram-secret-preparation.py
 python3 scripts/test-telegram-search-adaptation.py
 python3 scripts/test-telegram-retention-adaptation.py
 python3 scripts/test-telegram-read-adaptation.py

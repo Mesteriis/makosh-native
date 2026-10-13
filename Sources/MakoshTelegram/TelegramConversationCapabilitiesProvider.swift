@@ -7,7 +7,7 @@ nonisolated func telegramConversationCapabilities(transaction: Transaction, acco
     chatID: Int64) -> Result<TelegramConversationCapabilities, TelegramConversationCapabilitiesError> {
     let account = PeerId(accountID), id = PeerId(chatID)
     guard account.namespace == Namespaces.Peer.CloudUser, account.id._internalGetInt64Value() > 0,
-        id.id._internalGetInt64Value() > 0 else { return .failure(.incompatible) }
+        (telegramSecretPeerID(chatID) != nil || id.id._internalGetInt64Value() > 0) else { return .failure(.incompatible) }
     guard let peer = transaction.getPeer(id), peer.id == id else { return .failure(.unavailable) }
     let cache = transaction.getPeerCachedData(peerId: id)
     var fee: TelegramMessageFee

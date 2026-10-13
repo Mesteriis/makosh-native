@@ -96,7 +96,7 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
                                     TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
                                         canCopy: message.actionMetadata?.canCopy == true,
                                         nativeActions: nativeActions(message), quoteSelection: { quoteSelection?(message, $0, context) },
-                                        maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+                                        maximumQuoteLength: model.conversationReplyQuoteMaximum,
                                         customEmojiDescriptors: model.customEmojiDescriptors,
                                         customEmojiContext: model.customEmojiPlaybackContext) { menu(message) }
                                 }
@@ -130,7 +130,7 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
                 Button(action: toggle) {
                     TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
                         canCopy: message.actionMetadata?.canCopy == true,
-                        maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+                        maximumQuoteLength: model.conversationReplyQuoteMaximum,
                         customEmojiDescriptors: model.customEmojiDescriptors,
                         customEmojiContext: model.customEmojiPlaybackContext) { menu(message) }
                         .allowsHitTesting(false).accessibilityHidden(true)
@@ -141,7 +141,7 @@ struct TelegramAlbumHistoryRow<MenuContent: View>: View {
                 TelegramMessageTextView(value: message.formattedTextForDisplay, identity: context.uuidString + message.id,
                     canCopy: message.actionMetadata?.canCopy == true,
                     nativeActions: nativeActions(message), quoteSelection: { quoteSelection?(message, $0, context) },
-                                        maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+                                        maximumQuoteLength: model.conversationReplyQuoteMaximum,
                                         customEmojiDescriptors: model.customEmojiDescriptors,
                                         customEmojiContext: model.customEmojiPlaybackContext) { menu(message) }
             }

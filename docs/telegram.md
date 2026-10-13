@@ -3325,3 +3325,37 @@ stale-bytecode reproduction; no global Python configuration changes. Build/run/
 test still use independent pinned sources. Native/local QA and remaining checks
 are recorded in development-status.md; real-account/server acceptance remains
 separately scoped.
+
+
+## Block13 task4: native secret-chat workflows (2026-10-13)
+
+A regular person's profile offers explicit secret-chat creation. Fresh full user
+and requirement RPCs retain errors; consent freezes account/user/revision before
+native createSecretChat. Native signed Int32 secret IDs (including negative IDs)
+remain distinct from regular users. The common workspace observes handshake,
+active and terminated sessions, public key verification, negotiated layer and
+TTL; missing/malformed keys cannot authorize send or timer changes. Unknown
+creation/TTL results require explicit fresh reconciliation and never auto-replay.
+
+Formatting uses the pinned native layer encoder admission:8/46 plain text;
+73 basic entities;101 underline/strike/noncollapsed blockquote;144 spoiler/custom
+emoji with the existing full-document account/Premium checks. Lossy Pre language,
+collapsed blockquote and unsupported entity kinds are refused explicitly. Replies
+require a current same-secret source with a nonzero native global ID; cloud
+selection quotes, forwarding and edit/delete expansion are not enabled here.
+Prepared local photos/documents/video/voice/round video use existing resource and
+native outbox paths, with checked legacy Int32 sizes and layer-dependent albums.
+Cloud-only covers/media spoilers/caption placement are hidden and refused rather
+than silently lost. Recording still requires current native participant privacy
+and TCC; view-once recording retains its cloud-only contract.
+
+Timer changes freeze session/key/layer/previous value and consent, then enqueue
+and verify the exact native Local service message and update peer/state timer in
+one Postbox transaction. UI says queued, never remote delivered. Native removal
+retains observed secret text, attributes and media references in the permanent
+journal. Secret personal files now defaultON; explicitOFF forbids every new S3
+copy and preserves earlier archives. No file bytes are inserted into PostgreSQL.
+Recipe25 safety/visibility changes and exact hashes are documented in notices.
+Synthetic native UI and real local encrypted Postbox/PostgreSQL/S3 fixtures do
+not establish a real account handshake, encrypted server delivery or hardware
+capture acceptance; those remain separately scoped.

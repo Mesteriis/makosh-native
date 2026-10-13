@@ -11,7 +11,7 @@ struct TelegramContactProfileView: View {
     let dossier: WorkspaceModel?
     let contextID: UUID
     let openDossier: (UUID) -> Void
-    private enum Page { case overview, edit, members, media, permissions, groupInvite, groupLinks, groupRequests, groupHistory }
+    private enum Page { case overview, edit, members, media, permissions, groupInvite, groupLinks, groupRequests, groupHistory, secretCreation }
     @State private var page = Page.overview
     @State private var photoGallery: TelegramProfilePhotosPresentation?
 
@@ -35,6 +35,7 @@ struct TelegramContactProfileView: View {
         case .groupLinks: "Пригласительные ссылки"
         case .groupRequests: "Заявки на вступление"
         case .groupHistory: "Недавние действия"
+        case .secretCreation: "Секретный чат"
         }
     }
 
@@ -42,13 +43,16 @@ struct TelegramContactProfileView: View {
         VStack(spacing: 0) {
             HStack {
                 if page != .overview {
-                    Button("Назад") { if groupMode != nil { _ = membership.show(.overview) }; page = .overview }
+                    Button("Назад") {
+                        if page == .secretCreation { model.secretChats.closeCreation() }
+                        if groupMode != nil { _ = membership.show(.overview) }; page = .overview
+                    }
                         .disabled(management.mutationStatus == .saving || membership.isBusy)
                         .accessibilityIdentifier("telegram.profile.back")
                 }
                 Text(pageTitle).font(.headline)
                 Spacer()
-                if page != .overview && page != .media {
+                if page != .overview && page != .media && page != .secretCreation {
                     Button("Обновить") { if groupMode != nil { membership.refresh() } else { management.refresh() } }
                         .disabled(management.mutationStatus == .saving || membership.isBusy)
                         .accessibilityIdentifier("telegram.profile.management.refresh")
@@ -79,6 +83,7 @@ struct TelegramContactProfileView: View {
                         model.inviteGroupMember(peer, searchContextID: searchContext, basis: basis, contextID: groupContext)
                     }
                 }
+                else if page == .secretCreation { TelegramSecretCreationView(controller: model.secretChats, synthetic: model.isSyntheticPreview) }
                 else if page == .permissions { TelegramPeerPermissionsView(controller: management) }
                 else if page == .edit { TelegramPeerInfoEditor(controller: management, avatarEditing: model.avatarEditing, avatarTarget: model.avatarTarget(profile, contextID: contextID)) }
                 else if page == .members { TelegramPeerMembersView(controller: management, avatars: model.avatars) }
@@ -136,6 +141,11 @@ struct TelegramContactProfileView: View {
                         } header: { Text("Описание") }
                     }
                     Section {
+                        if profile.isPerson && profile.peerID != profile.accountID {
+                            Button("Начать секретный чат") {
+                                if model.openSecretChatCreation(profile, contextID: contextID) { page = .secretCreation }
+                            }.accessibilityIdentifier("telegram.profile.startSecretChat")
+                        }
                         TelegramNotificationPeerButton(controller: model.notifications, peerID: profile.peerID, title: displayName,
                             isCurrent: { model.messageActionContextID == contextID && model.notifications.accountID == profile.accountID })
                         Button("Общие медиа") {

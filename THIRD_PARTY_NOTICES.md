@@ -38,6 +38,15 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe25 adds own MIT `MakoshSecretChat.swift`: a checked256-byte native
+  entropy boundary, admission through the actual negotiated entity encoders,
+  shared native-key availability and atomic local TTL service enqueue. A narrow
+  GPL-3.0-or-later adaptation checks native creation allocation/entropy/MTExp
+  failure and exposes the existing73/101/144 entity converters internally. The
+  cryptographic algorithms, protocol and exact source revision are unchanged.
+  Both adapted upstream files have fixed reviewed SHA256s; canonical helper and
+  complete prepared-file fingerprints also gate reuse. No outer UI is copied.
+
 - Recipe24 adds independently authored MIT `MakoshGroupMembership.swift` for
   bounded typed peer directories, full group/member observations and validation
   of admin-log message packets. The existing GPL-3.0-or-later retention adapter

@@ -8,11 +8,11 @@ import SwiftSignalKit
 /// owned queue receipt; no Account, Telegram network or delivery is involved.
 @MainActor
 final class TelegramSyntheticUploadProvider: TelegramUploadBatchProvider {
-    let accountID: Int64 = -1
+    let accountID: Int64
     private let postbox: Postbox?
     private let loseAcknowledgement: Bool
-    init(postbox: Postbox? = nil, loseAcknowledgement: Bool = false) {
-        self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement
+    init(accountID: Int64 = -1, postbox: Postbox? = nil, loseAcknowledgement: Bool = false) {
+        self.accountID = accountID; self.postbox = postbox; self.loseAcknowledgement = loseAcknowledgement
     }
     func submit(bundle: TelegramRecoveredUploadBundle, draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
                 receive: @escaping @MainActor (TelegramUploadBatchEvent) -> Void) -> any TelegramUploadLease {

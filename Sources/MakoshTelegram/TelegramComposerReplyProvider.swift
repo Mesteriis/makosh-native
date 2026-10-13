@@ -37,9 +37,9 @@ func telegramComposerReply(postbox: Postbox, accountID: Int64, target: TelegramC
 
 #if DEBUG
 @MainActor final class TelegramSyntheticComposerReplyProvider: TelegramComposerReplyProvider {
-    let accountID: Int64 = -1
+    let accountID: Int64
     private let pages: TelegramSyntheticPages
-    init(pages: TelegramSyntheticPages = .init()) { self.pages = pages }
+    init(accountID: Int64 = -1, pages: TelegramSyntheticPages = .init()) { self.accountID = accountID; self.pages = pages }
     func resolve(target: TelegramComposerReplyTarget, chatID: Int64,
                  completion: @escaping @MainActor (TelegramComposerReply?) -> Void) -> Disposable {
         let anchor = MessageIndex(id: MessageId(peerId: PeerId(target.peerID), namespace: target.namespace,

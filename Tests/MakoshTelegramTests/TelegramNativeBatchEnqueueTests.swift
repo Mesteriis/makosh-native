@@ -28,11 +28,31 @@ private func batchNativeSeedPointerOnly(_ box: Postbox, draft: TelegramPendingUp
         return false
     }
 }
+private nonisolated func batchNativeSecretSeed(_ box: Postbox, draft: TelegramPendingUploadDraft) -> Signal<Bool, NoError> {
+    box.transaction { transaction in
+        let id = PeerId(draft.chatID)
+        let secret = TelegramSecretChat(id: id, creationDate: 100, regularPeerId: PeerId(42), accessHash: 88,
+            role: .creator, embeddedState: .active, messageAutoremoveTimeout: nil)
+        let sequence = SecretChatSequenceBasedLayerState(layerNegotiationState: .init(activeLayer: .layer144, locallyRequestedLayer: 144, remotelyRequestedLayer: 144),
+            rekeyState: nil, baseIncomingOperationIndex: 0, baseOutgoingOperationIndex: 0, topProcessedCanonicalIncomingOperationIndex: nil)
+        let state = SecretChatState(role: .creator, embeddedState: .sequenceBasedLayer(sequence),
+            keychain: .init(keys: [.init(fingerprint: 1, key: .init(data: Data(repeating: 0x5a, count: 256)), validity: .indefinite, useCount: 0)]),
+            keyFingerprint: .init(sha1: .init(digest: Data(0..<20)), sha256: .init(digest: Data(32..<64))), messageAutoremoveTimeout: nil)
+        transaction.updatePeersInternal([batchNativePeer(PeerId(1)), batchNativePeer(PeerId(42)), secret], update: { _, value in value })
+        transaction.setPeerChatState(id, state: state)
+        if case .success = telegramPendingUploadWrite(transaction: transaction, accountID: draft.accountID, draft: draft, expectedRevision: nil) { return true }; return false
+    }
+}
 private func batchNativeEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnqueueReceipt, messages: [EnqueueMessage],
                                dropLastACK: Bool = false, rewriteReplyThread: Bool = false) -> Signal<([MessageId?], Bool), NoError> {
     let accepted = Atomic<Bool>(value: false)
     return enqueueMessagesLocally(postbox: box, accountPeerId: PeerId(1), isSupportUser: false, timestamp: 100,
-        peerId: PeerId(receipt.target.chatID), messages: messages, transactionAdmission: { receipt.validate(transaction: $0) },
+        peerId: PeerId(receipt.target.chatID), messages: messages, transactionAdmission: { transaction in
+            guard receipt.validate(transaction: transaction) else { return false }
+            guard telegramSecretPeerID(receipt.target.chatID) != nil else { return true }
+            return telegramSendAuthorization(transaction: transaction, context: .init(accountID: receipt.target.accountID,
+                chatID: receipt.target.chatID, threadID: nil, submissionRevision: UUID(), messageCount: messages.count), messages: messages)
+        },
         transactionCommit: { transaction, ids in
             if rewriteReplyThread, let last = ids.last, let id = last, let queued = transaction.getMessage(id) {
                 let attributes = queued.attributes.map { attribute -> MessageAttribute in
@@ -108,6 +128,23 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
 }
 
 @MainActor final class TelegramNativeBatchEnqueueTests: XCTestCase {
+    func testPreparedSecretAlbumProducesExactNativeQueueAndDurableReceipt() async throws {
+        let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
+        let id = PeerId(namespace: Namespaces.Peer.SecretChat, id: ._internalFromInt64Value(-44))
+        let (draft, items) = try await fixture(root, modes: [.photo, .photo], grouped: true, chatID: id.toInt64())
+        defer { items.forEach { try? $0.discard() } }
+        let seeded = try await value(batchNativeSecretSeed(box, draft: draft)); XCTAssertTrue(seeded)
+        let (resources, preparations) = try await prepare(box, draft: draft, items: items)
+        defer { preparations.forEach { $0.stop() } }
+        let receipt = try TelegramUploadBatchEnqueueReceipt(draft: draft,
+            target: .init(accountID: 1, chatID: id.toInt64(), title: "Synthetic secret"), resources: resources, groupKeys: [111])
+        let messages = try XCTUnwrap(receipt.messages(replySource: nil))
+        let result = try await value(batchNativeEnqueue(box, receipt: receipt, messages: messages))
+        XCTAssertEqual(result.0.compactMap { $0 }.count, 2); XCTAssertTrue(result.1)
+        let stored = try await value(batchNativeRead(box, ids: result.0.compactMap { $0 }, chatID: id.toInt64()))
+        XCTAssertEqual(stored.1.count, 2); XCTAssertTrue(stored.1.allSatisfy { $0.id.peerId == id && $0.globallyUniqueId != nil })
+        XCTAssertEqual(stored.0?.disposition, .acceptedBatch(messageIDs: result.0.compactMap { $0 }.map(TelegramUploadQueueID.init)))
+    }
     func testSelectedQuoteAcknowledgesEveryNativeReplyAndRefusesChangedServerLimitBeforeInsertion() async throws {
         for changedLimit in [false, true] {
             let root = try root(), box = try await open(root.appendingPathComponent("postbox"))

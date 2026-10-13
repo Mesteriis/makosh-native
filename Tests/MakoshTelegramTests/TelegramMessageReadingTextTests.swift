@@ -4,6 +4,23 @@ import AppKit
 import MakoshTelegram
 
 @MainActor final class TelegramMessageReadingTextTests: XCTestCase {
+    func testIdenticalReadingRefreshKeepsCurrentNativeMenuActionButChangedPermissionRevokesIt() throws {
+        let value = try TelegramFormattedText(text: "secret source"), key = TelegramMessagePresentationKey(context: "account/secret/session/message", value: value)
+        let text = TelegramMessageReadingText(frame: .zero); var called = 0
+        func install(_ enabled: Bool) {
+            text.install(presentation: TelegramMessagePresentation.attributedString(value), value: value, key: key,
+                canCopy: true, actions: [.init(title: "Ответить", enabled: enabled, perform: { called += 1 })])
+        }
+        install(true)
+        let current = try XCTUnwrap(text.readingMenu().items.first { $0.title == "Ответить" })
+        install(true)
+        _ = try XCTUnwrap(current.target as? NSObject).perform(try XCTUnwrap(current.action), with: current)
+        XCTAssertEqual(called, 1, "An unchanged view update must not discard an open menu action")
+        let revoked = try XCTUnwrap(text.readingMenu().items.first { $0.title == "Ответить" })
+        install(false)
+        _ = try XCTUnwrap(revoked.target as? NSObject).perform(try XCTUnwrap(revoked.action), with: revoked)
+        XCTAssertEqual(called, 1, "Changed authority must still revoke the captured menu")
+    }
     func testNativeSelectionRebasesBlockRangeAndKeepsQuoteableFormatting() throws {
         let full = try TelegramFormattedText(text: "prefix 😀 bold suffix", entities: [.init(offset: 7, length: 7, kind: .bold)])
         let part = try TelegramFormattedText(text: "😀 bold", entities: [.init(offset: 0, length: 7, kind: .bold)])

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from telegram_preparation_test_support import write_secret_native_fixture
 
 spec = importlib.util.spec_from_file_location("remote_search_preparation", Path(__file__).with_name("prepare-telegram.py"))
 preparation = importlib.util.module_from_spec(spec)
@@ -25,6 +26,8 @@ class RemotePeerPreparationTests(unittest.TestCase):
         self.helper.write_text(preparation.remote_peer_helper_source())
         self.helper.with_name("MakoshAvatarEditing.swift").write_text(preparation.avatar_helper_source())
         self.helper.with_name("MakoshGroupMembership.swift").write_text(preparation.group_membership_helper_source())
+        self.helper.with_name("MakoshSecretChat.swift").write_text(preparation.secret_chat_helper_source())
+        write_secret_native_fixture(self.root, preparation)
         self.marker()
         self.assertTrue(preparation.verify_prepared())
 

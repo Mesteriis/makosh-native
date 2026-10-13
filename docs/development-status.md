@@ -43,7 +43,8 @@ used. Transient CUA observation failures remain failures, followed by fresh read
 Required DB/S3 startup exits0. Final `scripts/test.sh` under per-process
 `caffeinate -i` exits0: **1885 XCTest (1806 Telegram +79 core),1 microphone
 precondition skip,0 failures;86 Python tests across18 suites**. All23 notification
-tests execute. Hosted exact-head results remain pending. Final XERJ project
+tests execute. Exact-head hosted and publication evidence is recorded in
+[PR10](https://github.com/Mesteriis/makosh-native/pull/10). Final XERJ project
 refresh exits0:723 files,672/672 classified code files.
 Project, TelegramSwift and engine fingerprint checks are fresh; actual registry,
 reference-preferences and native-stream queries are confirmed against current

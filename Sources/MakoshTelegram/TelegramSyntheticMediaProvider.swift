@@ -7,6 +7,14 @@ import UniformTypeIdentifiers
 /// In-memory QA never connects. Temporary fixture bytes are made only on Start.
 @MainActor
 final class TelegramSyntheticMediaProvider: TelegramMediaProvider {
+    func startAutomatically(attachmentID: String, preferences: TelegramAutoDownloadPreferences,
+        isCurrent: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
+        guard isCurrent() else { receive(.failed); return SyntheticMediaLease() }
+        return start(attachmentID: attachmentID, purpose: .full) { event in
+            guard isCurrent() else { return }; receive(event)
+        }
+    }
     func start(attachmentID: String, purpose: TelegramMediaPurpose,
                receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
         let lease = SyntheticMediaLease()

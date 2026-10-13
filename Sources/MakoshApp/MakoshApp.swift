@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var telegramNotificationRouter = TelegramSystemNotificationRouter()
+    lazy var telegramProxy = TelegramProxyController()
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -26,7 +27,7 @@ struct MakoshApp: App {
                     ? .syntheticExtendedMessagesPreview(specialConversation: CommandLine.arguments.contains("--telegram-server-draft-synthetic-preview") ? "draft" : CommandLine.arguments.contains("--telegram-secret-synthetic-preview") ? "secret" : CommandLine.arguments.contains("--telegram-paid-send-synthetic-preview") ? "paid" : nil) : CommandLine.arguments.contains("--telegram-history-read-synthetic-preview")
                     ? .syntheticHistoryReadPreview() : CommandLine.arguments.contains("--telegram-peer-appearance-synthetic-preview")
                     ? .syntheticPeerAppearancePreview() : CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview")
-                    ? .syntheticPeerProfilesPreview() : .syntheticPreview(twoStepResetWaitSeconds: CommandLine.arguments.contains("--telegram-two-step-short-reset") ? 20 : 7 * 86400))
+                    ? .syntheticPeerProfilesPreview() : .syntheticPreview(twoStepResetWaitSeconds: CommandLine.arguments.contains("--telegram-two-step-short-reset") ? 20 : 7 * 86400, dataSettings: CommandLine.arguments.contains("--telegram-data-settings-fixture")))
                     .toolbar {
                         ToolbarItem(placement: .primaryAction) {
                             Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2")
@@ -39,10 +40,10 @@ struct MakoshApp: App {
             } else if CommandLine.arguments.contains("--telegram-synthetic-preview") {
                 TelegramSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
             } else {
-                WorkspaceView().frame(minWidth: 1000, minHeight: 640)
+                WorkspaceView(proxy: delegate.telegramProxy).frame(minWidth: 1000, minHeight: 640)
             }
             #else
-            WorkspaceView().frame(minWidth: 1000, minHeight: 640)
+            WorkspaceView(proxy: delegate.telegramProxy).frame(minWidth: 1000, minHeight: 640)
             #endif
             }.environmentObject(delegate.telegramNotificationRouter)
         }

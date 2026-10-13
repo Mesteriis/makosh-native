@@ -23,6 +23,7 @@ from telegram_draft_adaptation import DRAFT_HELPERS, adapt_draft_source
 from telegram_topic_adaptation import TOPIC_SOURCES, adapt_topic_source
 from telegram_peer_management_adaptation import STATE_MANAGER, adapt_peer_management_source
 from telegram_two_step_adaptation import TWO_STEP, ACCOUNT_AUTH, adapt_two_step_source, adapt_two_step_account_source, acknowledgement_source
+from telegram_proxy_adaptation import NETWORK, ACCOUNT, adapt_proxy_source, proxy_helper_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -35,7 +36,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 20
+RECIPE = 21
 
 
 def run(*args):
@@ -184,6 +185,10 @@ def main():
                   '../../submodules/telegram-ios/submodules/SSignalKit', '../SSignalKit')
     replace_exact(DEST / "submodules/TelegramCore/Sources/Account/Account.swift",
                   'removeDatabaseOnError: !supplementary', 'removeDatabaseOnError: false')
+    for relative in (NETWORK, ACCOUNT):
+        source = DEST / relative
+        source.write_text(adapt_proxy_source(relative, source.read_text()))
+    (DEST / "submodules/TelegramCore/Sources/Network/MakoshProxySettings.swift").write_text(proxy_helper_source())
     authorization = DEST / "submodules/TelegramCore/Sources/Authorization.swift"
     auth_text = authorization.read_text()
     start = auth_text.index('func storeFutureLoginToken(')
@@ -237,6 +242,7 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
         "adaptations": ["ManagedFile relative SSignalKit path", "Postbox never deletes session on open failure",
                         "OpenSSLEncryption SwiftPM uses EncryptionProvider and Homebrew OpenSSL 3",
                         "Authorization neither reads iCloud nor stores future-login tokens",
+                        "Makosh supplies an in-memory dynamic proxy source; AccountManager cannot override it and direct proxy-issue diagnostics are disabled",
                         "Two-step ACKs require BoolTrue and pending email; secure-value consistency and unsupported next algorithms fail before mutation",
                         "Message search reports RPC failure without consuming either history cursor",
                         "Postbox records message snapshots before overwrite/removal in a durable same-transaction archive journal",

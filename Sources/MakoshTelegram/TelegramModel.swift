@@ -1,6 +1,6 @@
 import Foundation
-import MakoshCore
 import Combine
+import MakoshCore
 import Security
 import TelegramCore
 import Postbox
@@ -233,6 +233,25 @@ public final class TelegramModel: ObservableObject {
         return accountBlockedUsers.change(userID: PeerId(profile.peerID).id._internalGetInt64Value(), title: String(profile.displayName.prefix(512)))
     }
     public let media = TelegramMediaController()
+    public let autoDownloadSettings: TelegramAutoDownloadSettings
+    public let cache = TelegramCacheController()
+    public let proxy: TelegramProxyController
+    private let proxyClientID = UUID()
+    private lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
+    private var automaticArchiveObservation: AnyCancellable?
+    public func setVisibleAutomaticDownloads(messageIDs: Set<String>, context: TelegramHistoryReadContext,
+        windowIsActive: Bool, eligibility: @escaping @MainActor () -> Bool) {
+        guard historyReadContext == context else { return }
+        let attachments = messages.filter { messageIDs.contains($0.id) && !$0.isOutgoing }.flatMap(\.attachments)
+        automaticDownloads.replace(attachments: attachments, contextID: context.historyWindowID,
+            active: windowIsActive, eligibility: { [weak self] in
+                self?.historyReadContext == context && eligibility()
+            })
+    }
+    public func cancelAutomaticDownloads() {
+        automaticDownloads.replace(attachments: [], contextID: UUID(), active: false)
+        media.cancelAutomaticDownloads(except: [])
+    }
     public let avatars = TelegramAvatarStore()
     public let peerStatus = TelegramPeerStatusController()
     public let profilePhotos = TelegramProfilePhotosController()
@@ -628,7 +647,16 @@ public final class TelegramModel: ObservableObject {
     private let uploadCaptionLimit = MetaDisposable()
     private let contactProfileSubscription = MetaDisposable()
 
-    public init() {
+    public init(proxy: TelegramProxyController? = nil, autoDownloadDefaults: UserDefaults = .standard) {
+        autoDownloadSettings = TelegramAutoDownloadSettings(defaults: autoDownloadDefaults)
+        self.proxy = proxy ?? TelegramProxyController()
+        automaticArchiveObservation = archive.files.objectWillChange.sink { [weak self] _ in self?.automaticDownloads.archiveCapacityChanged() }
+        cache.permitsClear = { [weak self] in
+            guard let self else { return false }
+            return self.phase == .ready && !self.isBusy && self.upload.phase == .idle &&
+                !self.voiceRecording.isActive && !self.archive.isArchiving &&
+                !self.archive.files.isBusy && self.archive.files.error == nil && self.media.automaticInFlightCount == 0
+        }
         notifications.didActivate = { [weak self] event in self?.activateNotification(event) == true }
         emojiCatalogObservation = customEmojiCatalog.$snapshot.sink { [weak self] snapshot in
             let items = (snapshot?.recent ?? []) + (snapshot?.installed.flatMap(\.items) ?? []) +
@@ -1766,6 +1794,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     isolated deinit {
+        proxy.unregister(clientID: proxyClientID)
         notifications.bind(accountID: nil)
         emojiResolution.dispose(); capabilityObservation.dispose(); customEmojiPlaybackContext?.invalidate()
         serverDraftResolutionDeadline?.cancel()
@@ -1789,6 +1818,7 @@ public final class TelegramModel: ObservableObject {
         guard !isBusy, phase == .configuration else { return }
         do {
             let configuration = try TelegramAPIConfiguration(id: apiID, hash: apiHash)
+            let proxySettings = try proxy.settingsForConnection(clientID: proxyClientID)
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             let directory = support.appendingPathComponent("Makosh/Telegram", isDirectory: true)
             let encryption = try TelegramSessionKey.open(directory: directory)
@@ -1806,14 +1836,14 @@ public final class TelegramModel: ObservableObject {
             openingTimeout = Task { [weak self] in
                 do { try await Task.sleep(for: .seconds(45)) } catch { return }
                 guard let self, self.generation == token, self.phase == .connecting else { return }
-                self.isBusy = false
-                self.phase = .unsupported("Локальный сеанс не открылся за 45 секунд. Остановите подключение и проверьте кэш; Макош не удаляет его автоматически.")
+                self.disconnect()
+                self.phase = .unsupported("Локальный сеанс не открылся за 45 секунд. Соединение остановлено; локальные данные сохранены. Проверьте кэш перед новой попыткой.")
             }
             let arguments = NetworkInitializationArguments(apiId: configuration.id, apiHash: configuration.hash,
                 languagesCategory: "macos", appVersion: "Makosh 0.2", voipMaxLayer: 0, voipVersions: [],
                 appData: .single(nil), externalRequestVerificationStream: .single([:]),
                 externalRecaptchaRequestVerification: { _, _ in .complete() }, autolockDeadine: .single(nil),
-                encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: "Mac", useBetaFeatures: false, isICloudEnabled: false)
+                encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: "Mac", useBetaFeatures: false, isICloudEnabled: false, makoshProxySettings: proxySettings)
             let auxiliary = AccountAuxiliaryMethods(fetchResource: { _, _, _, _ in nil },
                 fetchResourceMediaReferenceHash: { _ in .single(nil) }, prepareSecretThumbnailData: { _ in nil }, backgroundUpload: { _, _, _ in .single(nil) })
             session.set((currentAccount(allocateIfNotExists: true, networkArguments: arguments, supplementary: false,
@@ -1825,13 +1855,14 @@ public final class TelegramModel: ObservableObject {
                     case .authorized(let account): self.observeAuthorized(account, token: token)
                     case .upgrading: self.connectionDescription = "Открытие или обновление локального кэша"
                     case nil:
-                        self.openingTimeout?.cancel()
-                        self.isBusy = false
-                        self.phase = .unsupported("Не удалось получить состояние отдельного сеанса. Данные не удалены. Остановите подключение перед следующей попыткой.")
+                        self.disconnect()
+                        self.phase = .unsupported("Не удалось получить состояние отдельного сеанса. Соединение остановлено; локальные данные сохранены.")
                     }
                 }))
         } catch {
-            self.error = (error as? TelegramSetupError)?.localizedDescription ?? TelegramSetupError.filesystem.localizedDescription
+            proxy.unregister(clientID: proxyClientID)
+            self.error = error is TelegramProxyError ? "Не удалось проверить сохранённый прокси. Откройте «Данные и память» и проверьте настройки." :
+                (error as? TelegramSetupError)?.localizedDescription ?? TelegramSetupError.filesystem.localizedDescription
             self.isBusy = false
             self.phase = .configuration
         }
@@ -1902,6 +1933,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func disconnect() {
+        proxy.unregister(clientID: proxyClientID)
         #if DEBUG
         preview = nil
         #endif
@@ -1951,6 +1983,13 @@ public final class TelegramModel: ObservableObject {
         return true // Accepted for enqueue; only its acknowledgement clears the draft.
     }
 
+    private func registerProxy(network: Network) {
+        proxy.register(TelegramEngineProxyTarget(network: network) { [weak self] in
+            self?.disconnect()
+            self?.error = "Соединение остановлено: результат изменения прокси не подтверждён. Проверьте «Данные и память»."
+        }, clientID: proxyClientID)
+    }
+
     private func observeUnauthorized(_ account: UnauthorizedAccount, token: UUID) {
         openingTimeout?.cancel(); openingTimeout = nil
         stopAuthorizedAccount()
@@ -1958,6 +1997,7 @@ public final class TelegramModel: ObservableObject {
         let authToken = authorizationGeneration
         self.unauthorized = account
         self.account = nil
+        registerProxy(network: account.network)
         self.isBusy = false
         self.connectionDescription = "Вход в отдельный сеанс Макоша"
         authState.set((account.postbox.stateView() |> deliverOnMainQueue).start(next: { [weak self] view in
@@ -1983,6 +2023,7 @@ public final class TelegramModel: ObservableObject {
         authorizationGeneration = UUID()
         action.set(nil)
         self.unauthorized = nil; self.account = account
+        registerProxy(network: account.network)
         sendApproval.bind(account: account)
         customEmojiPlaybackContext = TelegramCustomEmojiPlaybackContext(account: account)
         customEmojiCatalog.bind(account: account)
@@ -2002,6 +2043,8 @@ public final class TelegramModel: ObservableObject {
         // Installs TelegramCore's built-in cloud/secret resource fetcher on this
         // account's MediaBox. Auxiliary nil alone does not install the fallback.
         setupAccount(account)
+        autoDownloadSettings.bind(accountID: account.peerId.toInt64())
+        cache.bind(TelegramEngineCacheProvider(account: account))
         avatars.bind(TelegramEngineAvatarProvider(account: account))
         peerStatus.bind(account: account)
         forumTopics.bind(account: account); forumTopics.selectChat(selectedChatID)
@@ -2054,6 +2097,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        cancelAutomaticDownloads(); autoDownloadSettings.bind(accountID: nil); cache.bind(nil)
         notifications.bind(accountID: nil)
         sendApproval.dispose(); capabilityObservation.set(nil); conversationCapabilities = nil
         pendingEmojiInsertion = nil; customEmojiInsertion = nil
@@ -2177,6 +2221,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func cancelMediaLoads() {
+        cancelAutomaticDownloads()
         playback.stop()
         #if DEBUG
         if isSyntheticPreview {
@@ -2206,7 +2251,11 @@ public final class TelegramModel: ObservableObject {
                 guard let (identity,attachment) = archivedSources[id] else { return }
                 files.accept(file: url,byteCount: size,identity: identity,attachment: attachment)
             }
-        } else { media.completedFullFile = nil }
+            media.reserveAutomaticFile = { [files = archive.files] id in
+                guard let (identity, attachment) = archivedSources[id] else { return nil }
+                return files.reserveAutomaticCapture(identity: identity, attachment: attachment)
+            }
+        } else { media.completedFullFile = nil; media.reserveAutomaticFile = nil }
     }
 
     private func loadChatList(anchor: ChatListIndex? = nil, clear: Bool = false) {
@@ -2249,6 +2298,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func loadHistory(anchor: MessageIndex? = nil, clear: Bool = true, focusID: String? = nil) {
+        cancelAutomaticDownloads()
         cancelMessageSelectionRange()
         playback.stop()
         historyReadIndexes = [:]
@@ -2344,9 +2394,11 @@ public final class TelegramModel: ObservableObject {
 
     #if DEBUG
     /// Explicit, in-memory UI fixture. Does not open accounts, files or Keychain.
-    public static func syntheticPreview(albums: Bool = false, forum: Bool = false, twoStepResetWaitSeconds: Int32 = 7 * 86400) -> TelegramModel {
-        let model = TelegramModel()
-        let pages = TelegramSyntheticPages(albums: albums, forum: forum)
+    public static func syntheticPreview(albums: Bool = false, forum: Bool = false, twoStepResetWaitSeconds: Int32 = 7 * 86400, dataDefaults: UserDefaults = .standard, dataSettings: Bool = false) -> TelegramModel {
+        let model = TelegramModel(proxy: TelegramProxyController.synthetic(defaults: dataDefaults), autoDownloadDefaults: dataDefaults)
+        model.autoDownloadSettings.bind(accountID: -1)
+        model.cache.bind(TelegramSyntheticCacheProvider())
+        let pages = TelegramSyntheticPages(albums: albums, forum: forum, dataSettings: dataSettings)
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
         model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider())

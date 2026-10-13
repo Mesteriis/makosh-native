@@ -9,7 +9,7 @@ import XCTest
         let model = TelegramModel.syntheticPreview()
         model.accountPrivacy.open()
         let snapshot = try XCTUnwrap(model.accountPrivacy.snapshot)
-        XCTAssertEqual(snapshot.accountID, -1); XCTAssertEqual(snapshot.settings.count, 10)
+        XCTAssertEqual(snapshot.accountID, -1)
         let old = try XCTUnwrap(snapshot.settings[.presence])
         XCTAssertTrue(model.accountPrivacy.apply(.init(expected: old, audience: .nobody), contextID: model.accountPrivacy.contextID))
         XCTAssertEqual(model.accountPrivacy.snapshot?.settings[.presence]?.audience, .nobody)

@@ -3182,3 +3182,53 @@ real transport-free MTContext, plus generated dynamic source helpers. These do n
 establish login-Keychain permissions, server reachability, live Telegram download
 or authentication through a real proxy; those require separately authorized
 account acceptance.
+
+## Block12: extended privacy rules and global settings (2026-10-13)
+
+The existing account privacy flow now includes voice/video messages, gift autosave
+and paid-message exemptions through their independently typed privacy keys.
+Premium allow exceptions are editable only for group invitations, bot allow
+exceptions only for gift autosave. Other special rules, identities and relative
+order are retained. New special allow rules precede the base; ambiguous duplicates
+cannot be rewritten. Fee exemptions retain the Contacts base and existing rules;
+new membership still uses the existing fresh native directory/hash validation.
+Voice-message writes require known Premium status both at confirmation and in the
+fresh encrypted-Postbox transaction that admits the native input rules.
+
+A global privacy snapshot retains the complete pinned wire flags, optional Stars
+amount and complete gift flags. Edits cover read-time hiding, incoming Everybody/
+Contacts-and-Premium/Stars policies, and allowed unlimited/limited/unique/Premium
+gifts. Archive/mute/keep-archive flags, display-gift-button and unknown bits remain
+unchanged. Existing fees above a newly reduced limit survive unrelated edits.
+Changing a fee requires a positive integral amount within the fresh configured
+limit; an absent limit uses the reference10000 default. A configured limit must
+be a positive integral JSON number within Int32; malformed limits disable fee
+edits. Reference non-Premium restriction availability is read from native app
+configuration. Gift type edits require Premium. Choosing Everybody explicitly
+clears the Stars fee, as in the pinned reference.
+
+Every global save freezes account/context/original wire settings, repeats
+getGlobalPrivacySettings, then reads current own-user/configuration capabilities
+from Postbox before a single typed setGlobalPrivacySettings with no application
+retry/flood-wait wrapper. Only an exact valid ACK is accepted; missing or normalized/
+changed ACKs remain uncertain. Global and selective writes share the existing30s
+write deadline, account barrier, explicit refresh reconciliation and post-ACK full
+reload. No optimistic update or automatic resend is introduced. Telegram provides
+no CAS: another client can still change settings between the fresh read and write.
+Closing/cancelling is not server rollback. The barrier is process local.
+
+Own SwiftUI uses the existing common workspace and privacy forms. Read time and
+gift types open separate child editors, each with its own save confirmation;
+unsaved parent audience/fee drafts block child navigation. Incoming fee exemptions
+use the existing peer editor. Invalid amount input disables Save and exemption
+navigation; Discard restores the saved amount. Premium/bot
+categories are explicit switches rather than invented ordinary peer identities.
+Voice restrictions and gift filters are read-only when entitlement is unavailable;
+there is no purchase/upsell flow. DEBUG fixtures are in-memory only, with an
+explicit --telegram-privacy-basic-fixture for the non-Premium UI path.
+
+No PostgreSQL/S3 schema, file policy, message retention, engine pin/preparation or
+dependency change. Account/message auto-removal timers, local passcode, public
+fallback photo, remote peer search and the preceding UI parity gaps remain open.
+Native fixture/UI checks do not establish live account privacy mutations, Stars
+charging or real server normalization; account acceptance is separately scoped.

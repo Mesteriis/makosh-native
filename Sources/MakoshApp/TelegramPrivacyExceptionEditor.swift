@@ -5,16 +5,18 @@ struct TelegramPrivacyExceptionEditor: View {
     @ObservedObject var directory: TelegramPrivacyPeerDirectoryController
     let side: TelegramPrivacyExceptionSide
     let setting: TelegramPrivacySetting
-    let apply: ([TelegramPrivacyPeerID]) -> Bool
+    let apply: (TelegramPrivacySetting) -> Bool
     let close: () -> Void
     @State private var peers: [TelegramPrivacyPeerID]
     @State private var names: [TelegramPrivacyPeerID: String] = [:]
     @State private var adding = false
     @State private var invalid = false
+    @State private var specialEnabled: Bool
     init(directory: TelegramPrivacyPeerDirectoryController, side: TelegramPrivacyExceptionSide, setting: TelegramPrivacySetting,
-         apply: @escaping ([TelegramPrivacyPeerID]) -> Bool, close: @escaping () -> Void) {
+         apply: @escaping (TelegramPrivacySetting) -> Bool, close: @escaping () -> Void) {
         self.directory = directory; self.side = side; self.setting = setting; self.apply = apply; self.close = close
         _peers = State(initialValue: setting.exceptionPeers(side))
+        _specialEnabled = State(initialValue: setting.editableSpecialException.map { setting.rules.contains($0) } ?? false)
     }
     private var include: [TelegramPrivacyPeerID] { Array(Set(setting.exceptionPeers(.allow) + setting.exceptionPeers(.deny) + peers)) }
     var body: some View {
@@ -22,11 +24,18 @@ struct TelegramPrivacyExceptionEditor: View {
             HStack {
                 Button("Отмена", action: close).accessibilityIdentifier("telegram.privacy.exceptions.cancel")
                 Spacer(); Text(side == .allow ? "Всегда разрешать" : "Никогда не разрешать").font(.headline); Spacer()
-                Button("Готово") { invalid = !apply(peers); if !invalid { close() } }.accessibilityIdentifier("telegram.privacy.exceptions.done")
+                Button("Готово") {
+                    guard let proposed = proposedSetting() else { invalid = true; return }
+                    invalid = !apply(proposed); if !invalid { close() }
+                }.accessibilityIdentifier("telegram.privacy.exceptions.done")
             }.padding()
             Divider()
             Form {
                 Section {
+                    if side == .allow, let rule = setting.editableSpecialException {
+                        Toggle(rule == .premium ? "Пользователи Telegram Premium" : "Боты", isOn: $specialEnabled)
+                            .disabled(setting.rules.filter { $0 == rule }.count > 1).accessibilityIdentifier("telegram.privacy.exceptions.special")
+                    }
                     Button("Добавить пользователя или группу") { adding = true }.accessibilityIdentifier("telegram.privacy.exceptions.add")
                     if peers.isEmpty { Text("Нет исключений").foregroundStyle(.secondary) }
                     ForEach(peers) { peer in
@@ -51,6 +60,16 @@ struct TelegramPrivacyExceptionEditor: View {
                 peers = selected; names.merge(titles) { _, new in new }; adding = false
             }, close: { adding = false })
         }
+    }
+    private func proposedSetting() -> TelegramPrivacySetting? {
+        var next = setting
+        if Set(peers) != Set(setting.exceptionPeers(side)) {
+            guard let changed = next.replacingExceptions(side, peers: peers) else { return nil }; next = changed
+        }
+        if side == .allow, let rule = setting.editableSpecialException, specialEnabled != setting.rules.contains(rule) {
+            guard let changed = next.replacingSpecialException(rule, enabled: specialEnabled) else { return nil }; next = changed
+        }
+        return next
     }
     private func remember(_ value: TelegramPrivacyPeerDirectory?) {
         guard let value else { return }

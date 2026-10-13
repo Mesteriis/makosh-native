@@ -1456,3 +1456,29 @@ per-chat storage browser и широкого other/temp clear. Прокси гл
 полное визуальное совпадение не заявляется. Проверки и реальная UI-приёмка
 фиксируются в docs/development-status.md; синтетическая проверка не означает
 реальную доставку Telegram, доступность сервера прокси или Keychain acceptance.
+
+## Telegram block12: extended privacy reference
+
+Verified reference SHA579cebbf0c01fd41b712eff3647fa7f69db9665d:
+PrivacyAndSecurityViewController.swift:600-621 orders gifts before birthday,
+voice/video after forwarding, and Messages last. SelectivePrivacySettingsController.swift:505-529
+gates voice editing/exceptions by Premium;587-612 locates read-time
+hiding and gift-type controls;987 admits Premium for group invitations and bots
+for gifts. SelectivePrivacySettingsPeersController.swift:224-231 represents those
+categories separately. MessagesPrivacyController.swift:45-145 contains incoming
+Everybody/Contacts-and-Premium/Stars choices, account/configuration availability,
+fee limit and exemptions. Source localization confirms read-time hiding applies to
+people who cannot see last-seen, and gift filters govern which gifts may be sent.
+The independently pinned engine/API confirms native flags/optional fields and
+three distinct selective keys; no outer GPLv2 UI code/assets are copied.
+
+Makosh extends its existing common privacy forms in this order. Separate child
+editors for global read-time/gift fields and separate save confirmations replace
+the reference's inline/global-on-disappear writes. A parent draft must be saved or
+discarded first. Paid exemptions keep their existing Contacts base; special
+Premium/bot categories use explicit switches in Always Allow. Monetary values are
+Stars only; no reference USD estimate, subscription purchase or upsell is copied.
+Group, selector and modal geometry still differ from upstream; pixel parity is not
+claimed. Whole-server snapshots/fresh conditional admission replace optimistic
+cached updates and automatic retries. Unknown wire bits/fees and local permanent
+archives are preserved. Actual acceptance evidence belongs to development-status.

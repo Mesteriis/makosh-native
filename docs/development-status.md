@@ -1,5 +1,65 @@
 # Development status — 2026-10-13
 
+## Current stage: extended Telegram privacy (block 12)
+
+The authorized continuation extends the existing common native privacy flow in
+source-confirmed TelegramSwift order: voice/video-message rules, gift autosave,
+Premium/bot allow exceptions, read-time hiding, incoming Everybody/Contacts-and-
+Premium/Stars policies, paid exemptions and allowed gift types. Whole wire flags,
+unknown fields and existing fees survive unrelated edits. Frozen contexts,
+explicit confirmation, a fresh server basis and fresh encrypted-Postbox account/
+configuration capabilities gate writes. Global and selective operations share the
+existing account uncertainty barrier. No schema, dependency, engine recipe, S3
+policy or permanent-retention change; no personal account access is used.
+
+Ordinary assertion REDs cover selective3 cases/5 failures, special builder4/1,
+global model5/4, repaired controller5/9, repaired native boundary5/10 and final
+composition5/4. A former fixed category-count assertion is removed after adding
+three categories. Initial controller RED traps after an unexpected admission;
+the harness now stops that branch. Initial native harness compilation and an
+incorrect ordinary-JSON AppConfiguration fixture are classified separately and
+repaired only in tests. Fresh real encrypted Postbox tests cover missing/revoked
+Premium and valid/malformed fee limits; RPC tests cover exact constructor, wire
+preservation, changed basis, missing/altered ACKs and shared uncertainty/context.
+Final focused **52 XCTest pass**,0 failures after all source changes.
+
+Independent read-only review verifies22 public hashes. Its one Minor finding is
+reproduced natively: saved25 Stars plus invalid1.5 text left exemptions enabled
+and no Discard action. Three UI guard changes include invalid input in exemption
+navigation, its notice and Discard. Final review verifies all22 hashes and the
+three-path source/documentation delta, reporting no remaining Critical/Important/
+Minor findings. It runs no tests, build, native operations or private-state checks.
+
+Required PostgreSQL startup exits0. Final `scripts/build-app.sh` exits0 with strict
+signing; the separately identified QA bundle has an equal unsigned executable.
+Native CUA runs use only the explicitly isolated synthetic PostgreSQL schema and
+in-memory privacy provider. Common service sidebar and reference privacy order
+are observed. Confirmation/cancellation/ACK/reopen,25 Stars,0/-1/1.5/10001 refusal,
+invalid input blocking exemptions, Discard/Refresh restoring25, parent-draft child
+navigation barriers, read-time hiding, Premium/bot exceptions, gift filters and
+voice audience changes pass. Unrelated global/selective changes retain25 Stars.
+The preceding artifact also verifies native fee-exemption membership staging/
+confirmation. A separate non-Premium fixture confirms readonly voice rules and
+exceptions, four readonly gift filters, unavailable incoming restrictions and
+available read-time toggle/discard. Screenshots are inspected; full pixel parity
+is not claimed. Owned QA stops before the complete test suite; isolated data is
+retained. No live privacy mutation, Stars charging or server-normalization proof.
+
+Final project XERJ refresh exits0:764 indexed files,713/713 classified code. Own,
+reference and recipe21 engine freshness checks pass; actual final retrieval finds
+telegramPerformGlobalPrivacyChange and is confirmed against current source.
+The complete768-file public snapshot is frozen, excluding this mutable ledger.
+Required `scripts/test.sh` under per-process caffeinate exits0: **1954 XCTest
+(1875 Telegram +79 core),1 microphone-precondition skip,0 failures;89 Python
+tests across19 suites**. All22 new cases pass. Final focused52 pass, build exits0,
+and all768 frozen public file hashes/file set plus22 reviewed hashes still match.
+Existing upstream framework/SQLite diagnostics remain in private raw logs and are
+not XCTest failures or live-account acceptance. Exact-head hosted/publication
+evidence is tracked on [PR12](https://github.com/Mesteriis/makosh-native/pull/12);
+local results do not substitute for hosted CI.
+Reference differences and remaining flows are in docs/reference-interface.md and
+docs/telegram.md.
+
 ## Completed stage: Telegram data and connection (block 11)
 
 The authorized item adds data/cache/proxy controls to the existing common native

@@ -3,7 +3,7 @@ import Combine
 import TelegramApi
 
 public enum TelegramPrivacyKind: String, CaseIterable, Identifiable, Sendable {
-    case phoneNumber, presence, groupInvitations, voiceCalls, profilePhoto, bio, birthday, forwards, phoneDiscovery, callP2P
+    case phoneNumber, presence, groupInvitations, voiceCalls, profilePhoto, bio, giftsAutoSave, birthday, forwards, voiceMessages, phoneDiscovery, callP2P, noPaidMessages
     public var id: String { rawValue }
 }
 public enum TelegramPrivacyAudience: String, CaseIterable, Identifiable, Sendable {
@@ -58,8 +58,9 @@ public struct TelegramPrivacyChange: Equatable, Sendable {
     }
     public var replacement: TelegramPrivacySetting? {
         guard expected.audience != nil, proposed.audience != nil, expected.kind == proposed.kind, proposed != expected,
-              expected.rules.filter({ $0.isSpecial }) == proposed.rules.filter({ $0.isSpecial }) else { return nil }
+              expected.permitsSpecialChanges(to: proposed) else { return nil }
         if expected.kind == .phoneDiscovery, expected.rules.filter({ !$0.isBase }) != proposed.rules.filter({ !$0.isBase }) { return nil }
+        if expected.kind == .noPaidMessages, expected.audience != .contacts || proposed.audience != .contacts { return nil }
         return proposed
     }
 }
@@ -134,12 +135,20 @@ func telegramPrivacyKey(_ kind: TelegramPrivacyKind) -> Api.InputPrivacyKey {
     case .forwards: .inputPrivacyKeyForwards
     case .bio: .inputPrivacyKeyAbout
     case .birthday: .inputPrivacyKeyBirthday
+    case .voiceMessages: .inputPrivacyKeyVoiceMessages
+    case .giftsAutoSave: .inputPrivacyKeyStarGiftsAutoSave
+    case .noPaidMessages: .inputPrivacyKeyNoPaidMessages
     }
 }
 
 public struct TelegramPrivacySnapshot: Equatable, Sendable {
     public let accountID: Int64
     public let settings: [TelegramPrivacyKind: TelegramPrivacySetting]
+    public let global: TelegramGlobalPrivacySetting?
+    public let capabilities: TelegramPrivacyCapabilities?
+    public init(accountID: Int64, settings: [TelegramPrivacyKind: TelegramPrivacySetting], global: TelegramGlobalPrivacySetting? = nil, capabilities: TelegramPrivacyCapabilities? = nil) {
+        self.accountID = accountID; self.settings = settings; self.global = global; self.capabilities = capabilities
+    }
 }
 enum TelegramPrivacyError: Error, Equatable, Sendable { case unavailable, changed, failed, uncertain }
 @MainActor protocol TelegramPrivacyRequest: AnyObject { func cancel() }
@@ -148,8 +157,12 @@ enum TelegramPrivacyError: Error, Equatable, Sendable { case unavailable, change
     func load(receive: @escaping @MainActor (Result<TelegramPrivacySnapshot, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest
     func peers(query: String, include: [TelegramPrivacyPeerID], receive: @escaping @MainActor (Result<TelegramPrivacyPeerDirectory, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest
     func apply(_ change: TelegramPrivacyChange, expectedAccountID: Int64, receive: @escaping @MainActor (Result<Void, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest
+    func applyGlobal(_ change: TelegramGlobalPrivacyChange, expectedAccountID: Int64, receive: @escaping @MainActor (Result<Void, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest
 }
 extension TelegramPrivacyProvider {
+    func applyGlobal(_ change: TelegramGlobalPrivacyChange, expectedAccountID: Int64, receive: @escaping @MainActor (Result<Void, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest {
+        receive(.failure(.unavailable)); return UnavailablePrivacyRequest()
+    }
     func peers(query: String, include: [TelegramPrivacyPeerID], receive: @escaping @MainActor (Result<TelegramPrivacyPeerDirectory, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest {
         receive(.failure(.unavailable)); return UnavailablePrivacyRequest()
     }
@@ -159,6 +172,7 @@ extension TelegramPrivacySnapshot {
     var isValid: Bool {
         accountID != 0 && Set(settings.keys) == Set(TelegramPrivacyKind.allCases)
             && settings.allSatisfy { $0.key == $0.value.kind && $0.value.isValid }
+            && (global?.isValid ?? true)
     }
 }
 @MainActor public final class TelegramPrivacyController: ObservableObject {
@@ -173,6 +187,23 @@ extension TelegramPrivacySnapshot {
     private var readDeadline: Task<Void, Never>?, writeDeadline: Task<Void, Never>?
     private var uncertainAccounts: Set<Int64> = []
     private var mutationKind: TelegramPrivacyKind?
+    public var globalMutationStatus: MutationStatus {
+        if mutationStatus == .saving || mutationStatus == .uncertain { return mutationStatus }
+        return mutationKind == nil ? mutationStatus : .idle
+    }
+    public func canEdit(_ kind: TelegramPrivacyKind) -> Bool {
+        status == .ready && mutationStatus != .saving && mutationStatus != .uncertain &&
+        (kind != .voiceMessages || snapshot?.capabilities?.isPremium == true) &&
+        (kind != .noPaidMessages || snapshot?.settings[kind]?.audience == .contacts)
+    }
+    @discardableResult public func applyGlobal(_ change: TelegramGlobalPrivacyChange, contextID: UUID) -> Bool {
+        guard self.contextID == contextID, status == .ready, mutationStatus != .saving, mutationStatus != .uncertain,
+              let provider, let snapshot, snapshot.accountID == provider.accountID, snapshot.global == change.expected,
+              let capabilities = snapshot.capabilities, change.replacement(capabilities: capabilities) != nil else { return false }
+        return beginMutation(kind: nil, contextID: contextID, accountID: snapshot.accountID) { receive in
+            provider.applyGlobal(change, expectedAccountID: snapshot.accountID, receive: receive)
+        }
+    }
     public func mutationStatus(for kind: TelegramPrivacyKind) -> MutationStatus {
         if mutationStatus == .saving || mutationStatus == .uncertain { return mutationStatus }
         return mutationKind == kind ? mutationStatus : .idle
@@ -223,20 +254,26 @@ extension TelegramPrivacySnapshot {
         if readID == token { read = request } else { request.cancel() }
     }
     @discardableResult public func apply(_ change: TelegramPrivacyChange, contextID: UUID) -> Bool {
-        guard self.contextID == contextID, status == .ready, mutationStatus != .saving, mutationStatus != .uncertain,
+        guard self.contextID == contextID, canEdit(change.expected.kind),
               let provider, let snapshot, snapshot.accountID == provider.accountID, snapshot.settings[change.expected.kind] == change.expected, change.replacement != nil else { return false }
-        let token = UUID(); writeID = token; mutationKind = change.expected.kind; mutationStatus = .saving
+        return beginMutation(kind: change.expected.kind, contextID: contextID, accountID: snapshot.accountID) { receive in
+            provider.apply(change, expectedAccountID: snapshot.accountID, receive: receive)
+        }
+    }
+    private func beginMutation(kind: TelegramPrivacyKind?, contextID: UUID, accountID: Int64,
+        start: (@escaping @MainActor (Result<Void, TelegramPrivacyError>) -> Void) -> any TelegramPrivacyRequest) -> Bool {
+        let token = UUID(); writeID = token; mutationKind = kind; mutationStatus = .saving
         writeDeadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(30)) } catch { return }
             guard let self, self.writeID == token else { return }; self.timeoutMutation()
         }
-        let request = provider.apply(change, expectedAccountID: snapshot.accountID) { [weak self] result in
+        let request = start { [weak self] result in
             guard let self, self.writeID == token, self.contextID == contextID else { return }
             self.writeID = nil; self.writeDeadline?.cancel(); self.writeDeadline = nil; self.write?.cancel(); self.write = nil
             switch result {
             case .success: self.mutationStatus = .saved; self.load(reconcile: false)
             case .failure(.changed): self.mutationStatus = .changed; self.load(reconcile: false)
-            case .failure(.uncertain): self.uncertainAccounts.insert(provider.accountID); self.mutationStatus = .uncertain
+            case .failure(.uncertain): self.uncertainAccounts.insert(accountID); self.mutationStatus = .uncertain
             case .failure: self.mutationStatus = .failed
             }
         }

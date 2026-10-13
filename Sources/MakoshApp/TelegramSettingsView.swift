@@ -6,6 +6,7 @@ struct TelegramSettingsView: View {
     var sessions: TelegramSessionsController? = nil
     var privacy: TelegramPrivacyController? = nil
     var blockedUsers: TelegramBlockedUsersController? = nil
+    var twoStep: TelegramTwoStepController? = nil
     var synthetic = false
     var close: (() -> Void)? = nil
     private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность" }
@@ -30,7 +31,7 @@ struct TelegramSettingsView: View {
             case .general: TelegramGeneralSettingsView()
             case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme)
             case .privacy:
-                if let privacy { TelegramPrivacyView(controller: privacy, blockedUsers: blockedUsers, synthetic: synthetic) }
+                if let privacy { TelegramPrivacyView(controller: privacy, blockedUsers: blockedUsers, twoStep: twoStep, synthetic: synthetic) }
                 else { ContentUnavailableView("Откройте Telegram", systemImage: "hand.raised") }
             case .devices:
                 if let sessions { TelegramSessionsView(controller: sessions, synthetic: synthetic) }

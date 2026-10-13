@@ -40,7 +40,64 @@ focused24 XCTest pass; commit a9ee000 is published for hosted verification in
 [PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
 separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram blocked users (block 8)
+## Current stage: Telegram two-step verification (block 9)
+
+Own native SwiftUI in the existing privacy workspace now covers locked/current
+password, management, setup/reentry/hint/email, pending-email confirmation/resend/
+cancel, recovery-code and scheduled-reset/cancel states. Password change preserves
+confirmed recovery email. Every write has frozen explicit consent, same-account
+fresh snapshot/basis,30s deadline and retained uncertainty on unknown/false/empty
+ACK or close during write. Exact UTF8 comparisons prevent canonical-equivalent
+password substitution. Verified current password is memory-only, expires after
+5minutes and cannot be borrowed by a stale confirmation after re-unlock.
+
+Recipe20 keeps the engine pin/native cryptography and adds exact-source/hash
+ACK, pending-email, protected-secret consistency and unsupported next-secure-algo
+guards. Previous generated preparations are retained under ignored backup names;
+only the tracked recipe is edited. The GPLv3 adaptation and own MIT helper/UI
+boundary are recorded in THIRD_PARTY_NOTICES. No schema, permanent archive or
+per-chat S3 policy changes; no reference checkout build/run/test dependency.
+
+The first25 focused XCTest pass. DB startup and app builds exit0. Native isolated
+synthetic QA covers wrong password/clear, unlock, disable cancellation/Passport
+warning, password change preserving email, wrong/correct email code, resend,
+waiting/cancellation of reset, recovery, setup with email/cancel, setup without
+email/skip warning, close/reopen revocation and disable. The shared services
+sidebar remains. Strict signing and unsigned executable payload equality pass;
+owned QA process stopped, isolated PostgreSQL data retained. CUA capture failures
+are observation failures, followed by fresh state reads; synthetic input uses
+native paste after typeText failed to insert the full text. No real credentials,
+account access, email delivery or Telegram network mutations were tested.
+
+Independent read-only review identifies a native EMAIL_INVALID/UNCONFIRMED
+numeric-code bypass. A real generated-helper regression has1test/7 ordinary
+assertion failures before repair. The adapted engine now requires numeric400,
+strict pending descriptions and fresh nonempty patterns; unexpected500 remains
+uncertain. Re-review confirms the repair with no remaining Critical/Important
+finding. Manual Refresh after a reset date passes remains a documented reference
+difference. Prior valid REDs include12tests/22 ordinary failures,17/14, secure
+values1/3, consent/error2/10. Draft/lifetime5tests have26 assertion failures,
+including2 secondary XCTUnwrap errors; these are not compiler/crash REDs.
+
+The first full `scripts/test.sh` under per-process `caffeinate -i` exits0 with
+1860 XCTest (1781 Telegram +79 core),1 microphone precondition skip,0 failures;
+86 Python tests across18 suites. It includes all26 new block tests and the native
+error repair, before the final UI focus correction. Native keyboard QA then
+finds a replacement field did not receive focus: paste without clicking made
+no change. A stage-bound cancellable task assigns focus after mounting; final
+app build exits0 and actual native QA verifies Enter unlock, automatic focus on
+repeat/hint, paste into hint without mouse, Enter review and cancellation.
+Strict signing and unsigned final executable payload equality pass. The final
+owned QA process is stopped and isolated data retained. Source review of this
+focus delta finds no issue. Final `scripts/test.sh` after the focus correction
+also exits0: **1860 XCTest (1781 Telegram +79 core),1 microphone precondition
+skip,0 failures;86 Python tests across18 suites**. All713 frozen file fingerprints
+and the complete file set match, excluding this mutable ledger. Project, locked
+reference and recipe20 engine XERJ checks are fresh. Hosted verification and
+integration are recorded on the attached PR after its exact-head checks; this
+source-freeze ledger does not claim live-account or hosted acceptance.
+
+## Previous stage: Telegram blocked users (block 8)
 
 The existing privacy workspace opens blocked cloud users; user/bot profiles supply
 Block/Unblock in the reference's location. Both actions require confirmation.
@@ -89,7 +146,7 @@ preparation recipe, permanent retention or S3-policy change. Real-account access
 network mutation and Telegram delivery are not tested. Hosted verification and
 integration will be recorded on the attached PR after exact-head checks.
 
-2FA is the next block. Global peer search, special/Premium/voice-message/global
+2FA is recorded in the current stage above. Global peer search, special/Premium/voice-message/global
 privacy, account removal and the preceding parity gaps remain open.
 
 ## Previous stage: Telegram privacy exception membership (block 7)

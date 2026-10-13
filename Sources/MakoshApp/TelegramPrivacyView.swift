@@ -38,8 +38,10 @@ private struct PrivacyExceptionDraft: Identifiable {
 struct TelegramPrivacyView: View {
     @ObservedObject var controller: TelegramPrivacyController
     var blockedUsers: TelegramBlockedUsersController? = nil
+    var twoStep: TelegramTwoStepController? = nil
     let synthetic: Bool
     @State private var blockedPresented = false
+    @State private var twoStepPresented = false
     @State private var selected: TelegramPrivacyKind?
     var body: some View {
         VStack(spacing: 0) {
@@ -51,12 +53,20 @@ struct TelegramPrivacyView: View {
             }.padding(.horizontal, 20).padding(.vertical, 10)
             if let snapshot = controller.snapshot {
                 Form {
-                    if blockedUsers != nil {
+                    if blockedUsers != nil || twoStep != nil {
                         Section {
+                            if twoStep != nil {
+                                Button { twoStepPresented = true } label: {
+                                    HStack { Label("Двухэтапная аутентификация", systemImage: "lock"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
+                                        .frame(minHeight: 36).contentShape(Rectangle())
+                                }.buttonStyle(.plain).accessibilityIdentifier("telegram.privacy.twoStep")
+                            }
+                            if blockedUsers != nil {
                             Button { blockedPresented = true } label: {
                                 HStack { Label("Заблокированные пользователи", systemImage: "hand.raised.slash"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
                                     .frame(minHeight: 36).contentShape(Rectangle())
                             }.buttonStyle(.plain).accessibilityIdentifier("telegram.privacy.blockedUsers")
+                            }
                         }
                     }
                     Section("Приватность") {
@@ -75,6 +85,9 @@ struct TelegramPrivacyView: View {
         .onChange(of: controller.snapshot?.accountID) { _, _ in selected = nil }
         .sheet(isPresented: $blockedPresented) {
             if let blockedUsers { TelegramBlockedUsersView(controller: blockedUsers, synthetic: synthetic) { blockedPresented = false } }
+        }
+        .sheet(isPresented: $twoStepPresented) {
+            if let twoStep { TelegramTwoStepView(controller: twoStep, synthetic: synthetic) { twoStepPresented = false } }
         }
         .sheet(item: $selected) { kind in TelegramPrivacyDetailView(controller: controller, kind: kind, synthetic: synthetic) { selected = nil } }
     }

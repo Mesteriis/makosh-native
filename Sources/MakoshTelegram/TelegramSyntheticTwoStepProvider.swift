@@ -10,6 +10,8 @@ import Foundation
     private var pendingEmail: String?, pendingPassword: String?
     private var secureValues = true
     private var resetAt: Int32?
+    private let resetWaitSeconds: Int32
+    init(resetWaitSeconds: Int32 = 7 * 86400) { self.resetWaitSeconds = resetWaitSeconds }
     private var passwordGeneration = 1
     private var state: TelegramTwoStepSnapshot {
         .init(accountID: accountID,enabled: password != nil,hint: hint,hasRecoveryEmail: email != nil,pendingEmail: pendingEmail.map { _ in "s***@example.invalid" },hasSecureValues: secureValues,resetAt: resetAt,basisTag: password == nil ? "synthetic-no-password" : "synthetic-password-\(passwordGeneration)")
@@ -50,7 +52,7 @@ import Foundation
         case .disable: removePassword(); result = .success(.done)
         case .requestReset:
             if let resetAt, TimeInterval(resetAt) <= Date().timeIntervalSince1970 { removePassword(); result = .success(.done) }
-            else if let date = Int32(exactly: Int64(Date().timeIntervalSince1970) + 7 * 86400) { resetAt = date; result = .success(.resetWaiting(date)) }
+            else if let date = Int32(exactly: Int64(Date().timeIntervalSince1970) + Int64(resetWaitSeconds)) { resetAt = date; result = .success(.resetWaiting(date)) }
             else { result = .failure(.unavailable) }
         case .declineReset: resetAt = nil; result = .success(.done)
         }

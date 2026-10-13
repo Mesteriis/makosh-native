@@ -24,7 +24,7 @@ struct MakoshApp: App {
                     ? .syntheticExtendedMessagesPreview(specialConversation: CommandLine.arguments.contains("--telegram-server-draft-synthetic-preview") ? "draft" : CommandLine.arguments.contains("--telegram-secret-synthetic-preview") ? "secret" : CommandLine.arguments.contains("--telegram-paid-send-synthetic-preview") ? "paid" : nil) : CommandLine.arguments.contains("--telegram-history-read-synthetic-preview")
                     ? .syntheticHistoryReadPreview() : CommandLine.arguments.contains("--telegram-peer-appearance-synthetic-preview")
                     ? .syntheticPeerAppearancePreview() : CommandLine.arguments.contains("--telegram-peer-profiles-synthetic-preview")
-                    ? .syntheticPeerProfilesPreview() : .syntheticPreview())
+                    ? .syntheticPeerProfilesPreview() : .syntheticPreview(twoStepResetWaitSeconds: CommandLine.arguments.contains("--telegram-two-step-short-reset") ? 20 : 7 * 86400))
                     .toolbar {
                         ToolbarItem(placement: .primaryAction) {
                             Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2")

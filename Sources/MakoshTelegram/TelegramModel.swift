@@ -2321,14 +2321,14 @@ public final class TelegramModel: ObservableObject {
 
     #if DEBUG
     /// Explicit, in-memory UI fixture. Does not open accounts, files or Keychain.
-    public static func syntheticPreview(albums: Bool = false, forum: Bool = false) -> TelegramModel {
+    public static func syntheticPreview(albums: Bool = false, forum: Bool = false, twoStepResetWaitSeconds: Int32 = 7 * 86400) -> TelegramModel {
         let model = TelegramModel()
         let pages = TelegramSyntheticPages(albums: albums, forum: forum)
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
         model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider())
         model.accountBlockedUsers.bind(TelegramSyntheticBlockedUsersProvider())
-        model.accountTwoStep.bind(TelegramSyntheticTwoStepProvider())
+        model.accountTwoStep.bind(TelegramSyntheticTwoStepProvider(resetWaitSeconds: twoStepResetWaitSeconds))
         model.search.useSyntheticPreview(albums: albums, forum: forum)
         model.globalSearch.useSyntheticPreview(albums: albums, forum: forum)
         model.sharedMedia.useSyntheticPreview(albums: albums, forum: forum)

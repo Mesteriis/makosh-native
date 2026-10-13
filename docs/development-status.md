@@ -40,7 +40,33 @@ focused24 XCTest pass; commit a9ee000 is published for hosted verification in
 [PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
 separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram two-step verification (block 9)
+## Current follow-up: automatic 2FA reset availability
+
+The reference's1s recurring entries refresh is source-confirmed via fresh XERJ
+searches. A native TimelineView now reevaluates the reset completion button every
+second while a reset date is present. It preserves unsubmitted fields/context and
+performs no read/write RPC. Explicit consent, fresh server snapshot, current clock
+eligibility and uncertainty guards still control the actual reset.
+
+Native assertion RED: after a20s synthetic deadline passes, the original button
+remains disabled without Refresh. After the patch, the same actual UI assertion
+passes: completion enabled, password still enabled, unsubmitted secure field
+preserved. Confirmation cancellation preserves the password; only explicit second
+confirmation completes the synthetic reset. Strict signing/unsigned executable
+payload equality and required DB startup/build pass. Owned QA stopped; isolated
+PostgreSQL data retained. No real accounts, credential changes or Telegram network
+were used. The DEBUG-only short-reset flag affects only an explicit synthetic
+preview; native providers, engine recipe/pin, schemas, retention and S3 are unchanged.
+Focused28 block tests pass before the final test timing-margin adjustment. The
+final `scripts/test.sh` under per-process `caffeinate -i` exits0: **1862 XCTest
+(1783 Telegram +79 core),1 microphone precondition skip,0 failures;86 Python
+tests across18 suites**. All28 block tests execute. All713 frozen fingerprints
+and the complete file set match, excluding this mutable ledger. Independent
+read-only review finds no Critical/Important/Minor issue; it runs no tests and
+does not replace root's native QA. Exact-head hosted/integration evidence will
+be recorded on the attached follow-up PR. No live-account acceptance is claimed.
+
+## Completed stage: Telegram two-step verification (block 9)
 
 Own native SwiftUI in the existing privacy workspace now covers locked/current
 password, management, setup/reentry/hint/email, pending-email confirmation/resend/
@@ -74,8 +100,8 @@ numeric-code bypass. A real generated-helper regression has1test/7 ordinary
 assertion failures before repair. The adapted engine now requires numeric400,
 strict pending descriptions and fresh nonempty patterns; unexpected500 remains
 uncertain. Re-review confirms the repair with no remaining Critical/Important
-finding. Manual Refresh after a reset date passes remains a documented reference
-difference. Prior valid REDs include12tests/22 ordinary failures,17/14, secure
+finding. Initial block9 requires manual Refresh after a reset date passes; the
+follow-up above removes that reference difference. Prior valid REDs include12tests/22 ordinary failures,17/14, secure
 values1/3, consent/error2/10. Draft/lifetime5tests have26 assertion failures,
 including2 secondary XCTUnwrap errors; these are not compiler/crash REDs.
 

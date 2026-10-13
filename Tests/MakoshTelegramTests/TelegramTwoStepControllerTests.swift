@@ -2,6 +2,32 @@ import XCTest
 @testable import MakoshTelegram
 
 @MainActor final class TelegramTwoStepControllerTests: XCTestCase {
+    func testResetDeadlineBecomesEligibleWithoutRefreshOrWritesAndCannotClearUncertainty() async throws {
+        let date = try XCTUnwrap(Int32(exactly: Int64(ceil(Date().timeIntervalSince1970)) + 2))
+        let (c,p) = try loaded(Self.state(reset: date))
+        let (uncertain,q) = try loaded(Self.state(reset: date))
+        XCTAssertTrue(uncertain.perform(try XCTUnwrap(uncertain.proposal(.declineReset))))
+        uncertain.timeoutAction()
+        let basis = c.snapshot, context = c.contextID
+        XCTAssertNil(c.proposal(.requestReset))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while Date().timeIntervalSince1970 < TimeInterval(date), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertNotNil(c.proposal(.requestReset)); XCTAssertEqual(c.snapshot,basis); XCTAssertEqual(c.contextID,context)
+        XCTAssertEqual(p.reads.count,1); XCTAssertEqual(p.actions.count,0)
+        XCTAssertTrue(uncertain.isUncertain); XCTAssertNil(uncertain.proposal(.requestReset))
+        XCTAssertEqual(q.reads.count,1); XCTAssertEqual(q.actions.count,1)
+    }
+    func testSyntheticExpiredResetWaitStillRequiresAnExplicitSecondAction() async throws {
+        let c = TelegramModel.syntheticPreview(twoStepResetWaitSeconds: 3).accountTwoStep; c.open()
+        XCTAssertTrue(c.perform(try XCTUnwrap(c.proposal(.requestReset))))
+        let date = try XCTUnwrap(c.snapshot?.resetAt)
+        XCTAssertNil(c.proposal(.requestReset)); XCTAssertEqual(c.snapshot?.enabled,true)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while Date().timeIntervalSince1970 < TimeInterval(date), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(c.snapshot?.enabled,true); XCTAssertEqual(c.snapshot?.resetAt,date)
+        XCTAssertTrue(c.perform(try XCTUnwrap(c.proposal(.requestReset))))
+        XCTAssertEqual(c.snapshot?.enabled,false); XCTAssertNil(c.snapshot?.resetAt)
+    }
     func testSyntheticWorkspaceRecoveryAndSetupNeverOpenAnAccount() throws {
         let model = TelegramModel.syntheticPreview(), c = model.accountTwoStep; c.open()
         XCTAssertEqual(c.snapshot?.accountID,-1); XCTAssertEqual(c.snapshot?.enabled,true)

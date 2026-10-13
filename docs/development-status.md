@@ -55,8 +55,9 @@ framework diagnostics remain in private raw logs; they are not XCTest failures
 or communication-account acceptance. The complete757-file frozen snapshot and
 file set match, excluding this mutable ledger. All three XERJ scopes are fresh;
 final retrieval confirms own proxy composition and generated dynamic-source
-helpers against current source. Exact-head hosted/publication evidence will be
-recorded on the attached block11 PR; local results do not substitute for hosted CI.
+helpers against current source. Exact-head hosted/publication evidence is recorded on
+[PR11](https://github.com/Mesteriis/makosh-native/pull/11); local results do not
+substitute for hosted CI.
 No personal account, Telegram transport or real Keychain acceptance is claimed.
 Conservative reference differences and remaining broad settings flows are explicit
 in docs/reference-interface.md and docs/telegram.md.

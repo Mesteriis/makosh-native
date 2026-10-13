@@ -700,10 +700,11 @@ private func batchNativeMigratedReplySource(_ box: Postbox, targetID: PeerId, me
         XCTAssertEqual(queued.ids.count, 3)
     }
 
-    func testUnsupportedPeerNamespaceRejectsBeforePreparingOrCommittingBatch() async throws {
+    func testUnsupportedPeerIdentityRejectsBeforePreparingOrCommittingBatch() async throws {
         for namespace in [Namespaces.Peer.SecretChat, Namespaces.Peer.Empty] {
             let root = try root(), box = try await open(root.appendingPathComponent("postbox"))
-            let chatID = PeerId(namespace: namespace, id: ._internalFromInt64Value(42)).toInt64()
+            let number: Int64 = namespace == Namespaces.Peer.SecretChat ? Int64(1) << 32 : 42
+            let chatID = PeerId(namespace: namespace, id: ._internalFromInt64Value(number)).toInt64()
             let (draft, items) = try await fixture(root, modes: [.file, .file], grouped: true, chatID: chatID)
             defer { items.forEach { try? TelegramUploadFileIO.discard($0.file) } }
             let target = TelegramUploadTarget(accountID: 1, chatID: chatID, title: "Synthetic")

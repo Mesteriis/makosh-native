@@ -38,6 +38,17 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe20 adds bounded two-step verification guards. The exact-source/hash-checked
+  `scripts/telegram_two_step_adaptation.py` is GPL-3.0-or-later: three password/email
+  update branches require BoolTrue, invalid/unconfirmed email classifications
+  require numeric400 and strict descriptions, unconfirmed-email errors require a
+  fresh nonempty pending pattern, and password changes refuse inconsistent protected
+  secret state and the unsupported next secure SHA512 algorithm before upstream's
+  precondition. Disable does not automatically wait/retry on flood errors. Native
+  SRP/KDF/secure-secret cryptography remains unchanged. The independently authored
+  generated `MakoshTwoStepAcknowledgement.swift` helper retains MIT; linked
+  TelegramCore and the combined app remain GPLv3. Own SwiftUI/domain/provider code
+  retains MIT; no outer GPLv2 UI, assets or embedded credentials are copied.
 - Recipe19 exposes the existing `AccountStateManager.addUpdates` wrapper so
   bounded Makosh administration RPCs can replay acknowledged native updates.
   `scripts/telegram_peer_management_adaptation.py` requires one exact pinned

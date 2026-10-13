@@ -2959,4 +2959,70 @@ the request. Real-account acceptance and behavior of other Telegram clients are
 not established by the synthetic workspace or native fixtures.
 
 Block/unblock does not delete any message or attachment, change PostgreSQL schema,
-S3 policy, preparation recipe, engine pin or dependency.2FA remains the next block.
+S3 policy, preparation recipe, engine pin or dependency.2FA is described below.
+
+## Block9: two-step verification
+
+The existing privacy workspace opens the selected account's 2FA settings. Native
+locked/current-password, management, pending-email, setup/reentry/hint/email,
+recovery-code and scheduled-reset states follow the locked TelegramSwift source
+(see `reference-interface.md`). Own SwiftUI uses SecureField and explicit consent
+for writes; skipping recovery email requires a separate warning. Password changes
+omit the email mutation, preserving its confirmed recovery address. Disable,
+recovery and reset warn about protected Telegram Passport values when present.
+No real account is selected, read or mutated by the synthetic QA workflow.
+
+`TelegramTwoStepController` binds one provider/account. An immutable proposal
+captures that account, snapshot and controller context before confirmation; the
+native backend repeats `account.getPassword` before every operation. The opaque
+basis hashes only the serialized current KDF algorithm/salts, excluding varying
+SRP challenges, new algorithms and randomness. Metadata/basis drift fails closed.
+The engine then performs its reviewed SRP/KDF/password/secure-secret operations;
+Makosh implements no substitute cryptography. Telegram has no CAS for this path:
+an external change after the fresh read can race the request.
+
+Password comparison uses exact UTF8 bytes, including confirmation and the engine
+result's echo; there is no normalization or trimming. The controller retains the
+verified current password only in memory, for at most5minutes on a monotonic clock,
+and clears its reference on refresh, close, every action, timeout or failure. A
+successful re-unlock rotates context, so old consent cannot borrow a new proof.
+Wizard/password/email/code fields and frozen confirmations clear on context change
+or dismissal. Inputs have bounded byte lengths and redacted descriptions, are not
+Codable and are never written to preferences, Keychain, PostgreSQL/S3 or logs by
+this feature. Swift String/reference disposal is not guaranteed memory zeroization;
+the native request retains its immutable payload until termination/disposal.
+
+Preparation recipe20 retains the existing pin and adds exact-input/output-hash
+GPLv3 adaptations for three native password/email ACK branches: BoolFalse cannot
+become success; EMAIL_INVALID/EMAIL_UNCONFIRMED require numeric400 and strict
+descriptions, and EMAIL_UNCONFIRMED requires a fresh nonempty pending pattern.
+Two password-change reads refuse inconsistent protected-secret presence before
+native re-encryption. Unsupported next secure SHA512 is refused before upstream's
+precondition. Native cryptographic functions are unchanged. The generated own MIT
+ACK/guard helper is linked into GPLv3 TelegramCore. See `THIRD_PARTY_NOTICES.md`.
+Preserve a recipe19 preparation under an unused ignored backup name before
+regenerating; do not edit ignored generated engine source.
+
+Confirm/resend/cancel email and decline-reset require typed BoolTrue. Recovery
+uses `auth.recoverPassword(flags:0, newSettings:nil)` to remove the forgotten
+password and admits only a full authorization ACK with the already selected raw
+self ID; no recovered login/future-auth token is installed. Reset requested-wait
+is displayed as a date, not password removal; completion requires a later explicit
+action after manually refreshing the settings when that date has passed. There
+is no automatic reset or per-second countdown; this is a remaining reference
+difference. All application writes are single attempts without automatic flood-wait
+retry. Known RPC rejections require their expected numeric error code; malformed,
+false, empty or unknown write results remain uncertain. Every read/action has a
+30s cancellation deadline. Closing during a write preserves a process-local
+account uncertainty barrier until an explicit complete successful refresh; restart
+requires a fresh read. No optimistic account state or automatic resubmission.
+
+The DEBUG-only provider is an explicit in-memory synthetic server fixture with
+fake password/email/code. It opens no communication account or Telegram network.
+Native fixture tests cover typed wire requests, ACKs, selected-account recovery,
+fresh-basis checks, secure-value guards and exact password bytes; controller tests
+cover deadlines, rebinding, uncertainty, proof expiry and stale consent. Actual
+native synthetic UI QA covers all ordinary forms and confirmation cancellation.
+These checks do not establish real-account acceptance, actual Telegram recovery
+email delivery, server reset timing or live password/Passport preservation.
+No PostgreSQL/S3 schema, permanent message retention or per-chat S3 policy changes.

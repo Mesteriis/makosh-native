@@ -224,6 +224,7 @@ public final class TelegramModel: ObservableObject {
     public let accountSessions = TelegramSessionsController()
     public let accountPrivacy = TelegramPrivacyController()
     public let accountBlockedUsers = TelegramBlockedUsersController()
+    public let accountTwoStep = TelegramTwoStepController()
     public func blockedUserChange(_ profile: TelegramContactProfile, contextID: UUID) -> TelegramBlockedUserChange? {
         guard isCurrentContactProfile(profile, contextID: contextID), profile.isPerson || profile.isBot,
               PeerId(profile.peerID).namespace == Namespaces.Peer.CloudUser,
@@ -2006,6 +2007,7 @@ public final class TelegramModel: ObservableObject {
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
         accountBlockedUsers.bind(TelegramEngineBlockedUsersProvider(account: account))
+        accountTwoStep.bind(TelegramEngineTwoStepProvider(account: account))
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
@@ -2062,7 +2064,7 @@ public final class TelegramModel: ObservableObject {
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
         profilePhotos.bind(nil); peerManagement.bind(nil)
-        accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil)
+        accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -2326,6 +2328,7 @@ public final class TelegramModel: ObservableObject {
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
         model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider())
         model.accountBlockedUsers.bind(TelegramSyntheticBlockedUsersProvider())
+        model.accountTwoStep.bind(TelegramSyntheticTwoStepProvider())
         model.search.useSyntheticPreview(albums: albums, forum: forum)
         model.globalSearch.useSyntheticPreview(albums: albums, forum: forum)
         model.sharedMedia.useSyntheticPreview(albums: albums, forum: forum)

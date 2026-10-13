@@ -69,7 +69,7 @@ build pin comes from Makosh's own dependency lock; reference clones are not used
 The scope includes generated FlatSerialization sources and bundled FlatBuffers;
 the sibling Postbox/MtProtoKit and other packages were audited/read for build
 and lifecycle integration but are not claimed as indexed by this scope.
-Observed final engine refresh: **exit 0, 721 indexed files, 686/686 classified
+Observed recipe20 engine refresh: **exit 0, 722 indexed files, 687/687 classified
 code files**. Fingerprints cover current adapted/generated content before and
 after indexing. `--check` revalidates the complete prepared engine as well as
 this index fingerprint. No session cache, private API configuration or Keychain

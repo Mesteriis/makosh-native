@@ -19,6 +19,10 @@ api_spec.loader.exec_module(api_import)
 
 
 class PreparationTests(unittest.TestCase):
+    def test_two_step_adaptation_refuses_unreviewed_upstream_context(self):
+        with self.assertRaises(RuntimeError):
+            preparation.adapt_two_step_source("// synthetic changed upstream implementation")
+
     def prepared_fixture(self, root):
         destination = root / "engine"
         destination.mkdir()

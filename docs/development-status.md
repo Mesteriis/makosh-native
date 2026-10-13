@@ -40,7 +40,59 @@ focused24 XCTest pass; commit a9ee000 is published for hosted verification in
 [PR1](https://github.com/Mesteriis/makosh-native/pull/1). Extended search is a
 separate change; its hosted results and publication are tracked on its PR.
 
-## Current stage: Telegram privacy exception membership (block 7)
+## Current stage: Telegram blocked users (block 8)
+
+The existing privacy workspace opens blocked cloud users; user/bot profiles supply
+Block/Unblock in the reference's location. Both actions require confirmation.
+The list retains unresolved names and reads every raw server page before display;
+raw offsets, duplicate/progress/consistent-total validation, a10000-record bound
+and30s deadline prevent silent truncation. Unsupported non-user blocked peers
+fail the complete read. Separate accessible buttons replace SwiftUI's initial
+combined list rows. Avatar/profile opening and Edit-mode parity remain open.
+
+Each write repeats the full server read and checks expected target membership,
+account and captured controller/profile contexts. Unblock uses the fresh server's
+non-min personal identity, without requiring a cached peer. New Block requires a
+fresh personal CloudUser identity in native Postbox. Self checks account for native
+encoded IDs above32bits. Only BoolTrue admits the cache update and list reload;
+false/empty/ambiguous ACKs retain uncertainty. Closing during a write also retains
+the process-local account barrier until an explicit successful refresh. No automatic
+application retry is introduced. Telegram's read/write race without CAS remains.
+
+Valid assertion REDs: initial8 tests/25 failures; server/workspace10/3; profile1/1;
+identity2/4; actual encrypted Postbox1/1. Compilation errors are not RED evidence.
+A test composition initially executes a MainActor closure on the Postbox queue
+(SIGTRAP, confirmed by crash report); explicit main delivery repairs that fixture.
+The final focused44 XCTest pass, including real encrypted Postbox identity reads
+and cache updates preserving other fields. Required DB startup and final app build
+exit0. Native final synthetic QA verifies navigation, unresolved-name row, distinct
+AX actions, confirmation cancellation, acknowledged unblock/profile block, and
+shared profile/settings state. All50 visible synthetic history IDs remain identical
+after blocking. Strict signing and unsigned executable payload equality pass.
+The owned QA process is stopped and isolated PostgreSQL data retained.
+
+The first full suite passes1834 XCTest (1755 Telegram +79 core),1 microphone
+precondition skip,0 failures;85 Python tests across18 suites. It precedes the final
+list accessibility repair. The final `scripts/test.sh` under a per-process
+`caffeinate -i` exits0 with the same **1834 XCTest (1755 Telegram +79 core),1
+microphone precondition skip,0 failures;85 Python tests across18 suites**.
+An intervening full run has1 unexpected S3-unavailable error in the existing
+premium-caption restoration test and two unusually long test durations (557/957s).
+The cause of those delays is not established. A subsequent real S3 probe, the
+same focused restoration test (0.45s) and this final full run pass without S3 code,
+fixture expectations or timeout changes. All701 frozen file fingerprints and the
+complete file set match after validation, excluding this mutable ledger. Project,
+locked reference and recipe19 engine XERJ checks are fresh.
+Existing upstream teardown/macOS Contacts-service diagnostics are not assertion
+failures or proof of private contact retrieval. No schema, dependency, engine pin,
+preparation recipe, permanent retention or S3-policy change. Real-account access,
+network mutation and Telegram delivery are not tested. Hosted verification and
+integration will be recorded on the attached PR after exact-head checks.
+
+2FA is the next block. Global peer search, special/Premium/voice-message/global
+privacy, account removal and the preceding parity gaps remain open.
+
+## Previous stage: Telegram privacy exception membership (block 7)
 
 Privacy now edits user/group allow and deny memberships in the existing settings
 workspace. Reference list/add/remove/multiselect flows are implemented in own

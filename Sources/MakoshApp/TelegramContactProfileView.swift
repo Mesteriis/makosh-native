@@ -128,6 +128,11 @@ struct TelegramContactProfileView: View {
                             Button("Обновить сведения об управлении", action: management.refresh)
                         }
                     }
+                    if profile.isPerson || profile.isBot {
+                        Section {
+                            TelegramProfileBlockAction(model: model, controller: model.accountBlockedUsers, profile: profile, profileContextID: contextID)
+                        }
+                    }
                     Section {
                         if !profile.isPerson {
                             Text("Этот диалог не связывается с досье человека.").foregroundStyle(.secondary)

@@ -2926,3 +2926,37 @@ schema with no real account, private contents, network mutation or message deliv
 Global remote peer search, editing special categories,2FA and blocked users remain
 open. Permanent message retention, per-chat prohibition of all new S3 copies and
 file storage policy are unchanged; no schema, dependency or engine-pin change.
+
+
+## Block8: blocked cloud users
+
+The existing privacy workspace opens the blocked-user list; the selected user/bot
+profile supplies Block/Unblock, following the locked reference's placement. Own
+SwiftUI confirms both operations. Cloud groups/channels/secret peers are not
+presented as users. Unsupported blocked peer kinds fail the complete read rather
+than disappearing from the list. Missing names retain their original user IDs.
+
+Typed `contacts.getBlocked(flags:0, offset, limit:200)` loads all raw pages before
+publishing a snapshot. It counts raw records, validates unique positive bounded
+IDs, a consistent total, progress, and a10000-record bound. Empty premature or
+repeated pages fail. A30s controller deadline cancels the read. This intentionally
+uses a complete list instead of reference scroll-triggered incremental display.
+Each confirmed mutation independently repeats the complete read and checks the
+target's expected membership/account. Unblock uses a non-min nonzero server hash
+from that fresh response, without requiring a local peer. New Block resolves a
+personal CloudUser identity in a fresh encrypted Postbox transaction. Self checks
+compare encoded native identity, including IDs above32bits. The selected profile,
+account and captured controller/conversation contexts must still be current.
+
+`contacts.block/unblock(flags:0)` is sent once, without application retry/flood-wait
+wrapping. Only typed BoolTrue admits the cache update; BoolFalse, empty completion,
+transport ambiguity and write deadline remain uncertain. Cache updates preserve
+other CachedUserData fields. No optimistic removal is published; ACK reloads the
+list. Closing during a write retains the account's uncertainty barrier until an
+explicit successful refresh. The barrier is process-local, as in privacy/session
+settings. Telegram offers no CAS; a remote change after the final read can race
+the request. Real-account acceptance and behavior of other Telegram clients are
+not established by the synthetic workspace or native fixtures.
+
+Block/unblock does not delete any message or attachment, change PostgreSQL schema,
+S3 policy, preparation recipe, engine pin or dependency.2FA remains the next block.

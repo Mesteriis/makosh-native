@@ -223,6 +223,13 @@ public final class TelegramModel: ObservableObject {
     public let peerManagement = TelegramPeerManagementController()
     public let accountSessions = TelegramSessionsController()
     public let accountPrivacy = TelegramPrivacyController()
+    public let accountBlockedUsers = TelegramBlockedUsersController()
+    public func blockedUserChange(_ profile: TelegramContactProfile, contextID: UUID) -> TelegramBlockedUserChange? {
+        guard isCurrentContactProfile(profile, contextID: contextID), profile.isPerson || profile.isBot,
+              PeerId(profile.peerID).namespace == Namespaces.Peer.CloudUser,
+              accountBlockedUsers.snapshot?.accountID == profile.accountID else { return nil }
+        return accountBlockedUsers.change(userID: PeerId(profile.peerID).id._internalGetInt64Value(), title: String(profile.displayName.prefix(512)))
+    }
     public let media = TelegramMediaController()
     public let avatars = TelegramAvatarStore()
     public let peerStatus = TelegramPeerStatusController()
@@ -1998,6 +2005,7 @@ public final class TelegramModel: ObservableObject {
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
+        accountBlockedUsers.bind(TelegramEngineBlockedUsersProvider(account: account))
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
@@ -2054,7 +2062,7 @@ public final class TelegramModel: ObservableObject {
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
         profilePhotos.bind(nil); peerManagement.bind(nil)
-        accountSessions.bind(nil); accountPrivacy.bind(nil)
+        accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -2317,6 +2325,7 @@ public final class TelegramModel: ObservableObject {
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
         model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider())
+        model.accountBlockedUsers.bind(TelegramSyntheticBlockedUsersProvider())
         model.search.useSyntheticPreview(albums: albums, forum: forum)
         model.globalSearch.useSyntheticPreview(albums: albums, forum: forum)
         model.sharedMedia.useSyntheticPreview(albums: albums, forum: forum)

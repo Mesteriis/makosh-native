@@ -48,7 +48,7 @@ Final cache AX descriptions include category names; photo-only clear leaves9MiB
 and a zero-byte-only selection disables Clear. One QA assertion initially expects
 the category in AX label position; the actual Description is present and the
 corrected native assertion passes. Owned QA is stopped; isolated data retained.
-Final `scripts/test.sh` under per-process caffeinate exits0: **1929 XCTest
+Initial `scripts/test.sh` under per-process caffeinate exits0: **1929 XCTest
 (1850 Telegram +79 core),1 microphone precondition skip,0 failures;89 Python
 tests across19 suites**. All44 new block cases execute and pass. Existing macOS
 framework diagnostics remain in private raw logs; they are not XCTest failures
@@ -61,6 +61,42 @@ substitute for hosted CI.
 No personal account, Telegram transport or real Keychain acceptance is claimed.
 Conservative reference differences and remaining broad settings flows are explicit
 in docs/reference-interface.md and docs/telegram.md.
+
+### Pre-merge automatic archive handoff repair
+
+Both exact-c42c033 hosted runs pass, but no merge occurs: a subsequent bounded
+source audit plus independent review confirms P1 archive overflow. Three-transfer
+concurrency alone can outpace eight retained captures; the ninth old completion
+can have no FD/receipt. New reservations count in-flight automatic admissions and
+FD-backed pending work together (three slots), separate from the unchanged eight
+manual slots, total11. A granted completion captures its FD synchronously despite
+later archive error/manual pressure; cancellation frees only an unused slot.
+Capacity refusal leaves the candidate retryable; archive-state changes wake the
+queue. Native identity/policy/window eligibility and S3 admission remain unchanged.
+Manual completion ordering is preserved. Invalid FD capture cannot publish Ready.
+
+The first new harness run has an actor-isolation compile error, corrected by
+annotating its fake budget MainActor. Valid RED:3 cases/6 ordinary failures.
+Repaired21 focused cases pass, including real PostgreSQL/S3 recovery of11 exact
+files after source unlink under held configuration failure/manual pressure.
+The final focused59 cases pass and additionally check explicit S3 OFF: no new
+record or encrypted spool remains, old records retained. Final independent source
+review verifies48/48 hashes and exactly the declared two-file cleanup: duplicate
+Combine removal and immediate post-capture token validation. No source findings
+remain; the reviewer performs no runtime checks. Root confirms all758 public frozen
+files and file set, excluding this mutable ledger. Final signed build exits0;
+the separately signed QA bundle has the same unsigned payload. Native synthetic
+QA again shows incoming fixture129 progressing automatically to File Downloaded,
+without Download, and restarted masterON/files1MiB/selected SOCKS5 port1081/secure
+password field in the common workspace. Owned QA is stopped, isolated data retained.
+Final full `scripts/test.sh` exits0: **1932 XCTest (1853 Telegram +79 core),
+1 microphone precondition skip,0 failures;89 Python tests across19 suites**.
+All47 new block cases execute and pass; final focused59 pass. Fresh own/reference/
+engine XERJ fingerprints and actual own reservation retrieval are source confirmed.
+Exact-final-head hosted gates and integration evidence are recorded on
+[PR11](https://github.com/Mesteriis/makosh-native/pull/11); earlier c42 hosted success
+does not establish the repaired head. No live account/transport/Keychain acceptance
+is claimed.
 
 ## Completed stage: Telegram notifications on this Mac (block 10)
 

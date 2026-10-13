@@ -18,6 +18,7 @@ import Combine
         settings.objectWillChange.sink { [weak self] _ in self?.schedule() }.store(in: &subscriptions)
     }
     isolated deinit { evaluation?.cancel(); media.cancelAutomaticDownloads(except: []) }
+    func archiveCapacityChanged() { schedule() }
     func replace(attachments: [TelegramAttachment], contextID: UUID, active: Bool,
         eligibility: @escaping @MainActor () -> Bool = { true }) {
         if context != contextID || accountID != settings.accountID {
@@ -52,14 +53,15 @@ import Combine
         media.cancelAutomaticDownloads(except: Set(eligible.map(\.id)))
         for attachment in eligible {
             guard media.automaticInFlightCount < 3 else { break }
-            guard attempted.insert(attachment.id).inserted else { continue }
+            guard !attempted.contains(attachment.id) else { continue }
             let capturedContext = context, capturedAccount = accountID
-            _ = media.startAutomatically(attachment, preferences: preferences) { [weak self] in
+            let started = media.startAutomatically(attachment, preferences: preferences) { [weak self] in
                 guard let self else { return false }
                 return self.active && self.context == capturedContext && self.accountID == capturedAccount &&
                     self.settings.accountID == capturedAccount && self.settings.error == nil &&
                     self.settings.preferences == preferences && self.attachments.contains(attachment) && self.eligibility()
             }
+            if started { attempted.insert(attachment.id) }
         }
     }
 }

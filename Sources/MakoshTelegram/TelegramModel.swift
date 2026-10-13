@@ -1,6 +1,6 @@
 import Foundation
-import MakoshCore
 import Combine
+import MakoshCore
 import Security
 import TelegramCore
 import Postbox
@@ -238,6 +238,7 @@ public final class TelegramModel: ObservableObject {
     public let proxy: TelegramProxyController
     private let proxyClientID = UUID()
     private lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
+    private var automaticArchiveObservation: AnyCancellable?
     public func setVisibleAutomaticDownloads(messageIDs: Set<String>, context: TelegramHistoryReadContext,
         windowIsActive: Bool, eligibility: @escaping @MainActor () -> Bool) {
         guard historyReadContext == context else { return }
@@ -649,6 +650,7 @@ public final class TelegramModel: ObservableObject {
     public init(proxy: TelegramProxyController? = nil, autoDownloadDefaults: UserDefaults = .standard) {
         autoDownloadSettings = TelegramAutoDownloadSettings(defaults: autoDownloadDefaults)
         self.proxy = proxy ?? TelegramProxyController()
+        automaticArchiveObservation = archive.files.objectWillChange.sink { [weak self] _ in self?.automaticDownloads.archiveCapacityChanged() }
         cache.permitsClear = { [weak self] in
             guard let self else { return false }
             return self.phase == .ready && !self.isBusy && self.upload.phase == .idle &&
@@ -2249,7 +2251,11 @@ public final class TelegramModel: ObservableObject {
                 guard let (identity,attachment) = archivedSources[id] else { return }
                 files.accept(file: url,byteCount: size,identity: identity,attachment: attachment)
             }
-        } else { media.completedFullFile = nil }
+            media.reserveAutomaticFile = { [files = archive.files] id in
+                guard let (identity, attachment) = archivedSources[id] else { return nil }
+                return files.reserveAutomaticCapture(identity: identity, attachment: attachment)
+            }
+        } else { media.completedFullFile = nil; media.reserveAutomaticFile = nil }
     }
 
     private func loadChatList(anchor: ChatListIndex? = nil, clear: Bool = false) {

@@ -84,4 +84,37 @@ import XCTest
         XCTAssertNil(media.downloadedFile(for: .init(attachmentID: "file-0", purpose: .full)))
         XCTAssertEqual(archived, 0)
     }
+    func testArchiveCapacityPausesReplacementDownloadsAndWakeResumesWithoutDiscardingAdmittedCompletions() async {
+        let (media, provider, settings, queue, name) = setup()
+        defer { UserDefaults(suiteName: name)?.removePersistentDomain(forName: name) }
+        let budget = ArchiveBudget()
+        media.reserveAutomaticFile = { budget.reserve($0) }
+        var p = settings.preferences; p.enabled = true; _ = settings.update(p, contextID: settings.contextID)
+        queue.replace(attachments: attachments(), contextID: UUID(), active: true)
+        await waitUntil { provider.starts.count == 3 }
+        for id in provider.starts { provider.callbacks[id]?(.data(URL(fileURLWithPath: "/synthetic/file"), offset: 0, size: 100, complete: true)) }
+        await Task.yield()
+        XCTAssertEqual(budget.captured, ["file-0", "file-1", "file-2"])
+        XCTAssertEqual(provider.starts.count, 3)
+        budget.release("file-0"); queue.archiveCapacityChanged()
+        await waitUntil { provider.starts.count == 4 }
+        XCTAssertEqual(provider.starts.last, "file-3")
+        queue.replace(attachments: [], contextID: UUID(), active: false)
+        await waitUntil { provider.leases.allSatisfy(\.cancelled) }
+        XCTAssertEqual(Set(budget.held), ["file-1", "file-2"], "Captured handoffs survive viewport exit; uncompleted admission is released")
+    }
+    @MainActor private final class ArchiveBudget {
+        var held = Set<String>(), captured: [String] = []
+        func reserve(_ id: String) -> (any TelegramMediaArchiveReservation)? {
+            guard held.count < 3 else { return nil }; held.insert(id); return Reservation(owner: self, id: id)
+        }
+        func release(_ id: String) { held.remove(id) }
+        private final class Reservation: TelegramMediaArchiveReservation {
+            let owner: ArchiveBudget, id: String
+            var consumed = false
+            init(owner: ArchiveBudget, id: String) { self.owner = owner; self.id = id }
+            func capture(file: URL, byteCount: Int64) -> Bool { guard !consumed else { return false }; consumed = true; owner.captured.append(id); return true }
+            func cancel() { if !consumed { consumed = true; owner.release(id) } }
+        }
+    }
 }

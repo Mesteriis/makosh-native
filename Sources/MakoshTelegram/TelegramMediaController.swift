@@ -19,6 +19,11 @@ public enum TelegramMediaPhase: Equatable, Sendable {
 @MainActor
 protocol TelegramMediaLease: AnyObject { func cancel() }
 
+@MainActor protocol TelegramMediaArchiveReservation: AnyObject {
+    func capture(file: URL, byteCount: Int64) -> Bool
+    func cancel()
+}
+
 @MainActor
 protocol TelegramMediaProvider: AnyObject {
     func start(attachmentID: String, purpose: TelegramMediaPurpose,
@@ -53,7 +58,9 @@ public final class TelegramMediaController: ObservableObject {
         var lease: (any TelegramMediaLease)?
         var borrows = 0
         var releasePending = false
+        var archiveReservation: (any TelegramMediaArchiveReservation)?
         func release() {
+            archiveReservation?.cancel(); archiveReservation = nil
             releasePending = true
             if borrows == 0 { let old = lease; lease = nil; old?.cancel() }
         }
@@ -76,6 +83,7 @@ public final class TelegramMediaController: ObservableObject {
     private var attachments: [String: TelegramAttachment] = [:]
     private var jobs: [TelegramMediaKey: Job] = [:]
     var completedFullFile: (@MainActor (String,URL,Int64) -> Void)?
+    var reserveAutomaticFile: (@MainActor (String) -> (any TelegramMediaArchiveReservation)?)?
 
     public init() {}
 
@@ -110,6 +118,7 @@ public final class TelegramMediaController: ObservableObject {
         attachments.removeAll()
         provider = nil
         completedFullFile = nil
+        reserveAutomaticFile = nil
         revision &+= 1
         for job in previous.values { job.deadline?.cancel(); job.holder.release() }
     }
@@ -154,10 +163,15 @@ public final class TelegramMediaController: ObservableObject {
                 // A manual action owns a new lease, independent of automatic admission.
             }
         }
+        let reservation: (any TelegramMediaArchiveReservation)?
+        if automatic != nil, let reserveAutomaticFile {
+            guard let granted = reserveAutomaticFile(attachment.id) else { return false }; reservation = granted
+        } else { reservation = nil }
         remove(key)
         let token = UUID()
         jobs[key] = Job(token: token, phase: .downloading(nil), completedFile: completedFullFile,
             automatic: automatic != nil, automaticIsCurrent: isCurrent)
+        jobs[key]?.holder.archiveReservation = reservation
         jobs[key]?.deadline = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(60)) } catch { return }
             self?.timeout(key, token: token)
@@ -201,6 +215,14 @@ public final class TelegramMediaController: ObservableObject {
             jobs[key]?.phase = .downloading(value.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil })
         case let .data(url, offset, size, complete):
             guard complete, offset == 0, size >= 0, url.isFileURL else { return }
+            let reservedCapture = job.holder.archiveReservation != nil
+            if let reservation = job.holder.archiveReservation {
+                let captured = reservation.capture(file: url, byteCount: size)
+                guard jobs[key]?.token == token else { return }
+                guard captured else { finish(key, phase: .failed); return }
+                job.holder.archiveReservation = nil
+            }
+            guard jobs[key]?.token == token else { return }
             jobs[key]?.phase = .ready
             jobs[key]?.file = url
             jobs[key]?.size = size
@@ -208,7 +230,7 @@ public final class TelegramMediaController: ObservableObject {
             jobs[key]?.deadline = nil
             // Freeze the descriptor before any asynchronous archive work. An open
             // FD survives Telegram's force-unlink even when its cache lease cannot.
-            if key.purpose == .full { job.completedFile?(key.attachmentID,url,size) }
+            if !reservedCapture && key.purpose == .full { job.completedFile?(key.attachmentID,url,size) }
         case .failed:
             finish(key, phase: .failed)
             return

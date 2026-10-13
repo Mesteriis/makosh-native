@@ -3116,7 +3116,16 @@ peer protection and unsupported/spoiler/paid/unknown-size exclusions. The latest
 policy, account/history context and native window eligibility are checked again
 before fetch and before accepting completion. Leaving a page or disabling the
 policy cancels only automatic ownership; manual transfers remain independent.
-Completed files use the existing archive callback and its per-chat S3 policy.
+Manual completion retains its existing archive callback. Before native automatic
+fetch, a frozen source identity reserves one of three automatic archive slots;
+that budget includes both in-flight admissions and FD-backed pending captures.
+The existing eight-manual-capture budget stays independent, bounding total retained
+handoffs at11. Unused reservations cancel with their media leases; a valid full
+completion consumes its slot synchronously into a retained FD before publishing
+Ready. Already granted completions survive intervening archive busy/error states.
+Capacity exhaustion pauses new work without burning the candidate; archive changes
+wake the queue after a durable handoff or explicit retry. FD-validation refusal
+publishes Failed rather than Ready. Both paths use the same per-chat S3 gate.
 Enabling auto-download never enables S3; S3 OFF continues to prohibit every new
 copy there. Permanent message/version retention is unchanged.
 

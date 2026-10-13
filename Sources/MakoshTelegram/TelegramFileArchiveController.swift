@@ -14,13 +14,49 @@ import MakoshCore
     private var repository: ArchiveFileRepository?
     private var configuration: (String,String,URL,URL)?
     private var active = Set<Lookup>()
-    private struct Pending { let capture: ArchiveFileCapture; let identity: MessageArchiveIdentity; let attachment: MessageArchiveAttachment }
+    private struct Pending { let capture: ArchiveFileCapture; let identity: MessageArchiveIdentity; let attachment: MessageArchiveAttachment; let automatic: Bool }
     private var pending: [Lookup:Pending] = [:]
+    private var automaticReservations: [UUID:Lookup] = [:]
     private var factory: (() throws -> ArchiveFileRepository)?
     private var resuming = false
     private struct Lookup: Hashable { let identity: MessageArchiveIdentity; let attachmentID: String }
     public init() {}
     init(factory: @escaping () throws -> ArchiveFileRepository) { self.factory = factory }
+    func reserveAutomaticCapture(identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment) -> (any TelegramMediaArchiveReservation)? {
+        guard error == nil, !resuming,
+              automaticReservations.count + pending.values.filter(\.automatic).count < 3 else { return nil }
+        let id = UUID()
+        automaticReservations[id] = .init(identity: identity, attachmentID: attachment.id)
+        revision &+= 1
+        return AutomaticReservation(owner: self, id: id, identity: identity, attachment: attachment)
+    }
+    private func cancelAutomaticReservation(_ id: UUID) {
+        if automaticReservations.removeValue(forKey: id) != nil { revision &+= 1 }
+    }
+    private func consumeAutomaticReservation(_ id: UUID, file: URL, byteCount: Int64,
+        identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment) -> Bool {
+        let lookup = Lookup(identity: identity, attachmentID: attachment.id)
+        guard automaticReservations[id] == lookup else { return false }
+        automaticReservations.removeValue(forKey: id)
+        // Already granted capacity survives intervening archive errors and manual
+        // pressure. No suspension separates reservation consumption and FD capture.
+        let captured = acceptCapture(file: file, byteCount: byteCount, identity: identity, attachment: attachment, automatic: true)
+        revision &+= 1; return captured
+    }
+    private final class AutomaticReservation: TelegramMediaArchiveReservation {
+        private weak var owner: TelegramFileArchiveController?
+        private let id: UUID, identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment
+        private var consumed = false
+        init(owner: TelegramFileArchiveController, id: UUID, identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment) {
+            self.owner = owner; self.id = id; self.identity = identity; self.attachment = attachment
+        }
+        func capture(file: URL, byteCount: Int64) -> Bool {
+            guard !consumed else { return false }; consumed = true
+            return owner?.consumeAutomaticReservation(id, file: file, byteCount: byteCount, identity: identity, attachment: attachment) == true
+        }
+        func cancel() { guard !consumed else { return }; consumed = true; owner?.cancelAutomaticReservation(id) }
+        isolated deinit { cancel() }
+    }
     #if DEBUG
     func configureSynthetic(connectionString: String,schema: String,configurationFile: URL,spoolDirectory: URL) throws {
         guard (schema.hasPrefix("makosh_qa_") || schema.hasPrefix("qa_telegram_dossier_")), repository == nil else { throw MessageArchiveError.invalid }
@@ -47,14 +83,23 @@ import MakoshCore
     }
     /// Called synchronously at complete-file delivery, before the first suspension.
     func accept(file: URL,byteCount: Int64,identity: MessageArchiveIdentity,attachment: MessageArchiveAttachment) {
+        _ = acceptCapture(file: file, byteCount: byteCount, identity: identity, attachment: attachment, automatic: false)
+    }
+    private func acceptCapture(file: URL, byteCount: Int64, identity: MessageArchiveIdentity,
+        attachment: MessageArchiveAttachment, automatic: Bool) -> Bool {
         let lookup = Lookup(identity: identity,attachmentID: attachment.id)
-        guard pending[lookup] == nil, !active.contains(lookup) else { return }
+        guard pending[lookup] == nil, !active.contains(lookup) else { return true }
         do {
-            guard pending.count < 8 else { throw MessageArchiveError.invalid }
+            // Preserve the existing eight-manual-capture budget. Automatic work
+            // has three separately reserved slots, including outstanding fetches.
+            guard automatic || pending.values.filter({ !$0.automatic }).count < 8 else { throw MessageArchiveError.invalid }
             let capture = try ArchiveFileCapture(file: file,byteCount: byteCount)
-            pending[lookup] = Pending(capture: capture,identity: identity,attachment: attachment)
-            start(lookup)
-        } catch { self.error = "Не удалось захватить файл для S3. Повторите загрузку после восстановления хранилища." }
+            pending[lookup] = Pending(capture: capture,identity: identity,attachment: attachment, automatic: automatic)
+            start(lookup); return true
+        } catch {
+            self.error = "Не удалось захватить файл для S3. Повторите загрузку после восстановления хранилища."
+            return false
+        }
     }
     private func start(_ lookup: Lookup) {
         guard !active.contains(lookup), let pending = pending[lookup] else { return }

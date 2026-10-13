@@ -1,5 +1,65 @@
 # Telegram channel
 
+## Notifications on this Mac (2026-10-13)
+
+The common workspace opens Notifications and Sounds from Telegram settings;
+each profile opens a local per-chat exception editor. Account-scoped local
+preferences support a master switch, previews, system/silent sound, Dock attention,
+active-app suppression, timed snooze, private/group/channel policies and per-chat
+overrides. They never write server notification settings. Server mute, hidden
+previews, silent messages, topic rules and already-read state remain authoritative.
+Reset explicitly resets local settings only. Malformed/corrupt/oversized stored
+records fail closed until an explicit reset; an absent record uses defaults.
+At most512 peer exceptions and64KiB
+of encoded settings are admitted. Account/context changes reject stale editors.
+Controllers using the same in-process preferences store propagate account-local
+changes to other windows, invalidate their old cards and retain their engine
+subscriptions. Other accounts/stores are not affected. One app-owned system
+delegate routes opaque tokens to the owning workspace/window; opening another
+window cannot steal the first window's routes. Dock aggregation counts each
+account once, using its largest observed window count. A separate4096-key app
+cache suppresses the same event arriving through multiple windows; its native
+identity stays in memory and is never included in the system payload.
+
+Only AccountStateManager.notificationMessages feeds new notifications. Native
+resolution uses fresh messagesForNotification inside an encrypted Postbox transaction;
+it does not infer arrivals from loaded history or an initial chat-list snapshot.
+An own locked pump retains one read and at most1000 unique pending IDs, without
+replacing an in-flight read. Each raw update is bounded at10000 IDs; IDs are
+deduplicated before the1000-unique-ID transaction limit. Overflow drops excess
+pending arrivals and reports a warning once per binding; it does not discard
+messages or their archive. Album identities coalesce repeated members, using the
+first nonempty resolved caption and its native privacy/silence constraints.
+Incoming events older than24h or more than60s in the future are refused. A process-
+local4096-entry identity cache survives rebinding; it is not a durable exactly-once
+delivery guarantee. At most100 current click routes/system submissions are retained.
+Unread badges use full native filtered root counters, including bot/private tags,
+with separate group/channel switches and messages/chats modes. Archived counters
+are excluded; loading another chat-list page cannot change this count.
+
+Own UNUserNotificationCenter delivery asks permission only from an explicit button.
+Spoilers and service login codes are masked; protected and secret content remains
+generic. Screen-lock events remove existing owned cards and hide subsequent titles,
+body and sound; this is best-effort removal, not erasure of content already seen by
+macOS. Disabling previews/settings, account changes and disconnect invalidate owned
+cards/routes. Late asynchronous cleanup preserves newer submissions. The system
+payload contains only an opaque activation token, with no credentials, peer IDs,
+media fetch, reply action or implicit mark-read. A click must resolve a live same-
+account single-use route and pass the ordinary model navigation guards; it then
+opens the chat/topic/message in the existing common workspace. Reopening the app
+does not restore old click authority. It must be running and explicitly connected;
+background push while terminated is not implemented.
+
+DEBUG synthetic workspace controls exercise local settings and own macOS delivery
+without a Telegram account. The system delivery probe queries only this QA bundle's
+current opaque synthetic token; it never inspects other applications' notifications.
+Local tests/native QA are recorded in development-status.md. Server-synchronized
+notification editing/reset, cloud/bundled Telegram tones, joined-contact controls,
+reactions/stories/scheduled reminders and banner reply/read actions are outside this
+slice. Per-chat S3 prohibition, permanent message retention, PostgreSQL schema,
+engine pin/recipe and dependencies are unchanged. Reference layouts and explicit
+adaptations are recorded in reference-interface.md.
+
 Makosh reuses the **actual TelegramSwift engine**, not a mock transport or an
 alternative client library. `MakoshTelegram` wraps TelegramCore, Postbox,
 SwiftSignalKit and OpenSSLEncryptionProvider; `MakoshApp/TelegramView.swift` is

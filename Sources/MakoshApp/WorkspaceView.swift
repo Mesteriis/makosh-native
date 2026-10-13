@@ -272,6 +272,8 @@ struct WorkspaceView: View {
         .accentColor(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
         .preferredColorScheme(telegramWorkspaceScheme(theme: telegramTheme, telegramSelected: destination == .telegram, system: systemAppearance.scheme))
         .background(Color(nsColor: .windowBackgroundColor))
+        .modifier(TelegramNotificationHost(controller: telegram.notifications))
+        .onReceive(telegram.notifications.$activationRequest.dropFirst()) { _ in destination = .telegram }
         .onAppear {
             if !telegram.isSyntheticPreview { model.configureArchive(telegram.archive) }
             #if DEBUG

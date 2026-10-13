@@ -110,6 +110,8 @@ struct TelegramContactProfileView: View {
                         } header: { Text("Описание") }
                     }
                     Section {
+                        TelegramNotificationPeerButton(controller: model.notifications, peerID: profile.peerID, title: displayName,
+                            isCurrent: { model.messageActionContextID == contextID && model.notifications.accountID == profile.accountID })
                         Button("Общие медиа") {
                             if model.openSharedMedia(profile, contextID: contextID) { page = .media }
                         }.accessibilityIdentifier("telegram.profile.sharedMedia")

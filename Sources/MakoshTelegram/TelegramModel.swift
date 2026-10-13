@@ -74,6 +74,7 @@ enum TelegramSetupError: LocalizedError {
 /// performs no account, Keychain, filesystem or network access until Connect.
 @MainActor
 public final class TelegramModel: ObservableObject {
+    public let notifications = TelegramNotificationController()
     public let customEmojiCatalog = TelegramCustomEmojiCatalogController()
     @Published public private(set) var customEmojiPlaybackContext: TelegramCustomEmojiPlaybackContext?
     @Published public private(set) var customEmojiDescriptors: [Int64: TelegramCustomEmojiDescriptor] = [:]
@@ -628,6 +629,7 @@ public final class TelegramModel: ObservableObject {
     private let contactProfileSubscription = MetaDisposable()
 
     public init() {
+        notifications.didActivate = { [weak self] event in self?.activateNotification(event) == true }
         emojiCatalogObservation = customEmojiCatalog.$snapshot.sink { [weak self] snapshot in
             let items = (snapshot?.recent ?? []) + (snapshot?.installed.flatMap(\.items) ?? []) +
                 (snapshot?.featured.flatMap(\.items) ?? [])
@@ -1764,6 +1766,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     isolated deinit {
+        notifications.bind(accountID: nil)
         emojiResolution.dispose(); capabilityObservation.dispose(); customEmojiPlaybackContext?.invalidate()
         serverDraftResolutionDeadline?.cancel()
         selectionRangeDeadline?.cancel()
@@ -2008,6 +2011,7 @@ public final class TelegramModel: ObservableObject {
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
         accountBlockedUsers.bind(TelegramEngineBlockedUsersProvider(account: account))
         accountTwoStep.bind(TelegramEngineTwoStepProvider(account: account))
+        notifications.bind(account: account)
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
@@ -2050,6 +2054,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        notifications.bind(accountID: nil)
         sendApproval.dispose(); capabilityObservation.set(nil); conversationCapabilities = nil
         pendingEmojiInsertion = nil; customEmojiInsertion = nil
         customEmojiCatalog.bind(account: nil); customEmojiPlaybackContext?.invalidate()
@@ -2152,6 +2157,24 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func clearHistoryFocus() { historyFocusID = nil }
+
+    private func activateNotification(_ event: TelegramNotificationEvent) -> Bool {
+        guard phase == .ready, !isBusy, !messageActions.isBusy, upload.phase == .idle,
+              !isComposerSuspended, !isForwardComposerLocked, !selectedMessagesDeletionBlocksActions,
+              notifications.accountID == event.accountID,
+              account?.peerId.toInt64() == event.accountID || (isSyntheticPreview && event.accountID == -1) else { return false }
+        if knownChats[event.peerID] == nil {
+            knownChats[event.peerID] = .init(id: event.peerID, title: event.title, preview: "", unreadCount: 0)
+        }
+        selectedChatID = event.peerID
+        if selectedThreadID != event.threadID { selectThread(event.threadID) }
+        isForumTopicsListPresented = false
+        if isSyntheticPreview { loadHistory(); return true }
+        let id = MessageId(peerId: PeerId(event.peerID), namespace: event.namespace, id: event.messageID)
+        loadHistory(anchor: MessageIndex(id: id, timestamp: event.timestamp), clear: false,
+            focusID: "\(event.peerID):\(event.namespace):\(event.messageID)")
+        return true
+    }
 
     public func cancelMediaLoads() {
         playback.stop()
@@ -2329,6 +2352,7 @@ public final class TelegramModel: ObservableObject {
         model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider())
         model.accountBlockedUsers.bind(TelegramSyntheticBlockedUsersProvider())
         model.accountTwoStep.bind(TelegramSyntheticTwoStepProvider(resetWaitSeconds: twoStepResetWaitSeconds))
+        model.notifications.bind(accountID: -1)
         model.search.useSyntheticPreview(albums: albums, forum: forum)
         model.globalSearch.useSyntheticPreview(albums: albums, forum: forum)
         model.sharedMedia.useSyntheticPreview(albums: albums, forum: forum)

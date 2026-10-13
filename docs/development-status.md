@@ -1,5 +1,62 @@
 # Development status — 2026-10-13
 
+## Current stage: Telegram notifications on this Mac (block 10)
+
+Own SwiftUI settings in the common workspace now cover account-local notification
+enablement, previews, system/silent sound, Dock attention, active-app suppression,
+timed snooze, personal/group/channel policies, per-chat exceptions and unread badge
+options. The profile opens the same per-chat editor. Frozen contexts reject stale
+editors; corrupt/oversized stored settings disable notifications until explicit
+reset. Changes propagate to other windows sharing that account/preferences store.
+No server notification setting is written.
+
+New arrivals come only from the native notificationMessages stream and fresh
+encrypted-Postbox messagesForNotification resolution. Read/mute/topic/privacy/silent
+constraints remain authoritative. An own bounded pump avoids an unbounded upstream
+queue; excess arrivals produce a visible warning without deleting messages/archive.
+Albums use their first nonempty caption, while unrelated forwards retain their own
+text. Native identities remain in memory; system payloads contain opaque single-use
+tokens. One app-owned router preserves owning-window activation and deduplicates
+cross-window arrivals. Spoilers/login codes are masked; protected/secret content is
+generic. Screen-lock cleanup is best effort. Current click routes/submissions and
+process-local deduplication caches are bounded.
+
+Regression REDs exposed ordinary assertion failures in policy, native resolution,
+system payload, cleanup races, duplicate album bounds, queue pressure, caption
+selection and cross-window routing/preferences. Repairs pass the focused23 XCTest.
+The final app build and strict signing exit0. Independent read-only review verifies
+all23 frozen source/test/reference-document hashes and reports no remaining
+Critical/Important/Minor finding; it runs no tests/build/native QA. Root verifies
+the complete727-file public snapshot, excluding this mutable ledger.
+
+Final native QA uses a separately signed synthetic bundle and isolated PostgreSQL
+schema. The user grants its macOS notification permission. After restarting the
+final build, permission, disabled previews/active-app suppression and the chat's
+silent exception persist. A fresh synthetic incoming event produces the generic
+body; querying this bundle's current opaque token confirms an actual delivered
+macOS card with that exact body. In-app activation closes settings and opens the
+chat/history in the common services workspace, visually inspected. This does not
+claim a physical system-banner click. The owned QA process is stopped before the
+full suite; isolated data is retained. No private accounts or Telegram network are
+used. Transient CUA observation failures remain failures, followed by fresh reads.
+
+Required DB/S3 startup exits0. Final `scripts/test.sh` under per-process
+`caffeinate -i` exits0: **1885 XCTest (1806 Telegram +79 core),1 microphone
+precondition skip,0 failures;86 Python tests across18 suites**. All23 notification
+tests execute. Hosted exact-head results remain pending. Final XERJ project
+refresh exits0:723 files,672/672 classified code files.
+Project, TelegramSwift and engine fingerprint checks are fresh; actual registry,
+reference-preferences and native-stream queries are confirmed against current
+source. Engine recipe20/pin, dependency locks, schemas, permanent retention and
+per-chat S3 prohibitions are unchanged.
+
+This slice requires a running, explicitly connected app. Live-account acceptance,
+physical locked-screen/banner/multiwindow presentation, terminated-app push,
+server-synchronized notification editing/reset, cloud/bundled tones, joined-contact
+controls, reactions/stories/scheduled reminders and banner reply/read actions are
+not established or implemented here. Reference differences are recorded in
+reference-interface.md; operational limits are in telegram.md.
+
 ## CI repairs for the preceding integration
 
 Both hosted runs for block2 head8cbf794 failed before compilation because

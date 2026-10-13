@@ -31,8 +31,36 @@ Both signed builds exit0; final separate QA bundle has equal unsigned payload.
 Actual native synthetic QA observes the common sidebar, username result/open,
 error/retry, successful zero, and media-filter suppression/restoration. The final
 error uses a distinct retry control and accurate text. Owned QA is stopped before
-full tests. Full Task1 suite/commit and subsequent Tasks2–5 remain in progress.
+full tests. Task1 commits b8b62ac/c26cb46; full repaired suite exits0:1968 XCTest
+(1889 Telegram +79 core),one microphone-precondition skip,zero failures;92 Python
+across20 suites pass. Its first full attempt fails on an old warm-cache fixture
+missing the newly mandatory helper; the fixture now includes the canonical file.
+Tasks2–5 remain in progress.
 No live search/server/account acceptance is claimed.
+
+Task2 avatar source/native UI is implemented, with current own/group/channel
+photo and own fallback workflows, immutable640px JPEG preparation, fresh full
+photo/rights admission, typed write ACKs and post-write reread. Canonical recipe23
+adds own MIT upload/photo bridges; prior preparation retained. Native/controller/
+profile/cover focused52 pass, Python preparation22 pass, signed build exits0.
+Min-channel ACK ordinary RED1/1 repairs via nonzero personal-hash admission.
+Initial native QA observes native picker cancellation and circular crop/rotate/
+flip, but Done exposes a reference fitted-canvas rounding error (401x400).
+New ordinary RED1/1 reproduces it; integer-square snapping repairs avatar10 tests.
+Final rebuilt QA (strict signature/equal unsigned executable) verifies native
+picker cancellation, circular crop/rotation/flip, cancel confirmation preserving
+visible draft, own save/reopen, delete cancel/discard and confirmed removal,
+independent fallback delete/upload from photo privacy, and group/channel edit
+entry plus photo upload (group removal also checked). Transient CUA AX failures
+at sheet transitions are followed by fresh full-state/rebinding observations;
+actual outcomes are confirmed, not inferred from clicks. Screenshots inspected,
+owned QA stopped and isolated data retained. A final cancellation audit adds an explicit pre-commit Cancel Upload action: an
+ordinary RED1/3 verifies preserved draft, idle phase and revoked late commit.
+Commit-phase cancellation is refused. Final focused55 pass (18 new cases).
+The delayed synthetic provider verifies actual0.5 progress/cancel, idle retained
+draft, no late save, and new explicit confirmation. Final cancellation QA is
+observed; full Task2 suite remains pending. Earlier UI compilation errors (computed synthetic identity assignment,
+compound @State) are recorded separately; they are repaired, not passing builds.
 
 Native-call research only: exact reference tgcalls/tg_owt source pins are fetched
 into independent bare caches. Native wrapper needs a reviewed WebRTC dependency

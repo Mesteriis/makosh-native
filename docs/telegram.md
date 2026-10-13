@@ -3261,3 +3261,31 @@ Avatar editing, membership workflows, secret-chat expansion and native calls are
 subsequent tasks in this same approved block. The existing privacy exception
 picker's directory remains local at this slice. Real account/server acceptance is
 separate from synthetic/native-fixture validation. See development-status.md.
+
+## Block13 task2: static avatar editing (2026-10-13)
+
+Own profile-photo editing opens from Telegram settings. Permitted group/channel
+photo editing opens from the existing profile information editor; public fallback
+photo editing opens inside profile-photo privacy for the same account. Native
+picker cancellation leaves no draft; immutable selection/crop/rotation/flip yields
+up to640px square metadata-free JPEG, with explicit save/remove confirmation.
+Only current own identity or fresh group/channel change-info rights admit writes.
+Photo basis/account/peer/kind remain frozen; changed basis requires new consent.
+
+Recipe23's own MIT helper exposes existing native multipart upload and bounded
+full-response photo conversion. Typed users.getFullUser/messages.getFullChat/
+channels.getFullChannel supply fresh basis; own photos.uploadProfilePhoto/
+updateProfilePhoto and messages/channels.editPhoto use automaticFloodWait:false.
+Multipart progress and empty completion are not ACKs. Partial/min/duplicate/wrong
+peer replies cannot authorize success. An exact returned photo identity plus a
+fresh full read confirms upload/removal; missing ACK or post-write read failure
+remains uncertain. Cancel before commit releases preparation; closing/rebinding
+once committed retains a target uncertainty barrier until explicit refresh.
+
+Photo history/export, permanent message retention and per-chat S3 policy are
+unchanged; avatar bytes remain bounded transient memory/staging and native upload,
+never PostgreSQL byte storage or a new S3 copy. Explicit DEBUG
+--telegram-avatar-synthetic-preview uses account101 and native group/channel
+namespaces in the common workspace with --database-config isolated fixtures.
+It simulates server writes without opening accounts or Telegram network. The
+usual preview identity stays-1. Real server/account acceptance is separately scoped.

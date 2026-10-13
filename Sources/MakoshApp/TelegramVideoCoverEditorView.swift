@@ -166,13 +166,14 @@ struct TelegramVideoCoverEditorView: View {
     }
 }
 
-private struct TelegramVideoCoverCropCanvas: View {
+struct TelegramVideoCoverCropCanvas: View {
     let preview: TelegramImagePreview
     let painting: TelegramUploadVideoCoverPainting
     @Binding var crop: TelegramUploadVideoCoverCrop
     @Binding var images: TelegramUploadVideoCoverImages
     @Binding var canvasSize: CGSize
     @Binding var error: String?
+    var circularPreview = false
     @State private var gestureStart: TelegramUploadVideoCoverCrop?
     @State private var initializedSelection = false
     @FocusState private var focused: Bool
@@ -198,6 +199,11 @@ private struct TelegramVideoCoverCropCanvas: View {
                     .accessibilityHidden(true)
                 Path { path in path.addRect(fitted); path.addRect(selection) }
                     .fill(.black.opacity(0.55), style: FillStyle(eoFill: true)).allowsHitTesting(false)
+                if circularPreview {
+                    Circle().stroke(.white.opacity(0.9), lineWidth: 1)
+                        .frame(width: selection.width, height: selection.height)
+                        .position(x: selection.midX, y: selection.midY).allowsHitTesting(false)
+                }
                 Rectangle().fill(.clear).overlay(Rectangle().stroke(.white, lineWidth: 1))
                     .frame(width: selection.width, height: selection.height)
                     .contentShape(Rectangle()).position(x: selection.midX, y: selection.midY)
@@ -219,10 +225,10 @@ private struct TelegramVideoCoverCropCanvas: View {
                         @unknown default: break
                         }
                     }
-                    .accessibilityLabel("Область обрезки обложки")
+                    .accessibilityLabel(circularPreview ? "Область обрезки фотографии профиля" : "Область обрезки обложки")
                     .accessibilityValue("\(Int(crop.rect.width * 100))% ширины, \(Int(crop.rect.height * 100))% высоты")
                     .accessibilityHint("Перетащите рамку или её углы. Двойной щелчок выбирает максимальную область. Стрелки перемещают рамку; изменение значения меняет размер.")
-                    .accessibilityIdentifier("telegram.upload.videoCoverEditor.crop")
+                    .accessibilityIdentifier(circularPreview ? "telegram.avatar.crop" : "telegram.upload.videoCoverEditor.crop")
                     .accessibilityAction(named: Text("Выбрать максимальную область")) {
                         crop.selectMaximumBounds(canvasSize: fitted.size)
                     }

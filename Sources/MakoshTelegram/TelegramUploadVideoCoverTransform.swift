@@ -26,7 +26,8 @@ public struct TelegramUploadVideoCoverTransform: Equatable, Sendable {
     /// Crop coordinates start at the transformed image's top-left. Draw directly
     /// into the bounded cover, without allocating a second full-size bitmap.
     func render(_ image: CGImage, crop: CGRect, painting: TelegramUploadVideoCoverPainting = .init(),
-                images: TelegramUploadVideoCoverImages = .init()) throws -> CGImage {
+                images: TelegramUploadVideoCoverImages = .init(), maximumPixelSize: CGFloat = 320) throws -> CGImage {
+        guard maximumPixelSize.isFinite, maximumPixelSize >= 40, maximumPixelSize <= 640 else { throw TelegramUploadFileError.invalidImage }
         let original = CGSize(width: image.width, height: image.height)
         let transformed = imageSize(original)
         let x = (crop.minX * transformed.width).rounded(), y = (crop.minY * transformed.height).rounded()
@@ -34,7 +35,7 @@ public struct TelegramUploadVideoCoverTransform: Equatable, Sendable {
         let height = min(transformed.height - y, (crop.height * transformed.height).rounded())
         guard width > 0, height > 0 else { throw TelegramUploadFileError.invalidImage }
         let bottom = y + height
-        let scale = min(1, 320 / max(width, height))
+        let scale = min(1, maximumPixelSize / max(width, height))
         let targetWidth = max(1, Int((width * scale).rounded()))
         let targetHeight = max(1, Int((height * scale).rounded()))
         guard let context = CGContext(data: nil, width: targetWidth, height: targetHeight,

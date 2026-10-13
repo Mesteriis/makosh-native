@@ -54,7 +54,7 @@ struct TelegramContactProfileView: View {
                 let displayName = current?.title ?? profile.displayName
                 let displayAbout = profile.isScam || profile.isFake ? nil : (current.map(\.about) ?? profile.about)
                 if page == .permissions { TelegramPeerPermissionsView(controller: management) }
-                else if page == .edit { TelegramPeerInfoEditor(controller: management) }
+                else if page == .edit { TelegramPeerInfoEditor(controller: management, avatarEditing: model.avatarEditing, avatarTarget: model.avatarTarget(profile, contextID: contextID)) }
                 else if page == .members { TelegramPeerMembersView(controller: management, avatars: model.avatars) }
                 else if page == .media {
                     TelegramSharedMediaView(model: model, profileContextID: contextID) { dismiss() }

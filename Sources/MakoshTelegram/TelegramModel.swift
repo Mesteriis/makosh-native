@@ -255,6 +255,7 @@ public final class TelegramModel: ObservableObject {
     public let avatars = TelegramAvatarStore()
     public let peerStatus = TelegramPeerStatusController()
     public let profilePhotos = TelegramProfilePhotosController()
+    public let avatarEditing = TelegramAvatarEditingController()
     public let playback = TelegramPlaybackController()
     public let upload = TelegramUploadController()
     public let voiceRecording = TelegramVoiceRecordingController()
@@ -638,9 +639,12 @@ public final class TelegramModel: ObservableObject {
     #if DEBUG
     private var preview: TelegramSyntheticPages?
     private var peerProfilesPreview = false
+    private var syntheticAccountID: Int64 = -1
     #endif
     private var draftAccountID: Int64? {
-        if isSyntheticPreview { return -1 }
+        #if DEBUG
+        if isSyntheticPreview { return syntheticAccountID }
+        #endif
         return account?.peerId.toInt64()
     }
     private func refreshConversationFilePolicy() {
@@ -1435,6 +1439,12 @@ public final class TelegramModel: ObservableObject {
         return true
     }
 
+    public func avatarTarget(_ profile: TelegramContactProfile, contextID: UUID) -> TelegramAvatarTarget? {
+        guard isCurrentContactProfile(profile, contextID: contextID), avatarEditing.accountID == profile.accountID,
+              profile.peerID == profile.accountID || (!profile.isPerson && !profile.isBot) else { return nil }
+        return .init(accountID: profile.accountID, peerID: profile.peerID, kind: .main)
+    }
+
     public func openSharedMedia(_ profile: TelegramContactProfile, contextID: UUID) -> Bool {
         guard isCurrentContactProfile(profile, contextID: contextID) else { return false }
         sharedMedia.selectChat(profile.peerID)
@@ -2058,6 +2068,7 @@ public final class TelegramModel: ObservableObject {
         peerStatus.bind(account: account)
         forumTopics.bind(account: account); forumTopics.selectChat(selectedChatID)
         profilePhotos.bind(TelegramEngineProfilePhotoProvider(account: account))
+        avatarEditing.bind(TelegramEngineAvatarEditingProvider(account: account))
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
@@ -2121,7 +2132,7 @@ public final class TelegramModel: ObservableObject {
         bindMessageSelectionRangeProvider(nil)
         cancelContactProfile()
         avatars.bind(nil); peerStatus.bind(account: nil)
-        profilePhotos.bind(nil); peerManagement.bind(nil)
+        profilePhotos.bind(nil); avatarEditing.bind(nil); peerManagement.bind(nil)
         accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
@@ -2475,6 +2486,20 @@ public final class TelegramModel: ObservableObject {
     public static func syntheticPeerProfilesPreview() -> TelegramModel {
         let model = syntheticPreview()
         model.peerProfilesPreview = true
+        return model
+    }
+
+    public static func syntheticAvatarEditingPreview() -> TelegramModel {
+        let model = syntheticPeerAppearancePreview()
+        model.syntheticAccountID = 101
+        model.avatarEditing.bind(TelegramSyntheticAvatarEditingProvider())
+        model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider(accountID: 101))
+        let group = PeerId(namespace: Namespaces.Peer.CloudGroup, id: ._internalFromInt64Value(2706)).toInt64()
+        let channel = PeerId(namespace: Namespaces.Peer.CloudChannel, id: ._internalFromInt64Value(5411)).toInt64()
+        model.chats = [.init(id: 101, title: "Synthetic own profile", preview: "Аватар QA", unreadCount: 0),
+            .init(id: group, title: "Synthetic avatar group", preview: "Группа QA", unreadCount: 0),
+            .init(id: channel, title: "Synthetic avatar channel", preview: "Канал QA", unreadCount: 0)]
+        for chat in model.chats { model.knownChats[chat.id] = chat }
         return model
     }
 

@@ -1496,3 +1496,23 @@ Ordinary usernames, error/retry, successful zero, filters and opening are checke
 in native synthetic QA; no real account/remote-server acceptance is inferred.
 Advertising, the full reference row renderer and historical geometry/animation
 gaps remain separate. No outer GPLv2 UI code or assets are copied.
+
+## Telegram block13 task2: static avatars and public photo
+
+Verified TelegramSwift579cebbf: EditAccountInfoController433 and
+GroupInfoEntries522 use native selection, square/circular crop, upload progress
+and cancellation; SelectivePrivacySettingsController579/749/1082 places the
+public fallback photo within profile-photo privacy and confirms its removal.
+Makosh follows those workflows inside existing common settings/profile editors.
+Its existing crop/rotation/flip canvas adds a circular guide; an immutable decoded
+selection produces a bounded640px square JPEG with metadata removed. Explicit pre-commit upload cancellation preserves the draft. Separate
+confirmation and fresh full native photo/rights checks precede writes; explicit
+ACK and reread precede success. Near-square reference canvas rounding is snapped
+to an integer square so rotation does not produce a401x400 rejected avatar.
+
+Photo history viewing/export is unchanged. Native fixture acceptance and actual
+limits are recorded in development-status. Main/fallback share one account-bound
+editor; stale/rebound/uncertain contexts require fresh admission. Current-photo
+header thumbnails, animated/video avatars, decorations and the complete upstream
+editor styling remain block14 reference polish. No full pixel parity is claimed;
+no outer GPLv2 UI or assets are copied. No S3 or PostgreSQL file-byte path is added.

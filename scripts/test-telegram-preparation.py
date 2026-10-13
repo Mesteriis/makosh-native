@@ -30,6 +30,7 @@ class PreparationTests(unittest.TestCase):
         helper = destination / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift"
         helper.parent.mkdir(parents=True)
         helper.write_text(preparation.remote_peer_helper_source())
+        helper.with_name("MakoshAvatarEditing.swift").write_text(preparation.avatar_helper_source())
         record = {"source_sha": preparation.SHA, "source_tree": preparation.TREE,
                   "source_url": preparation.URL, "recipe": preparation.RECIPE,
                   "prepared_files": preparation.prepared_files(destination)}

@@ -23,6 +23,7 @@ class RemotePeerPreparationTests(unittest.TestCase):
         self.helper = self.root / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift"
         self.helper.parent.mkdir(parents=True)
         self.helper.write_text(preparation.remote_peer_helper_source())
+        self.helper.with_name("MakoshAvatarEditing.swift").write_text(preparation.avatar_helper_source())
         self.marker()
         self.assertTrue(preparation.verify_prepared())
 

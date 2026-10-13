@@ -11,6 +11,7 @@ struct TelegramSettingsView: View {
     var autoDownload: TelegramAutoDownloadSettings? = nil
     var cache: TelegramCacheController? = nil
     var proxy: TelegramProxyController? = nil
+    var avatarEditing: TelegramAvatarEditingController? = nil
     var chats: [TelegramChat] = []
     var synthetic = false
     var close: (() -> Void)? = nil
@@ -41,13 +42,18 @@ struct TelegramSettingsView: View {
                 if let notifications, notifications.accountID != nil { TelegramNotificationSettingsView(controller: notifications, chats: chats, synthetic: synthetic) }
                 else { ContentUnavailableView("Подключите Telegram", systemImage: "bell", description: Text("Уведомления доступны для подключённого аккаунта.")) }
             case .privacy:
-                if let privacy { TelegramPrivacyView(controller: privacy, blockedUsers: blockedUsers, twoStep: twoStep, synthetic: synthetic) }
+                if let privacy { TelegramPrivacyView(controller: privacy, blockedUsers: blockedUsers, twoStep: twoStep, avatarEditing: avatarEditing, synthetic: synthetic) }
                 else { ContentUnavailableView("Откройте Telegram", systemImage: "hand.raised") }
             case .devices:
                 if let sessions { TelegramSessionsView(controller: sessions, synthetic: synthetic) }
                 else { ContentUnavailableView("Откройте Telegram", systemImage: "desktopcomputer", description: Text("Устройства доступны в настройках выбранного аккаунта Telegram.")) }
             case nil:
                 Form {
+                    if let avatarEditing, let accountID = avatarEditing.accountID {
+                        Section {
+                            TelegramAvatarEditingButton(controller: avatarEditing, target: .init(accountID: accountID, peerID: accountID, kind: .main), title: "Изменить фотографию профиля")
+                        }
+                    }
                     Section {
                         settingsRow(.general, symbol: "gearshape", id: "general")
                         settingsRow(.appearance, symbol: "paintpalette", id: "appearance")

@@ -38,6 +38,12 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe23 adds independently authored MIT `MakoshAvatarEditing.swift`, a narrow
+  native multipart-upload and typed full-photo/ACK conversion bridge. It uses the
+  pinned engine's existing transport, resource and peer/photo conversion. Canonical
+  helper plus complete file-set/hash validation gate reuse. No cryptographic,
+  source-revision, GPLv2-only outer UI or credential change; combined app staysGPLv3.
+
 - Recipe22 adds independently authored MIT `MakoshRemotePeerSearch.swift` to
   TelegramCore. It validates bounded search result identities and performs native
   AccumulatedPeers/updatePeers cache accumulation for Makosh's error-bearing RPC

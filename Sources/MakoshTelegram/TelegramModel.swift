@@ -2394,14 +2394,14 @@ public final class TelegramModel: ObservableObject {
 
     #if DEBUG
     /// Explicit, in-memory UI fixture. Does not open accounts, files or Keychain.
-    public static func syntheticPreview(albums: Bool = false, forum: Bool = false, twoStepResetWaitSeconds: Int32 = 7 * 86400, dataDefaults: UserDefaults = .standard, dataSettings: Bool = false) -> TelegramModel {
+    public static func syntheticPreview(albums: Bool = false, forum: Bool = false, twoStepResetWaitSeconds: Int32 = 7 * 86400, dataDefaults: UserDefaults = .standard, dataSettings: Bool = false, privacyPremium: Bool = true) -> TelegramModel {
         let model = TelegramModel(proxy: TelegramProxyController.synthetic(defaults: dataDefaults), autoDownloadDefaults: dataDefaults)
         model.autoDownloadSettings.bind(accountID: -1)
         model.cache.bind(TelegramSyntheticCacheProvider())
         let pages = TelegramSyntheticPages(albums: albums, forum: forum, dataSettings: dataSettings)
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
-        model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider())
+        model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider(premium: privacyPremium))
         model.accountBlockedUsers.bind(TelegramSyntheticBlockedUsersProvider())
         model.accountTwoStep.bind(TelegramSyntheticTwoStepProvider(resetWaitSeconds: twoStepResetWaitSeconds))
         model.notifications.bind(accountID: -1)

@@ -7,6 +7,7 @@ private extension TelegramPrivacyKind {
         case .phoneNumber: "Номер телефона"; case .presence: "Последняя активность"; case .groupInvitations: "Группы и каналы"
         case .voiceCalls: "Звонки"; case .profilePhoto: "Фотографии профиля"; case .bio: "О себе"
         case .birthday: "Дата рождения"; case .forwards: "Пересылка сообщений"; case .phoneDiscovery: "Поиск по номеру"; case .callP2P: "Peer-to-Peer"
+        case .voiceMessages: "Голосовые и видеосообщения"; case .giftsAutoSave: "Подарки"; case .noPaidMessages: "Без платы за сообщения"
         }
     }
     var question: String {
@@ -16,6 +17,8 @@ private extension TelegramPrivacyKind {
         case .profilePhoto: "Кто видит мои фотографии профиля?"; case .bio: "Кто видит информацию обо мне?"
         case .birthday: "Кто видит мою дату рождения?"; case .forwards: "Кто видит ссылку на мой профиль в пересланных сообщениях?"
         case .phoneDiscovery: "Кто может найти меня по номеру телефона?"; case .callP2P: "Кому разрешено прямое соединение при звонках?"
+        case .voiceMessages: "Кто может отправлять мне голосовые и видеосообщения?"
+        case .giftsAutoSave: "Чьи подарки автоматически добавляются в мой профиль?"; case .noPaidMessages: "Кто может писать без платы?"
         }
     }
 }
@@ -43,6 +46,7 @@ struct TelegramPrivacyView: View {
     @State private var blockedPresented = false
     @State private var twoStepPresented = false
     @State private var selected: TelegramPrivacyKind?
+    @State private var globalPage: TelegramGlobalPrivacyPage?
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -70,19 +74,23 @@ struct TelegramPrivacyView: View {
                         }
                     }
                     Section("Приватность") {
-                        ForEach(TelegramPrivacyKind.allCases.filter { $0 != .phoneDiscovery && $0 != .callP2P }) { kind in
+                        ForEach(TelegramPrivacyKind.allCases.filter { $0 != .phoneDiscovery && $0 != .callP2P && $0 != .noPaidMessages }) { kind in
                             Button { selected = kind } label: {
-                                HStack { Text(kind.title); Spacer(); Text(snapshot.settings[kind]?.audience?.title ?? "Особое правило").foregroundStyle(.secondary); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
+                                HStack { Text(kind.title); Spacer(); if kind == .voiceMessages && snapshot.capabilities?.isPremium != true { Image(systemName: "lock").foregroundStyle(.secondary) }; Text(snapshot.settings[kind]?.audience?.title ?? "Особое правило").foregroundStyle(.secondary); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
                                     .frame(minHeight: 36).contentShape(Rectangle())
                             }.buttonStyle(.plain).accessibilityIdentifier("telegram.privacy.open.\(kind.rawValue)")
                         }
+                        Button { globalPage = .messages } label: {
+                            HStack { Text("Сообщения"); Spacer(); Text(snapshot.global?.messagePolicy.title ?? "Недоступно").foregroundStyle(.secondary); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
+                                .frame(minHeight: 36).contentShape(Rectangle())
+                        }.buttonStyle(.plain).disabled(snapshot.global == nil || snapshot.capabilities == nil).accessibilityIdentifier("telegram.privacy.open.messages")
                     }
                 }.formStyle(.grouped)
             } else if controller.status == .loading { Spacer(); ProgressView("Загружаем настройки…"); Spacer() }
             else { ContentUnavailableView("Настройки приватности недоступны", systemImage: "hand.raised", description: Text("Подключите выбранный аккаунт Telegram или повторите загрузку.")) }
         }
         .onAppear { controller.open() }.onDisappear { controller.close() }
-        .onChange(of: controller.snapshot?.accountID) { _, _ in selected = nil }
+        .onChange(of: controller.snapshot?.accountID) { _, _ in selected = nil; globalPage = nil }
         .sheet(isPresented: $blockedPresented) {
             if let blockedUsers { TelegramBlockedUsersView(controller: blockedUsers, synthetic: synthetic) { blockedPresented = false } }
         }
@@ -90,10 +98,11 @@ struct TelegramPrivacyView: View {
             if let twoStep { TelegramTwoStepView(controller: twoStep, synthetic: synthetic) { twoStepPresented = false } }
         }
         .sheet(item: $selected) { kind in TelegramPrivacyDetailView(controller: controller, kind: kind, synthetic: synthetic) { selected = nil } }
+        .sheet(item: $globalPage) { page in TelegramGlobalPrivacyView(controller: controller, page: page, synthetic: synthetic) { globalPage = nil }.id(page.id) }
     }
 }
 
-private struct TelegramPrivacyDetailView: View {
+struct TelegramPrivacyDetailView: View {
     @ObservedObject var controller: TelegramPrivacyController
     let kind: TelegramPrivacyKind
     let synthetic: Bool
@@ -101,10 +110,11 @@ private struct TelegramPrivacyDetailView: View {
     @State private var draft: PrivacyDraft?
     @State private var confirmation: PrivacyDraft?
     @State private var related: TelegramPrivacyKind?
+    @State private var globalPage: TelegramGlobalPrivacyPage?
     @State private var validationFailed = false
     @State private var exceptionDraft: PrivacyExceptionDraft?
     private var activeDraft: PrivacyDraft? { draft?.context == controller.contextID ? draft : nil }
-    private var enabled: Bool { controller.status == .ready && controller.mutationStatus != .saving && controller.mutationStatus != .uncertain }
+    private var enabled: Bool { controller.canEdit(kind) }
     var body: some View {
         VStack(spacing: 0) {
             HStack { Text(kind.title).font(.headline); Spacer(); Button("Готово", action: close).accessibilityIdentifier("telegram.privacy.detail.close") }.padding()
@@ -115,7 +125,7 @@ private struct TelegramPrivacyDetailView: View {
                 let basis = TelegramPrivacyEditorBasis(controller: controller, kind: kind)
                 Form {
                     Section(kind.question) {
-                        if let audience = current.audience {
+                        if let audience = current.audience, kind != .noPaidMessages {
                             Picker(kind.question, selection: Binding(get: { activeDraft?.change.audience ?? audience }, set: { value in
                                 validationFailed = false
                                 let staged = activeDraft?.change.replacement ?? current
@@ -127,7 +137,8 @@ private struct TelegramPrivacyDetailView: View {
                             })) {
                                 ForEach(TelegramPrivacyAudience.allCases.filter { kind != .phoneDiscovery || $0 != .nobody }) { value in Text(value.title).tag(value).accessibilityIdentifier("telegram.privacy.audience.\(value.rawValue)") }
                             }.labelsHidden().pickerStyle(.radioGroup).disabled(!enabled).accessibilityIdentifier("telegram.privacy.audience")
-                        } else { Text("Особое правило"); Text("Это правило сохраняется без изменений.").font(.caption).foregroundStyle(.secondary) }
+                        } else { Text(kind == .noPaidMessages && current.audience == .contacts ? "Мои контакты" : "Особое правило"); Text("Это правило сохраняется без изменений.").font(.caption).foregroundStyle(.secondary) }
+                        if kind == .voiceMessages && controller.snapshot?.capabilities?.isPremium != true { Text("Для изменения этих правил нужен Telegram Premium.").font(.caption).foregroundStyle(.secondary) }
                         if kind == .presence { Text("Скрытие точного времени посещения также ограничивает просмотр времени посещения других пользователей в Telegram.").font(.caption).foregroundStyle(.secondary) }
                         if kind == .forwards { Text("Это правило управляет ссылкой на профиль при пересылке сообщения.").font(.caption).foregroundStyle(.secondary) }
                         if kind == .callP2P { Text("При прямом соединении собеседник может видеть ваш IP-адрес. Если оно запрещено, звонок проходит через серверы Telegram.").font(.caption).foregroundStyle(.secondary) }
@@ -135,7 +146,7 @@ private struct TelegramPrivacyDetailView: View {
                     Section("Исключения") {
                         let staged = activeDraft?.change.replacement ?? current
                         if staged.audience != nil && kind != .phoneDiscovery {
-                            if staged.audience != .nobody { exceptionRow(.deny, setting: staged, basis: basis) }
+                            if staged.audience != .nobody && kind != .noPaidMessages { exceptionRow(.deny, setting: staged, basis: basis) }
                             if staged.audience != .everybody { exceptionRow(.allow, setting: staged, basis: basis) }
                         }
                         let labels = exceptionLabels(staged.audience == nil || kind == .phoneDiscovery ? staged.rules : staged.rules.filter { $0 == .closeFriends || $0 == .premium || $0 == .bots || $0 == .denyBots || $0 == .denyContacts })
@@ -144,6 +155,8 @@ private struct TelegramPrivacyDetailView: View {
                     }
                     if kind == .phoneNumber { relatedRow(.phoneDiscovery) }
                     if kind == .voiceCalls { relatedRow(.callP2P) }
+                    if kind == .presence { relatedGlobalRow(.readTime) }
+                    if kind == .giftsAutoSave { relatedGlobalRow(.giftTypes) }
                     Section {
                         Button("Сохранить") { confirmation = activeDraft }.disabled(!enabled || activeDraft == nil).accessibilityIdentifier("telegram.privacy.save")
                         if activeDraft != nil { Button("Отменить изменения") { draft = nil }.accessibilityIdentifier("telegram.privacy.discardDraft") }
@@ -153,10 +166,9 @@ private struct TelegramPrivacyDetailView: View {
         }.frame(width: 520, height: 630)
         .onChange(of: controller.contextID) { _, _ in draft = nil; confirmation = nil; exceptionDraft = nil }
         .sheet(item: $exceptionDraft) { request in
-            TelegramPrivacyExceptionEditor(directory: controller.peerDirectory, side: request.side, setting: request.staged, apply: { peers in
+            TelegramPrivacyExceptionEditor(directory: controller.peerDirectory, side: request.side, setting: request.staged, apply: { next in
                 guard request.basis.isCurrent(in: controller) else { return false }
-                guard Set(peers) != Set(request.staged.exceptionPeers(request.side)) else { return true }
-                guard let next = request.staged.replacingExceptions(request.side, peers: peers) else { return false }
+                guard next != request.staged else { return true }
                 if next == request.basis.setting { draft = nil }
                 else {
                     guard let change = request.basis.change(to: next, controller: controller) else { return false }
@@ -166,13 +178,21 @@ private struct TelegramPrivacyDetailView: View {
             }, close: { exceptionDraft = nil })
         }
         .sheet(item: $related) { kind in TelegramPrivacyDetailView(controller: controller, kind: kind, synthetic: synthetic) { related = nil } }
+        .sheet(item: $globalPage) { page in TelegramGlobalPrivacyView(controller: controller, page: page, synthetic: synthetic) { globalPage = nil }.id(page.id) }
         .alert("Изменить приватность?", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), presenting: confirmation) { request in
             Button("Отмена", role: .cancel) { confirmation = nil }
             Button("Подтвердить") {
                 let accepted = controller.apply(request.change, contextID: request.context)
                 validationFailed = !accepted; if accepted { draft = nil }; confirmation = nil
             }
-        } message: { request in Text((synthetic ? "Симуляция. " : "") + "\(kind.title): \(request.change.audience.title). Всегда разрешено: \(request.change.replacement?.exceptionPeers(.allow).count ?? 0); никогда: \(request.change.replacement?.exceptionPeers(.deny).count ?? 0). Остальные правила сохранятся.") }
+        } message: { request in Text((synthetic ? "Симуляция. " : "") + "\(kind.title): \(request.change.audience.title). Всегда разрешено: \(request.change.replacement?.exceptionPeers(.allow).count ?? 0); никогда: \(request.change.replacement?.exceptionPeers(.deny).count ?? 0). Исключение Premium: \(request.change.replacement?.rules.contains(.premium) == true ? "да" : "нет"); боты: \(request.change.replacement?.rules.contains(.bots) == true ? "да" : "нет").") }
+    }
+    private func relatedGlobalRow(_ page: TelegramGlobalPrivacyPage) -> some View {
+        Section {
+            Button { globalPage = page } label: { HStack { Text(page.title); Spacer(); Image(systemName: "chevron.right") } }
+                .buttonStyle(.plain).disabled(!enabled || activeDraft != nil || controller.snapshot?.global == nil).accessibilityIdentifier("telegram.privacy.open.\(page.rawValue)")
+            if activeDraft != nil { Text("Сначала сохраните или отмените изменения аудитории.").font(.caption).foregroundStyle(.secondary) }
+        }
     }
     private func exceptionRow(_ side: TelegramPrivacyExceptionSide, setting: TelegramPrivacySetting, basis: TelegramPrivacyEditorBasis?) -> some View {
         Button {
@@ -204,8 +224,8 @@ private func exceptionLabels(_ rules: [TelegramPrivacyRule]) -> [String] {
         }
     }
 }
-@MainActor private func privacyStatus(_ controller: TelegramPrivacyController, kind: TelegramPrivacyKind? = nil) -> String {
-    let mutation = kind.map { controller.mutationStatus(for: $0) } ?? controller.mutationStatus
+@MainActor func privacyStatus(_ controller: TelegramPrivacyController, kind: TelegramPrivacyKind? = nil, global: Bool = false) -> String {
+    let mutation = global ? controller.globalMutationStatus : kind.map { controller.mutationStatus(for: $0) } ?? controller.mutationStatus
     if mutation == .uncertain { return "Результат неизвестен. Обновите настройки перед новым действием." }
     if controller.status == .failed || controller.status == .timedOut {
         return mutation == .saved ? "Изменение подтверждено; настройки не удалось обновить." : "Не удалось загрузить настройки. Повторите обновление."

@@ -47,6 +47,10 @@ nonisolated func telegramPrivacyAdditionHashes(current: TelegramPrivacySetting, 
 }
 nonisolated func telegramPrivacyResolveAdditions(transaction: Transaction, current: TelegramPrivacySetting, sent: TelegramPrivacySetting,
     freshHashes: [Int64: Int64], selfID: Int64) -> [Int64: Int64]? {
+    if sent.kind == .voiceMessages {
+        let id = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(selfID))
+        guard telegramPrivacyCapabilities(transaction: transaction, peerID: id)?.isPremium == true else { return nil }
+    }
     let peers = telegramPrivacyAdditionIDs(current: current, sent: sent).flatMap { privacyNativePeers($0, transaction: transaction) }
     return telegramPrivacyAdditionHashes(current: current, sent: sent, freshHashes: freshHashes, peers: peers, selfID: selfID)
 }

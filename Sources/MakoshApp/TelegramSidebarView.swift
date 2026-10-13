@@ -112,11 +112,12 @@ struct TelegramSidebarView: View {
             }
         }.frame(maxHeight: .infinity, alignment: .top)
             .sheet(isPresented: $settingsPresented) {
-                TelegramSettingsView(sessions: model.accountSessions, privacy: model.accountPrivacy, blockedUsers: model.accountBlockedUsers, twoStep: model.accountTwoStep, synthetic: model.isSyntheticPreview) { settingsPresented = false }
+                TelegramSettingsView(sessions: model.accountSessions, privacy: model.accountPrivacy, blockedUsers: model.accountBlockedUsers, twoStep: model.accountTwoStep, notifications: model.notifications, chats: model.chats, synthetic: model.isSyntheticPreview) { settingsPresented = false }
             }
             .onAppear { forumTopics.setVisible(true) }
             .onDisappear { forumTopics.setVisible(false) }
             .onChange(of: model.selectedChatID) { _, _ in model.isForumTopicsListPresented = true }
+            .onReceive(model.notifications.$activationRequest.dropFirst()) { _ in settingsPresented = false }
     }
 
     private var archiveEntry: some View {

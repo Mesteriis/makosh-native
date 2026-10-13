@@ -104,6 +104,9 @@ struct TelegramDetailView: View {
                 peerStatus.setVisible(false)
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in model.cancelVoiceRecording() }
+            .onReceive(model.notifications.$activationRequest.dropFirst()) { _ in
+                profilePresented = false; secretVerificationPresented = false; closeMessageSearch()
+            }
             .sheet(item: Binding(get: { sendApproval.pendingPrompt }, set: { value in
                 if value == nil, let id = displayedApprovalID { sendApproval.cancel(promptID: id) }
             })) { prompt in
@@ -508,7 +511,7 @@ struct TelegramSyntheticPreviewView: View {
                 Divider()
                 TelegramDetailView(model: model)
             }
-        }
+        }.modifier(TelegramNotificationHost(controller: model.notifications))
     }
 }
 

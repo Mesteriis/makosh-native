@@ -4,7 +4,8 @@ import MakoshCore
 import MakoshTelegram
 import UniformTypeIdentifiers
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
+    lazy var telegramNotificationRouter = TelegramSystemNotificationRouter()
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -16,6 +17,7 @@ struct MakoshApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene {
         WindowGroup("Макош") {
+            Group {
             #if DEBUG
             if CommandLine.arguments.contains("--telegram-drafts-synthetic-preview") {
                 TelegramDraftsSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
@@ -42,6 +44,7 @@ struct MakoshApp: App {
             #else
             WorkspaceView().frame(minWidth: 1000, minHeight: 640)
             #endif
+            }.environmentObject(delegate.telegramNotificationRouter)
         }
             .defaultSize(width: 1200, height: 800)
             .commands { TelegramSearchCommands(); TelegramSelectionCommands() }

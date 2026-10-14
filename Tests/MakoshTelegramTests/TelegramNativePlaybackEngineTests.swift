@@ -63,6 +63,17 @@ final class TelegramNativePlaybackEngineTests: XCTestCase {
         let asset = TelegramNativePlaybackEngine.restrictedAsset(file: try directory().appendingPathComponent("synthetic.mov"))
         XCTAssertEqual(asset.referenceRestrictions, .forbidAll)
     }
+    func testActualAvatarVideoIsMutedBeforeReadyAndDurationAndDimensionAreBounded() async throws {
+        let url = try directory().appendingPathComponent("owned-avatar.mp4")
+        try await mp4(url)
+        let engine = TelegramNativePlaybackEngine(keepsItemAtEnd:true,muted:true,maximumDuration:2,maximumVideoDimension:64)
+        _ = try await engine.load(file:url,kind:.video) { _ in }
+        XCTAssertEqual(engine.player?.isMuted,true); XCTAssertEqual(engine.player?.rate,0); engine.stop()
+        for restricted in [TelegramNativePlaybackEngine(muted:true,maximumDuration:0.5),TelegramNativePlaybackEngine(muted:true,maximumVideoDimension:16)] {
+            do { _ = try await restricted.load(file:url,kind:.video) { _ in }; XCTFail("Invalid avatar reached ready") }
+            catch { XCTAssertNil(restricted.player) }
+        }
+    }
 
     func testActualWAVLoadsWithoutAutoplayAndStopDetachesPlayer() async throws {
         let url = try directory().appendingPathComponent("synthetic.wav")

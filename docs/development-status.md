@@ -7476,3 +7476,10 @@ wallpapers/patterns/palette opacity. The current full local suite exits0:
 2170Telegram+113Core=2283XCTest,one microphone-precondition skip,zero failures;
 109Python tests/24suites. The native final build/UI and call-presentation work
 remain pending; test success is not real-account or native-flow acceptance.
+
+Call presentation is now implemented and tested: compatible emoji hashes,
+original PCM ringtone, state decoration, muted bounded video avatars, movable
+mirrored preview and recoverable video controls. Current full scripts/test.sh
+exits0:2184Telegram+113Core=2297XCTest,one microphone-precondition skip,zero
+failures;109Python/24suites. Native final acceptance/review/integration remain
+pending; only synthetic data and owned media have been used.

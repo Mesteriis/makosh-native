@@ -1676,3 +1676,28 @@ file API mutation admission precedes keys/spool/S3; listing and explicit export
 remain available. No reference code/assets were copied. Pinned PanelUtils22–75
 uses standard anchored NSOpenPanel/NSSavePanel workflows; archive recovery itself
 remains the own Makosh flow described above.
+
+## Final-parity source contracts (native acceptance pending)
+
+The continuous pass supersedes the earlier implementation limits for automatic
+age/size cache eviction, account-owned cross-chat/restart manual downloads,1–4
+wallpaper colors, patterns and palette opacity. The editor follows
+`WallpaperPreviewController.swift:385–414`: two colors rotate45degrees;3/4colors
+advance placement. Pattern/intensity selection follows PatternPreviewController
+and WallpaperPatternPreviewView; normalization follows the verified gzip SVG/PNG
+workflow in `FetchCachedRepresentations.swift:126–185`. A bounded owned corner
+mesh replaces the reference Metal implementation; strict SVG shape allowlisting
+rejects text/fonts/scripts/external references and unsupported constructs visibly.
+Preview/application share the same renderer; legacy settings remain readable.
+
+Call layout/actions retain the existing native call window. `PrivateCallScreen`
+PeerCallPhotoView and ScreenView:404–440 establish avatar decoration and active
+video controls; SecretKeyView and CallScreenController:177 establish the emoji
+key/avatar workflow. Own wave/PCM/video owners, movable mirrored preview and
+recoverable activity/VoiceOver controls implement that behavior. Wave animation
+is decorative state presentation, not a microphone level meter. Compatible key
+data comes solely from the reviewed iOS pin, not outer GPLv2 UI/assets. Actual
+final native presentation is still pending; source/tests do not establish it.
+
+**Accepted gap by explicit user decision: no device switching in an active call.**
+Next-call audio selection stays. Local Makosh passcode/autolock remains excluded.

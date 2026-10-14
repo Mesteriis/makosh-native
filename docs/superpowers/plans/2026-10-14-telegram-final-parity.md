@@ -66,7 +66,7 @@
 
 ### Task 4: Call video avatars, decoration/audio/key and video controls
 
-**Files:** Create TelegramCallPresentation.swift and TelegramCallPresentationTests.swift; modify Sources/MakoshApp/TelegramCallView.swift, TelegramAvatarStore.swift, TelegramEngineAvatarProvider.swift and native avatar component. Approved GPLv3 key dataset and recipe/lock/notices only if exact license reviewed. Update docs/reference-interface.md and docs/telegram.md including accepted live-device gap.
+**Files:** Create TelegramCallPresentation.swift and TelegramCallPresentationTests.swift; create TelegramAvatarVideoPlayback.swift, TelegramCallEmojiTable.swift, Sources/MakoshApp/TelegramCallPresentationViews.swift, TelegramAvatarVideoTests.swift and TelegramCallWindowPresentationTests.swift; modify Sources/MakoshApp/TelegramCallView.swift, TelegramAvatarStore.swift, TelegramEngineAvatarProvider.swift and TelegramNativePlaybackEngine.swift plus its tests and TelegramSyntheticPeerAppearance.swift for owned QA video. Approved GPLv3 key dataset and recipe/lock/notices only if exact license reviewed. Update docs/reference-interface.md and docs/telegram.md including accepted live-device gap.
 
 **Interfaces:** Consumes TelegramCallController.call/incoming/fingerprint/localFrame/remoteFrame and account-bound avatars. Produces state-derived ringtone/wave, compatible emoji key, muted video-avatar owner, bounded preview corner and activity visibility state. No new capture or live device switches.
 

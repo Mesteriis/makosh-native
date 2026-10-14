@@ -34,7 +34,7 @@ from telegram_remote_peer_adaptation import remote_peer_helper_source
 from telegram_avatar_adaptation import avatar_helper_source
 from telegram_group_membership_adaptation import group_membership_helper_source
 from telegram_secret_chat_adaptation import ADAPTED_SHA256 as SECRET_ADAPTED_SHA256, adapt_secret_chat_source, secret_chat_helper_source
-from telegram_account_startup_adaptation import ACCOUNT_MANAGER, ENGINE_LOG, adapt_account_startup_source, adapt_disabled_short_log_source
+from telegram_account_startup_adaptation import ACCOUNT_MANAGER, ENGINE_LOG, CURRENT_ACCOUNT, adapt_account_startup_source, adapt_disabled_short_log_source, adapt_authorization_transition_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -47,7 +47,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 26
+RECIPE = 27
 
 
 def run(*args):
@@ -146,8 +146,8 @@ def verify_prepared():
         native = DEST / relative
         if not native.is_file() or hashlib.sha256(native.read_bytes()).hexdigest() != expected:
             raise RuntimeError("Prepared secret native source differs from the reviewed recipe")
-    from telegram_account_startup_adaptation import ADAPTED_SHA256 as ACCOUNT_STARTUP_SHA256, LOG_ADAPTED_SHA256
-    for relative, expected in {ACCOUNT_MANAGER: ACCOUNT_STARTUP_SHA256, ENGINE_LOG: LOG_ADAPTED_SHA256}.items():
+    from telegram_account_startup_adaptation import ADAPTED_SHA256 as ACCOUNT_STARTUP_SHA256, LOG_ADAPTED_SHA256, CURRENT_ACCOUNT_ADAPTED_SHA256
+    for relative, expected in {ACCOUNT_MANAGER: ACCOUNT_STARTUP_SHA256, ENGINE_LOG: LOG_ADAPTED_SHA256, CURRENT_ACCOUNT: CURRENT_ACCOUNT_ADAPTED_SHA256}.items():
         native = DEST / relative
         if not native.is_file() or hashlib.sha256(native.read_bytes()).hexdigest() != expected:
             raise RuntimeError("Prepared account-manager startup/logging source differs from the reviewed recipe")
@@ -190,6 +190,8 @@ def main():
     account_manager.write_text(adapt_account_startup_source(account_manager.read_text()))
     engine_log = DEST / ENGINE_LOG
     engine_log.write_text(adapt_disabled_short_log_source(engine_log.read_text()))
+    current_account = DEST / CURRENT_ACCOUNT
+    current_account.write_text(adapt_authorization_transition_source(current_account.read_text()))
     search = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Messages/SearchMessages.swift"
     search.write_text(adapt_search_source(search.read_text()))
     state_manager = DEST / STATE_MANAGER

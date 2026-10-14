@@ -38,6 +38,13 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe27 adds a GPL-3.0-or-later deferred-delivery boundary in native
+  `Account/AccountManager.swift`. Kind changes reach the main queue before a
+  Postbox reopen is enqueued, so the state transaction commits before the new
+  SQLite writer begins. Exact original/adapted SHA256s are checked independently
+  of the preparation record. This changes scheduling only; the native pin,
+  authorization protocol, session encryption and stored state are unchanged.
+
 - Recipe26 adds a GPL-3.0-or-later first-open/failure boundary in native
   `AccountManagerImpl.swift` and makes native `Logger.shortLog` honor disabled
   file logging before evaluating content. Empty missing metadata is initialized

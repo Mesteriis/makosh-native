@@ -15,7 +15,7 @@ struct TelegramQRLoginView: View {
         VStack(spacing: 20) {
             Text("Вход в Telegram по QR-коду").font(.title2.weight(.semibold))
             if let value = controller.displayURL, let qr = telegramLoginQRImage(value) {
-                Image(decorative: qr, scale: 1).interpolation(.none).resizable().frame(width: 240, height: 240).padding(16).background(.white)
+                Image(qr, scale: 1, label: Text("QR-код входа в Telegram")).interpolation(.none).resizable().frame(width: 240, height: 240).padding(16).background(.white)
                     .accessibilityLabel("QR-код входа в Telegram").accessibilityIdentifier("telegram.qr.image")
             } else if controller.phase == .failed {
                 ContentUnavailableView("QR-код недоступен", systemImage: "qrcode", description: Text("Не удалось получить действующий код. Повторите попытку или войдите по номеру."))

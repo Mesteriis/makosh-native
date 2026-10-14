@@ -1,5 +1,51 @@
 # Development status — 2026-10-14
 
+## Completed locally: QR/2FA login repairs — 2026-10-14
+
+The ordinary QR request previously remained loading until its30second deadline:
+Makosh never enabled the unauthorized native account's service-task mode.
+The TelegramSwift reference starts it with `.now` and stops it with `.never`.
+Makosh now resumes only after proxy admission, and stops on disconnect,
+replacement, authorization and model release. Real native network fixtures use
+synthetic API values and a closed loopback proxy, including inherited migration
+modes and rejected admission. The QR image now exposes its descriptive AX label;
+an independent synthetic decoder verifies the exact rendered URL payload.
+
+The user's subsequent2FA crash is separately reproduced without credentials or
+an account: `currentAccount` reentered `openPostbox` from a state-view update
+before the original transaction committed, asserting at SqliteValueBox.swift:559
+on BEGIN IMMEDIATE. Recipe27 delivers kind-change observations on the main queue,
+so reopening enqueues behind the commit on the native Postbox queue. The same
+real encrypted synthetic transition now passes and preserves the account ID and
+authorized state. The prior recipe26 engine and the fatal RED evidence are kept
+privately; no generated engine file is edited directly. Fixed original/adapted
+hashes reject unreviewed input and forged-consistent warm preparations.
+
+Final focused19 and preparation23 tests pass. `scripts/dev-db.sh up`,
+`scripts/test.sh`, `scripts/build-app.sh`, normal `scripts/run.sh` and strict
+signed/native-artifact verification all exit0. The full suite is2327XCTest
+(2214Telegram+113Core),one microphone-precondition skip,zero failures;
+116Python tests across24suites pass. Native encrypted loopback media/proxy
+fixtures also pass. Current XERJ content is fresh: project949files/868code;
+engine727files/692code, both exit0. Diff whitespace validation passes.
+
+Actual signed QA uses an explicit isolated PostgreSQL schema and synthetic
+workspace/QR submode. Its common Telegram screen displays the AX QR image;
+returning to phone entry removes it. The first QA launch lacked the workspace
+flag and is retained as unaccepted setup evidence; no connection was started.
+The updated normal bundle is reopened on its common workspace with explicit
+local PG/S3 configuration and left for the user's own Telegram login. Its
+normal window/process is observed without reading personal fields or dialogs.
+The earlier fixture queue-assertion and proxy-admission setup failures, native
+transaction fatal RED and all intermediate failed attempts remain private raw
+evidence; none is relabelled PASS. Existing native/compiler/system metadata
+and fresh-storage SQL diagnostics are retained in the private logs.
+
+Real repeated2FA acceptance still requires the user's own password entry.
+No password, QR token, personal chat or physical capture device is inspected.
+This repair is local on feature/telegram-first-login-storage; it is not main or
+hosted CI evidence. Historical PR15 and first-start verification follow below.
+
 ## Completed locally: real first-login startup repair — 2026-10-14
 
 The normal-bundle Connect crash is reproduced without an account or network:

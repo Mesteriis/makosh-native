@@ -8,6 +8,9 @@ ADAPTED_SHA256 = 'd674adf437a3d3e3eb68f43b45a52da4b6db08c82055f78da29a57326b9a57
 ENGINE_LOG = 'submodules/TelegramCore/Sources/Utils/Log.swift'
 LOG_SOURCE_SHA256 = 'd583e6dcd89bf1244bdf26ed646ec8e197e6fc726cfe7643430960af32002121'
 LOG_ADAPTED_SHA256 = 'f85506231df8209f32f9d87644462dae3357f49fd6aa7f100c68967edff043ed'
+CURRENT_ACCOUNT = 'submodules/TelegramCore/Sources/Account/AccountManager.swift'
+CURRENT_ACCOUNT_SOURCE_SHA256 = '53e232b4040df5cde5d47eeff3e87c645a233f457ae5977c90844112b5410457'
+CURRENT_ACCOUNT_ADAPTED_SHA256 = '414a2970f9d7354782e80c71b7bb9eb1a89fca033ad997e786db6a5acf8bc526'
 
 
 def adapt_account_startup_source(source):
@@ -101,3 +104,16 @@ def adapt_disabled_short_log_source(source):
     anchor = '    public func shortLog(_ tag: String, _ what: @autoclosure () -> String) {\n'
     assert source.count(anchor) == 1
     return source.replace(anchor, anchor + '        guard self.logToFile else { return }\n')
+
+
+def adapt_authorization_transition_source(source):
+    if hashlib.sha256(source.encode()).hexdigest() != CURRENT_ACCOUNT_SOURCE_SHA256:
+        raise RuntimeError('Unexpected native current-account transition source')
+    anchor = '                    |> distinctUntilChanged\n                    \n                    return Signal { subscriber in'
+    assert source.count(anchor) == 1
+    # Postbox publishes state views before COMMIT. A synchronous reload on its
+    # shared queue reenters openPostbox and asserts on BEGIN IMMEDIATE. Main-queue
+    # delivery makes reopening enqueue behind that transaction on the native
+    # Postbox queue; it neither changes state nor retries/deletes a locked cache.
+    return source.replace(anchor, anchor.replace('|> distinctUntilChanged',
+        '|> distinctUntilChanged\n                    |> deliverOnMainQueue'))

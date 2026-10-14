@@ -1724,3 +1724,17 @@ owned synthetic providers, not a Telegram account or physical capture.
 
 **Accepted gap by explicit user decision: no device switching in an active call.**
 Next-call audio selection stays. Local Makosh passcode/autolock remains excluded.
+
+## First real login: QR connection and authorization transition
+
+`TelegramSwift/Telegram-Mac/ApplicationContext.swift:116,125` starts unauthorized
+service-task ownership with `.now` and stops it with `.never`. Makosh now follows
+that lifecycle after proxy admission, including disconnect and replacement.
+`SharedAccountContext.swift:346` delivers account changes on the main queue
+before opening native account objects. Recipe27 applies that scheduling boundary
+to the pinned engine's `currentAccount` state-kind reload. The original same-queue
+reload asserted while its Postbox transaction was still open. Neither change
+copies the outer reference UI; the existing common sidebar and QR layout stay.
+The QR image now exposes its descriptive accessibility label instead of being
+decorative. A synthetic image-decoding check supplements controller URL tests;
+actual real-login results are recorded separately in development-status.md.

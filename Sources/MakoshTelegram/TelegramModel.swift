@@ -266,7 +266,7 @@ public final class TelegramModel: ObservableObject {
         !archive.isArchiving && !archive.files.isBusy && archive.files.error == nil && media.inFlightCount == 0
     }
     public let proxy: TelegramProxyController
-    private let proxyClientID = UUID()
+    let proxyClientID = UUID()
     private lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
     private var automaticArchiveObservation: AnyCancellable?
     @Published public private(set) var automaticDownloadsPaused = false
@@ -1911,6 +1911,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     isolated deinit {
+        unauthorized?.shouldBeServiceTaskMaster.set(.single(.never))
         proxy.unregister(clientID: proxyClientID)
         notifications.bind(accountID: nil)
         emojiResolution.dispose(); capabilityObservation.dispose(); customEmojiPlaybackContext?.invalidate()
@@ -2066,6 +2067,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func disconnect() {
+        unauthorized?.shouldBeServiceTaskMaster.set(.single(.never))
         proxy.unregister(clientID: proxyClientID)
         #if DEBUG
         preview = nil
@@ -2124,14 +2126,17 @@ public final class TelegramModel: ObservableObject {
         }, clientID: proxyClientID)
     }
 
-    private func observeUnauthorized(_ account: UnauthorizedAccount, token: UUID, continuingQR: Bool = false) {
+    func observeUnauthorized(_ account: UnauthorizedAccount, token: UUID, continuingQR: Bool = false) {
         openingTimeout?.cancel(); openingTimeout = nil
         stopAuthorizedAccount()
+        if unauthorized !== account { unauthorized?.shouldBeServiceTaskMaster.set(.single(.never)) }
         authorizationGeneration = UUID()
         let authToken = authorizationGeneration
         self.unauthorized = account
         self.account = nil
         registerProxy(network: account.network)
+        guard self.unauthorized === account else { return }
+        account.shouldBeServiceTaskMaster.set(.single(.now))
         self.isBusy = false
         self.connectionDescription = "Вход в отдельный сеанс Макоша"
         if let manager {
@@ -2175,6 +2180,7 @@ public final class TelegramModel: ObservableObject {
         openingTimeout?.cancel(); openingTimeout = nil
         guard self.account !== account else { return }
         stopAuthorizedAccount()
+        unauthorized?.shouldBeServiceTaskMaster.set(.single(.never))
         authorizationGeneration = UUID()
         action.set(nil)
         qrLogin.bind(nil)

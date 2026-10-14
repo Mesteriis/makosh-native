@@ -20,6 +20,19 @@ api_spec.loader.exec_module(api_import)
 
 
 class PreparationTests(unittest.TestCase):
+    def test_authorization_transition_refuses_unreviewed_upstream_source(self):
+        with self.assertRaisesRegex(RuntimeError, 'Unexpected native current-account'):
+            preparation.adapt_authorization_transition_source('// unreviewed changed upstream')
+
+    def test_forged_consistent_authorization_transition_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            destination, record = self.prepared_fixture(Path(temporary))
+            (destination / preparation.CURRENT_ACCOUNT).write_text('// changed native transition\n')
+            record['prepared_files'] = preparation.prepared_files(destination)
+            (destination / 'preparation.json').write_text(json.dumps(record))
+            with patch.object(preparation, 'DEST', destination), self.assertRaisesRegex(RuntimeError, 'startup/logging'):
+                preparation.verify_prepared()
+
     def test_account_startup_refuses_unreviewed_upstream_source(self):
         with self.assertRaisesRegex(RuntimeError, 'Unexpected native account-manager'):
             preparation.adapt_account_startup_source('// unreviewed changed upstream')

@@ -146,6 +146,24 @@ write failures are returned rather than asserted. Ordinary transaction-write
 failure semantics remain native. Native short diagnostics now check disabled
 file logging before evaluating content, creating files or scheduling writes.
 
+Recipe27 defers native `currentAccount` kind-change observations to the main
+queue. Postbox publishes state views before committing its transaction; a
+synchronous reload on the same queue reentered `openPostbox` and asserted on
+`BEGIN IMMEDIATE` after successful QR/2FA authorization. Deferred delivery
+enqueues the reopening behind the transaction on the original Postbox queue.
+It preserves native state, encryption, account identity and cache contents,
+without lock retries or database removal. The original/adapted source hashes
+are independently checked during warm preparation. A real encrypted synthetic
+account transition reproduces the original assertion and verifies the repair.
+
+An admitted unauthorized account now owns the native `.now` service-task mode,
+matching TelegramSwift `UnauthorizedApplicationContext`. Disconnect, replacement,
+authorization and model release stop the old mode with `.never`. Proxy admission
+must succeed before resuming. Native network fixtures cover that lifecycle,
+including inherited datacenter-migration modes and rejected admission. The QR
+image has a non-secret accessibility label; a synthetic decoder checks its exact
+URL payload. Real QR/2FA acceptance remains separate from these fixtures.
+
 A fresh native unauthorized Postbox can have `nil` account state. Its first view
 now presents the existing phone form, without writing a fabricated protocol state
 or replacing an existing challenge. Non-nil authorized/unknown objects are not

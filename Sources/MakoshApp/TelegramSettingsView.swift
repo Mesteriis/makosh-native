@@ -4,6 +4,7 @@ import MakoshTelegram
 struct TelegramSettingsView: View {
     @StateObject private var systemAppearance = TelegramSystemAppearance()
     var sessions: TelegramSessionsController? = nil
+    var webSessions: TelegramWebSessionsController? = nil
     var privacy: TelegramPrivacyController? = nil
     var blockedUsers: TelegramBlockedUsersController? = nil
     var twoStep: TelegramTwoStepController? = nil
@@ -45,7 +46,7 @@ struct TelegramSettingsView: View {
                 if let privacy { TelegramPrivacyView(controller: privacy, blockedUsers: blockedUsers, twoStep: twoStep, avatarEditing: avatarEditing, synthetic: synthetic) }
                 else { ContentUnavailableView("Откройте Telegram", systemImage: "hand.raised") }
             case .devices:
-                if let sessions { TelegramSessionsView(controller: sessions, synthetic: synthetic) }
+                if let sessions { TelegramSessionsView(controller: sessions, synthetic: synthetic, webSessions: webSessions) }
                 else { ContentUnavailableView("Откройте Telegram", systemImage: "desktopcomputer", description: Text("Устройства доступны в настройках выбранного аккаунта Telegram.")) }
             case nil:
                 Form {

@@ -243,6 +243,7 @@ public final class TelegramModel: ObservableObject {
     public let sharedMedia = TelegramSearchModel()
     public let peerManagement = TelegramPeerManagementController()
     public let accountSessions = TelegramSessionsController()
+    public let webSessions = TelegramWebSessionsController()
     public let accountPrivacy = TelegramPrivacyController()
     public let accountBlockedUsers = TelegramBlockedUsersController()
     public let accountTwoStep = TelegramTwoStepController()
@@ -2156,6 +2157,7 @@ public final class TelegramModel: ObservableObject {
         groupMemberSearch.bind(TelegramEngineRemotePeerProvider(account: account))
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
+        webSessions.bind(TelegramEngineWebSessionsProvider(account: account))
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
         accountBlockedUsers.bind(TelegramEngineBlockedUsersProvider(account: account))
         accountTwoStep.bind(TelegramEngineTwoStepProvider(account: account))
@@ -2220,7 +2222,7 @@ public final class TelegramModel: ObservableObject {
         profilePhotos.bind(nil); avatarEditing.bind(nil); peerManagement.bind(nil); groupMembership.bind(nil); groupMemberSearch.bind(nil)
         calls.bind(nil); callSelectionAccount = nil; callSelectionPeer = nil
         secretChats.bind(nil)
-        accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
+        webSessions.bind(nil); accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -2508,6 +2510,7 @@ public final class TelegramModel: ObservableObject {
         let pages = TelegramSyntheticPages(albums: albums, forum: forum, dataSettings: dataSettings)
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
+        model.webSessions.bind(TelegramSyntheticWebSessionsProvider())
         model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider(premium: privacyPremium))
         model.accountBlockedUsers.bind(TelegramSyntheticBlockedUsersProvider())
         model.accountTwoStep.bind(TelegramSyntheticTwoStepProvider(resetWaitSeconds: twoStepResetWaitSeconds))

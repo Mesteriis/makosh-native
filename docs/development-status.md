@@ -7232,3 +7232,32 @@ These are results for that exact preceding head, not this modal preview patch.
 Pending-caption/file restart reconciliation, albums/premium/inline media, other
 Telegram flows and live-account acceptance, archive/key backup, later channels
 and standalone packaging remain open. The full sequential goal remains active.
+
+## Block13 final integration review
+
+All five slices are implemented. One fresh whole-branch review found two
+Important TCP transport defects: SOCKS5 bypass and reflector teardown use after
+free/null dereference. Root reproduces direct destination with an assertion
+failure and failed-create/connect teardown with SIGSEGV in native fixtures.
+The single fix pass adds an own bounded SOCKS5 CONNECT adapter at both native
+TCP factories and a canonical, exact-hash guarded destructor repair. Canonical native rebuild and final gates pass. The final scripts/test.sh run
+exits0:2132 XCTest (2053 Telegram +79 core),one physical-microphone-precondition
+skip,zero failures;109 Python tests across24 suites. All14 native socket modes,
+actual loopback SOCKS5 CONNECT/media and both encrypted VP8/Opus protocol pairs
+pass. Failed creation/connect teardown no longer crashes. Exactly7 C ABI exports
+remain; prepared source/license pins are unchanged except reviewed adaptations.
+
+The final scripts/build-app.sh exits0. Strict deep signature passes. Canonical
+and bundled native dylibs have the same UUID and all17 code/data sections;
+unsigned bytes match after normalizing only the signing-related __LINKEDIT VM
+reservation. Raw signed/unsigned file hashes are not claimed equal. The isolated
+QA executable equals the unsigned built executable. Actual final native UI
+observes common Telegram workspace, outgoing synthetic video, live duration,
+mute, End and return to enabled Call menu. Earlier five-flow QA remains recorded
+above. Owned QA is stopped and its isolated data retained.
+
+One fresh whole-branch review, one TDD fix pass, no re-review, no deferred Minor.
+[All executor rulings](superpowers/plans/2026-10-13-telegram-block13-decisions.md)
+record decisions and their costs in order. Hosted exact-head CI and merge are
+required integration gates. No real-account or physical-device acceptance,
+notarized binary release, or block14 completion is inferred.

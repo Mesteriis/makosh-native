@@ -375,6 +375,7 @@ closure from its independent public origins and builds a replaceable native dyli
 `Native/TelegramVoIP` and the recipe are its corresponding build/adaptation source.
 No reference checkout, outer GPLv2-only UI, embedded API credentials or upstream
 installer is used. Native adaptations disable disk and memory logging, correct a
-Clang lifetime annotation and enforce relay/proxy candidate policy. They do not
-replace native cryptography, handshake or packet formats. Full call VP8/Opus codec
+Clang lifetime annotation, enforce relay/proxy candidate policy, install Makosh's
+own SOCKS5 CONNECT adapter and repair reflector socket teardown. They do not
+replace native call cryptography, encrypted handshake or media packet formats. Full call VP8/Opus codec
 symbols stay hidden inside this dylib; the existing512px/8MB emoji decoder is unchanged.

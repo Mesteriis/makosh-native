@@ -7,7 +7,7 @@
       "revision": "5ddc3ccf2086127722a06e3d836698fcd717f11b",
       "tree": "df0c4e900ebf3f5ecd42743da6e26a5323334682",
       "sourceFingerprint": "031f8e067e3e907d6d068b5b5cb094bc175f36d6625452afb54215d9515b8671",
-      "preparedFingerprint": "61b99c27ade56516fe25895bc8369b39885e642a5243cdfe82661736d446f049",
+      "preparedFingerprint": "aad0f74a4efd74faa3d877fd2b37a8807fbe12dcb3aa66d738e20ff35db25ebd",
       "fileCount": 243,
       "license": "LGPL-3.0"
     },
@@ -17,7 +17,7 @@
       "revision": "be39b8c8d0db1f377118f813f0c4bd331d341d5e",
       "tree": "9410c5c094e3d35d3abdd3dc7e5281c9a01651f1",
       "sourceFingerprint": "9cc1d6f08fe42004a80e7ba9ed68d7b2708701c734a6d20681f3275f758e0c4f",
-      "preparedFingerprint": "c8e126ed4b2ce589471bb5418854d2d0d8ed4aa6f91daf2dfdb1ac7fe31f2111",
+      "preparedFingerprint": "25d70a25a4bade4575a4558b1c73402e7ec81f2a7ae677371facd50cd154b7ec",
       "fileCount": 5688,
       "license": "BSD-3-Clause and bundled permissive notices"
     },
@@ -82,6 +82,14 @@
     "calls/tgcalls/InstanceImpl.cpp": {
       "input": "ce32b22907ce2901b574aa9aee2c3909075f62ec2b0491b02e82f42174dcd02b",
       "output": "6b4c0a1864b36a6d2744c6f75fb85dcdb327b6eca48a2834c2b9b6d37a5af82d"
+    },
+    "calls/tgcalls/v2/ReflectorPort.cpp": {
+      "input": "2cf7decd09254d69d595041f0f96075cac0418ab4e9e84ee2a3f1367396a81aa",
+      "output": "40c0faf07d2e64eac86b0938be8adf94d7129f2edc36cf2cb4a59624b3e44986"
+    },
+    "owt/src/p2p/base/basic_packet_socket_factory.cc": {
+      "input": "4d5c410a9d40520a76a5e650f97d1ff1e562e36220afc015ff9bd1f51f071dc2",
+      "output": "4fd1ac70d65b3fe94fed21113e46dfecdf70fe93c77735fbe2c9b0715ceee417"
     }
   }
 }

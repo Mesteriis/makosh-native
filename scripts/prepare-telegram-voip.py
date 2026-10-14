@@ -19,6 +19,8 @@ ADAPTATIONS = {
     'calls/tgcalls/LogSinkImpl.cpp': {'input': '709d0e5015a0f1692bd47d20302ab9d303c4f47f223ee80b8ca666b02eb1bfa3', 'output': '1218dd80c31986e2aefae5a0cd83cf213f26dd8c07194fb71066f45d4df2fcb6'},
     'calls/tgcalls/NetworkManager.cpp': {'input': 'bd20d1a897bab083a6a534ae7251ce9424e238e50f17a421cdc58498a1b06f60', 'output': '8bf9c95f3fc8826c4f93a687ebd2f4f5ce39cc94aa4a64b7f9759e122cda5216'},
     'calls/tgcalls/InstanceImpl.cpp': {'input': 'ce32b22907ce2901b574aa9aee2c3909075f62ec2b0491b02e82f42174dcd02b', 'output': '6b4c0a1864b36a6d2744c6f75fb85dcdb327b6eca48a2834c2b9b6d37a5af82d'},
+    'calls/tgcalls/v2/ReflectorPort.cpp': {'input': '2cf7decd09254d69d595041f0f96075cac0418ab4e9e84ee2a3f1367396a81aa', 'output': '40c0faf07d2e64eac86b0938be8adf94d7129f2edc36cf2cb4a59624b3e44986'},
+    'owt/src/p2p/base/basic_packet_socket_factory.cc': {'input': '4d5c410a9d40520a76a5e650f97d1ff1e562e36220afc015ff9bd1f51f071dc2', 'output': '4fd1ac70d65b3fe94fed21113e46dfecdf70fe93c77735fbe2c9b0715ceee417'},
 }
 def sha(value): return hashlib.sha256(value).hexdigest()
 def fingerprint(files): return sha(json.dumps(files, sort_keys=True, separators=(',', ':')).encode())
@@ -63,6 +65,15 @@ def adapt(path, source):
         text = text.replace('        } else {\n            rtc::SocketAddress stunAddress', '        } else {\n            if (!_enableP2P || _proxy || server.isTcp) continue;\n            rtc::SocketAddress stunAddress')
     elif path.endswith('InstanceImpl.cpp'):
         text = text.replace('LogToDebug(rtc::LS_INFO)', 'LogToDebug(rtc::LS_NONE)').replace('AddLogToStream(_logSink.get(), rtc::LS_INFO)', 'AddLogToStream(_logSink.get(), rtc::LS_NONE)')
+    elif path.endswith('ReflectorPort.cpp'):
+        text = text.replace('#include "RawTcpSocket.h"', '#include "RawTcpSocket.h"\n#include "CallProxySocket.hpp"')
+        text = text.replace('    if (socket->Connect(remote_address) < 0) {', '    if (proxy_info.type == rtc::PROXY_SOCKS5) {\n        socket = makosh::wrapCallSocks5(socket, proxy_info);\n    } else if (proxy_info.type != rtc::PROXY_NONE) {\n        delete socket;\n        return nullptr;\n    }\n    if (socket->Connect(remote_address) < 0) {')
+        text = text.replace('    if (!SharedSocket()) {\n        delete socket_;\n    }\n    \n    if (server_address_.proto == cricket::PROTO_TCP) {\n        socket_->UnsubscribeCloseEvent(this);\n    }', '    if (socket_ && server_address_.proto == cricket::PROTO_TCP) {\n        socket_->UnsubscribeCloseEvent(this);\n    }\n    if (!SharedSocket()) {\n        delete socket_;\n    }')
+        text = text.replace('if (server_address_.address.IsUnresolvedIP()) {', 'if (server_address_.address.IsUnresolvedIP() && proxy().type != rtc::PROXY_SOCKS5) {')
+        text = text.replace('if (!IsCompatibleAddress(server_address_.address)) {', 'if (!server_address_.address.IsUnresolvedIP() && !IsCompatibleAddress(server_address_.address)) {')
+    elif path.endswith('basic_packet_socket_factory.cc'):
+        text = text.replace('#include "p2p/base/basic_packet_socket_factory.h"', '#include "p2p/base/basic_packet_socket_factory.h"\n#include "CallProxySocket.hpp"')
+        text = text.replace('  if (proxy_info.type == PROXY_HTTPS) {', '  if (proxy_info.type == PROXY_SOCKS5) {\n    socket = makosh::wrapCallSocks5(socket, proxy_info);\n  } else if (proxy_info.type == PROXY_HTTPS) {')
     result = text.encode()
     if sha(result) != record['output']: raise ValueError('Native adaptation output differs from review: ' + path)
     return result
@@ -151,7 +162,7 @@ def run_build(source):
     openssl = subprocess.check_output(['brew', '--prefix', 'openssl@3'], text=True).strip()
     build = DEST / 'build'
     subprocess.run(['cmake', '-S', str(ROOT / 'Native/TelegramVoIP'), '-B', str(build), '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_OSX_ARCHITECTURES=arm64', '-DCMAKE_OSX_DEPLOYMENT_TARGET=26.0', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5', '-DMAKOSH_CALL_SOURCE=' + str(source), '-DMAKOSH_CALL_DEST=' + str(DEST), '-DMAKOSH_OPENSSL=' + openssl], check=True)
-    subprocess.run(['cmake', '--build', str(build), '--target', 'MakoshTelegramVoIP', 'makosh_call_media_tests', 'makosh_call_admission_tests', 'makosh_call_network_policy_tests', 'makosh_call_audio_admission_tests', '-j', '4'], check=True)
+    subprocess.run(['cmake', '--build', str(build), '--target', 'MakoshTelegramVoIP', 'makosh_call_media_tests', 'makosh_call_admission_tests', 'makosh_call_network_policy_tests', 'makosh_call_audio_admission_tests', 'makosh_call_relay_socket_tests', 'makosh_call_socks5_loopback_tests', '-j', '4'], check=True)
     subprocess.run([str(build / 'makosh_call_admission_tests')], check=True)
     subprocess.run([str(build / 'makosh_call_network_policy_tests')], check=True)
     subprocess.run([str(build / 'makosh_call_audio_admission_tests')], check=True)

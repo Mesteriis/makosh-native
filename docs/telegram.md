@@ -3174,7 +3174,8 @@ recipe21 trees are preserved under ignored backups; generated source is never
 edited by hand. MtProtoKit is the already pinned/reviewed transitive dependency,
 now declared directly for native proxy validation. See THIRD_PARTY_NOTICES.md.
 
-Proxy links/import/export/QR, latency probes and proxying calls are not implemented.
+Proxy links/import/export/QR and latency probes remain outside this block.
+One-to-one calls now use the separately reviewed SOCKS5 transport described below.
 DEBUG data-settings providers use synthetic in-memory cache and a separate fake
 proxy store in that QA bundle's preferences; they never open Keychain, accounts
 or transport. Native tests exercise actual Postbox/MediaBox cloud removal and a
@@ -3395,6 +3396,20 @@ An enabled proxy applies to calls too: SOCKS5 requires an advertised TCP relay,
 with direct/UDP relay bypass disabled. MTProto-only proxies cannot carry calls;
 unsupported combinations fail rather than fall back to a direct connection.
 Proxy configuration is reread before wire/capture and monitored during the call.
+
+The pinned OWT and raw reflector TCP factories originally ignored SOCKS5.
+Exact hash adaptations now install an own MIT bounded CONNECT adapter at both
+socket factories. The physical socket connects only to the configured proxy;
+the native RawTcpSocket media framing remains unchanged. IPv4, IPv6 and remote
+domain requests, no-auth and username/password authentication, partial reads/
+writes and a coalesced first media packet are handled without direct fallback.
+Malformed/denied replies terminate the tunnel. Credentials never enter logs.
+The adapter follows [RFC1928](https://www.rfc-editor.org/info/rfc1928/) and
+[RFC1929](https://www.rfc-editor.org/info/rfc1929/); it implements CONNECT only.
+The reflector teardown adaptation unsubscribes while its non-null socket is
+still alive, then deletes an owned socket. Native regression fixtures exercise
+creation/connect failure and successful teardown; a loopback SOCKS5 fixture
+checks the actual TCP destination without accounts or physical media devices.
 
 A separate nonmodal native window shows status, duration, native verification
 fingerprint, local/remote video, microphone/camera and End. Closing the window

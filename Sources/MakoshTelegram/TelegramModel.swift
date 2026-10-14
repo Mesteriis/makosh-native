@@ -244,6 +244,7 @@ public final class TelegramModel: ObservableObject {
     public let peerManagement = TelegramPeerManagementController()
     public let accountSessions = TelegramSessionsController()
     public let webSessions = TelegramWebSessionsController()
+    public let appearanceCatalog = TelegramAppearanceCatalogController()
     public let qrLogin = TelegramQRLoginController()
     private var qrMigrationCount = 0
     public let accountPrivacy = TelegramPrivacyController()
@@ -2181,6 +2182,7 @@ public final class TelegramModel: ObservableObject {
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
         accountSessions.bind(TelegramEngineSessionsProvider(account: account))
         webSessions.bind(TelegramEngineWebSessionsProvider(account: account))
+        appearanceCatalog.bind(TelegramEngineAppearanceCatalogProvider(account: account))
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
         accountBlockedUsers.bind(TelegramEngineBlockedUsersProvider(account: account))
         accountTwoStep.bind(TelegramEngineTwoStepProvider(account: account))
@@ -2245,7 +2247,7 @@ public final class TelegramModel: ObservableObject {
         profilePhotos.bind(nil); avatarEditing.bind(nil); peerManagement.bind(nil); groupMembership.bind(nil); groupMemberSearch.bind(nil)
         calls.bind(nil); callSelectionAccount = nil; callSelectionPeer = nil
         secretChats.bind(nil)
-        webSessions.bind(nil); accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
+        appearanceCatalog.bind(nil); webSessions.bind(nil); accountSessions.bind(nil); accountPrivacy.bind(nil); accountBlockedUsers.bind(nil); accountTwoStep.bind(nil)
         historyRead.bind(nil)
         historyReadIndexes = [:]
         archive.bind(journal: nil)
@@ -2534,6 +2536,7 @@ public final class TelegramModel: ObservableObject {
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
         model.webSessions.bind(TelegramSyntheticWebSessionsProvider())
+        model.appearanceCatalog.bind(TelegramSyntheticAppearanceCatalogProvider())
         model.accountPrivacy.bind(TelegramSyntheticPrivacyProvider(premium: privacyPremium))
         model.accountBlockedUsers.bind(TelegramSyntheticBlockedUsersProvider())
         model.accountTwoStep.bind(TelegramSyntheticTwoStepProvider(resetWaitSeconds: twoStepResetWaitSeconds))

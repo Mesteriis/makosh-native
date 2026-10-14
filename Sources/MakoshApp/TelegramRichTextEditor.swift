@@ -18,14 +18,16 @@ struct TelegramRichTextEditor: View {
     var customEmojiInsertion: TelegramCustomEmojiInsertionRequest? = nil
     var customEmojiInputContextID: UUID? = nil
     var consumeCustomEmojiInsertion: ((UUID, TelegramComposerInput) -> Bool)? = nil
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
+    private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     @AppStorage(TelegramSendKey.preferenceKey) private var sendKeyPreference = TelegramSendKey.enter.rawValue
     @State private var height: CGFloat = 52
     var body: some View {
         NativeTelegramText(value: $value,error: $error,height: $height,selection: selection,
             accessibilityID: accessibilityID,accessibilityLabel: accessibilityLabel ?? defaultAccessibilityLabel,
             inputChanged: inputChanged,submit: submit,
-            sendKey: TelegramSendKey(preferenceValue: sendKeyPreference),
-            customEmojiDescriptors: customEmojiDescriptors, customEmojiContext: customEmojiContext,
+            sendKey: TelegramSendKey(preferenceValue: sendKeyPreference), replaceEmoticons: appearance.replaceEmoticons,
+            customEmojiDescriptors: customEmojiDescriptors, customEmojiContext: appearance.animationsEnabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? customEmojiContext : nil,
             customEmojiInsertion: customEmojiInsertion, customEmojiInputContextID: customEmojiInputContextID,
             consumeCustomEmojiInsertion: consumeCustomEmojiInsertion)
             .frame(height: height)
@@ -53,6 +55,7 @@ struct NativeTelegramText: NSViewRepresentable {
     let inputChanged: ((TelegramComposerInput) -> Void)?
     let submit: (() -> Void)?
     let sendKey: TelegramSendKey
+    var replaceEmoticons = false
     let customEmojiDescriptors: [Int64: TelegramCustomEmojiDescriptor]
     let customEmojiContext: TelegramCustomEmojiPlaybackContext?
     let customEmojiInsertion: TelegramCustomEmojiInsertionRequest?
@@ -95,6 +98,7 @@ struct NativeTelegramText: NSViewRepresentable {
         }
         text.submit = submit
         text.sendKey = sendKey
+        text.replaceEmoticons = replaceEmoticons
         scroll.documentView = text
         context.coordinator.install(value,in: text)
         return scroll
@@ -108,6 +112,7 @@ struct NativeTelegramText: NSViewRepresentable {
         text.setAccessibilityLabel(accessibilityLabel)
         (text as? TelegramNativeInput)?.submit = submit
         (text as? TelegramNativeInput)?.sendKey = sendKey
+        (text as? TelegramNativeInput)?.replaceEmoticons = replaceEmoticons
         text.isEditable = value.isEditable && context.environment.isEnabled
         let installedDifferentValue = coordinator.lastValue != value
         if installedDifferentValue { coordinator.install(value,in: text) }
@@ -350,7 +355,26 @@ struct NativeTelegramText: NSViewRepresentable {
     override func layout() { super.layout(); didLayout?() }
 }
 
-@MainActor private final class TelegramNativeInput: NSTextView {
+@MainActor final class TelegramNativeInput: NSTextView {
+    var replaceEmoticons = false
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        let selection = replacementRange.location == NSNotFound ? selectedRange() : replacementRange
+        if replaceEmoticons, !hasMarkedText(), insertString as? String == " ", selection.length == 0,
+           selection.location > 0, selection.location <= string.utf16.count {
+            let source = string as NSString
+            let whitespace = source.rangeOfCharacter(from: .whitespacesAndNewlines, options: .backwards, range: .init(location:0,length:selection.location))
+            let start = whitespace.location == NSNotFound ? 0 : NSMaxRange(whitespace)
+            let range = NSRange(location:start,length:selection.location - start)
+            if (1...5).contains(range.length),
+               let emoji = [":)":"🙂",":-)":"🙂",":(":"🙁",":-(":"🙁",";)":"😉",";-)":"😉",":D":"😃",":-D":"😃",":P":"😛",":-P":"😛",":o":"😮",":-o":"😮"][source.substring(with:range)] {
+                let font = textStorage?.attribute(.font,at:selection.location-1,effectiveRange:nil) as? NSFont
+                if font.map({ NSFontManager.shared.traits(of:$0).contains(.fixedPitchFontMask) }) != true {
+                    super.insertText(emoji + " ",replacementRange:range); return
+                }
+            }
+        }
+        super.insertText(insertString,replacementRange:replacementRange)
+    }
     var format: ((TelegramTextEntityKind) -> Void)?
     var requestLink: (() -> Void)?
     var submit: (() -> Void)?

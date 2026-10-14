@@ -3,6 +3,7 @@ import MakoshTelegram
 
 struct TelegramSettingsView: View {
     @StateObject private var systemAppearance = TelegramSystemAppearance()
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     var sessions: TelegramSessionsController? = nil
     var webSessions: TelegramWebSessionsController? = nil
     var privacy: TelegramPrivacyController? = nil
@@ -13,6 +14,7 @@ struct TelegramSettingsView: View {
     var cache: TelegramCacheController? = nil
     var proxy: TelegramProxyController? = nil
     var avatarEditing: TelegramAvatarEditingController? = nil
+    var appearanceCatalog: TelegramAppearanceCatalogController? = nil
     var chats: [TelegramChat] = []
     var synthetic = false
     var close: (() -> Void)? = nil
@@ -20,6 +22,9 @@ struct TelegramSettingsView: View {
     @State private var page: Page?
     @AppStorage(TelegramLocalTheme.preferenceKey) private var theme = TelegramLocalTheme.system.rawValue
     @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
+    private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
+    private var resolvedScheme: ColorScheme { telegramWorkspaceScheme(theme:theme,telegramSelected:true,system:systemAppearance.scheme,night:appearance.night,date:systemAppearance.now,cloudDark:appearance.cloudPalette?.isDark) }
+    private var resolvedAccent: Color { appearance.effectivePalette(isDark:resolvedScheme == .dark).map { telegramRGBColor($0.accent) } ?? TelegramAccent(preference:accent).color }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -36,7 +41,7 @@ struct TelegramSettingsView: View {
             if synthetic { Text("Синтетический аккаунт · серверные изменения симулируются").font(.caption).foregroundStyle(.secondary).padding(10) }
             switch page {
             case .general: TelegramGeneralSettingsView()
-            case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme)
+            case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme, catalog: appearanceCatalog)
             case .data:
                 if let autoDownload, let cache, let proxy { TelegramDataSettingsView(settings: autoDownload, cache: cache, proxy: proxy) }
             case .notifications:
@@ -66,9 +71,9 @@ struct TelegramSettingsView: View {
                 }.formStyle(.grouped)
             }
         }.frame(width: 560, height: 630)
-            .tint(TelegramAccent(preference: accent).color)
-            .accentColor(TelegramAccent(preference: accent).color)
-            .preferredColorScheme(telegramWorkspaceScheme(theme: theme, telegramSelected: true, system: systemAppearance.scheme))
+            .tint(resolvedAccent)
+            .accentColor(resolvedAccent)
+            .preferredColorScheme(resolvedScheme)
     }
     private func settingsRow(_ value: Page, symbol: String, id: String) -> some View {
         Button { page = value } label: {
@@ -79,10 +84,17 @@ struct TelegramSettingsView: View {
 }
 
 private struct TelegramGeneralSettingsView: View {
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
+    private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     @AppStorage(TelegramSendKey.preferenceKey) private var sendKeyPreference = TelegramSendKey.enter.rawValue
     @AppStorage(TelegramUploadPhotoSize.preferenceKey) private var sendLargePhotos = false
     var body: some View {
         Form {
+            Section("Эмодзи") {
+                Toggle("Анимированные эмодзи",isOn: preference(\.animationsEnabled)).accessibilityIdentifier("telegram.settings.animations")
+                Toggle("Заменять смайлики на эмодзи",isOn: preference(\.replaceEmoticons)).accessibilityIdentifier("telegram.settings.replaceEmoticons")
+                Text("Замена применяется к обычным смайликам после пробела; вставленный текст и моноширинный код сохраняются.").font(.caption).foregroundStyle(.secondary)
+            }
             Section("Сообщения") {
                 Picker("Отправка сообщений", selection: Binding(
                     get: { TelegramSendKey(preferenceValue: sendKeyPreference).rawValue },
@@ -99,5 +111,12 @@ private struct TelegramGeneralSettingsView: View {
                     .accessibilityIdentifier("telegram.settings.sendLargePhotos")
             }
         }.formStyle(.grouped)
+    }
+    private func preference(_ key: WritableKeyPath<TelegramAppearancePreferences,Bool>) -> Binding<Bool> {
+        .init(get:{ appearance[keyPath:key] },set:{ value in
+            guard var preferences = try? TelegramAppearancePreferences.decode(appearanceRaw) else { return }
+            preferences[keyPath:key] = value
+            if let encoded = try? preferences.encoded() { appearanceRaw = encoded }
+        })
     }
 }

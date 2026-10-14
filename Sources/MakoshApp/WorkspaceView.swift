@@ -185,12 +185,16 @@ private struct EditorSelection: Identifiable { let id = UUID(); let contact: Con
 struct WorkspaceView: View {
     @EnvironmentObject private var callWindows: TelegramCallWindows
     @StateObject private var systemAppearance = TelegramSystemAppearance()
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
     @AppStorage(TelegramAccent.preferenceKey) private var telegramAccent = TelegramAccent.blue.rawValue
     @StateObject private var model: WorkspaceModel
     @StateObject private var telegram: TelegramModel
     @State private var destination: Destination? = .contacts
+    private var telegramAppearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
+    private var resolvedTelegramScheme: ColorScheme { telegramWorkspaceScheme(theme:telegramTheme,telegramSelected:true,system:systemAppearance.scheme,night:telegramAppearance.night,date:systemAppearance.now,cloudDark:telegramAppearance.cloudPalette?.isDark) }
+    private var resolvedTelegramAccent: Color { telegramAppearance.effectivePalette(isDark:resolvedTelegramScheme == .dark).map { telegramRGBColor($0.accent) } ?? TelegramAccent(preference:telegramAccent).color }
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
@@ -276,9 +280,9 @@ struct WorkspaceView: View {
         }
         .onAppear { callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview) }
         .onDisappear { callWindows.unregister(telegram.calls) }
-        .tint(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
-        .accentColor(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
-        .preferredColorScheme(telegramWorkspaceScheme(theme: telegramTheme, telegramSelected: destination == .telegram, system: systemAppearance.scheme))
+        .tint(destination == .telegram ? resolvedTelegramAccent : accent)
+        .accentColor(destination == .telegram ? resolvedTelegramAccent : accent)
+        .preferredColorScheme(telegramWorkspaceScheme(theme: telegramTheme, telegramSelected: destination == .telegram, system: systemAppearance.scheme, night: ((try? TelegramAppearancePreferences.decode(appearanceRaw)) ?? .init()).night, date: systemAppearance.now, cloudDark: telegramAppearance.cloudPalette?.isDark))
         .background(Color(nsColor: .windowBackgroundColor))
         .modifier(TelegramNotificationHost(controller: telegram.notifications))
         .onReceive(telegram.notifications.$activationRequest.dropFirst()) { _ in destination = .telegram }

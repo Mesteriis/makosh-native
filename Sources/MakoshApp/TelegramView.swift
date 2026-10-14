@@ -3,7 +3,17 @@ import AppKit
 import MakoshTelegram
 
 struct TelegramDetailView: View {
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
+    @Environment(\.colorScheme) private var colorScheme
+    private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
+    private var palette: TelegramCloudPalette? { appearance.effectivePalette(isDark:colorScheme == .dark) }
+    private var wallpaper: TelegramLocalWallpaper { if appearance.wallpaper == .automatic, let background = palette?.background { return .solid(background) }; return appearance.wallpaper }
+    private func bubbleStyle(outgoing: Bool) -> AnyShapeStyle {
+        if outgoing, let colors = palette?.outgoing, !colors.isEmpty { return AnyShapeStyle(LinearGradient(colors:colors.map(telegramRGBColor),startPoint:.top,endPoint:.bottom)) }
+        if !outgoing, let color = palette?.incoming { return AnyShapeStyle(telegramRGBColor(color)) }
+        return AnyShapeStyle(outgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08))
+    }
     @ObservedObject var model: TelegramModel
     @ObservedObject private var qrLogin: TelegramQRLoginController
     @ObservedObject private var search: TelegramSearchModel
@@ -88,7 +98,10 @@ struct TelegramDetailView: View {
                 Text("Вложение сохранено в выбранный файл.").font(.caption).foregroundStyle(.secondary).padding(12)
                     .accessibilityIdentifier("telegram.media.saved")
             }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(TelegramLocalTheme(preference: telegramTheme).chatBackground)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background {
+            if model.phase == .ready { TelegramWallpaperBackground(wallpaper: wallpaper, fallback: TelegramLocalTheme(preference: telegramTheme).chatBackground) }
+            else { TelegramLocalTheme(preference: telegramTheme).chatBackground }
+        }
             .modifier(TelegramUploadDropModifier(model: model))
             .overlay {
                 TelegramRoundVideoRecorderView(recording: model.voiceRecording, upload: upload,
@@ -313,7 +326,7 @@ struct TelegramDetailView: View {
                                                     TelegramMessageMetadataView(message: item)
                                                         .gridCellAnchor(.trailing)
                                                 }
-                                            }.padding(11).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                                            }.padding(11).background(bubbleStyle(outgoing: item.isOutgoing), in: RoundedRectangle(cornerRadius: 12))
                                             if !item.isOutgoing { Spacer(minLength: 44) }
                                         }.accessibilityElement(children: .contain)
                                             .accessibilityIdentifier("telegram.message.\(item.id)")

@@ -1620,8 +1620,9 @@ Remaining aesthetic differences: static avatar rendering, no video avatars or
 decorations, no wave/ringtone, native32-byte hex verification instead of the
 reference emoji presentation, fixed local video position and no control auto-hide.
 Audio selection affects subsequent calls; changing devices during an existing
-call is unavailable. Actual changed UI and physical hot-plug/capture acceptance
-are pending; focused/source tests do not establish those outcomes.
+call is unavailable. Actual changed UI is observed in the section below.
+Physical hot-plug/capture acceptance remains pending; source/synthetic checks do
+not establish hardware behavior.
 # Block14 archive recovery
 
 The common Telegram sidebar opens the existing local ArchiveView; backup is a
@@ -1662,3 +1663,14 @@ export/inspection/new-schema restore and open in the existing read-only archive.
 The separate key/package are private; native Save and folder/key Open panels work.
 The final suggested target is immediately valid; manual correction is unnecessary.
 No real Telegram identity or physical camera/microphone acceptance is inferred.
+
+The final recovery retest starts directly with folder selection, before export:
+Open is enabled, the separate key is selected, full inspection and the suggested
+lowercase new target succeed, and the read-only original/edit/delete viewer opens
+the actual retained S3 file. Disabling the whole form section during a path panel
+was the reproduced native failure; only actual worker activity now disables that
+section. Native modal ownership/action admission still guard overlap. Read-only
+file API mutation admission precedes keys/spool/S3; listing and explicit export
+remain available. No reference code/assets were copied. Pinned PanelUtils22–75
+uses standard anchored NSOpenPanel/NSSavePanel workflows; archive recovery itself
+remains the own Makosh flow described above.

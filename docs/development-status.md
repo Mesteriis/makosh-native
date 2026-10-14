@@ -1,5 +1,9 @@
 # Development status — 2026-10-14
 
+Block14 implementation and integration are complete in [PR14](https://github.com/Mesteriis/makosh-native/pull/14).
+The final integration evidence is at the end of this document. Real test-account,
+physical-device and actual login-Keychain acceptance remain separately scoped.
+
 ## Product scope decision — 2026-10-13
 
 The user explicitly excludes a local Makosh passcode and automatic app locking.
@@ -7417,3 +7421,40 @@ they are not passing evidence. The final fixed head must pass hosted push/PR
 checks before the authorized merge. Live test account/actions will be supplied
 by the user only after implementation. All documented reference differences
 remain explicit; local Makosh passcode/autolock remains excluded.
+
+## Completed: Telegram block14 integration
+
+The final fixed head448d88c4aa063e602b427ff7b2953706365b075c passed both hosted
+[push CI](https://github.com/Mesteriis/makosh-native/actions/runs/38561219565) and
+[PR CI](https://github.com/Mesteriis/makosh-native/actions/runs/38561224575).
+Both cold builds verify no research checkout exists before/after build and tests,
+start isolated PostgreSQL/S3 and pass the full suite. The hosted PR log confirms
+2227 XCTest,one microphone-precondition skip,zero failures, and109 Python tests
+across24 suites. Cancelled earlier6d0649e runs are not passing evidence.
+
+[PR14](https://github.com/Mesteriis/makosh-native/pull/14) merged on2026-10-14 as
+deac9ab109f570aa7a920a2d09491212da46d60a. Its Git tree
+7c2025bc197e9c5fa2687895cc7410488d0f292b exactly equals the checked PR tree.
+Local main was fast-forwarded; all860 application/test/native/scripts/dependency
+file hashes match the verified build source. The final scripts/test.sh on that
+integrated main exits0:2227 XCTest(2114 Telegram +113 core),one microphone-
+precondition skip,zero failures;109 Python tests/24 suites. Task7 is complete.
+Strict deep signing and native UUID/all17 sections/unsigned-payload comparison
+still pass after that run. Normalized LINKEDIT VM reservation is the sole
+signing-related payload normalization; raw signed hashes are not claimed equal.
+
+This completion record and plan/reference updates change documentation only.
+Application/native sources remain equal to the checked head. The normal main
+workflow checks the completion commit too; its result is available in GitHub
+Actions. The owned synthetic QA is stopped and its data/raw evidence retained
+privately. No unresolved Critical/Important or deferred Minor review finding
+remains. The decisions document preserves all47 executor/review rulings and
+costs. Only this plan's temporary execution workspace is cleaned after evidence
+preservation; other tasks and retained archive data are unaffected.
+
+Approved implementation is finished. The user will provide the chosen test
+account/peer/actions afterwards. Actual authorization, remote synchronization/
+mutations, website revocation, secret delivery, remote calls, physical devices
+and actual login-Keychain behavior remain unverified here. Documented reference
+rendering, safe age/size eviction and persistent cross-chat-download limits remain
+explicit. Local Makosh passcode/autolock is excluded, not backlog work.

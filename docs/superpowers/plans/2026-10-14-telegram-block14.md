@@ -161,4 +161,4 @@ No replacement shell or private-account QA is introduced.
 - [x] Step2: Inspect actual native changed flows in a dedicated synthetic QA app/schema. Expected: concrete visible outcomes, no private accounts.
 - [x] Step3: Refresh/check project/ref/engine XERJ and review the complete diff. Expected: fresh evidence; actual failures retained.
 - [x] Step4: Commit verified docs, perform one independent whole-branch review and one TDD fix pass. Expected: no unresolved Important/Critical.
-- [ ] Step5: Publish PR, attach, wait for exact-head checks and merge under existing authorization; verify final tree. Expected: exact checked tree integrated.
+- [x] Step5: Publish PR, attach, wait for exact-head checks and merge under existing authorization; verify final tree. Expected: exact checked tree integrated.

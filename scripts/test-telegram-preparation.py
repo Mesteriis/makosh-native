@@ -20,6 +20,42 @@ api_spec.loader.exec_module(api_import)
 
 
 class PreparationTests(unittest.TestCase):
+    def test_account_startup_refuses_unreviewed_upstream_source(self):
+        with self.assertRaisesRegex(RuntimeError, 'Unexpected native account-manager'):
+            preparation.adapt_account_startup_source('// unreviewed changed upstream')
+
+    def test_disabled_short_log_refuses_unreviewed_upstream_source(self):
+        with self.assertRaisesRegex(RuntimeError, 'Unexpected native short-log'):
+            preparation.adapt_disabled_short_log_source('// unreviewed changed upstream')
+
+    def test_forged_consistent_short_log_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            destination, record = self.prepared_fixture(Path(temporary))
+            (destination / preparation.ENGINE_LOG).write_text('// changed native short log\n')
+            record['prepared_files'] = preparation.prepared_files(destination)
+            (destination / 'preparation.json').write_text(json.dumps(record))
+            with patch.object(preparation, 'DEST', destination), self.assertRaisesRegex(RuntimeError, 'startup/logging'):
+                preparation.verify_prepared()
+
+    def test_forged_consistent_account_startup_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            destination, record = self.prepared_fixture(Path(temporary))
+            account = destination / preparation.ACCOUNT_MANAGER
+            account.write_text('// changed native opener\n')
+            record['prepared_files'] = preparation.prepared_files(destination)
+            (destination / 'preparation.json').write_text(json.dumps(record))
+            with patch.object(preparation, 'DEST', destination), self.assertRaisesRegex(RuntimeError, 'account-manager startup'):
+                preparation.verify_prepared()
+
+    def test_forged_consistent_missing_account_startup_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            destination, record = self.prepared_fixture(Path(temporary))
+            (destination / preparation.ACCOUNT_MANAGER).unlink()
+            record['prepared_files'] = preparation.prepared_files(destination)
+            (destination / 'preparation.json').write_text(json.dumps(record))
+            with patch.object(preparation, 'DEST', destination), self.assertRaisesRegex(RuntimeError, 'account-manager startup'):
+                preparation.verify_prepared()
+
     def test_two_step_adaptation_refuses_unreviewed_upstream_context(self):
         with self.assertRaises(RuntimeError):
             preparation.adapt_two_step_source("// synthetic changed upstream implementation")

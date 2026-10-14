@@ -34,6 +34,7 @@ from telegram_remote_peer_adaptation import remote_peer_helper_source
 from telegram_avatar_adaptation import avatar_helper_source
 from telegram_group_membership_adaptation import group_membership_helper_source
 from telegram_secret_chat_adaptation import ADAPTED_SHA256 as SECRET_ADAPTED_SHA256, adapt_secret_chat_source, secret_chat_helper_source
+from telegram_account_startup_adaptation import ACCOUNT_MANAGER, ENGINE_LOG, adapt_account_startup_source, adapt_disabled_short_log_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -46,7 +47,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 25
+RECIPE = 26
 
 
 def run(*args):
@@ -145,6 +146,11 @@ def verify_prepared():
         native = DEST / relative
         if not native.is_file() or hashlib.sha256(native.read_bytes()).hexdigest() != expected:
             raise RuntimeError("Prepared secret native source differs from the reviewed recipe")
+    from telegram_account_startup_adaptation import ADAPTED_SHA256 as ACCOUNT_STARTUP_SHA256, LOG_ADAPTED_SHA256
+    for relative, expected in {ACCOUNT_MANAGER: ACCOUNT_STARTUP_SHA256, ENGINE_LOG: LOG_ADAPTED_SHA256}.items():
+        native = DEST / relative
+        if not native.is_file() or hashlib.sha256(native.read_bytes()).hexdigest() != expected:
+            raise RuntimeError("Prepared account-manager startup/logging source differs from the reviewed recipe")
     if prepared_files(DEST) != record["prepared_files"]:
         raise RuntimeError("Prepared engine file set or content changed; preserve it before preparing again")
     return True
@@ -180,6 +186,10 @@ def main():
     DEST.mkdir(parents=True)
     archive = subprocess.check_output(source_git("archive", SHA, *sorted(packages), "README.md"))
     extract_committed(archive, DEST)
+    account_manager = DEST / ACCOUNT_MANAGER
+    account_manager.write_text(adapt_account_startup_source(account_manager.read_text()))
+    engine_log = DEST / ENGINE_LOG
+    engine_log.write_text(adapt_disabled_short_log_source(engine_log.read_text()))
     search = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Messages/SearchMessages.swift"
     search.write_text(adapt_search_source(search.read_text()))
     state_manager = DEST / STATE_MANAGER
@@ -273,6 +283,8 @@ let package = Package(name: "OpenSSLEncryption", platforms: [.macOS(.v10_13)],
     (DEST / "preparation.json").write_text(json.dumps({"source_url": URL, "source_sha": SHA, "source_tree": TREE,
         "recipe": RECIPE, "packages": sorted(packages), "prepared_files": files,
         "adaptations": ["ManagedFile relative SSignalKit path", "Postbox never deletes session on open failure",
+                        "AccountManager initializes only missing empty first-launch state; failable native opening preserves invalid/existing session data",
+                        "Native short diagnostics honor disabled file logging before evaluating content or creating files",
                         "OpenSSLEncryption SwiftPM uses EncryptionProvider and Homebrew OpenSSL 3",
                         "Authorization neither reads iCloud nor stores future-login tokens",
                         "Makosh supplies an in-memory dynamic proxy source; AccountManager cannot override it and direct proxy-issue diagnostics are disabled",

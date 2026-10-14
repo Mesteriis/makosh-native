@@ -136,6 +136,22 @@ service. Existing Telegram app sessions and system contacts are never imported.
 Missing or inaccessible keys stop opening existing data instead of overwriting
 them. Postbox cache-open errors do not trigger automatic database deletion.
 
+Recipe26 separates empty first-launch metadata initialization from destructive
+recovery. The failable native account-manager opener runs on the original shared
+queue. Missing `atomic-state` is admitted only for an empty metadata store without
+any sibling native `account-` cache. Existing records/auth pointers, unreadable or
+malformed state, and obstructed directory paths fail without resetting session
+data; the model uses its existing unsupported-state presentation. Initialization
+write failures are returned rather than asserted. Ordinary transaction-write
+failure semantics remain native. Native short diagnostics now check disabled
+file logging before evaluating content, creating files or scheduling writes.
+
+A fresh native unauthorized Postbox can have `nil` account state. Its first view
+now presents the existing phone form, without writing a fabricated protocol state
+or replacing an existing challenge. Non-nil authorized/unknown objects are not
+coerced into an empty login state. The projection is covered with a real encrypted
+empty Postbox, existing unauthorized state and an authorized-state refusal.
+
 Contact dossiers/notes/merge history remain in **PostgreSQL**, with the local
 development database in Docker. TelegramCore's encrypted Postbox/SQLCipher
 cache is its protocol/session storage; this cache does not replace PostgreSQL

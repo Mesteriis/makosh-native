@@ -38,6 +38,15 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe26 adds a GPL-3.0-or-later first-open/failure boundary in native
+  `AccountManagerImpl.swift` and makes native `Logger.shortLog` honor disabled
+  file logging before evaluating content. Empty missing metadata is initialized
+  without destructive recovery; existing account caches and invalid state are
+  preserved. Makosh uses a failable opener on the existing native queue.
+  Both original and adapted sources have reviewed fixed SHA256s, independently
+  checked against the full preparation record. Engine revision, protocol,
+  session encryption, dependency set and outer UI are unchanged.
+
 - Recipe25 adds own MIT `MakoshSecretChat.swift`: a checked256-byte native
   entropy boundary, admission through the actual negotiated entity encoders,
   shared native-key availability and atomic local TTL service enqueue. A narrow

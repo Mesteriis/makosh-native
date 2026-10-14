@@ -1,5 +1,49 @@
 # Development status — 2026-10-14
 
+## Completed locally: real first-login startup repair — 2026-10-14
+
+The normal-bundle Connect crash is reproduced without an account or network:
+`AccountManagerImpl.swift:146` asserts on missing first-launch `atomic-state`
+with destructive recovery disabled. Recipe26 initializes only empty metadata,
+uses a failable opener on the original native queue, and preserves existing
+account caches and invalid state. Directory obstructions are refused before
+SQLite's fatal write probe. Seven native metadata regressions cover fresh,
+repeated and interrupted opening, record/auth persistence and refusal paths.
+
+Native short logging also ignored its disabled-file flag, and replacing that
+logger could assert in ManagedFile.deinit. An ordinary RED assertion proves file
+creation while logging is disabled. The adapted logger now returns before
+content evaluation or file work. Both native files have fixed original/adapted
+SHA256s, independently validated even against forged-consistent preparation
+records. Engine pin, cryptography, dependency set and UI layout are unchanged.
+
+Actual normal Connect then exposed a nil unauthorized-Postbox state being ignored
+after cancellation of the opening timeout, leaving an indefinite spinner.
+TelegramSwift AuthController's fallback is confirmed through fresh XERJ/source.
+A real encrypted empty-Postbox/model RED assertion reproduces configuration vs
+phone. The fix presents the existing phone form for nil without writing protocol
+state or coercing authorized objects into a new login. Final focused12 pass.
+Earlier fatal/RED/aborted checks, the intermediate test compilation correction
+and old prepared engines remain in private raw evidence; none is relabelled PASS.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/run.sh` (including
+`scripts/build-app.sh`) and strict signed/native artifact checks all exit0.
+The frozen final suite is2320XCTest (2207Telegram+113Core),one microphone-
+precondition skip,zero failures;114Python tests across24suites pass. Existing
+upstream/compiler and system metadata diagnostics remain in raw private logs.
+Fresh canonical XERJ: project947files/866code; engine727files/692code, both exit0
+with current fingerprints. Diff whitespace check passes.
+
+Actual user-authorized normal org.makosh.desktop uses the explicit local PG/S3
+configuration. Saved-API Connect now reopens the existing unauthed native cache
+and shows the phone field and QR action, without the spinner or crash. The app
+is left open for the user; no phone/code/password is entered by the agent, and no
+personal messages, account settings or physical capture devices are tested.
+Real authorization/server delivery/calls/login-session acceptance remains
+pending the user's selected test identity, chat and permitted actions.
+This fix is local on feature/telegram-first-login-storage; PR15/main evidence
+below describes the earlier integration and is not hosted CI evidence for this fix.
+
 Telegram final-parity implementation and integration are complete in [PR15](https://github.com/Mesteriis/makosh-native/pull/15).
 Current verification is below; historical Block13/14 evidence remains later in this document. Real test-account,
 physical-device and actual login-Keychain acceptance remain separately scoped.

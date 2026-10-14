@@ -1942,9 +1942,7 @@ public final class TelegramModel: ObservableObject {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             TelegramRuntime.configureLogging(directory: directory)
             initializeAccountManagement()
-            let manager = AccountManager<TelegramAccountManagerTypes>(basePath: directory.appendingPathComponent("accounts-metadata").path, isTemporary: false, isReadOnly: false, useCaches: true, removeDatabaseOnError: false)
             self.configuration = configuration
-            self.manager = manager
             self.phase = .connecting
             self.isBusy = true
             self.error = nil
@@ -1964,8 +1962,14 @@ public final class TelegramModel: ObservableObject {
                 encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: "Mac", useBetaFeatures: false, isICloudEnabled: false, makoshProxySettings: proxySettings)
             let auxiliary = AccountAuxiliaryMethods(fetchResource: { _, _, _, _ in nil },
                 fetchResourceMediaReferenceHash: { _ in .single(nil) }, prepareSecretThumbnailData: { _ in nil }, backgroundUpload: { _, _, _ in .single(nil) })
-            session.set((currentAccount(allocateIfNotExists: true, networkArguments: arguments, supplementary: false,
-                manager: manager, rootPath: directory.path, auxiliaryMethods: auxiliary, encryptionParameters: encryption)
+            session.set((AccountManager<TelegramAccountManagerTypes>.makoshOpen(basePath: directory.appendingPathComponent("accounts-metadata").path)
+                |> deliverOnMainQueue
+                |> mapToSignal { [weak self] manager -> Signal<AccountResult?, NoError> in
+                    guard let self, self.generation == token, let manager else { return .single(nil) }
+                    self.manager = manager
+                    return currentAccount(allocateIfNotExists: true, networkArguments: arguments, supplementary: false,
+                        manager: manager, rootPath: directory.path, auxiliaryMethods: auxiliary, encryptionParameters: encryption)
+                }
                 |> deliverOnMainQueue).start(next: { [weak self] result in
                     guard let self, self.generation == token else { return }
                     switch result {
@@ -2144,8 +2148,17 @@ public final class TelegramModel: ObservableObject {
             if continuingQR { qrLogin.start() }
         } else { qrLogin.bind(nil) }
         authState.set((account.postbox.stateView() |> deliverOnMainQueue).start(next: { [weak self] view in
-            guard let self, self.generation == token, self.authorizationGeneration == authToken, let state = view.state as? UnauthorizedAccountState else { return }
-            switch state.contents {
+            guard let self, self.generation == token, self.authorizationGeneration == authToken else { return }
+            self.applyUnauthorizedState(view.state)
+        }))
+    }
+
+    func applyUnauthorizedState(_ observedState: PostboxCoding?) {
+        // A newly opened native Postbox has no account state yet. Present the
+        // existing phone form without persisting or replacing protocol state.
+        if observedState == nil { self.phase = .phone; return }
+        guard let state = observedState as? UnauthorizedAccountState else { return }
+        switch state.contents {
             case .empty, .phoneEntry: self.phase = .phone
             case let .confirmationCodeEntry(_, type, _, _, _, _, _, _):
                 self.challenge = TelegramAuthorizationChallenge(type: type)
@@ -2155,8 +2168,7 @@ public final class TelegramModel: ObservableObject {
             case .signUp: self.phase = .unsupported("Регистрация нового аккаунта не реализована.")
             case .passwordRecovery, .awaitingAccountReset: self.phase = .unsupported("Восстановление и сброс аккаунта выполняйте в официальном клиенте Telegram.")
             case .payment: self.phase = .unsupported("Telegram запросил платный способ входа. Макош не выполняет оплату.")
-            }
-        }))
+        }
     }
 
     private func observeAuthorized(_ account: Account, token: UUID) {

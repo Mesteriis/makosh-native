@@ -25,6 +25,88 @@ final class ArchiveFileRepositoryTests: XCTestCase {
         return try ArchiveFileRepository(connectionString: db.connectionString,schema: db.schema,configuration: config,spoolDirectory: root.appendingPathComponent("queue"),keyProvider: { _,_ in key })
     }
 
+    func testReadOnlyMutationAdmissionRefusesBeforeKeyAccessOrSpoolCreation() async throws {
+        let config = try config(), db = try database(), root = try directory(), key = key
+        _ = try MessageArchiveStore(connectionString: db.connectionString,schema: db.schema) { _,_ in key }
+        let source = root.appendingPathComponent("source")
+        let bytes = Data("synthetic read-only admission".utf8)
+        try bytes.write(to: source)
+        let capture = try ArchiveFileCapture(file: source,byteCount: Int64(bytes.count))
+        for operation in 0..<7 {
+            let queue = root.appendingPathComponent("readonly-\(operation)")
+            let read = try ArchiveFileRepository(connectionString: db.connectionString,schema: db.schema,
+                configuration: config,spoolDirectory: queue,readOnly: true,keyProvider: { _,_ in
+                    XCTFail("Mutation admission must precede key access")
+                    return key
+                })
+            do {
+                switch operation {
+                case 0: _ = try await read.capture(capture,identity: identity,attachment: attachment)
+                case 1: _ = try await read.capture(capture,identity: identity,attachment: attachment,defaultEnabled: false)
+                case 2: _ = try await read.captureConversationFile(capture,identity: identity,attachment: attachment,defaultEnabled: true)
+                case 3: _ = try await read.captureConversationFile(capture,identity: identity,attachment: attachment,defaultEnabled: false)
+                case 4: _ = try await read.resume()
+                case 5: _ = try await read.recoverOutgoingCapture(id: UUID(),identity: identity,attachmentID: attachment.id)
+                default: try await read.setConversationFileSavingEnabled(identity: identity,enabled: false)
+                }
+                XCTFail("Read-only mutation must be rejected: \(operation)")
+            } catch {}
+            XCTAssertFalse(FileManager.default.fileExists(atPath: queue.path),"Admission must not create a spool")
+        }
+    }
+
+    func testReadOnlyPendingReplayDoesNotCreateS3ObjectsOrRemoveQueueAndStillExports() async throws {
+        let config = try config(), db = try database(), root = try directory(), key = key
+        let store = try MessageArchiveStore(connectionString: db.connectionString,schema: db.schema) { _,_ in key }
+        let vault = try store.fileVault(), id = UUID(), queue = root.appendingPathComponent("queue")
+        try FileManager.default.createDirectory(at: queue,withIntermediateDirectories: false,attributes: [.posixPermissions: 0o700])
+        let source = root.appendingPathComponent("source"), bytes = Data("synthetic authenticated pending replay".utf8)
+        try bytes.write(to: source)
+        let encrypted = queue.appendingPathComponent(id.uuidString.lowercased() + ".envelope")
+        let receipt = try ArchiveFileCapture(file: source,byteCount: Int64(bytes.count)).seal(to: encrypted,key: vault.key,objectID: id)
+        let storageID = S3Signer.hex(SHA256.hash(data: Data((config.endpoint + "\u{0}" + config.region + "\u{0}" + config.bucket).utf8)))
+        let pending = ArchiveFileRecord(id: id,identity: identity,attachment: attachment,
+            objectKey: "vaults/\(vault.id.uuidString.lowercased())/files/\(id.uuidString.lowercased())",
+            storageID: storageID,receipt: receipt,state: .pending,purpose: .outgoing(defaultEnabled: true))
+        XCTAssertTrue(try store.appendFile(pending))
+        let sealed = try XCTUnwrap(AES.GCM.seal(JSONEncoder().encode(pending),using: SymmetricKey(data: vault.key),
+            authenticating: Data("makosh-file-queue-v1|\(vault.id.uuidString)|\(id.uuidString)".utf8)).combined)
+        let manifest = queue.appendingPathComponent(id.uuidString.lowercased() + ".receipt")
+        try sealed.write(to: manifest,options: .withoutOverwriting)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600],ofItemAtPath: manifest.path)
+        let envelopeBytes = try Data(contentsOf: encrypted), storage = try S3ObjectStore(configuration: config)
+        let absent = try await storage.head(key: pending.objectKey); XCTAssertNil(absent)
+        let read = try ArchiveFileRepository(connectionString: db.connectionString,schema: db.schema,
+            configuration: config,spoolDirectory: queue,readOnly: true,keyProvider: { _,create in
+                XCTAssertFalse(create); return key
+            })
+        // A matching pending row takes appendFile's idempotent SELECT-only path.
+        let readStore = try MessageArchiveStore(connectionString: db.connectionString,schema: db.schema,readOnly: true) { _,_ in key }
+        XCTAssertFalse(try readStore.appendFile(pending))
+        do { _ = try await read.resume(); XCTFail("Read-only replay must refuse") } catch {}
+        let afterResume = try await storage.head(key: pending.objectKey); XCTAssertNil(afterResume,"Read-only replay must perform zero PUTs")
+        do { _ = try await read.recoverOutgoingCapture(id: id,identity: identity,attachmentID: attachment.id); XCTFail("Read-only recovery must refuse") } catch {}
+        let afterRecovery = try await storage.head(key: pending.objectKey); XCTAssertNil(afterRecovery)
+        XCTAssertEqual(try Data(contentsOf: encrypted),envelopeBytes)
+        XCTAssertEqual(try Data(contentsOf: manifest),sealed)
+        XCTAssertEqual(try db.execute("SELECT state FROM \"\(db.schema)\".archive_file_events"),[["pending"]])
+
+        let writable = try repository(db,root,config)
+        let resumed = try await writable.resume(); XCTAssertEqual(resumed,1)
+        let records = try await read.files(identity: identity,attachmentID: attachment.id)
+        let stored = try XCTUnwrap(records.first); XCTAssertEqual(records.count,1)
+        let exported = root.appendingPathComponent("explicit-export")
+        try await read.export(stored,to: exported); XCTAssertEqual(try Data(contentsOf: exported),bytes)
+
+        // Both receipts already exist: replay must also leave retained spool material alone.
+        try envelopeBytes.write(to: encrypted,options: .withoutOverwriting)
+        try sealed.write(to: manifest,options: .withoutOverwriting)
+        for file in [encrypted,manifest] { try FileManager.default.setAttributes([.posixPermissions: 0o600],ofItemAtPath: file.path) }
+        do { _ = try await read.resume(); XCTFail("Read-only stored replay must refuse") } catch {}
+        XCTAssertTrue(FileManager.default.fileExists(atPath: encrypted.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: manifest.path))
+    }
+
     func testFrozenCaptureSurvivesCacheRemovalAndReopensFromS3WithMetadataOnlyInPostgres() async throws {
         let config = try config(), db = try database(), root = try directory()
         let bytes = Data("SYNTHETIC_PRIVATE_FILE_BYTES_\(UUID().uuidString)".utf8)

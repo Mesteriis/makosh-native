@@ -160,6 +160,5 @@ No replacement shell or private-account QA is introduced.
 - [x] Step1: Run `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh`. Expected: all exit0; any skips named.
 - [x] Step2: Inspect actual native changed flows in a dedicated synthetic QA app/schema. Expected: concrete visible outcomes, no private accounts.
 - [x] Step3: Refresh/check project/ref/engine XERJ and review the complete diff. Expected: fresh evidence; actual failures retained.
-- [ ] Step4: Commit verified docs, perform one independent whole-branch review and one TDD fix pass. Expected: no unresolved Important/Critical.
+- [x] Step4: Commit verified docs, perform one independent whole-branch review and one TDD fix pass. Expected: no unresolved Important/Critical.
 - [ ] Step5: Publish PR, attach, wait for exact-head checks and merge under existing authorization; verify final tree. Expected: exact checked tree integrated.
-

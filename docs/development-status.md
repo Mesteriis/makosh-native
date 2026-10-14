@@ -7287,7 +7287,7 @@ portable archive/S3/key backup and separately authorized live-account/hardware
 acceptance. Local Makosh passcode/autolock remains explicitly excluded.
 
 
-## Block14 implementation in progress (2026-10-14)
+## Block14 historical implementation checkpoints (2026-10-14)
 
 Branch feature/telegram-block14 follows the written spec/plan. Connected websites
 and explicit native QR sign-in are implemented: focused10 website tests and8 QR
@@ -7375,3 +7375,45 @@ now expose title/size to accessibility. Repeated full gates after these repairs
 pass with the totals above. Earlier failed/compile/setup attempts remain private
 and are not counted as passing results. Final independent review, exact-head
 hosted checks and merge are still pending at this record.
+
+## Block14 final independent review and fix pass
+
+One fresh inherited-model reviewer inspected the whole380b9db..6d0649e branch.
+It found one Important core API defect and no Critical/Minor findings: the new
+readOnly file repository protected PostgreSQL, but local preparation and replay
+could still mutate its spool/S3. Root confirms the effect as Important and fixes
+all mutating entry points plus the shared upload admission. Two regressions first
+fail20 ordinary assertions, including actual local S3 absent→present and removal
+of retained queue files; both then pass. The focused archive/repository/controller
+gate passes45 XCTest,zero failures. Read-only listing and explicit export remain
+covered against actual PostgreSQL/S3. The initial incorrect fixture byte count
+is a separate test-setup failure, not the behavioral RED.
+
+All eight source-review exclusions have explicit decisions/costs in the decisions
+document. No minor is deferred by this review. The one fix pass is verified by
+regression and suite execution; no second reviewer is dispatched. The post-review native gate also reproduces first-action NSOpenPanel Open disabled
+by the entire restore Form section's panelTask disabled state. A controlled A/B
+changes only that section to worker-busy admission; native modal ownership and
+explicit action guards retain overlap protection. Fresh first-action folder/key
+selection, inspection, default target restore, read-only original/edit/delete and
+actual S3 text preview then succeed. No private identity or login Keychain is used.
+The signed post-fix build/artifact check passes; the full suite is repeated after
+this native repair. Exact-head hosted integration remains pending here.
+
+## Block14 final local gates — ready for hosted integration
+
+Final native-presentation repair is included in scripts/test.sh exit0:
+2227 XCTest(2114 Telegram +113 core),one microphone-precondition skip,zero failures;
+109 Python tests across24 suites. scripts/build-app.sh exits0; strict deep
+signature, native UUID/all17 code-data sections and unsigned payload verification
+pass. Actual first-action folder/key selection, inspection, default-schema restore,
+read-only original/edit/delete and actual S3 text preview all succeed. The owned
+synthetic QA is stopped; data retained. No real account/hardware/login Keychain
+acceptance is claimed. The single independent review's Important finding has
+RED→GREEN coverage; no unresolved Critical/Important/Minor finding remains.
+
+Draft PR14 is attached. Earlier6d0649e push/PR runs were cancelled after the fix;
+they are not passing evidence. The final fixed head must pass hosted push/PR
+checks before the authorized merge. Live test account/actions will be supplied
+by the user only after implementation. All documented reference differences
+remain explicit; local Makosh passcode/autolock remains excluded.

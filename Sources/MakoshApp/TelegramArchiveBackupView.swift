@@ -61,7 +61,7 @@ struct TelegramArchiveBackupView: View {
                         Button("Восстановить в новый архив…") { confirmation = .init(receipt: receipt, schema: model.targetSchema) }
                             .disabled(!model.canRestore).accessibilityIdentifier("telegram.backup.restore")
                     }
-                }.disabled(disabled)
+                }.disabled(model.busy)
             }.formStyle(.grouped)
             if let schema = model.restoredSchema {
                 VStack(alignment: .leading, spacing: 6) {

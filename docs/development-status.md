@@ -7259,5 +7259,11 @@ above. Owned QA is stopped and its isolated data retained.
 One fresh whole-branch review, one TDD fix pass, no re-review, no deferred Minor.
 [All executor rulings](superpowers/plans/2026-10-13-telegram-block13-decisions.md)
 record decisions and their costs in order. Hosted exact-head CI and merge are
-required integration gates. No real-account or physical-device acceptance,
+required integration gates. The initial exact head5c2c243 passes PR CI38490398629
+(2132 XCTest,109 Python,native socket/loopback/media fixtures). Its duplicate
+push CI38490390035 takes18m25s for the cold build and is cancelled at the25-minute
+job limit during tests. That cancelled run is not a PASS. The job budget is now
+40 minutes; this operational-only change leaves application sources unchanged
+and requires fresh exact-head hosted checks before merge.
+No real-account or physical-device acceptance,
 notarized binary release, or block14 completion is inferred.

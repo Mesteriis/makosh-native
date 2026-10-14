@@ -49,6 +49,19 @@ private actor ArchiveFixtureRepository: TelegramArchiveRepository {
 }
 
 @MainActor final class TelegramArchiveControllerTests: XCTestCase {
+    func testRestoredReadOnlyControllerIgnoresSourceJournal() async throws {
+        let repository = ArchiveFixtureRepository(), controller = TelegramArchiveController()
+        _ = try await repository.append(item().observations)
+        let journal = ArchiveFixtureJournal(accountID: 1, pending: [item(sequence: 2, text: "new source value")])
+        controller.configure(repository: repository, readOnly: true)
+        controller.bind(journal: journal); controller.reload()
+        await eventually { !controller.isLoading }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertTrue(journal.acknowledgements.isEmpty)
+        let stored = await repository.all()
+        XCTAssertEqual(stored.count, 1)
+        controller.bind(journal: nil)
+    }
     private func item(account: Int64 = 1, sequence: Int64 = 1, text: String = "original", removed: Bool = false) -> TelegramArchiveJournalItem {
         let identity = MessageArchiveIdentity(service: "telegram", accountID: String(account), conversationID: "100", messageID: "0:42")
         let date = Date(timeIntervalSince1970: 100)

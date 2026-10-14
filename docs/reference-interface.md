@@ -1622,3 +1622,14 @@ reference emoji presentation, fixed local video position and no control auto-hid
 Audio selection affects subsequent calls; changing devices during an existing
 call is unavailable. Actual changed UI and physical hot-plug/capture acceptance
 are pending; focused/source tests do not establish those outcomes.
+# Block14 archive recovery
+
+The common Telegram sidebar opens the existing local ArchiveView; backup is a
+secondary native sheet using the same grouped form/window conventions. Restored
+history reuses that ArchiveView, with an explicit read-only title and no queue
+retry/capture controls. Anchored AppKit panels only handle path selection.
+Current pinned reference searches for ExportDataController/backup/restore lead to
+unrelated purchase restore and ArchiverContext; source confirms file compression,
+not this permanent PG/S3 recovery workflow. This is an own Makosh feature, not a
+claim of TelegramSwift backup parity. See [recovery procedure](archive-recovery.md).
+Actual final native flow evidence is recorded after the final build below.

@@ -36,18 +36,20 @@ public actor ArchiveFileRepository {
     private let storage: S3ObjectStore
     private let directorySync: @Sendable (URL) throws -> Void
     private var processing = Set<UUID>()
+    private let readOnly: Bool
     public init(connectionString: String, schema: String, configuration: S3ObjectStoreConfiguration,
-                spoolDirectory: URL, keyProvider: @escaping @Sendable (UUID,Bool) throws -> Data = MessageArchiveKeychain.open) throws {
+                spoolDirectory: URL, readOnly: Bool = false, keyProvider: @escaping @Sendable (UUID,Bool) throws -> Data = MessageArchiveKeychain.open) throws {
         try self.init(connectionString: connectionString,schema: schema,configuration: configuration,
-                      spoolDirectory: spoolDirectory,keyProvider: keyProvider,directorySync: Self.syncDirectory)
+                      spoolDirectory: spoolDirectory,keyProvider: keyProvider,directorySync: Self.syncDirectory,readOnly: readOnly)
     }
     init(connectionString: String, schema: String, configuration: S3ObjectStoreConfiguration,
          spoolDirectory: URL, keyProvider: @escaping @Sendable (UUID,Bool) throws -> Data,
-         directorySync: @escaping @Sendable (URL) throws -> Void) throws {
+         directorySync: @escaping @Sendable (URL) throws -> Void, readOnly: Bool = false) throws {
         self.connectionString = connectionString; self.schema = schema; self.configuration = configuration
         self.spool = spoolDirectory; self.keyProvider = keyProvider
         self.directorySync = directorySync
         self.storage = try S3ObjectStore(configuration: configuration)
+        self.readOnly = readOnly
     }
     private var storageID: String {
         SHA256.hash(data: Data((configuration.endpoint + "\u{0}" + configuration.region + "\u{0}" + configuration.bucket).utf8)).map { String(format: "%02x",$0) }.joined()
@@ -57,7 +59,7 @@ public actor ArchiveFileRepository {
     }
     private func open() throws -> MessageArchiveStore {
         if let store { return store }
-        let result = try MessageArchiveStore(connectionString: connectionString,schema: schema,keyProvider: keyProvider)
+        let result = try MessageArchiveStore(connectionString: connectionString,schema: schema,readOnly: readOnly,keyProvider: keyProvider)
         store = result; return result
     }
     private func keys() throws -> ArchiveFileVault {
@@ -261,7 +263,10 @@ public actor ArchiveFileRepository {
             try prepareSpool()
             guard try load(record.id,vault: vault,local: true) == record else { throw MessageArchiveError.integrity }
         } else {
-            guard record.state == .stored, record.storageID == storageID else { throw MessageArchiveError.integrity }
+            guard record.state == .stored else { throw MessageArchiveError.integrity }
+            if record.storageID != storageID {
+                guard try open().acceptsStorageAlias(source: record.storageID, destination: storageID) else { throw MessageArchiveError.integrity }
+            }
             let authenticated = try open().files(identity: record.identity,attachmentID: record.attachment.id)
             guard authenticated.contains(record) else { throw MessageArchiveError.integrity }
         }

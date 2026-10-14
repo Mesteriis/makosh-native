@@ -21,12 +21,17 @@ protocol TelegramArchiveRepository: Actor {
 private actor TelegramPostgresArchiveRepository: TelegramArchiveRepository {
     private let connectionString: String
     private let schema: String
+    private let readOnly: Bool
+    private let keyProvider: @Sendable (UUID, Bool) throws -> Data
     private var store: MessageArchiveStore?
-    init(connectionString: String, schema: String) { self.connectionString = connectionString; self.schema = schema }
+    init(connectionString: String, schema: String, readOnly: Bool = false,
+         keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open) {
+        self.connectionString = connectionString; self.schema = schema; self.readOnly = readOnly; self.keyProvider = keyProvider
+    }
     private func open() throws -> MessageArchiveStore {
         if let store { return store }
-        let result = try MessageArchiveStore(connectionString: connectionString, schema: schema,
-                                             keyProvider: MessageArchiveKeychain.open)
+        let result = try MessageArchiveStore(connectionString: connectionString, schema: schema, readOnly: readOnly,
+                                             keyProvider: keyProvider)
         store = result
         return result
     }
@@ -52,6 +57,7 @@ private actor TelegramPostgresArchiveRepository: TelegramArchiveRepository {
     @Published public private(set) var status = "Локальный архив не открыт"
     @Published public private(set) var isSynthetic = false
     @Published public private(set) var usesSyntheticS3 = false
+    @Published public private(set) var isReadOnly = false
     private var repository: (any TelegramArchiveRepository)?
     private var journal: (any TelegramArchiveJournal)?
     private var binding = UUID()
@@ -91,13 +97,27 @@ private actor TelegramPostgresArchiveRepository: TelegramArchiveRepository {
         repository = TelegramPostgresArchiveRepository(connectionString: connectionString, schema: schema)
     }
 
-    func configure(repository: any TelegramArchiveRepository, synthetic: Bool = false) {
+    func configure(repository: any TelegramArchiveRepository, synthetic: Bool = false, readOnly: Bool = false) {
         guard self.repository == nil else { return }
-        self.repository = repository; isSynthetic = synthetic
+        self.repository = repository; isSynthetic = synthetic; isReadOnly = readOnly
         if synthetic { status = "Синтетический архив: оригинал, правка и удаление из источника" }
     }
 
+    public func configureReadOnly(connectionString: String, schema: String, keys: ArchiveBackupKeys = .keychain,
+                                  configurationFile: URL?, spoolDirectory: URL, synthetic: Bool = false) {
+        guard repository == nil else { return }
+        configure(repository: TelegramPostgresArchiveRepository(connectionString: connectionString, schema: schema, readOnly: true,
+            keyProvider: { id, creation in
+                guard !creation else { throw ArchiveBackupError.keyUnavailable }; return try keys.requireExisting(id)
+            }), synthetic: synthetic, readOnly: true)
+        usesSyntheticS3 = synthetic
+        status = "Восстановленный архив · только просмотр"
+        files.configureReadOnly(connectionString: connectionString, schema: schema, keys: keys,
+            configurationFile: configurationFile, spoolDirectory: spoolDirectory)
+    }
+
     func bind(journal: (any TelegramArchiveJournal)?) {
+        guard !isReadOnly else { return }
         binding = UUID(); readToken = UUID(); poll?.cancel(); poll = nil
         readOperation.set(nil); ackOperation.set(nil)
         reading = false; self.journal = journal

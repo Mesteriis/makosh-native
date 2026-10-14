@@ -19,11 +19,12 @@ import MakoshCore
     private var automaticReservations: [UUID:Lookup] = [:]
     private var factory: (() throws -> ArchiveFileRepository)?
     private var resuming = false
+    private var readOnly = false
     private struct Lookup: Hashable { let identity: MessageArchiveIdentity; let attachmentID: String }
     public init() {}
     init(factory: @escaping () throws -> ArchiveFileRepository) { self.factory = factory }
     func reserveAutomaticCapture(identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment) -> (any TelegramMediaArchiveReservation)? {
-        guard error == nil, !resuming,
+        guard !readOnly, error == nil, !resuming,
               automaticReservations.count + pending.values.filter(\.automatic).count < 3 else { return nil }
         let id = UUID()
         automaticReservations[id] = .init(identity: identity, attachmentID: attachment.id)
@@ -70,6 +71,18 @@ import MakoshCore
         guard configuration == nil else { return }
         configuration = (connectionString,schema,configurationFile,spoolDirectory)
     }
+    func configureReadOnly(connectionString: String, schema: String, keys: ArchiveBackupKeys, configurationFile: URL?, spoolDirectory: URL) {
+        guard repository == nil, factory == nil, configuration == nil else { return }
+        readOnly = true; status = "Файлы восстановленного архива · только просмотр"
+        factory = {
+            guard let configurationFile else { throw S3ObjectStoreError.configuration }
+            return try ArchiveFileRepository(connectionString: connectionString, schema: schema,
+                configuration: S3ConfigurationFile.read(configurationFile), spoolDirectory: spoolDirectory, readOnly: true,
+                keyProvider: { id, creation in
+                    guard !creation else { throw ArchiveBackupError.keyUnavailable }; return try keys.requireExisting(id)
+                })
+        }
+    }
     private func open() throws -> ArchiveFileRepository {
         if let repository { return repository }
         if let factory { let result = try factory(); repository = result; return result }
@@ -87,6 +100,7 @@ import MakoshCore
     }
     private func acceptCapture(file: URL, byteCount: Int64, identity: MessageArchiveIdentity,
         attachment: MessageArchiveAttachment, automatic: Bool) -> Bool {
+        guard !readOnly else { return false }
         let lookup = Lookup(identity: identity,attachmentID: attachment.id)
         guard pending[lookup] == nil, !active.contains(lookup) else { return true }
         do {
@@ -130,7 +144,7 @@ import MakoshCore
         active.remove(lookup); isBusy = !active.isEmpty || resuming; revision &+= 1
     }
     public func retry() {
-        guard !resuming else { return }
+        guard !readOnly, !resuming else { return }
         do {
             let repository = try open(); resuming = true; isBusy = true
             for lookup in pending.keys { start(lookup) }

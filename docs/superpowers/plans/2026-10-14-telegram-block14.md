@@ -1,6 +1,6 @@
 # Telegram block14 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Finish Telegram settings, reference presentation and portable archive recovery.
 
@@ -45,11 +45,11 @@ No replacement shell or private-account QA is introduced.
 - Consumes: current native account/context controllers and the spec invariants.
 - Produces: TelegramWebSessionsController.bind/open/close/refresh/apply; immutable account-bound snapshot and typed one/all changes.
 
-- [ ] Step1: Add `TelegramWebSessionsTests` regressions exercising malformed IDs, changed targets/sets, false or absent ACK, close/rebind/late result and uncertain write barrier; derive expected values independently.
-- [ ] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramWebSessionsTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
-- [ ] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
-- [ ] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramWebSessionsTests`. Expected: all focused regressions pass.
-- [ ] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
+- [x] Step1: Add `TelegramWebSessionsTests` regressions exercising malformed IDs, changed targets/sets, false or absent ACK, close/rebind/late result and uncertain write barrier; derive expected values independently.
+- [x] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramWebSessionsTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
+- [x] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
+- [x] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramWebSessionsTests`. Expected: all focused regressions pass.
+- [x] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
 
 ### Task 2: QR sign-in
 
@@ -63,11 +63,11 @@ No replacement shell or private-account QA is introduced.
 - Consumes: current native account/context controllers and the spec invariants.
 - Produces: TelegramQRLoginController.start/cancel; native auth-transfer token source consumed by existing authorization lifecycle.
 
-- [ ] Step1: Add `TelegramQRLoginTests` regressions exercising expiry, bounded renewal, cancellation, login event, password transition and stale generation; derive expected values independently.
-- [ ] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramQRLoginTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
-- [ ] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
-- [ ] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramQRLoginTests`. Expected: all focused regressions pass.
-- [ ] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
+- [x] Step1: Add `TelegramQRLoginTests` regressions exercising expiry, bounded renewal, cancellation, login event, password transition and stale generation; derive expected values independently.
+- [x] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramQRLoginTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
+- [x] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
+- [x] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramQRLoginTests`. Expected: all focused regressions pass.
+- [x] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
 
 ### Task 3: General and appearance
 
@@ -82,11 +82,11 @@ No replacement shell or private-account QA is introduced.
 - Consumes: current native account/context controllers and the spec invariants.
 - Produces: Versioned local appearance/general preferences consumed by actual workspace/composer; bounded wallpaper preparation.
 
-- [ ] Step1: Add `TelegramAppearancePreferencesTests` regressions exercising invalid preferences, image bounds/metadata, midnight schedule, cancelled draft and service isolation; derive expected values independently.
-- [ ] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramAppearancePreferencesTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
-- [ ] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
-- [ ] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramAppearancePreferencesTests`. Expected: all focused regressions pass.
-- [ ] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
+- [x] Step1: Add `TelegramAppearancePreferencesTests` regressions exercising invalid preferences, image bounds/metadata, midnight schedule, cancelled draft and service isolation; derive expected values independently.
+- [x] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramAppearancePreferencesTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
+- [x] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
+- [x] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramAppearancePreferencesTests`. Expected: all focused regressions pass.
+- [x] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
 
 ### Task 4: Cache and transfer management
 
@@ -101,11 +101,11 @@ No replacement shell or private-account QA is introduced.
 - Consumes: current native account/context controllers and the spec invariants.
 - Produces: Per-chat cache confirmations and transfer management reuse existing resource/context admission.
 
-- [ ] Step1: Add `TelegramCacheManagementTests` regressions exercising stale scans, busy resource, OFF chat, automatic/manual ownership separation, retention boundary; derive expected values independently.
-- [ ] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramCacheManagementTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
-- [ ] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
-- [ ] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramCacheManagementTests`. Expected: all focused regressions pass.
-- [ ] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
+- [x] Step1: Add `TelegramCacheManagementTests` regressions exercising stale scans, busy resource, OFF chat, automatic/manual ownership separation, retention boundary; derive expected values independently.
+- [x] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramCacheManagementTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
+- [x] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
+- [x] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramCacheManagementTests`. Expected: all focused regressions pass.
+- [x] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
 
 ### Task 5: Reference presentation
 
@@ -120,11 +120,11 @@ No replacement shell or private-account QA is introduced.
 - Consumes: current native account/context controllers and the spec invariants.
 - Produces: Reference-derived profile/secret/admin/call presentation with existing typed controllers.
 
-- [ ] Step1: Add `TelegramReferencePresentationTests` regressions exercising protected event content, exact event/admin filters, terminated call recall and stale profile actions; derive expected values independently.
-- [ ] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramReferencePresentationTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
-- [ ] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
-- [ ] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramReferencePresentationTests`. Expected: all focused regressions pass.
-- [ ] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
+- [x] Step1: Add `TelegramReferencePresentationTests` regressions exercising protected event content, exact event/admin filters, terminated call recall and stale profile actions; derive expected values independently.
+- [x] Step2: Run `python3 .local/block3-focused-test.py --filter TelegramReferencePresentationTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
+- [x] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
+- [x] Step4: Run `python3 .local/block3-focused-test.py --filter TelegramReferencePresentationTests`. Expected: all focused regressions pass.
+- [x] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
 
 ### Task 6: Portable archive recovery
 

@@ -7322,3 +7322,18 @@ are not counted as passing gates.
 The user will provide a test account only after implementation. No personal
 account, hardware capture, local passcode/autolock or full reference parity is
 claimed. Local dev PostgreSQL/S3 startup exits0; full final gates are still pending.
+
+## Block14 portable archive slice
+
+Encrypted portable export/inspection/restore is implemented with29 backup
+regressions,7 injected Keychain checks,9 existing archive checks,4 file repository
+checks and6 archive controller checks:55 XCTest,zero failures. These include
+actual local PostgreSQL/S3 restored file export, consistent multi-part snapshots,
+authenticated malformed input, corruption/wrong-key/conflict refusal, all-current
+OFF preservation and cancellation during a policy check. Read-only export/policy
+access/restored browsing use a PostgreSQL read-only session without bootstrap DDL.
+Native path selection, named inspected-receipt confirmation and the existing
+archive viewer are wired; actual changed UI and final whole-branch gates remain
+pending. See archive-recovery.md for format limits, separate-key handling and
+non-transactional S3/Keychain failure boundaries. No private account or actual
+login Keychain access was used by these tests.

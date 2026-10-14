@@ -6,11 +6,15 @@ struct TelegramSidebarView: View {
     @ObservedObject private var search: TelegramSearchModel
     @ObservedObject private var globalSearch: TelegramSearchModel
     @ObservedObject private var forumTopics: TelegramForumTopicsController
+    private let backupContext: TelegramArchiveBackupContext?
     @State private var connectionPresented = false
     @State private var settingsPresented = false
     @State private var downloadsPresented = false
     @FocusState private var searchFocused: Bool
-    init(model: TelegramModel) { self.model = model; self.search = model.search; self.globalSearch = model.globalSearch; self.forumTopics = model.forumTopics }
+    init(model: TelegramModel, backupContext: TelegramArchiveBackupContext? = nil) {
+        self.model = model; self.search = model.search; self.globalSearch = model.globalSearch; self.forumTopics = model.forumTopics
+        self.backupContext = backupContext
+    }
     private var searching: Bool { search.hasChatQuery || globalSearch.hasMessageQuery }
     private var showsForum: Bool {
         !searching && model.isForumTopicsListPresented && model.phase == .ready && forumTopics.snapshot?.chatID == model.selectedChatID
@@ -33,7 +37,7 @@ struct TelegramSidebarView: View {
                 Text(showsForum ? (model.selectedChat?.title ?? "Темы") : model.phase == .ready ? (model.chatFolder == .archive ? "Архив" : "Диалоги") : "Telegram")
                     .font(.headline).lineLimit(1)
                 Spacer(minLength: 4)
-                TelegramArchiveButton(archive: model.archive)
+                TelegramArchiveButton(archive: model.archive, backupContext: backupContext)
                 if model.phase == .ready {
                     Button { downloadsPresented = true } label: { Image(systemName:"arrow.down.circle") }
                         .buttonStyle(.plain).help("Загрузки").accessibilityLabel("Загрузки Telegram").accessibilityIdentifier("telegram.downloads.open")

@@ -3462,8 +3462,14 @@ retry. The idle deadline renews only on advancing progress/growing partial data.
 
 The journal is bounded1000records/2MiB and stores message/attachment identity,
 state and bounded display-validation metadata, never cache paths/access hashes
-or file bytes. Serial CAS commits precede durable acknowledgement. Four manual
-jobs run concurrently; storage backpressure retains bounded source FDs. A fresh
+or file bytes. Serial CAS commits precede durable acknowledgement. Failed local
+mutations/tombstones reconcile against fresh CAS state on explicit refresh;
+warning remains until commit, and newer cancellation wins over older writes.
+Four manual network/preflight jobs run concurrently; archive waits use a separate
+8FD budget. Fresh preflight admits OFF without archive capacity, and completion
+rechecks policy. OFF→ON waits on its native cache lease/URL within the1000job cap
+until FD admission; external forced deletion before admission fails visibly.
+Accepted FD captures retain their independent ownership. A fresh
 PG chat policy gates every capture; OFF forbids spool/S3 copies and progresses
 independently of unrelated storage errors. Accepted archive originals remain
 owned after transfer cancellation. Complete capturing files remain exportable.

@@ -20,11 +20,13 @@ public enum TelegramMediaPhase: Equatable, Sendable {
 protocol TelegramMediaLease: AnyObject { func cancel() }
 
 @MainActor protocol TelegramMediaArchiveReservation: AnyObject {
+    func prepare(completion:@escaping @MainActor (Bool) -> Void)
     func capture(file: URL, byteCount: Int64) -> Bool
     func capture(file:URL,byteCount:Int64,completion:@escaping @MainActor (Bool) -> Void)
     func cancel()
 }
 extension TelegramMediaArchiveReservation {
+    func prepare(completion:@escaping @MainActor (Bool) -> Void) { completion(true) }
     func capture(file:URL,byteCount:Int64,completion:@escaping @MainActor (Bool) -> Void) { completion(capture(file:file,byteCount:byteCount)) }
 }
 
@@ -94,6 +96,7 @@ public final class TelegramMediaController: ObservableObject {
         var automatic = false
         var automaticIsCurrent: (@MainActor () -> Bool)?
         var preferences: TelegramAutoDownloadPreferences?
+        var preparing = false
         var admitted = true
         var cachedOnly = false
         var deadlineID = UUID()
@@ -107,6 +110,7 @@ public final class TelegramMediaController: ObservableObject {
     private var jobs: [TelegramMediaKey: Job] = [:]
     private var manualOrder: [TelegramMediaKey] = []
     private var pumping = false
+    private var blockedManual = Set<TelegramMediaKey>()
     private let scheduleDeadline: @MainActor (@escaping @MainActor () -> Void) -> Task<Void,Never>
     private var journal: TelegramDownloadJournal?
     private var journalObservation: AnyCancellable?
@@ -114,7 +118,7 @@ public final class TelegramMediaController: ObservableObject {
     @Published private var manualError: String?
     @Published private var restoringQueue = false
     private(set) var restorationContextID = UUID()
-    public var queueError: String? { journal?.error ?? manualError }
+    public var queueError: String? { journal?.error ?? journal?.reconciliationError ?? manualError }
     public var isQueueLoading: Bool { journal?.isLoading == true || restoringQueue }
     public var isQueueSaving: Bool { journal?.isSaving == true }
     public func retryQueuePersistence() { restorationContextID = UUID(); manualError = nil; journal?.reload() }
@@ -155,7 +159,7 @@ public final class TelegramMediaController: ObservableObject {
     var completedFullFile: (@MainActor (String,URL,Int64) -> Void)?
     var reserveAutomaticFile: (@MainActor (String) -> (any TelegramMediaArchiveReservation)?)?
     var reserveManualFile: (@MainActor (String) -> (any TelegramMediaArchiveReservation)?)?
-    func archiveCapacityChanged() { pumpManual() }
+    func archiveCapacityChanged() { blockedManual.removeAll(); pumpManual() }
 
     @Published public private(set) var transferContextID = UUID()
     public var transfers: [TelegramMediaTransfer] {
@@ -237,7 +241,7 @@ public final class TelegramMediaController: ObservableObject {
         let previous = jobs
         jobs.removeAll()
         attachments.removeAll()
-        manualOrder = []; journalObservation = nil; journal = nil; recordFor = nil; manualError = nil
+        manualOrder = []; blockedManual = []; journalObservation = nil; journal = nil; recordFor = nil; manualError = nil
         restorationContextID = UUID(); restoringQueue = false
         transferContextID = UUID()
         provider = nil
@@ -318,7 +322,7 @@ public final class TelegramMediaController: ObservableObject {
             if let factory = reserveManualFile { let id = attachment.id; manualReservation = { factory(id) } }
             else { manualReservation = nil }
         }
-        if manual { restorationContextID = UUID(); manualError = nil }
+        if manual { restorationContextID = UUID(); manualError = nil; blockedManual.remove(key) }
         remove(key,persist:false)
         let token = UUID()
         jobs[key] = Job(token: token, phase: manual ? .queued : .downloading(nil), completedFile: completion,
@@ -342,17 +346,27 @@ public final class TelegramMediaController: ObservableObject {
         guard !pumping else { return }; pumping = true
         defer { pumping = false }
         while provider != nil, manualInFlightCount < 4,
-              let key = manualOrder.first(where:{ jobs[$0]?.phase == .queued && jobs[$0]?.admitted == true }), let token = jobs[key]?.token {
+              let key = manualOrder.first(where:{ jobs[$0]?.phase == .queued && jobs[$0]?.admitted == true && jobs[$0]?.preparing == false && !blockedManual.contains($0) }), let token = jobs[key]?.token {
             if let factory = jobs[key]?.reserveManual, jobs[key]?.holder.archiveReservation == nil {
-                guard let reservation = factory() else { return }; jobs[key]?.holder.archiveReservation = reservation
-            }
-            beginFetch(key,token:token)
+                guard let reservation = factory() else { blockedManual.insert(key); continue }
+                jobs[key]?.holder.archiveReservation = reservation; jobs[key]?.preparing = true
+                reservation.prepare { [weak self,weak reservation] admitted in
+                    guard let self,let reservation,self.jobs[key]?.token == token,self.jobs[key]?.phase == .queued,
+                          self.jobs[key]?.holder.archiveReservation === reservation else { reservation?.cancel(); return }
+                    self.jobs[key]?.preparing = false
+                    if admitted { self.beginFetch(key,token:token) }
+                    else {
+                        self.blockedManual.insert(key); self.jobs[key]?.holder.archiveReservation = nil; reservation.cancel()
+                    }
+                    self.pumpManual()
+                }
+            } else { beginFetch(key,token:token) }
         }
     }
     private var manualInFlightCount: Int {
         jobs.filter { entry in
             guard entry.key.purpose == .full, !entry.value.automatic else { return false }
-            if entry.value.phase == .capturing { return true }; if case .downloading = entry.value.phase { return true }; return false
+            if entry.value.preparing { return true }; if case .downloading = entry.value.phase { return true }; return false
         }.count
     }
     private func beginFetch(_ key: TelegramMediaKey, token: UUID) {
@@ -432,9 +446,10 @@ public final class TelegramMediaController: ObservableObject {
             }
             guard complete, offset == 0, size >= 0, url.isFileURL else { return }
             if let reservation = job.holder.archiveReservation {
-                // The reservation freezes an FD before its first suspension.
+                // ON admission freezes an FD before suspension; an OFF admission
+                // rechecks policy while this job retains its native cache lease.
                 // Complete native bytes remain borrowable while archive admission
-                // waits; the bounded active slot prevents unlimited next fetches.
+                // waits; archive reservations have a separate bounded FD budget.
                 jobs[key]?.file = url; jobs[key]?.size = size; jobs[key]?.phase = .capturing
                 jobs[key]?.deadline?.cancel(); jobs[key]?.deadline = nil; revision &+= 1
                 reservation.capture(file:url,byteCount:size) { [weak self] captured in
@@ -476,6 +491,7 @@ public final class TelegramMediaController: ObservableObject {
 
     private func remove(_ key: TelegramMediaKey, persist: Bool = true) {
         guard let old = jobs.removeValue(forKey: key) else { return }
+        blockedManual.remove(key)
         if persist, key.purpose == .full, !old.automatic { restorationContextID = UUID() }
         revision &+= 1
         old.deadline?.cancel(); old.holder.release()

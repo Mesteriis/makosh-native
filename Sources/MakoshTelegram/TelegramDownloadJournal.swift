@@ -67,6 +67,8 @@ enum TelegramDownloadJournalError: Error { case invalid, unavailable, changed }
     @Published private(set) var isLoading = false
     @Published private(set) var isSaving = false
     @Published private(set) var error: String?
+    @Published private(set) var isReconciling = false
+    var reconciliationError: String? { isReconciling ? "Повторное сохранение изменений очереди ещё не подтверждено." : nil }
     @Published private(set) var records: [TelegramDownloadRecord] = []
     var isReady: Bool { repository != nil && snapshot != nil && !isLoading && error == nil }
     var didLoad: (@MainActor (TelegramDownloadJournalSnapshot) -> Void)?
@@ -76,13 +78,15 @@ enum TelegramDownloadJournalError: Error { case invalid, unavailable, changed }
     private var snapshot: TelegramDownloadJournalSnapshot?
     private var persistedRevision: UUID?
     private var pending: [Mutation] = []
+    private var unsaved: [Change] = []
     private var generation = UUID(), writing: UUID?
     isolated deinit { loadRequest?.cancel() }
 
-    func bind(repository: (any TelegramDownloadJournalRepository)?) {
+    func bind(repository: (any TelegramDownloadJournalRepository)?) { bind(repository:repository,replaying:[]) }
+    private func bind(repository: (any TelegramDownloadJournalRepository)?,replaying:[Change]) {
         generation = UUID(); let context = generation
         loadRequest?.cancel(); loadRequest = nil; writing = nil
-        let abandoned = pending; pending = []
+        let abandoned = pending; pending = []; unsaved = replaying; isReconciling = !replaying.isEmpty
         self.repository = repository; accountID = repository?.accountID
         snapshot = nil; persistedRevision = nil; records = []; error = nil; isSaving = false; isLoading = false
         for mutation in abandoned { mutation.completion(false) }
@@ -96,14 +100,19 @@ enum TelegramDownloadJournalError: Error { case invalid, unavailable, changed }
                 guard value.map({ $0.accountID == repository.accountID && $0.isValid }) ?? true else { self.fail(.invalid); return }
                 self.persistedRevision = value?.revision
                 let loaded = value ?? .init(accountID:repository.accountID,revision:UUID(),records:[])
-                self.snapshot = loaded; self.records = loaded.records; self.didLoad?(loaded)
+                self.snapshot = loaded; self.records = loaded.records
+                if self.unsaved.isEmpty { self.isReconciling = false; self.didLoad?(loaded) }
+                else {
+                    self.pending = self.unsaved.map { Mutation(change:$0,completion:{ _ in }) }; self.unsaved = []
+                    self.pump()
+                }
             case let .failure(error): self.fail(error)
             }
         }
         if generation == context, isLoading { loadRequest = request } else { request.cancel() }
     }
     func reload() {
-        guard !isSaving, let repository else { return }; bind(repository:repository)
+        guard !isSaving, let repository else { return }; bind(repository:repository,replaying:unsaved)
     }
     func upsert(_ record: TelegramDownloadRecord, completion: @escaping @MainActor (Bool) -> Void) {
         guard record.isValid else { completion(false); return }
@@ -114,7 +123,10 @@ enum TelegramDownloadJournalError: Error { case invalid, unavailable, changed }
         enqueue(.remove(ids),completion:completion)
     }
     private func enqueue(_ change: Change, completion: @escaping @MainActor (Bool) -> Void) {
-        guard isReady, pending.count < 1000 else { completion(false); return }
+        guard isReady, pending.count < 1000 else {
+            if repository != nil { remember(change) }
+            completion(false); return
+        }
         pending.append(.init(change:change,completion:completion)); pump()
     }
     private func pump() {
@@ -138,10 +150,26 @@ enum TelegramDownloadJournalError: Error { case invalid, unavailable, changed }
                 self.snapshot = value; self.persistedRevision = value.revision; self.records = value.records
                 self.pending.removeFirst(); mutation.completion(true)
                 guard self.generation == context else { return }; self.pump()
-                if self.generation == context, self.pending.isEmpty, self.writing == nil, let snapshot = self.snapshot { self.didCommit?(snapshot) }
+                if self.generation == context, self.pending.isEmpty, self.writing == nil, let snapshot = self.snapshot {
+                    if self.isReconciling { self.isReconciling = false; self.didLoad?(snapshot) }
+                    if self.generation == context { self.didCommit?(snapshot) }
+                }
             case let .failure(error): self.fail(error)
             }
         }
+    }
+    private func remember(_ change:Change) {
+        let ids: Set<String>
+        switch change { case let .upsert(record): ids = [record.attachmentID]; case let .remove(values): ids = values }
+        // Latest intent wins per ID, including removal tombstones. Never replay
+        // an obsolete pending state after a later cancellation/clear.
+        unsaved = unsaved.compactMap { previous in
+            switch previous {
+            case let .upsert(record): return ids.contains(record.attachmentID) ? nil : previous
+            case let .remove(values): let rest = values.subtracting(ids); return rest.isEmpty ? nil : .remove(rest)
+            }
+        }
+        if unsaved.count < 1000 { unsaved.append(change) }
     }
     private func fail(_ cause: TelegramDownloadJournalError) {
         switch cause {
@@ -151,6 +179,9 @@ enum TelegramDownloadJournalError: Error { case invalid, unavailable, changed }
         }
         writing = nil; isSaving = false
         let abandoned = pending; pending = []
+        let newer = unsaved; unsaved = []
+        for mutation in abandoned { remember(mutation.change) }
+        for change in newer { remember(change) }
         for mutation in abandoned { mutation.completion(false) }
     }
 }

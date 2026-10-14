@@ -7,7 +7,9 @@ physical-device and actual login-Keychain acceptance remain separately scoped.
 ## Continuous final parity — 2026-10-14
 
 All five implementation slices are present on `feature/telegram-final-parity`;
-final independent review and publication are pending. This supersedes historical
+final review found two Important download issues, both resolved by the verified
+regression fix pass. [PR15](https://github.com/Mesteriis/makosh-native/pull/15)
+is attached; exact-head CI and merge remain pending. This supersedes historical
 Block14 aesthetic/transfer/format limitations below. Active-call device switching
 is an accepted permanent gap by explicit user decision; next-call selection stays.
 Local passcode/autolock remains excluded.
@@ -45,6 +47,24 @@ and resized window safe. Native downloads restart durability is proven by actual
 encrypted Postbox tests, not by the synthetic GUI fixture. Original pattern assets
 and QA data stay private. No physical microphone/camera or actual Keychain login
 acceptance is inferred. Real Telegram account/peer/actions still await the user.
+
+
+Independent final review: two Important/P2 download findings, no Critical/Minor.
+All executor/review rulings are preserved in [the decisions record](telegram-final-parity-decisions.md).
+Cancellation-save failure followed by Refresh could hide an uncommitted intent;
+four archive waits could block OFF downloads. Both reproduced by RED assertions.
+The fix retains/coalesces failed journal mutations and removal tombstones until
+fresh CAS commits, separates network/archive admission, and rechecks policy before
+fetch/completion. Four and eight saturated waits plus OFF→ON→OFF are covered with
+actual PostgreSQL/S3; explicit retry after refused admission and overflowing
+older writes also have assertion RED→GREEN. Final frozen-source full suite exits0:
+2309XCTest (2196Telegram+113Core),one microphone-precondition skip,zero failures;
+109Python/24suites. Final signed build and strict native artifact checks exit0.
+Actual rebuilt owned UI again observes cross-chat manual ready/finished cleanup;
+one CUA AX transition failure is followed by fresh-state confirmation, not
+classified as product failure. Owned QA is stopped/data retained. Canonical
+XERJ v13 exits0/944files/863code with fresh fingerprint. No unresolved Important/
+Critical or deferred reviewer Minor; exact-head CI and merge are pending.
 
 ## Product scope decision — 2026-10-13
 

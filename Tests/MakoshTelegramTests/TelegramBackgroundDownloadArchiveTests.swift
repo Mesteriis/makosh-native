@@ -27,6 +27,24 @@ import MakoshCore
             func cancel() { guard !used else { return }; used = true; owner.available += 1 }
         }
     }
+    @MainActor private final class PreparingReservation: TelegramMediaArchiveReservation {
+        var prepared: (@MainActor (Bool) -> Void)?
+        func prepare(completion:@escaping @MainActor (Bool) -> Void) { prepared = completion }
+        func capture(file:URL,byteCount:Int64) -> Bool { true }
+        func cancel() {}
+    }
+    func testExplicitRetryRechecksPreviouslyBlockedManualAdmission() throws {
+        let media = TelegramMediaController(), provider = Provider(), a = file("retry"), first = PreparingReservation(), replacement = PreparingReservation()
+        media.bind(provider:provider); media.retain(attachments:[a]); media.reserveManualFile = { _ in first }
+        media.start(a,purpose:.full); first.prepared?(false)
+        XCTAssertEqual(media.transfers.first?.phase,.queued); XCTAssertEqual(provider.events.count,0)
+        XCTAssertTrue(media.cancelTransfer(try XCTUnwrap(media.transfers.first)))
+        media.reserveManualFile = { _ in replacement }
+        // Retries preserve the original frozen recipe; it must be invoked again.
+        XCTAssertTrue(media.retryTransfer(try XCTUnwrap(media.transfers.first)))
+        first.prepared?(true)
+        XCTAssertEqual(provider.events.count,1)
+    }
     private func file(_ id:String) -> TelegramAttachment {
         .init(id:id,kind:.file,name:"Synthetic.txt",byteCount:4,mimeType:"text/plain",hasPreview:false,canDownload:true)
     }
@@ -157,6 +175,81 @@ import MakoshCore
         XCTAssertEqual(media.transfers.first?.phase,.ready)
         let records = try await repository.files(identity:identity,attachmentID:"off")
         XCTAssertTrue(records.isEmpty)
+        XCTAssertTrue(((try? FileManager.default.contentsOfDirectory(atPath:spool.path)) ?? []).isEmpty)
+    }
+    func testDisabledChatStartsPastFourSaturatedArchiveWaiters() async throws { try await disabledChatStartsPastArchiveWaiters(4) }
+    func testDisabledChatStartsPastEightSaturatedArchiveWaiters() async throws { try await disabledChatStartsPastArchiveWaiters(8) }
+    func testOffAdmissionChangingToOnWaitsWithoutBlockingOtherOffDownloads() async throws { try await disabledChatStartsPastArchiveWaiters(8,switchPolicy:true) }
+    private func disabledChatStartsPastArchiveWaiters(_ waitingCount:Int,switchPolicy:Bool = false) async throws {
+        let database = try PendingFilesTestDatabase(); addTeardownBlock { try database.cleanup() }
+        let configuration = try S3ConfigurationFile.read(URL(fileURLWithPath:XCTUnwrap(ProcessInfo.processInfo.environment["MAKOSH_TEST_S3_CONFIG"])))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-saturated-background-\(UUID())")
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
+        addTeardownBlock { try FileManager.default.removeItem(at:root) }
+        let source = root.appendingPathComponent("source"); try Data("data".utf8).write(to:source)
+        let backend = Backend(), controller = TelegramFileArchiveController(factory:{
+            guard let repository = backend.repository else { throw S3ObjectStoreError.configuration }; return repository
+        })
+        func identity(_ index:Int,_ chat:String = "37") -> MessageArchiveIdentity { .init(service:"telegram",accountID:"11",conversationID:chat,messageID:"0:\(index)") }
+        for index in 1...8 { controller.accept(file:source,byteCount:4,identity:identity(index),attachment:.init(id:"blocked-\(index)",kind:"file",name:"Synthetic.txt",size:4)) }
+        let spool = root.appendingPathComponent("queue")
+        let repository = try ArchiveFileRepository(connectionString:database.connectionString,schema:database.schema,configuration:configuration,spoolDirectory:spool,keyProvider:{ _,_ in Data(repeating:0x59,count:32) })
+        backend.repository = repository
+        try await repository.setConversationFileSavingEnabled(identity:identity(99,"38"),enabled:false)
+        let media = TelegramMediaController(), provider = Provider(), attachments = (1...waitingCount).map { file("waiting-\($0)") }+[file("off")]
+        media.bind(provider:provider); media.retain(attachments:attachments)
+        media.reserveManualFile = { id in controller.reserveManualDownload(identity:id == "off-next" ? identity(100,"39") : (id == "off" || id == "late") ? identity(99,"38") : identity(50),attachment:.init(id:id,kind:"file",name:"Synthetic.txt",size:4)) }
+        for attachment in attachments.prefix(waitingCount) { media.start(attachment,purpose:.full) }
+        var completed = 0
+        var deadline = ContinuousClock.now.advanced(by:.seconds(5))
+        while completed < waitingCount,ContinuousClock.now < deadline {
+            while completed < provider.events.count { provider.events[completed](.data(source,offset:0,size:4,complete:true)); completed += 1 }
+            await Task.yield()
+        }
+        XCTAssertEqual(completed,waitingCount)
+        deadline = ContinuousClock.now.advanced(by:.seconds(3))
+        while controller.isBusy,ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertEqual(media.transfers.filter { $0.phase == .capturing }.count,waitingCount)
+        media.start(attachments.last!,purpose:.full)
+        deadline = ContinuousClock.now.advanced(by:.seconds(3))
+        while provider.events.count < waitingCount+1,ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertEqual(provider.events.count,waitingCount+1,"S3 OFF must not wait for unrelated archive capacity")
+        guard provider.events.count == waitingCount+1 else { return }
+        provider.events[waitingCount](.data(source,offset:0,size:4,complete:true))
+        deadline = ContinuousClock.now.advanced(by:.seconds(3))
+        while media.phase(for:.init(attachmentID:"off",purpose:.full)) != .ready,ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertEqual(media.phase(for:.init(attachmentID:"off",purpose:.full)),.ready)
+        let offFiles = try await repository.files(identity:identity(99,"38"),attachmentID:"off"); XCTAssertTrue(offFiles.isEmpty)
+        if switchPolicy {
+            let late = file("late"), next = file("off-next")
+            media.retain(attachments:attachments+[late,next]); media.start(late,purpose:.full)
+            deadline = ContinuousClock.now.advanced(by:.seconds(3))
+            while provider.events.count < waitingCount+2,ContinuousClock.now < deadline { await Task.yield() }
+            XCTAssertEqual(provider.events.count,waitingCount+2)
+            guard provider.events.count == waitingCount+2 else { return }
+            try await repository.setConversationFileSavingEnabled(identity:identity(99,"38"),enabled:true)
+            provider.events[waitingCount+1](.data(source,offset:0,size:4,complete:true))
+            deadline = ContinuousClock.now.advanced(by:.seconds(3))
+            while controller.isBusy,ContinuousClock.now < deadline { await Task.yield() }
+            XCTAssertEqual(media.phase(for:.init(attachmentID:"late",purpose:.full)),.capturing)
+            XCTAssertNil(controller.reserveManualCapture(identity:identity(101),attachment:.init(id:"overflow",kind:"file",name:"Synthetic.txt",size:4)),"No extra FD admission")
+            try await repository.setConversationFileSavingEnabled(identity:identity(100,"39"),enabled:false)
+            media.start(next,purpose:.full)
+            deadline = ContinuousClock.now.advanced(by:.seconds(3))
+            while provider.events.count < waitingCount+3,ContinuousClock.now < deadline { await Task.yield() }
+            XCTAssertEqual(provider.events.count,waitingCount+3)
+            guard provider.events.count == waitingCount+3 else { return }
+            provider.events[waitingCount+2](.data(source,offset:0,size:4,complete:true))
+            deadline = ContinuousClock.now.advanced(by:.seconds(3))
+            while media.phase(for:.init(attachmentID:"off-next",purpose:.full)) != .ready,ContinuousClock.now < deadline { await Task.yield() }
+            XCTAssertEqual(media.phase(for:.init(attachmentID:"off-next",purpose:.full)),.ready)
+            let otherOffFiles = try await repository.files(identity:identity(100,"39"),attachmentID:"off-next"); XCTAssertTrue(otherOffFiles.isEmpty)
+            try await repository.setConversationFileSavingEnabled(identity:identity(99,"38"),enabled:false)
+            deadline = ContinuousClock.now.advanced(by:.seconds(8))
+            while media.phase(for:.init(attachmentID:"late",purpose:.full)) != .ready,ContinuousClock.now < deadline { try await Task.sleep(for:.milliseconds(10)) }
+            XCTAssertEqual(media.phase(for:.init(attachmentID:"late",purpose:.full)),.ready)
+            let lateFiles = try await repository.files(identity:identity(99,"38"),attachmentID:"late"); XCTAssertTrue(lateFiles.isEmpty)
+        }
         XCTAssertTrue(((try? FileManager.default.contentsOfDirectory(atPath:spool.path)) ?? []).isEmpty)
     }
     func testSwitchingS3OffDuringCapacityWaitAutomaticallyRechecksPolicy() async throws {

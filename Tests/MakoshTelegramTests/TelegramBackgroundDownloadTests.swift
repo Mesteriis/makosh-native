@@ -265,6 +265,59 @@ import SwiftSignalKit
         XCTAssertTrue(media.retryTransfer(try XCTUnwrap(media.transfers.first)))
         XCTAssertNil(media.queueError); XCTAssertEqual(provider.entries.count,1)
     }
+    func testFailedCancellationRefreshCommitsBeforeWarningClearsAndRestart() throws {
+        let repository = Repository(), (media,provider,journal) = configured(repository)
+        media.start(record().placeholder,purpose:.full)
+        XCTAssertEqual(repository.snapshot?.records.first?.state,.pending)
+        repository.fail = true
+        XCTAssertTrue(media.cancelTransfer(try XCTUnwrap(media.transfers.first)))
+        XCTAssertEqual(media.transfers.first?.phase,.cancelled); XCTAssertNotNil(media.queueError)
+        repository.fail = false; repository.hold = true
+        media.retryQueuePersistence()
+        XCTAssertNotNil(media.queueError,"Refresh must not hide an uncommitted cancellation")
+        repository.completeLast()
+        XCTAssertEqual(repository.snapshot?.records.first?.state,.cancelled)
+        XCTAssertNil(media.queueError); XCTAssertEqual(provider.fetches,1)
+        let restarted = TelegramDownloadJournal(); restarted.bind(repository:repository)
+        let restoredMedia = TelegramMediaController(), restoredProvider = MediaProvider()
+        restoredMedia.bind(provider:restoredProvider)
+        for saved in restarted.records { restoredMedia.restoreManual(attachment:saved.placeholder,state:saved.state,completedFile:nil) }
+        XCTAssertEqual(restoredMedia.transfers.first?.phase,.cancelled)
+        XCTAssertEqual(restoredProvider.fetches,0)
+        XCTAssertEqual(journal.records.first?.state,.cancelled)
+    }
+    func testFailedFinishedRemovalRefreshDoesNotResurrectRows() throws {
+        let repository = Repository(), (media,_,_) = configured(repository)
+        media.start(record().placeholder,purpose:.full)
+        XCTAssertTrue(media.cancelTransfer(try XCTUnwrap(media.transfers.first)))
+        repository.fail = true
+        XCTAssertTrue(media.clearFinishedTransfers(contextID:media.transferContextID))
+        XCTAssertNotNil(media.queueError); XCTAssertTrue(media.transfers.isEmpty)
+        repository.fail = false; media.retryQueuePersistence()
+        XCTAssertEqual(repository.snapshot?.records,[])
+        XCTAssertNil(media.queueError)
+    }
+    func testFailedCancellationReconcilePreservesOtherWriterAndNewAccount() {
+        let repository = Repository(), journal = TelegramDownloadJournal(); journal.bind(repository:repository)
+        journal.upsert(record()) { XCTAssertTrue($0) }
+        repository.fail = true; journal.upsert(record(state:.cancelled)) { XCTAssertFalse($0) }
+        repository.fail = false
+        repository.snapshot = .init(accountID:11,revision:UUID(),records:[record(),record(9)])
+        journal.reload()
+        XCTAssertEqual(journal.records.map(\.messageID),[7,9]); XCTAssertEqual(journal.records.first?.state,.cancelled)
+        repository.fail = true; journal.remove(ids:["11:0:7:file"]) { XCTAssertFalse($0) }
+        let other = Repository(22); journal.bind(repository:other); journal.reload()
+        XCTAssertTrue(journal.records.isEmpty); XCTAssertNil(other.snapshot)
+    }
+    func testOverflowCancellationWinsAfterEarlierWriteFails() {
+        let repository = Repository(), journal = TelegramDownloadJournal(); journal.bind(repository:repository)
+        repository.hold = true
+        for _ in 0..<1000 { journal.upsert(record()) { XCTAssertFalse($0) } }
+        journal.upsert(record(state:.cancelled)) { XCTAssertFalse($0) }
+        repository.fail = true; repository.completeLast()
+        repository.fail = false; repository.hold = false; journal.reload()
+        XCTAssertEqual(journal.records.first?.state,.cancelled,"The newest cancellation must win over abandoned older writes")
+    }
     func testQueuedWritesOutliveTheCallingView() {
         let repository = Repository(); repository.hold = true
         var journal: TelegramDownloadJournal? = TelegramDownloadJournal(); journal!.bind(repository:repository)

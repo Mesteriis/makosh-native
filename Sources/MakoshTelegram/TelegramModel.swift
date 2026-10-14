@@ -734,7 +734,7 @@ public final class TelegramModel: ObservableObject {
             self.selectedChatID = chat.id
         }
         automaticArchiveObservation = archive.files.objectWillChange.sink { [weak self] _ in
-            self?.automaticDownloads.archiveCapacityChanged(); self?.media.archiveCapacityChanged()
+            Task { @MainActor [weak self] in self?.automaticDownloads.archiveCapacityChanged(); self?.media.archiveCapacityChanged() }
         }
         cache.permitsClear = { [weak self] in
             guard let self else { return false }
@@ -2218,7 +2218,7 @@ public final class TelegramModel: ObservableObject {
             reserveFile:{ [files = archive.files] record,attachment in
                 let identity = MessageArchiveIdentity(service:"telegram",accountID:String(downloadAccountID),conversationID:String(record.peerID),messageID:"\(record.namespace):\(record.messageID)")
                 let descriptor = MessageArchiveAttachment(id:attachment.id,kind:attachment.kind == .photo ? "photo" : "file",name:attachment.name,size:attachment.byteCount)
-                return files.reserveManualCapture(identity:identity,attachment:descriptor)
+                return files.reserveManualDownload(identity:identity,attachment:descriptor)
             },
             completedFile:{ [files = archive.files] record,attachment,url,size in
                 let identity = MessageArchiveIdentity(service:"telegram",accountID:String(downloadAccountID),conversationID:String(record.peerID),messageID:"\(record.namespace):\(record.messageID)")
@@ -2426,7 +2426,7 @@ public final class TelegramModel: ObservableObject {
             }
             media.reserveManualFile = { [files = archive.files] id in
                 guard let (identity,attachment) = archivedSources[id] else { return nil }
-                return files.reserveManualCapture(identity:identity,attachment:attachment)
+                return files.reserveManualDownload(identity:identity,attachment:attachment)
             }
         } else { media.completedFullFile = nil; media.reserveAutomaticFile = nil; media.reserveManualFile = nil }
     }

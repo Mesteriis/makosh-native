@@ -80,4 +80,21 @@ import CryptoKit
             XCTAssertTrue(radius.isFinite); XCTAssertGreaterThanOrEqual(radius,64); XCTAssertLessThanOrEqual(radius,80)
         }
     }
+    func testPreviewAvoidsFingerprintEndAndRevealAfterResize() throws {
+        let p = TelegramCallVideoPresentation(),preview = CGSize(width:96,height:72)
+        for container in [CGSize(width:358,height:477),CGSize(width:600,height:800)] {
+            let controls = CGRect(x:20,y:container.height-100,width:container.width-40,height:88)
+            let fingerprint = CGRect(x:container.width/2-120,y:container.height-220,width:240,height:55)
+            let reveal = CGRect(x:container.width/2-80,y:container.height-40,width:160,height:28)
+            let obstacles = [controls,fingerprint,reveal]
+            for corner in TelegramCallPreviewCorner.allCases {
+                p.select(corner)
+                let origin = try XCTUnwrap(p.origin(in:container,preview:preview,avoiding:obstacles))
+                let rect = CGRect(origin:origin,size:preview)
+                XCTAssertTrue(CGRect(origin:.zero,size:container).contains(rect))
+                XCTAssertFalse(obstacles.contains { $0.intersects(rect) },"Preview hides call verification or End")
+            }
+        }
+        XCTAssertNil(p.origin(in:CGSize(width:358,height:477),preview:preview,avoiding:[CGRect(x:0,y:0,width:358,height:477)]))
+    }
 }

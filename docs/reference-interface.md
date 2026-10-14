@@ -1677,18 +1677,22 @@ remain available. No reference code/assets were copied. Pinned PanelUtils22–75
 uses standard anchored NSOpenPanel/NSSavePanel workflows; archive recovery itself
 remains the own Makosh flow described above.
 
-## Final-parity source contracts (native acceptance pending)
+## Final-parity source contracts and observed native acceptance
 
 The continuous pass supersedes the earlier implementation limits for automatic
 age/size cache eviction, account-owned cross-chat/restart manual downloads,1–4
 wallpaper colors, patterns and palette opacity. The editor follows
 `WallpaperPreviewController.swift:385–414`: two colors rotate45degrees;3/4colors
-advance placement. Pattern/intensity selection follows PatternPreviewController
+advance placement. Direct HEX entry follows WallpaperAdditionColorView:13–75
+and WallpaperColorPickerContainerView:157; invalid drafts disable Save. Pattern intensity uses absolute magnitude and a0–100editor slider, confirmed
+against BackgroundView(ViewController.swift:236). Pattern/intensity selection follows PatternPreviewController
 and WallpaperPatternPreviewView; normalization follows the verified gzip SVG/PNG
 workflow in `FetchCachedRepresentations.swift:126–185`. A bounded owned corner
 mesh replaces the reference Metal implementation; strict SVG shape allowlisting
 rejects text/fonts/scripts/external references and unsupported constructs visibly.
 Preview/application share the same renderer; legacy settings remain readable.
+Default bubbles retain a readable surface on black/white wallpaper; explicitly
+provided cloud bubble colors and alpha still take precedence.
 
 Call layout/actions retain the existing native call window. `PrivateCallScreen`
 PeerCallPhotoView and ScreenView:404–440 establish avatar decoration and active
@@ -1696,8 +1700,12 @@ video controls; SecretKeyView and CallScreenController:177 establish the emoji
 key/avatar workflow. Own wave/PCM/video owners, movable mirrored preview and
 recoverable activity/VoiceOver controls implement that behavior. Wave animation
 is decorative state presentation, not a microphone level meter. Compatible key
-data comes solely from the reviewed iOS pin, not outer GPLv2 UI/assets. Actual
-final native presentation is still pending; source/tests do not establish it.
+data comes solely from the reviewed iOS pin, not outer GPLv2 UI/assets. Actual final native QA observes the muted owned MP4 avatar, wave, four emoji,
+synthetic video, pointer corner movement, idle hiding and keyboard recovery.
+Measured key/control/Reveal exclusions keep End and expanded key unobscured
+after movement and window resize. Cache and exact four-color/pattern settings
+persist across restart; invalid HEX disables Save. These observations use
+owned synthetic providers, not a Telegram account or physical capture.
 
 **Accepted gap by explicit user decision: no device switching in an active call.**
 Next-call audio selection stays. Local Makosh passcode/autolock remains excluded.

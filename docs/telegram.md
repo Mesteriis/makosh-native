@@ -3469,7 +3469,8 @@ independently of unrelated storage errors. Accepted archive originals remain
 owned after transfer cancellation. Complete capturing files remain exportable.
 
 Color wallpaper supports1–4colors,45degree two-color rotation,3/4color placement
-advance and positive/negative pattern intensity. PNG/WebP/simple SVG/gzip masks
+advance and pattern intensity. Signed cloud intensity renders by absolute
+magnitude, as the selected reference does; the editor uses0–100. PNG/WebP/simple SVG/gzip masks
 are bounded and normalized to private metadata-free PNG. Strict XML preflight
 allows only supported static shapes, limits nesting/nodes/numeric complexity
 and forbids external references/entities/scripts/fonts. Image backgrounds keep
@@ -3483,6 +3484,6 @@ control visibility. VoiceOver keeps controls visible; keyboard/mouse/visible
 Reveal restore End access. Auxiliary-window occlusion and reduced motion stop
 video-avatar/decoration ownership. Ringtone follows global call state even while
 the window is hidden. Device switching during an active call is deliberately
-excluded by the user; validated next-call selection remains. Native final UI
+excluded by the user; validated next-call selection remains. Observed native synthetic UI
 acceptance and separately chosen real-account/physical-device acceptance are
 reported independently in development-status.md.

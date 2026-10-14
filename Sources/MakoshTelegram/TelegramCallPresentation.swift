@@ -99,6 +99,27 @@ public enum TelegramCallPreviewCorner: String, CaseIterable, Sendable { case top
         return CGPoint(x:[.topLeading,.bottomLeading].contains(corner) ? min(12,x/2) : max(0,x-min(12,x/2)),
             y:[.topLeading,.topTrailing].contains(corner) ? min(12,y/2) : max(0,y-min(12,y/2)))
     }
+    /// Keep the preferred edge while moving above/below measured call controls.
+    /// An impossible layout hides the preview rather than covering End/key.
+    public func origin(in container:CGSize,preview:CGSize,avoiding obstacles:[CGRect]) -> CGPoint? {
+        guard obstacles.count <= 16,[container.width,container.height,preview.width,preview.height].allSatisfy({ $0.isFinite && $0 > 0 }),
+              container.width >= preview.width,container.height >= preview.height else { return nil }
+        let viewport = CGRect(origin:.zero,size:container)
+        var forbidden: [CGRect] = []
+        for obstacle in obstacles {
+            guard [obstacle.minX,obstacle.minY,obstacle.width,obstacle.height].allSatisfy(\.isFinite) else { return nil }
+            let clipped = obstacle.intersection(viewport)
+            if !clipped.isNull,!clipped.isEmpty { forbidden.append(clipped.insetBy(dx:-8,dy:-8)) }
+        }
+        var result = origin(in:container,preview:preview)
+        for _ in 0...forbidden.count {
+            let rect = CGRect(origin:result,size:preview)
+            guard viewport.contains(rect) else { return nil }
+            guard let collision = forbidden.first(where:{ $0.intersects(rect) }) else { return result }
+            result.y = [.topLeading,.topTrailing].contains(corner) ? collision.maxY+1 : collision.minY-preview.height-1
+        }
+        return nil
+    }
     public func move(to point:CGPoint,in container:CGSize,preview:CGSize) {
         guard [point.x,point.y,container.width,container.height,preview.width,preview.height].allSatisfy(\.isFinite),container.width > 0,container.height > 0 else { return }
         let left = point.x+preview.width/2 < container.width/2,top = point.y+preview.height/2 < container.height/2

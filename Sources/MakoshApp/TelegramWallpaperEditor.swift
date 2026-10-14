@@ -52,8 +52,10 @@ struct TelegramWallpaperEditor: View {
     @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var mode = "automatic"
     @State private var colors = TelegramWallpaperColors(colors:[0xdce8df,0xc6d5ed])
+    @State private var colorDrafts: [Int:String] = [:]
     @State private var originalName: String?
     @State private var patternName: String?
     @State private var selectedData: Data?
@@ -65,7 +67,7 @@ struct TelegramWallpaperEditor: View {
     var body: some View {
         VStack(spacing:0) {
             HStack { Button("Отмена") { dismiss() }; Spacer(); Text("Фон чата").font(.headline); Spacer()
-                Button("Сохранить",action:save).disabled(busy || appearanceRaw != expectedRaw || (mode == "image" && selectedData == nil && originalName == nil)).accessibilityIdentifier("telegram.wallpaper.save")
+                Button("Сохранить",action:save).disabled(busy || invalidColors || appearanceRaw != expectedRaw || (mode == "image" && selectedData == nil && originalName == nil)).accessibilityIdentifier("telegram.wallpaper.save")
             }.padding()
             Form {
                 Section {
@@ -76,21 +78,24 @@ struct TelegramWallpaperEditor: View {
                         ForEach(colors.colors.indices,id:\.self) { index in
                             HStack {
                                 ColorPicker("Цвет \(index+1)",selection:color(index),supportsOpacity:false).accessibilityIdentifier("telegram.wallpaper.color.\(index)")
-                                if colors.colors.count > 1 { Button { colors.colors.remove(at:index); resetGeometry() } label:{ Image(systemName:"minus.circle") }.accessibilityLabel("Удалить цвет \(index+1)") }
+                                TextField("HEX",text:hex(index)).textFieldStyle(.roundedBorder).font(.system(.body,design:.monospaced)).frame(width:88)
+                                    .accessibilityLabel("HEX цвета \(index+1)").accessibilityIdentifier("telegram.wallpaper.hex.\(index)")
+                                if colors.colors.count > 1 { Button { removeColor(index) } label:{ Image(systemName:"minus.circle") }.accessibilityLabel("Удалить цвет \(index+1)") }
                             }
                         }
                         if colors.colors.count < 4 { Button("Добавить цвет") { colors.colors.append(0xc6d5ed); resetGeometry() }.accessibilityIdentifier("telegram.wallpaper.addColor") }
+                        if invalidColors { Text("Введите шесть HEX-символов цвета, например #12ABEF.").font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.wallpaper.hex.invalid") }
                         if colors.colors.count == 2 {
                             Button("Повернуть на45°") { colors.rotation = (colors.rotation+45)%360 }.accessibilityIdentifier("telegram.wallpaper.rotate")
                         } else if colors.colors.count > 2 {
-                            Button("Изменить расположение цветов") { withAnimation(reduceMotion ? nil : .easeInOut(duration:0.3)) { colors.phase = (colors.phase+1)%4 } }.accessibilityIdentifier("telegram.wallpaper.advance")
+                            Button("Изменить расположение цветов") { withAnimation(reduceMotion ? nil : .easeInOut(duration:0.3)) { colors.phase = (colors.phase+1)%colors.colors.count } }.accessibilityIdentifier("telegram.wallpaper.advance")
                         }
                         HStack {
                             Button("Выбрать узор…") { pick(pattern:true) }.disabled(busy).accessibilityIdentifier("telegram.wallpaper.pattern.pick")
                             if patternName != nil { Button("Без узора") { patternName = nil; selectedPattern = nil }.accessibilityIdentifier("telegram.wallpaper.pattern.none") }
                         }
                         if patternName != nil {
-                            Slider(value:$intensity,in:-100...100,step:1) { Text("Интенсивность узора") }.accessibilityIdentifier("telegram.wallpaper.pattern.intensity")
+                            Slider(value:$intensity,in:0...100,step:1) { Text("Интенсивность узора") }.accessibilityIdentifier("telegram.wallpaper.pattern.intensity")
                             Text("Интенсивность: \(Int(intensity))%").font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -102,8 +107,8 @@ struct TelegramWallpaperEditor: View {
                 }
                 Section("Предпросмотр") {
                     VStack(alignment:.leading,spacing:12) {
-                        Text("Привет! Как дела?").padding(10).background(.background,in:RoundedRectangle(cornerRadius:12))
-                        HStack { Spacer(); Text("Всё хорошо!").padding(10).background(Color.accentColor.opacity(0.25),in:RoundedRectangle(cornerRadius:12)) }
+                        Text("Привет! Как дела?").padding(10).background(telegramDefaultBubbleColor(outgoing:false,scheme:colorScheme),in:RoundedRectangle(cornerRadius:12))
+                        HStack { Spacer(); Text("Всё хорошо!").padding(10).background(telegramDefaultBubbleColor(outgoing:true,scheme:colorScheme),in:RoundedRectangle(cornerRadius:12)) }
                     }.padding().frame(height:190).background {
                         if mode == "image",let selectedData,let image = NSImage(data:selectedData) { Image(nsImage:image).resizable().scaledToFill().clipped() }
                         else { TelegramWallpaperBackground(wallpaper:draft,fallback:Color(nsColor:.windowBackgroundColor),preparedPattern:selectedPattern) }
@@ -120,7 +125,7 @@ struct TelegramWallpaperEditor: View {
                 case let .solid(value): mode = "colors"; colors = .init(colors:[value])
                 case let .gradient(a,b): mode = "colors"; colors = .init(colors:[a,b],rotation:45)
                 case let .colors(value): mode = "colors"; colors = value
-                case let .pattern(value): mode = "colors"; colors = value.colors; patternName = value.name; intensity = Double(value.intensity)
+                case let .pattern(value): mode = "colors"; colors = value.colors; patternName = value.name; intensity = Double(abs(value.intensity))
                 case let .image(name): mode = "image"; originalName = name
                 }
             }.onDisappear { preparationID = UUID() }
@@ -133,6 +138,20 @@ struct TelegramWallpaperEditor: View {
         }
     }
     private func resetGeometry() { colors.rotation = 0; colors.phase = 0 }
+    private var invalidColors: Bool { mode == "colors" && colorDrafts.contains { colors.colors.indices.contains($0.key) && TelegramWallpaperColors.parseHex($0.value) == nil } }
+    private func hex(_ index:Int) -> Binding<String> {
+        .init(get:{ colorDrafts[index] ?? String(format:"%06X",colors.colors.indices.contains(index) ? colors.colors[index] : 0) },set:{ value in
+            guard colors.colors.indices.contains(index) else { return }
+            colorDrafts[index] = String(value.prefix(32))
+            if let parsed = TelegramWallpaperColors.parseHex(value) { colors.colors[index] = parsed }
+        })
+    }
+    private func removeColor(_ index:Int) {
+        guard colors.colors.indices.contains(index),colors.colors.count > 1 else { return }
+        colors.colors.remove(at:index)
+        colorDrafts = Dictionary(uniqueKeysWithValues:colorDrafts.compactMap { key,value in key == index ? nil : (key > index ? key-1 : key,value) })
+        resetGeometry()
+    }
     private func color(_ index:Int) -> Binding<Color> {
         .init(get:{ telegramRGBColor(colors.colors.indices.contains(index) ? colors.colors[index] : 0) },set:{ color in
             guard colors.colors.indices.contains(index),let value = NSColor(color).usingColorSpace(.deviceRGB) else { return }
@@ -140,6 +159,7 @@ struct TelegramWallpaperEditor: View {
             guard components.allSatisfy(\.isFinite) else { return }
             let bytes = components.map { UInt32((min(1,max(0,$0)) * 255).rounded()) }
             colors.colors[index] = bytes[0]<<16 | bytes[1]<<8 | bytes[2]
+            colorDrafts[index] = nil
         })
     }
     private func pick(pattern:Bool) {
@@ -163,7 +183,7 @@ struct TelegramWallpaperEditor: View {
         }
     }
     private func save() {
-        guard appearanceRaw == expectedRaw,!busy else { error = "Оформление изменилось. Откройте редактор заново."; return }
+        guard appearanceRaw == expectedRaw,!busy,!invalidColors else { error = "Проверьте HEX цветов и текущее оформление."; return }
         do {
             var preferences = try TelegramAppearancePreferences.decode(expectedRaw)
             if mode == "image",let selectedData { preferences.wallpaper = .image(try TelegramWallpaperFiles.install(selectedData)) }

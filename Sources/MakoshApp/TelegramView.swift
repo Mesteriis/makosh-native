@@ -12,7 +12,7 @@ struct TelegramDetailView: View {
     private func bubbleStyle(outgoing: Bool) -> AnyShapeStyle {
         if outgoing,let palette, !palette.outgoing.isEmpty { return AnyShapeStyle(LinearGradient(colors:palette.outgoing.enumerated().map { telegramPaletteColor(palette,"outgoing.\($0.offset)",$0.element) },startPoint:.top,endPoint:.bottom)) }
         if !outgoing,let palette,let color = palette.incoming { return AnyShapeStyle(telegramPaletteColor(palette,"incoming",color)) }
-        return AnyShapeStyle(outgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08))
+        return AnyShapeStyle(telegramDefaultBubbleColor(outgoing:outgoing,scheme:colorScheme))
     }
     @ObservedObject var model: TelegramModel
     @ObservedObject private var qrLogin: TelegramQRLoginController

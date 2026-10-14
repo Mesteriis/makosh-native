@@ -110,6 +110,15 @@ import Postbox
         XCTAssertTrue(player.isMuted); XCTAssertEqual(player.volume,0)
         XCTAssertEqual(player.currentItem?.duration.seconds ?? 0,2,accuracy:0.1)
     }
+    func testCallsPreviewBindsOwnedAvatarProvider() async throws {
+        let model = TelegramModel.syntheticCallsPreview(),playback = TelegramAvatarVideoPlayback()
+        let ready = expectation(description:"Call preview's actual avatar provider is bound")
+        let observation = playback.$player.sink { if $0 != nil { ready.fulfill() } }
+        defer { observation.cancel(); playback.stop(); model.disconnect() }
+        playback.open(store:model.avatars,peerID:43)
+        await fulfillment(of:[ready],timeout:5)
+        XCTAssertTrue(try XCTUnwrap(playback.player).isMuted)
+    }
 }
 
 final class TelegramAvatarVideoMappingTests: XCTestCase {

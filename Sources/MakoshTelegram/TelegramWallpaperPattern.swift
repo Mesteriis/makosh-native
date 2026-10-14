@@ -9,6 +9,13 @@ public struct TelegramWallpaperColors: Codable, Equatable, Sendable {
     public var rotation: Int
     public var phase: Int
     public init(colors:[UInt32],rotation:Int = 0,phase:Int = 0) { self.colors = colors; self.rotation = rotation; self.phase = phase }
+    public static func parseHex(_ input:String) -> UInt32? {
+        guard input.utf8.count <= 32 else { return nil }
+        var text = input.trimmingCharacters(in:.whitespacesAndNewlines)
+        if text.hasPrefix("#") { text.removeFirst() }
+        guard text.utf8.count == 6,text.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }) else { return nil }
+        return UInt32(text,radix:16)
+    }
     var isValid: Bool {
         (1...4).contains(colors.count) && colors.allSatisfy { $0 <= 0xffffff } &&
         (0...315).contains(rotation) && rotation % 45 == 0 && (0...3).contains(phase) &&
@@ -190,7 +197,7 @@ public enum TelegramWallpaperRenderer {
                 for c in 0..<3 {
                     var value = 0.0
                     for (corner,weight) in weights.enumerated() { value += rgb[(corner+colors.phase)%rgb.count][c]*weight }
-                    let overlay = intensity < 0 ? 255.0 : 0.0
+                    let overlay = 0.0
                     bytes[index+c] = UInt8(min(255,max(0,(value*(1-opacity)+overlay*opacity).rounded())))
                 }
             }

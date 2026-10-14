@@ -57,8 +57,10 @@ private struct TelegramCloudAppearancePreview: View {
     let expectedRaw: String
     @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var error: String?
     private var palette: TelegramCloudPalette? { if case let .theme(value) = prepared.kind { return value }; return nil }
+    private var previewScheme: ColorScheme { palette.map { $0.isDark ? .dark : .light } ?? colorScheme }
     private var current: Bool { controller.contextID == prepared.contextID && controller.prepared?.id == prepared.id && appearanceRaw == expectedRaw }
     var body: some View {
         VStack(spacing:16) {
@@ -67,7 +69,7 @@ private struct TelegramCloudAppearancePreview: View {
             }
             Text(prepared.choice.title).font(.title3)
             VStack(alignment:.leading,spacing:18) {
-                Text("Привет! Как дела?").padding(12).background(palette.flatMap { p in p.incoming.map { telegramPaletteColor(p,"incoming",$0) } } ?? Color(nsColor:.controlBackgroundColor),in:RoundedRectangle(cornerRadius:12))
+                Text("Привет! Как дела?").padding(12).background(palette.flatMap { p in p.incoming.map { telegramPaletteColor(p,"incoming",$0) } } ?? telegramDefaultBubbleColor(outgoing:false,scheme:previewScheme),in:RoundedRectangle(cornerRadius:12))
                 HStack { Spacer(); Text("Всё хорошо!").padding(12).background(outgoingStyle,in:RoundedRectangle(cornerRadius:12)) }
             }.padding(24).frame(height:280).frame(maxWidth:.infinity).background { background }.clipped()
                 .foregroundStyle(palette.flatMap { p in p.text.map { telegramPaletteColor(p,"text",$0) } } ?? .primary).accessibilityIdentifier("telegram.catalog.preview")
@@ -80,7 +82,7 @@ private struct TelegramCloudAppearancePreview: View {
             .onDisappear { if controller.prepared?.id == prepared.id { controller.cancelSelection() } }
     }
     private var outgoingStyle: AnyShapeStyle {
-        guard let palette,!palette.outgoing.isEmpty else { return AnyShapeStyle(Color.accentColor.opacity(0.2)) }
+        guard let palette,!palette.outgoing.isEmpty else { return AnyShapeStyle(telegramDefaultBubbleColor(outgoing:true,scheme:previewScheme)) }
         return AnyShapeStyle(LinearGradient(colors:palette.outgoing.enumerated().map { telegramPaletteColor(palette,"outgoing.\($0.offset)",$0.element) },startPoint:.top,endPoint:.bottom))
     }
     @ViewBuilder private var background: some View {

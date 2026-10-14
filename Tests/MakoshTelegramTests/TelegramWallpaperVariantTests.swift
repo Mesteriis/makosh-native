@@ -8,6 +8,14 @@ import Darwin
 
 final class TelegramWallpaperVariantTests: XCTestCase {
     private let svg = Data("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#000000\" d=\"M0 0H8V16H0Z\"/></svg>".utf8)
+    func testHexColorEntryIsBoundedAndPreservesExactRGB() {
+        XCTAssertEqual(TelegramWallpaperColors.parseHex("#12AbEF"),0x12abef)
+        XCTAssertEqual(TelegramWallpaperColors.parseHex("000000"),0)
+        XCTAssertEqual(TelegramWallpaperColors.parseHex(" FFFFFF "),0xffffff)
+        for invalid in ["","#12345","1234567","+12abef","#ＦＦＦＦＦＦ","12abcZ","12\0abc",String(repeating:" ",count:33)+"FFFFFF"] {
+            XCTAssertNil(TelegramWallpaperColors.parseHex(invalid))
+        }
+    }
     func testFourColorWallpaperRoundTripAndLegacyPreferences() throws {
         let colors = TelegramWallpaperColors(colors:[0xff0000,0x00ff00,0x0000ff,0xffffff],phase:2)
         var p = TelegramAppearancePreferences(); p.wallpaper = .colors(colors)
@@ -43,7 +51,7 @@ final class TelegramWallpaperVariantTests: XCTestCase {
         let dark = try TelegramWallpaperRenderer.render(colors:colors,pattern:mask,intensity:100,width:16,height:16)
         let light = try TelegramWallpaperRenderer.render(colors:colors,pattern:mask,intensity:-100,width:16,height:16)
         XCTAssertNotEqual(dark.dataProvider?.data as Data?,plain.dataProvider?.data as Data?)
-        XCTAssertNotEqual(dark.dataProvider?.data as Data?,light.dataProvider?.data as Data?)
+        XCTAssertEqual(dark.dataProvider?.data as Data?,light.dataProvider?.data as Data?,"Reference preview uses the absolute intensity")
         let rotated = try TelegramWallpaperRenderer.render(colors:.init(colors:colors.colors,rotation:90),width:16,height:16)
         XCTAssertNotEqual(rotated.dataProvider?.data as Data?,plain.dataProvider?.data as Data?)
         let corners = try TelegramWallpaperRenderer.render(colors:.init(colors:[0xff0000,0x00ff00,0x0000ff,0xffffff]),width:3,height:3)

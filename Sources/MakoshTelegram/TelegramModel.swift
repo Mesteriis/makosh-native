@@ -2661,6 +2661,7 @@ public final class TelegramModel: ObservableObject {
         let model = syntheticPreview(calls: controller)
         model.syntheticAccountID = 101
         let provider = TelegramSyntheticCallProvider(); model.syntheticCalls = provider; controller.bind(provider)
+        model.avatars.bind(TelegramSyntheticAvatarProvider())
         let group = PeerId(namespace: Namespaces.Peer.CloudGroup, id: ._internalFromInt64Value(91)).toInt64()
         model.chats = [.init(id: 42, title: "Synthetic Alice", preview: "Звонки QA", unreadCount: 0),
             .init(id: 43, title: "Synthetic Bob", preview: "Другой собеседник QA", unreadCount: 0),

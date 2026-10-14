@@ -4,6 +4,48 @@ Block14 implementation and integration are complete in [PR14](https://github.com
 The final integration evidence is at the end of this document. Real test-account,
 physical-device and actual login-Keychain acceptance remain separately scoped.
 
+## Continuous final parity — 2026-10-14
+
+All five implementation slices are present on `feature/telegram-final-parity`;
+final independent review and publication are pending. This supersedes historical
+Block14 aesthetic/transfer/format limitations below. Active-call device switching
+is an accepted permanent gap by explicit user decision; next-call selection stays.
+Local passcode/autolock remains excluded.
+
+Cache maintenance has account-owned age/size policies, fresh non-forced native
+removal and protection for active/unknown/secret/local resources. Manual full
+transfers survive chat changes and restore from encrypted bounded Postbox metadata
+with fresh native source validation. Automatic/preview work keeps visible scope.
+Fresh PostgreSQL OFF forbids every new spool/S3 copy; bounded FD backpressure
+preserves accepted originals without putting file bytes into PostgreSQL.
+
+Wallpapers now support1–4colors, two-color rotation,3/4color placement, bounded
+PNG/WebP/static SVG/gzip patterns and palette opacity. Call presentation includes
+muted video avatars, owned ringtone/state wave, compatible four-emoji key,
+movable mirrored preview and recoverable auto-hidden controls. Mesh rendering
+and decorative wave remain owned approximations documented in reference-interface.md.
+
+Final integrated source: `scripts/dev-db.sh up`, `scripts/test.sh`,
+`scripts/build-app.sh` all exit0. XCTest2301 (2188Telegram+113Core),zero failures,
+one microphone-precondition skip;109Python tests across24suites pass. A separate
+focused131test set passes. Strict signed bundle/native UUID,17section payload and
+unsigned QA executable equality pass. Existing upstream warnings and preexisting
+contactsd/XPC metadata diagnostics remain in private raw logs; a pass is not a
+claim of warning-free output.
+
+Actual owned native QA uses a new isolated schema/bundle, synthetic providers and
+no Telegram account/network/capture. Observed: common service sidebar; account-wide
+manual download after changing chat and exact59byte export; finished-list cleanup;
+cache1month/5GiB persists after restart; four exact HEX colors/red-green-blue-white,
+invalid HEX disables Save, pattern/intensity70 and colors persist after restart;
+readable message bubbles on the applied vivid wallpaper; real muted synthetic
+MP4 avatar; compatible emoji key; synthetic video/control auto-hide and Space
+recovery; pointer movement to bottom-left with key/End unobscured, expanded key
+and resized window safe. Native downloads restart durability is proven by actual
+encrypted Postbox tests, not by the synthetic GUI fixture. Original pattern assets
+and QA data stay private. No physical microphone/camera or actual Keychain login
+acceptance is inferred. Real Telegram account/peer/actions still await the user.
+
 ## Product scope decision — 2026-10-13
 
 The user explicitly excludes a local Makosh passcode and automatic app locking.

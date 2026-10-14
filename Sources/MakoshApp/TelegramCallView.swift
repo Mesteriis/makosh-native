@@ -167,6 +167,7 @@ private struct TelegramCallWindowView: View {
                     if let fingerprint = call.fingerprint { fingerprintView(fingerprint) }
                     Spacer(minLength: 10)
                     activeControls(call)
+                        .anchorPreference(key:TelegramCallPreviewExclusions.self,value:.bounds) { [$0] }
                 } else if let incoming = controller.incoming.first {
                     Text(incoming.isVideo ? "Входящий видеозвонок" : "Входящий звонок").accessibilityIdentifier("telegram.call.status")
                     Spacer(minLength: 10)
@@ -180,13 +181,15 @@ private struct TelegramCallWindowView: View {
                 }
             }.padding(.horizontal, 20).padding(.bottom, 28)
                 .opacity(presentation.controlsVisible ? 1 : 0).allowsHitTesting(presentation.controlsVisible).accessibilityHidden(!presentation.controlsVisible)
-            if let frame = controller.localFrame {
-                localPreview(frame)
-            }
             if !presentation.controlsVisible {
-                VStack { Spacer(); Button("Показать управление") { presentation.activity() }.keyboardShortcut(.space,modifiers:[]).accessibilityIdentifier("telegram.call.controls.reveal").padding(12) }
+                VStack { Spacer(); Button("Показать управление") { presentation.activity() }.keyboardShortcut(.space,modifiers:[]).accessibilityIdentifier("telegram.call.controls.reveal").padding(12).anchorPreference(key:TelegramCallPreviewExclusions.self,value:.bounds) { [$0] } }
             }
         }.foregroundStyle(.white).preferredColorScheme(.dark).frame(minWidth: 358, minHeight: 477)
+            .overlayPreferenceValue(TelegramCallPreviewExclusions.self) { exclusions in
+                GeometryReader { geometry in
+                    if let frame = controller.localFrame { localPreview(frame,avoiding:exclusions.map { geometry[$0] }) }
+                }
+            }
             .background(TelegramCallWindowVisibility { windowVisible = $0; updatePresentation() })
             .contentShape(Rectangle()).onContinuousHover { phase in if case .active = phase { presentation.activity() } }
             .onTapGesture { presentation.activity() }.focusable().focusEffectDisabled()
@@ -207,11 +210,11 @@ private struct TelegramCallWindowView: View {
     private func cornerTitle(_ corner:TelegramCallPreviewCorner) -> String {
         switch corner { case .topLeading: "Сверху слева"; case .topTrailing: "Сверху справа"; case .bottomLeading: "Снизу слева"; case .bottomTrailing: "Снизу справа" }
     }
-    private func localPreview(_ frame:CVPixelBuffer) -> some View {
+    private func localPreview(_ frame:CVPixelBuffer,avoiding obstacles:[CGRect]) -> some View {
         GeometryReader { geometry in
             let size = CGSize(width:96,height:72)
-            let available = CGSize(width:geometry.size.width,height:max(72,geometry.size.height-40-(presentation.controlsVisible ? 120 : 0)))
-            let origin = presentation.origin(in:available,preview:size)
+            let available = CGSize(width:geometry.size.width,height:max(72,geometry.size.height-40))
+            if let origin = presentation.origin(in:available,preview:size,avoiding:obstacles.map { $0.offsetBy(dx:0,dy:-40) }) {
             let x = min(max(0,origin.x+previewDrag.width),max(0,available.width-size.width))
             let y = min(max(0,origin.y+previewDrag.height),max(0,available.height-size.height))
             CallVideoImage(frame:frame).scaleEffect(x:-1,y:1).allowsHitTesting(false)
@@ -226,6 +229,7 @@ private struct TelegramCallWindowView: View {
                     let all = TelegramCallPreviewCorner.allCases,index = all.firstIndex(of:presentation.corner) ?? 0
                     presentation.select(all[(index+(direction == .increment ? 1 : all.count-1))%all.count])
                 }.accessibilityIdentifier("telegram.call.localVideo")
+            }
         }
     }
     @ViewBuilder private func activeControls(_ call: TelegramCallSnapshot) -> some View {
@@ -264,6 +268,7 @@ private struct TelegramCallWindowView: View {
             if let emoji = TelegramCallKey.emoji(value) { Text(emoji).font(.system(size:30)).accessibilityLabel("Ключ звонка: \(emoji)").accessibilityIdentifier("telegram.call.fingerprint.emoji") }
             else { Text("Ключ звонка") }
         }.font(.caption).frame(maxWidth: 240)
+            .anchorPreference(key:TelegramCallPreviewExclusions.self,value:.bounds) { [$0] }
     }
 }
 private func callStatus(_ call: TelegramCallSnapshot) -> String {

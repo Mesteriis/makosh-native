@@ -77,7 +77,7 @@
 
 ### Task 5: Integrated native acceptance, final review and integration
 
-**Files:** New private owned QA helpers/evidence only; docs/development-status.md, docs/reference-interface.md, docs/telegram.md, docs/roadmap.md. No real identity operations.
+**Files:** Integrate regression corrections in TelegramWallpaperPattern.swift/TelegramWallpaperEditor.swift/TelegramModel.swift/TelegramCallPresentation.swift/TelegramCallView.swift/TelegramCallPresentationViews.swift/TelegramAppearance.swift/TelegramView.swift/TelegramAppearanceCatalogView.swift and the related tests; new private owned QA helpers/evidence; docs/development-status.md, docs/reference-interface.md, docs/telegram.md, docs/roadmap.md. No real identity operations.
 
 **Interfaces:** Consumes all previous public controllers/views and background owners. Produces actual observed native evidence, complete check results and exact-head merged source. User's real-account acceptance remains pending until supplied.
 

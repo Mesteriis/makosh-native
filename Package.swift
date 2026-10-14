@@ -1,5 +1,9 @@
 // swift-tools-version: 6.2
 import PackageDescription
+import Foundation
+
+let callLibraryDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    .appendingPathComponent(".local/telegram-voip/build").path
 
 let package = Package(
     name: "Makosh",
@@ -26,13 +30,17 @@ let package = Package(
     ],
     targets: [
         .systemLibrary(name: "CPostgres", pkgConfig: "libpq", providers: [.brew(["libpq"])]),
+        .target(name: "CMakoshTelegramVoIP", linkerSettings: [
+            .unsafeFlags(["-L" + callLibraryDirectory, "-Xlinker", "-rpath", "-Xlinker", callLibraryDirectory,
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
+            .linkedLibrary("MakoshTelegramVoIP")]),
         .target(name: "MakoshCore", dependencies: ["CPostgres"]),
         .target(name: "MakoshOpusControl", dependencies: [.product(name: "COpus", package: "MakoshOpus")]),
         .target(name: "MakoshJPEGControl", dependencies: [.product(name: "CMozjpeg", package: "MakoshMozjpeg")]),
         .target(name: "MakoshCodeHighlight", dependencies: [.product(name: "CPrismaEngine", package: "MakoshPrisma")]),
         .target(name: "MakoshCustomEmojiControl", dependencies: [.product(name: "CRLottie", package: "MakoshRLottie"),
             .product(name: "CVPX", package: "MakoshVPX")]),
-        .target(name: "MakoshTelegram", dependencies: ["MakoshCore",
+        .target(name: "MakoshTelegram", dependencies: ["MakoshCore", "CMakoshTelegramVoIP",
             .product(name: "TelegramApi", package: "TelegramApi"),
             .product(name: "MtProtoKit", package: "MtProtoKit"),
             "MakoshJPEGControl",

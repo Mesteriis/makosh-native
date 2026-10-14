@@ -11,7 +11,7 @@ POSTBOX = 'submodules/Postbox/Sources/Postbox.swift'
 HISTORY = 'submodules/Postbox/Sources/MessageHistoryTable.swift'
 TEMPLATE = Path(__file__).resolve().parent / 'telegram-retention/MakoshMessageJournal.swift'
 SOURCE_SHA256 = {'submodules/Postbox/Sources/Postbox.swift': '52f1aa3ff0af3f4e336c44fac6b0b2cebb79af1f339d690542a1b07116cece18', 'submodules/Postbox/Sources/MessageHistoryTable.swift': '674f602d5bfb6834c70421a6098605e24af2479b5745a4f83d17f52db44b42cb'}
-ADAPTED_SHA256 = {'submodules/Postbox/Sources/Postbox.swift': '44c50a537535eb798e46c5d865aeb6ae6bbc5bffb84e1d3424f4262fafd57ec1', 'submodules/Postbox/Sources/MessageHistoryTable.swift': 'cf811fcd9b11b047914b570b812c50aefe471f98fc791789485f4e14654147be'}
+ADAPTED_SHA256 = {'submodules/Postbox/Sources/Postbox.swift': 'aa46bdd69c1a5e1a47ea307f4967ac5484853026f7627f3b60c4380566f01dad', 'submodules/Postbox/Sources/MessageHistoryTable.swift': 'cf811fcd9b11b047914b570b812c50aefe471f98fc791789485f4e14654147be'}
 TEMPLATE_SHA256 = 'c41d924306b4eac37fbaaf386dc94af685ace04630f518258351f137a61e9962'
 
 
@@ -33,6 +33,15 @@ def _transform(path: str, source: str) -> str:
     public func acknowledgeMakoshArchiveJournal(sequences: [Int64]) throws {
         guard !self.disposed, let postbox = self.postbox else { throw MakoshMessageJournalError.unavailable }
         try MakoshMessageJournal(valueBox: postbox.valueBox).acknowledge(sequences: sequences)
+    }
+
+    /// Retain a scoped remote observation without inserting it into live history.
+    public func makoshArchiveObserve(message: StoreMessage, removed: Bool) throws {
+        guard !self.disposed, let postbox = self.postbox, case let .Id(id) = message.id,
+              id.id > 0, id.peerId.id._internalGetInt64Value() > 0 else { throw MakoshMessageJournalError.unavailable }
+        MakoshMessageJournal(valueBox: postbox.valueBox).append(id: id, timestamp: message.timestamp,
+            text: message.text, authorId: message.authorId, flags: MessageFlags(message.flags),
+            attributes: message.attributes, media: message.media, removed: removed)
     }
 
 '''

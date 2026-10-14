@@ -7,8 +7,8 @@ The input and output hashes bind this composition to the reviewed preparation.
 import hashlib
 
 POSTBOX = "submodules/Postbox/Sources/Postbox.swift"
-SOURCE_SHA256 = "44c50a537535eb798e46c5d865aeb6ae6bbc5bffb84e1d3424f4262fafd57ec1"
-ADAPTED_SHA256 = "77b49bf249eee5ec10cc0dea12363b23cccabbc74807756e76ca062a3b49a532"
+SOURCE_SHA256 = "aa46bdd69c1a5e1a47ea307f4967ac5484853026f7627f3b60c4380566f01dad"
+ADAPTED_SHA256 = "0b79868a70a8ca866f4aaa4776cd3cf88f37f7c64db457d144e4c4ccf60d7b11"
 MARKER = "    public func getMessage(_ id: MessageId) -> Message? {"
 API = '''    /// Cached ID-index lookup only: no history-hole or network operation.
     /// The exclusive upper bound preserves native selection range semantics.

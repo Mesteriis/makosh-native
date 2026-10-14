@@ -5,9 +5,10 @@ struct TelegramGlobalSearchResultsView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var messages: TelegramSearchModel
     @ObservedObject private var chats: TelegramSearchModel
+    @ObservedObject private var discovery: TelegramRemotePeerSearch
     @State private var allChats = false
     init(model: TelegramModel) {
-        self.model = model; messages = model.globalSearch; chats = model.search
+        self.model = model; messages = model.globalSearch; chats = model.search; discovery = model.search.discovery
     }
     var body: some View {
         ScrollView {
@@ -32,6 +33,35 @@ struct TelegramGlobalSearchResultsView: View {
                     }
                     if !allChats && chats.chats.count > 5 {
                         Button("Ещё диалоги") { allChats = true }.padding(12)
+                    }
+                    Divider()
+                }
+                if chats.hasChatQuery && messages.scopedChat == nil && discovery.status != .idle {
+                    Text("Глобальный поиск").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(12)
+                    if discovery.status == .failed || discovery.status == .timedOut {
+                        HStack {
+                            Text(discovery.status == .timedOut ? "Поиск не завершился вовремя." : "Не удалось выполнить глобальный поиск.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button("Повторить", action: discovery.retry).accessibilityIdentifier("telegram.remoteSearch.retry")
+                        }.padding(.horizontal, 12)
+                    } else { TelegramSearchStatusView(status: discovery.status, retry: discovery.retry).padding(.horizontal, 12) }
+                    let localIDs = Set(chats.chats.map(\.id))
+                    ForEach(discovery.results.filter { !localIDs.contains($0.id) }) { peer in
+                        let context = discovery.contextID
+                        Button { model.openDiscoveredPeer(id: peer.id, contextID: context) } label: {
+                            HStack(spacing: 10) {
+                                TelegramChatListAvatar(chat: peer.chat, store: model.avatars, isSelected: model.selectedChatID == peer.id)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(peer.chat.title).font(.callout.weight(.semibold)).lineLimit(2)
+                                    if let username = peer.username { Text("@" + username).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                                }
+                                Spacer(minLength: 0)
+                            }.frame(minHeight: 60).contentShape(Rectangle())
+                        }.buttonStyle(.plain).disabled(discovery.isResolving)
+                            .accessibilityIdentifier("telegram.globalSearch.remote.\(peer.id)").padding(.horizontal, 10)
+                    }
+                    if discovery.status == .ready && discovery.results.isEmpty {
+                        Text("Пользователи и чаты не найдены").font(.callout).foregroundStyle(.secondary).padding(12)
                     }
                     Divider()
                 }
@@ -78,5 +108,13 @@ struct TelegramGlobalSearchResultsView: View {
             }
         }.accessibilityIdentifier("telegram.globalSearch.results")
             .onChange(of: chats.chatQuery) { _, _ in allChats = false }
+            .onAppear { updateDiscovery() }
+            .onDisappear { chats.setRemoteDiscoveryEnabled(false) }
+            .onChange(of: messages.mediaFilter) { _, _ in updateDiscovery() }
+            .onChange(of: messages.scope) { _, _ in updateDiscovery() }
+            .onChange(of: messages.scopedChat) { _, _ in updateDiscovery() }
+    }
+    private func updateDiscovery() {
+        chats.setRemoteDiscoveryEnabled(messages.mediaFilter == .all && messages.scope == .all && messages.scopedChat == nil)
     }
 }

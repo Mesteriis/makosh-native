@@ -7,12 +7,18 @@ from a separate bare source cache. No credentials or account data are read.
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 import tarfile
 import tempfile
+# Recipe source is the authority. Python timestamp/size bytecode caches can
+# survive same-second constant-length edits; never read or write them here.
+# These options affect only this preparation process, not the workstation.
+sys.dont_write_bytecode = True
+sys.pycache_prefix = os.devnull
 from telegram_search_adaptation import adapt_search_source
 from telegram_retention_adaptation import POSTBOX, HISTORY, adapt_retention_source, journal_source
 from telegram_read_adaptation import READ_SYNC, adapt_read_source
@@ -24,6 +30,10 @@ from telegram_topic_adaptation import TOPIC_SOURCES, adapt_topic_source
 from telegram_peer_management_adaptation import STATE_MANAGER, adapt_peer_management_source
 from telegram_two_step_adaptation import TWO_STEP, ACCOUNT_AUTH, adapt_two_step_source, adapt_two_step_account_source, acknowledgement_source
 from telegram_proxy_adaptation import NETWORK, ACCOUNT, adapt_proxy_source, proxy_helper_source
+from telegram_remote_peer_adaptation import remote_peer_helper_source
+from telegram_avatar_adaptation import avatar_helper_source
+from telegram_group_membership_adaptation import group_membership_helper_source
+from telegram_secret_chat_adaptation import ADAPTED_SHA256 as SECRET_ADAPTED_SHA256, adapt_secret_chat_source, secret_chat_helper_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "Dependencies/TelegramEngine.lock.json").read_text())
@@ -36,7 +46,7 @@ DEST = ROOT / ".local/telegram-engine"
 SHA = LOCK["revision"]
 URL = LOCK["sourceURL"]
 TREE = LOCK["tree"]
-RECIPE = 21
+RECIPE = 25
 
 
 def run(*args):
@@ -119,6 +129,22 @@ def verify_prepared():
     record = json.loads(marker.read_text())
     if (record.get("source_sha"), record.get("source_tree"), record.get("source_url"), record.get("recipe")) != (SHA, TREE, URL, RECIPE):
         raise RuntimeError("Existing engine preparation uses another pin or recipe; preserve/rename it before preparing again")
+    remote_helper = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift"
+    if not remote_helper.is_file() or remote_helper.read_text() != remote_peer_helper_source():
+        raise RuntimeError("Prepared remote search helper differs from the current recipe")
+    avatar_helper = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshAvatarEditing.swift"
+    if not avatar_helper.is_file() or avatar_helper.read_text() != avatar_helper_source():
+        raise RuntimeError("Prepared avatar helper differs from the current recipe")
+    group_helper = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshGroupMembership.swift"
+    if not group_helper.is_file() or group_helper.read_text() != group_membership_helper_source():
+        raise RuntimeError("Prepared group helper differs from the current recipe")
+    secret_helper = DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshSecretChat.swift"
+    if not secret_helper.is_file() or secret_helper.read_text() != secret_chat_helper_source():
+        raise RuntimeError("Prepared secret helper differs from the current recipe")
+    for relative, expected in SECRET_ADAPTED_SHA256.items():
+        native = DEST / relative
+        if not native.is_file() or hashlib.sha256(native.read_bytes()).hexdigest() != expected:
+            raise RuntimeError("Prepared secret native source differs from the reviewed recipe")
     if prepared_files(DEST) != record["prepared_files"]:
         raise RuntimeError("Prepared engine file set or content changed; preserve it before preparing again")
     return True
@@ -189,6 +215,13 @@ def main():
         source = DEST / relative
         source.write_text(adapt_proxy_source(relative, source.read_text()))
     (DEST / "submodules/TelegramCore/Sources/Network/MakoshProxySettings.swift").write_text(proxy_helper_source())
+    (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift").write_text(remote_peer_helper_source())
+    (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshAvatarEditing.swift").write_text(avatar_helper_source())
+    (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshGroupMembership.swift").write_text(group_membership_helper_source())
+    for relative in SECRET_ADAPTED_SHA256:
+        native = DEST / relative
+        native.write_text(adapt_secret_chat_source(relative, native.read_text()))
+    (DEST / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshSecretChat.swift").write_text(secret_chat_helper_source())
     authorization = DEST / "submodules/TelegramCore/Sources/Authorization.swift"
     auth_text = authorization.read_text()
     start = auth_text.index('func storeFutureLoginToken(')

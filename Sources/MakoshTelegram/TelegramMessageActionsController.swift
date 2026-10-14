@@ -77,6 +77,7 @@ public struct TelegramMessageActionSource: Equatable, Sendable {
     }
     public func quoting(_ quote: TelegramReplyQuote?, maximumLength: Int = 1024) -> Self? {
         if let quote {
+            guard telegramSecretPeerID(chatID) == nil else { return nil }
             guard canReply, canCopy, let formatted = metadata.formattedText,
                   formatted.text.utf8.elementsEqual(text.utf8), quote.matches(source: formatted, maximumLength: maximumLength) else { return nil }
         }

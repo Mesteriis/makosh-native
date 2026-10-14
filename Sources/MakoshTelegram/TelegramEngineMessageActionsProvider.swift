@@ -25,6 +25,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
         !message.flags.contains(.Unsent) && !message.flags.contains(.Sending) && !message.flags.contains(.Failed)
     let ordinaryMedia = message.media.allSatisfy { $0 is TelegramMediaImage || $0 is TelegramMediaFile || $0 is TelegramMediaWebpage }
     let ordinary = supportedPeer && stable
+    let secretReply = peer is TelegramSecretChat && telegramSecretReplySource(message)
     let forwardable = !message.media.contains { $0 is TelegramMediaAction || $0 is TelegramMediaPaidContent }
     let protected = message.flags.contains(.CopyProtected) || channel?.flags.contains(.copyProtectionEnabled) == true || group?.flags.contains(.copyProtectionEnabled) == true
     let entities = message.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.flatMap(\.entities)
@@ -51,7 +52,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
     } ?? true)
     return TelegramMessageActionMetadata(peerID: message.id.peerId.toInt64(), namespace: message.id.namespace,
         messageID: message.id.id, fingerprint: fingerprint, text: message.text, authorID: message.author?.id.toInt64(),
-        canReply: ordinary && (channel?.hasPermission(.sendText) ?? true) && !(group?.hasBannedPermission(.banSendText) ?? false),
+        canReply: secretReply || (ordinary && (channel?.hasPermission(.sendText) ?? true) && !(group?.hasBannedPermission(.banSendText) ?? false)),
         canEdit: ordinary && ordinaryMedia && formatted?.isEditable == true && message.forwardInfo == nil && (outgoing || editAdmin),
         canForward: ordinary && forwardable && !protected,
         canDeleteLocally: ordinary && channel == nil,
@@ -62,7 +63,7 @@ public func telegramMessageActionMetadata(_ message: Message, now: Date = Date()
         editLimit: message.media.contains { $0 is TelegramMediaImage || $0 is TelegramMediaFile } ? 1024 : 4096,
         hasMedia: !message.media.isEmpty, captionAboveMedia: message.attributes.contains { $0 is InvertMediaMessageAttribute },
         threadID: message.threadId, formattedText: formatted,
-        canEditOutgoingChannel: outgoingChannel, canDeleteOutgoingChannel: outgoingChannel, canCopy: supportedPeer && !protected)
+        canEditOutgoingChannel: outgoingChannel, canDeleteOutgoingChannel: outgoingChannel, canCopy: (supportedPeer || peer is TelegramSecretChat) && !protected)
 }
 
 public func telegramMessageActionSource(_ message: Message, accountID: Int64, chatID: Int64, now: Date = Date()) -> TelegramMessageActionSource {

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "path": "calls",
+      "url": "https://github.com/overtake/tgcalls.git",
+      "revision": "5ddc3ccf2086127722a06e3d836698fcd717f11b",
+      "tree": "df0c4e900ebf3f5ecd42743da6e26a5323334682",
+      "sourceFingerprint": "031f8e067e3e907d6d068b5b5cb094bc175f36d6625452afb54215d9515b8671",
+      "preparedFingerprint": "aad0f74a4efd74faa3d877fd2b37a8807fbe12dcb3aa66d738e20ff35db25ebd",
+      "fileCount": 243,
+      "license": "LGPL-3.0"
+    },
+    {
+      "path": "owt",
+      "url": "https://github.com/desktop-app/tg_owt.git",
+      "revision": "be39b8c8d0db1f377118f813f0c4bd331d341d5e",
+      "tree": "9410c5c094e3d35d3abdd3dc7e5281c9a01651f1",
+      "sourceFingerprint": "9cc1d6f08fe42004a80e7ba9ed68d7b2708701c734a6d20681f3275f758e0c4f",
+      "preparedFingerprint": "25d70a25a4bade4575a4558b1c73402e7ec81f2a7ae677371facd50cd154b7ec",
+      "fileCount": 5688,
+      "license": "BSD-3-Clause and bundled permissive notices"
+    },
+    {
+      "path": "owt/src/third_party/abseil-cpp",
+      "url": "https://github.com/abseil/abseil-cpp.git",
+      "revision": "d7aaad83b488fd62bd51c81ecf16cd938532cc0a",
+      "tree": "b7787164b428ec7b9dc8168cfe8d5363654e2600",
+      "sourceFingerprint": "e647aa8bcb2ec2f846b230d68dd10ea5d80b93f7c80d1dbc892dbe4b75c60b50",
+      "preparedFingerprint": "e647aa8bcb2ec2f846b230d68dd10ea5d80b93f7c80d1dbc892dbe4b75c60b50",
+      "fileCount": 1517,
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "owt/src/third_party/crc32c/src",
+      "url": "https://github.com/google/crc32c.git",
+      "revision": "21fc8ef30415a635e7351ffa0e5d5367943d4a94",
+      "tree": "96bd5adb8040b61b0d5e887c229f714e2d407d2c",
+      "sourceFingerprint": "2d988e159281b3e27a06fee3cc106fc96a148c924b150f5e3b413e21e13e1215",
+      "preparedFingerprint": "2d988e159281b3e27a06fee3cc106fc96a148c924b150f5e3b413e21e13e1215",
+      "fileCount": 37,
+      "license": "BSD-3-Clause"
+    },
+    {
+      "path": "owt/src/third_party/libsrtp",
+      "url": "https://github.com/cisco/libsrtp.git",
+      "revision": "a566a9cfcd619e8327784aa7cff4a1276dc1e895",
+      "tree": "e578452a4c2b77f699c8d0e40ffc01f58b0b5aec",
+      "sourceFingerprint": "b44d9615ff94900b3aeeb557bf393546f3d49d7bdb96cecd4334c0767d5ee03c",
+      "preparedFingerprint": "b44d9615ff94900b3aeeb557bf393546f3d49d7bdb96cecd4334c0767d5ee03c",
+      "fileCount": 2382,
+      "license": "BSD-3-Clause"
+    },
+    {
+      "path": "owt/src/third_party/libyuv",
+      "url": "https://gitlab.com/chromiumsrc/libyuv.git",
+      "revision": "04821d1e7d60845525e8db55c7bcd41ef5be9406",
+      "tree": "46b29e13d76928a8423b346d085eda3eb215e4bb",
+      "sourceFingerprint": "8475857c238f5b901c539c51e106e0c7094ddab74c7ce7766380066731f06a0f",
+      "preparedFingerprint": "8475857c238f5b901c539c51e106e0c7094ddab74c7ce7766380066731f06a0f",
+      "fileCount": 187,
+      "license": "BSD-3-Clause"
+    }
+  ],
+  "adaptations": {
+    "owt/src/api/candidate.h": {
+      "input": "a0b0cc16788023af99146da8f93b243f1f977beb9af373bb4e737f689b1531b5",
+      "output": "2099f8aa5524c70ca29bf56542db9343fef6e408c7debd0012a7015f6a0c3808"
+    },
+    "calls/tgcalls/LogSinkImpl.h": {
+      "input": "bfb66a4d0b728bf9570fae6968b002462840f16dc16d2703ab1ca9d60c0e115f",
+      "output": "b663ff649c42b833fabbb76d6a53dcefa02c9b31c2afde6448f322b8c82e8384"
+    },
+    "calls/tgcalls/LogSinkImpl.cpp": {
+      "input": "709d0e5015a0f1692bd47d20302ab9d303c4f47f223ee80b8ca666b02eb1bfa3",
+      "output": "1218dd80c31986e2aefae5a0cd83cf213f26dd8c07194fb71066f45d4df2fcb6"
+    },
+    "calls/tgcalls/NetworkManager.cpp": {
+      "input": "bd20d1a897bab083a6a534ae7251ce9424e238e50f17a421cdc58498a1b06f60",
+      "output": "8bf9c95f3fc8826c4f93a687ebd2f4f5ce39cc94aa4a64b7f9759e122cda5216"
+    },
+    "calls/tgcalls/InstanceImpl.cpp": {
+      "input": "ce32b22907ce2901b574aa9aee2c3909075f62ec2b0491b02e82f42174dcd02b",
+      "output": "6b4c0a1864b36a6d2744c6f75fb85dcdb327b6eca48a2834c2b9b6d37a5af82d"
+    },
+    "calls/tgcalls/v2/ReflectorPort.cpp": {
+      "input": "2cf7decd09254d69d595041f0f96075cac0418ab4e9e84ee2a3f1367396a81aa",
+      "output": "40c0faf07d2e64eac86b0938be8adf94d7129f2edc36cf2cb4a59624b3e44986"
+    },
+    "owt/src/p2p/base/basic_packet_socket_factory.cc": {
+      "input": "4d5c410a9d40520a76a5e650f97d1ff1e562e36220afc015ff9bd1f51f071dc2",
+      "output": "4fd1ac70d65b3fe94fed21113e46dfecdf70fe93c77735fbe2c9b0715ceee417"
+    }
+  }
+}

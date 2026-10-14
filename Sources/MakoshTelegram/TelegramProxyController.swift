@@ -57,6 +57,16 @@ public struct TelegramProxyConfirmation: Identifiable {
             if phase != .uncertain { source.set(try fresh.configuration.native()) }
         } catch { becomeUncertain() }
     }
+    func currentCallProxy() throws -> TelegramProxyServer? {
+        guard phase == .idle, opening.isEmpty, let record else { throw TelegramProxyError.unavailable }
+        do {
+            let fresh = try vault.read()
+            guard fresh == record, fresh.configuration.isValid else { throw TelegramProxyError.changed }
+            guard fresh.configuration.enabled else { return nil }
+            guard let server = fresh.configuration.servers.first(where: { $0.id == fresh.configuration.selected }) else { throw TelegramProxyError.invalid }
+            return server
+        } catch { becomeUncertain(); throw TelegramProxyError.unavailable }
+    }
     public func close() { contextID = UUID() }
     public func draft(for id: UUID) -> TelegramProxyDraft? { record?.configuration.servers.first { $0.id == id }?.draft }
     public func prepare(_ change: TelegramProxyChange, contextID: UUID) -> TelegramProxyConfirmation? {

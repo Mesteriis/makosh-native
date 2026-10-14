@@ -6,6 +6,15 @@ import SwiftSignalKit
 func telegramVoiceEligibilitySnapshot(transaction: Transaction, peerID: PeerId, now: Int32,
     kind: TelegramRecordingKind = .voice) -> TelegramVoiceEligibility {
     let peer = transaction.getPeer(peerID), cache = transaction.getPeerCachedData(peerId: peerID)
+    if let secret = peer as? TelegramSecretChat {
+        guard telegramSecretPeerID(peerID.toInt64()) != nil, let state = transaction.getPeerChatState(peerID) as? SecretChatState,
+              let layer = telegramSecretLayer(state), layer >= (kind == .roundVideo ? 73 : 46),
+              makoshSecretSendKeyAvailable(transaction: transaction, peer: secret, state: state, count: 1) else { return .restricted }
+        guard let user = transaction.getPeer(secret.regularPeerId) as? TelegramUser, !user.isDeleted, user.botInfo == nil,
+              let data = transaction.getPeerCachedData(peerId: secret.regularPeerId) as? CachedUserData else { return .unavailable }
+        guard !data.isBlocked else { return .restricted }
+        return data.voiceMessagesAvailable ? .allowed : .voicePrivacy
+    }
     var pending = false
     if let channel = peer as? TelegramChannel, channel.isRestrictedBySlowmode {
         transaction.withAllMessages(peerId: peerID) { message in

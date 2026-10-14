@@ -1482,3 +1482,108 @@ Group, selector and modal geometry still differ from upstream; pixel parity is n
 claimed. Whole-server snapshots/fresh conditional admission replace optimistic
 cached updates and automatic retries. Unknown wire bits/fees and local permanent
 archives are preserved. Actual acceptance evidence belongs to development-status.
+
+
+## Telegram block13 task1: remote discovery
+
+Pinned SearchController.swift:1055–1110 admits ordinary root queries through
+contacts.searchRemotePeers, excludes #/$ and active global tags, deduplicates
+local/my/remote peers and retains local matches first. Makosh adds that grouping
+inside its existing common search form. Its own typed contacts.search boundary
+shows network errors explicitly instead of the reference engine's empty fallback.
+Activation revalidates account/context and current native identity before opening.
+Ordinary usernames, error/retry, successful zero, filters and opening are checked
+in native synthetic QA; no real account/remote-server acceptance is inferred.
+Advertising, the full reference row renderer and historical geometry/animation
+gaps remain separate. No outer GPLv2 UI code or assets are copied.
+
+## Telegram block13 task2: static avatars and public photo
+
+Verified TelegramSwift579cebbf: EditAccountInfoController433 and
+GroupInfoEntries522 use native selection, square/circular crop, upload progress
+and cancellation; SelectivePrivacySettingsController579/749/1082 places the
+public fallback photo within profile-photo privacy and confirms its removal.
+Makosh follows those workflows inside existing common settings/profile editors.
+Its existing crop/rotation/flip canvas adds a circular guide; an immutable decoded
+selection produces a bounded640px square JPEG with metadata removed. Explicit pre-commit upload cancellation preserves the draft. Separate
+confirmation and fresh full native photo/rights checks precede writes; explicit
+ACK and reread precede success. Near-square reference canvas rounding is snapped
+to an integer square so rotation does not produce a401x400 rejected avatar.
+
+Photo history viewing/export is unchanged. Native fixture acceptance and actual
+limits are recorded in development-status. Main/fallback share one account-bound
+editor; stale/rebound/uncertain contexts require fresh admission. Current-photo
+header thumbnails, animated/video avatars, decorations and the complete upstream
+editor styling remain block14 reference polish. No full pixel parity is claimed;
+no outer GPLv2 UI or assets are copied. No S3 or PostgreSQL file-byte path is added.
+
+## Telegram block13 task3: invitations, requests and history
+
+На закреплённом TelegramSwift SHA сверены отдельные пункты
+`GroupInfoEntries.swift:2119–2124,2253–2269`, права `PeerInfoUtils.swift`,
+активные/отозванные ссылки и владельцы `InviteLinksController.swift`,
+заявки `RequestJoinMemberListController.swift:270–298,336`, события и поиск
+`ChannelEventLogController.swift:415`. Они перенесены отдельными страницами
+существующей карточки в общей оболочке; внешний GPLv2-only UI/assets не копируются.
+Это завершает функциональные пункты приглашений/заявок/журнала, которые в описании
+раннего этапа карточки выше ещё перечислялись как будущие.
+
+Создание ссылки сохраняет предел названия32 и положительный Int32 usage limit;
+одобрение исключает лимит. Создатель выбирает владельца ссылок, остальные
+управляют своими. Публичный маркер заявок остаётся readonly. Ссылки никогда
+не отправляются автоматически. Запросы и события допускают поиск; страницы
+используют собственные native cursors, включая короткую непустую страницу.
+Явные подтверждения точных целей, свежие права/typed ACK/post-read, полный
+bounded scan отсутствия заявки и барьер неизвестного результата — адаптации
+Макоша вместо оптимистических NoError-комплитов.
+
+Собственные Form/sheets, кнопка дозагрузки и системные подтверждения отличаются
+от reference InputData/table навигации. Подробные media/декоративные карточки
+admin events, их thumbnails, полная фильтрация по типам/администраторам и точная
+визуальная parity остаются в блоке14. Тексты прав, выбранные участники, ссылки и
+наблюдённые edit/delete message bodies сохраняются; CopyProtected запрещает
+выделение содержимого события. Native UI исходы/обнаруженный scroll crash и
+его повторная проверка фиксируются в development-status.md без заявления
+реальной записи в личный аккаунт.
+
+
+## Блок13: секретные чаты
+
+Проверены текущие `UserInfoEntries.swift:601` и `ChatController.swift:8678`:
+создание из карточки обычного пользователя с именованным подтверждением,
+Premium/ошибки и переход в отдельный секретный чат; текущий TTL, стандартные
+значения и ввод другого таймера. Макош использует эти входы в общей оболочке
+сервисов, существующее сравнение ключа и состояния ожидания/активного/завершённого
+чата. Реализация собственная SwiftUI, внешний GPLv2 UI не скопирован.
+
+Отличия: создание размещено внутри страницы карточки, таймер — в отдельном
+sheet под заголовком диалога, подтверждение показывает прежнее/новое значение;
+времена показаны в секундах. Квитанция очереди явно отделена от доставки.
+Постоянный архив и переключатель S3 — требования Макоша. Неподдерживаемые
+слоем entities, cloud quotes/обложки/spoiler media не теряются молча. Отдельная
+карточка самого секретного чата и полное визуальное совпадение с reference
+остаются в блоке14; создание, обмен состояниями, контент и TTL относятся к13.
+
+
+## Блок13: личные звонки
+
+Сверены PhoneCallWindowController.swift:19,601–602,747–812,909–925,1212–1255,
+CallNavigationHeaderView.swift, ApplicationContext.swift:256–285 и PCallSession.swift
+выбранной ревизии TelegramSwift. CallHeader у референса принадлежит правому
+контроллеру; полоса Макоша также размещена в колонке содержимого, над её экраном.
+Воспроизведены отдельное немодальное окно358×477, имя/статус, центральное круглое
+представление без видео, удалённое видео с локальным превью, круглые кнопки
+микрофона/камеры/завершения и явные принять/отклонить. ChatTitleBarView.swift:362–374,
+673–686 подтверждает вход из заголовка личного диалога. Компактная полоса общего
+окна сохраняет доступ к звонку при переходе между сервисами и закрытии окна звонка.
+SwiftUI владеет состоянием; AppDelegate-owned AppKit edge только управляет окном.
+Внешние GPLv2-only UI/assets/звуки/код не копируются.
+
+Оставшиеся визуальные отличия записаны явно: собственные SF Symbols и спокойный
+фон вместо фотографического фона/анимации волны; отпечаток native32байта показан
+hex вместо набора emoji; нет выбора отдельных аудиоустройств, перетаскивания
+превью, анимации/автоскрытия контролов и встроенного Recall в завершённом окне.
+Повторный звонок доступен из заголовка диалога. Рингтоны и точная визуальная
+доводка относятся к отдельному блоку14; видеогруппы/демонстрация экрана вне
+утверждённого объёма личных звонков13. Отдельная реальная проверка устройств и
+собеседника не подменяется синтетическим окном.

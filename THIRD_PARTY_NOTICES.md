@@ -38,6 +38,36 @@ OpenSSLEncryptionProvider.
 
 Build adaptations in the generated copy:
 
+- Recipe25 adds own MIT `MakoshSecretChat.swift`: a checked256-byte native
+  entropy boundary, admission through the actual negotiated entity encoders,
+  shared native-key availability and atomic local TTL service enqueue. A narrow
+  GPL-3.0-or-later adaptation checks native creation allocation/entropy/MTExp
+  failure and exposes the existing73/101/144 entity converters internally. The
+  cryptographic algorithms, protocol and exact source revision are unchanged.
+  Both adapted upstream files have fixed reviewed SHA256s; canonical helper and
+  complete prepared-file fingerprints also gate reuse. No outer UI is copied.
+
+- Recipe24 adds independently authored MIT `MakoshGroupMembership.swift` for
+  bounded typed peer directories, full group/member observations and validation
+  of admin-log message packets. The existing GPL-3.0-or-later retention adapter
+  exposes a transaction-only journal observation method: messages are retained
+  without insertion into live history. Original attributes/media/protection and
+  removal observations remain native. Canonical source and complete file hashes
+  gate reuse; source revision, cryptography and file-storage policy are unchanged.
+
+- Recipe23 adds independently authored MIT `MakoshAvatarEditing.swift`, a narrow
+  native multipart-upload and typed full-photo/ACK conversion bridge. It uses the
+  pinned engine's existing transport, resource and peer/photo conversion. Canonical
+  helper plus complete file-set/hash validation gate reuse. No cryptographic,
+  source-revision, GPLv2-only outer UI or credential change; combined app staysGPLv3.
+
+- Recipe22 adds independently authored MIT `MakoshRemotePeerSearch.swift` to
+  TelegramCore. It validates bounded search result identities and performs native
+  AccumulatedPeers/updatePeers cache accumulation for Makosh's error-bearing RPC
+  boundary. Complete generated hashes plus canonical-helper comparison gate reuse.
+  No existing native search, cryptography, source pin or outer UI code changes.
+  The combined app and linked TelegramCore remain GPLv3.
+
 - Recipe21 adds a bounded in-memory proxy-settings signal to network initialization
   and native account updates. A new network takes its current initial value;
   external updates bypass AccountManager's stored proxy preferences. Explicit
@@ -327,3 +357,25 @@ binary, provide the complete corresponding source for its exact engine/build,
 all selected dependency copyright notices and sources as required, and audited
 packaging of the actual libpq/OpenSSL versions. A local ignored checkout or a
 generic license URL alone does not fulfill binary-source delivery obligations.
+
+## Native one-to-one calls
+
+The native call module is built from independently pinned tgcalls
+`5ddc3ccf2086127722a06e3d836698fcd717f11b` (LGPLv3) and tg_owt
+`be39b8c8d0db1f377118f813f0c4bd331d341d5e` (WebRTC BSD3 and retained
+permissive in-tree notices). Its Abseil, crc32c, libsrtp and libyuv Gitlinks,
+complete source fingerprints and adaptation fingerprints are recorded in
+`Dependencies/TelegramVoip.lock.json`. Notices are retained as
+`LICENSES/TelegramVoIP-*`. The existing pinned Opus1.5.1, Mozjpeg4.1.4 and
+VPX1.17.0 sources provide its private codec closure; their notices above apply.
+The combined application remains GPLv3; Makosh's C ABI/platform/capture code is MIT.
+
+`python3 scripts/prepare-telegram-voip.py` retrieves the complete reviewed source
+closure from its independent public origins and builds a replaceable native dylib.
+`Native/TelegramVoIP` and the recipe are its corresponding build/adaptation source.
+No reference checkout, outer GPLv2-only UI, embedded API credentials or upstream
+installer is used. Native adaptations disable disk and memory logging, correct a
+Clang lifetime annotation, enforce relay/proxy candidate policy, install Makosh's
+own SOCKS5 CONNECT adapter and repair reflector socket teardown. They do not
+replace native call cryptography, encrypted handshake or media packet formats. Full call VP8/Opus codec
+symbols stay hidden inside this dylib; the existing512px/8MB emoji decoder is unchanged.

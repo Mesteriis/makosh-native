@@ -106,7 +106,7 @@ import TelegramCore
         let source = root.appendingPathComponent("cache"), bytes = Data("synthetic per-chat retention".utf8)
         try bytes.write(to: source)
         let attachment = MessageArchiveAttachment(id: "policy-file", kind: "file", name: "synthetic.txt", size: Int64(bytes.count))
-        for (namespace, count) in [(Namespaces.Peer.CloudUser, 1), (Namespaces.Peer.CloudGroup, 0), (Namespaces.Peer.CloudChannel, 0)] {
+        for (namespace, count) in [(Namespaces.Peer.CloudUser, 1), (Namespaces.Peer.SecretChat, 1), (Namespaces.Peer.CloudGroup, 0), (Namespaces.Peer.CloudChannel, 0)] {
             let peerID = PeerId(namespace: namespace, id: PeerId.Id._internalFromInt64Value(42)).toInt64()
             let identity = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: String(peerID), messageID: "0:1")
             controller.accept(file: source, byteCount: Int64(bytes.count), identity: identity, attachment: attachment)
@@ -114,6 +114,16 @@ import TelegramCore
             XCTAssertFalse(controller.isBusy)
             let records = try await repository.files(identity: identity, attachmentID: attachment.id)
             XCTAssertEqual(records.count, count, "Default must follow the native peer type, not its display name")
+            if namespace == Namespaces.Peer.SecretChat {
+                try await repository.setConversationFileSavingEnabled(identity: identity, enabled: false)
+                let next = MessageArchiveIdentity(service: "telegram", accountID: "1", conversationID: String(peerID), messageID: "2:2")
+                controller.accept(file: source, byteCount: Int64(bytes.count), identity: next, attachment: attachment)
+                for _ in 0..<1000 where controller.isBusy { try await Task.sleep(for: .milliseconds(5)) }
+                let denied = try await repository.files(identity: next, attachmentID: attachment.id)
+                XCTAssertTrue(denied.isEmpty, "Explicit secret-chat OFF prohibits any new copy")
+                let retained = try await repository.files(identity: identity, attachmentID: attachment.id)
+                XCTAssertEqual(retained.count, 1, "Disabling new copies must not erase the earlier archive")
+            }
         }
     }
 

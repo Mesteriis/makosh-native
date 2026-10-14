@@ -1,6 +1,174 @@
-# Development status — 2026-10-13
+# Development status — 2026-10-14
 
-## Current stage: extended Telegram privacy (block 12)
+## Product scope decision — 2026-10-13
+
+The user explicitly excludes a local Makosh passcode and automatic app locking.
+They are not migration backlog items; the earlier passcode proposal is withdrawn.
+
+## Current stage: Telegram communication capabilities (block 13)
+
+Approved scope: remote user/chat discovery; editable avatars and public fallback
+photo; invitations/membership requests/admin history; complete native secret-chat
+workflows; real native one-to-one audio/video calls. Block14 remains separate.
+The spec and sequential inline plan are in docs/superpowers/specs and plans.
+No passcode/autolock, personal-account QA or archive/S3-policy relaxation.
+
+Task1 remote discovery source and UI are implemented. Account/context-bound
+cancellable contacts.search distinguishes failure from empty success, deduplicates
+local/remote native identities and re-reads the cached peer before activation.
+Root ordinary queries/usernames admit discovery; archive/media/scope filters and
+#/$ queries exclude it. No contact import, join or send occurs on opening.
+Recipe22 keeps the exact engine pin/cryptography and adds one own MIT native
+cache helper. Canonical-helper validation refuses a changed/missing generated
+helper even with a consistent replacement marker: ordinary Python RED3 cases/2
+failures, then3 pass. Old recipe21 is preserved privately. New controller/native/
+Postbox/navigation tests include stale accounts, malformed/min peers, partial
+cache refusal and origin draft preservation. Initial interface compilation REDs
+and a repaired native fixture compilation error are recorded separately. The
+first Postbox run has signal5 from a MainActor-inferred test transaction; a
+nonisolated test helper repairs it and targeted2 pass. Combined focused38 pass.
+Both signed builds exit0; final separate QA bundle has equal unsigned payload.
+Actual native synthetic QA observes the common sidebar, username result/open,
+error/retry, successful zero, and media-filter suppression/restoration. The final
+error uses a distinct retry control and accurate text. Owned QA is stopped before
+full tests. Task1 commits b8b62ac/c26cb46; full repaired suite exits0:1968 XCTest
+(1889 Telegram +79 core),one microphone-precondition skip,zero failures;92 Python
+across20 suites pass. Its first full attempt fails on an old warm-cache fixture
+missing the newly mandatory helper; the fixture now includes the canonical file.
+Tasks2–5 remain in progress.
+No live search/server/account acceptance is claimed.
+
+Task2 avatar source/native UI is implemented, with current own/group/channel
+photo and own fallback workflows, immutable640px JPEG preparation, fresh full
+photo/rights admission, typed write ACKs and post-write reread. Canonical recipe23
+adds own MIT upload/photo bridges; prior preparation retained. Native/controller/
+profile/cover focused52 pass, Python preparation22 pass, signed build exits0.
+Min-channel ACK ordinary RED1/1 repairs via nonzero personal-hash admission.
+Initial native QA observes native picker cancellation and circular crop/rotate/
+flip, but Done exposes a reference fitted-canvas rounding error (401x400).
+New ordinary RED1/1 reproduces it; integer-square snapping repairs avatar10 tests.
+Final rebuilt QA (strict signature/equal unsigned executable) verifies native
+picker cancellation, circular crop/rotation/flip, cancel confirmation preserving
+visible draft, own save/reopen, delete cancel/discard and confirmed removal,
+independent fallback delete/upload from photo privacy, and group/channel edit
+entry plus photo upload (group removal also checked). Transient CUA AX failures
+at sheet transitions are followed by fresh full-state/rebinding observations;
+actual outcomes are confirmed, not inferred from clicks. Screenshots inspected,
+owned QA stopped and isolated data retained. A final cancellation audit adds an explicit pre-commit Cancel Upload action: an
+ordinary RED1/3 verifies preserved draft, idle phase and revoked late commit.
+Commit-phase cancellation is refused. Final focused55 pass (18 new cases).
+The delayed synthetic provider verifies actual0.5 progress/cancel, idle retained
+draft, no late save, and new explicit confirmation. Final cancellation QA is
+observed. Task2 full suite exits0:1986 XCTest (1907 Telegram +79 core),
+one microphone-precondition skip,zero failures;95 Python across21 suites pass.
+Commit7bf9c83 completes this slice; Tasks3–5 continue in the same approved block. Earlier UI compilation errors (computed synthetic identity assignment,
+compound @State) are recorded separately; they are repaired, not passing builds.
+
+Task3 group administration is implemented in source: fresh native rights/member
+basis, single-user invitations, owner-scoped active/revoked links with creation/
+revocation, pending join decisions and admin history in the existing profile.
+Typed semantic ACKs and post-write rereads gate success. Complete bounded native
+request scans distinguish absence from failed/partial reads; no automatic write
+retry. Closing/rebinding revokes authority and retains unknown-write barriers.
+Recipe24 keeps the exact engine/crypto pin and adds bounded own peer/admin-log
+helpers plus a journal-only native observation entry point. Real encrypted
+Postbox tests retain edited/deleted message versions without history resurrection;
+foreign packets fail before append and unavailable bodies never invent an empty
+version. Permanent PostgreSQL/S3 and per-chat storage policies remain intact.
+Focused31 then36 pass during integration; the final broader focused72 pass
+(group42 plus existing discovery/management coverage),zero failures. Canonical
+preparation4 pass; final signed build exits0 with equal unsigned QA payload. Ordinary REDs also reproduce short-page pagination,
+created-link destination and missing admin subject/rights/link details. Compiler
+errors in typed namespace/synthetic initializer/error annotation are classified
+and repaired separately.
+
+Initial signed native synthetic QA confirms common sidebar, group entry points,
+create limit0 refusal/2 success, cancel preserving draft, revoke cancel/confirmed
+revoked-list placement, owner switching and exact individual approve/decline.
+Native AXScrollToBottom then exposes two SwiftUI LazyVStack SIGTRAPs; the tool
+automatically relaunches the owned QA bundle without fixture arguments. Those
+instances are stopped immediately; no private content/account action is used.
+PostgreSQL is healthy and its isolated QA state reads successfully. The private
+launcher now performs one explicit scoped launch. An opt-in DEBUG QA-bundle
+metadata gate rejects missing/ambiguous synthetic/config arguments before any
+workspace/account construction; normal product/release behavior is unchanged.
+This list now follows the existing eager peer-list pattern. Final native QA
+verifies opt-in unscoped-launch refusal before workspace construction; repeated
+accessible Scroll Down reaches row50 without a crash, loads rows51–55 and
+processes exact row51. It also confirms member search/invite/error, channel
+admin text versions/search, and creation from another owner revoked list changing
+to own active list with the new link. Screenshots are inspected. Final process
+remains the single scoped synthetic/configured instance; owned QA is stopped
+and isolated data retained. Full Task3 suite exits0:2028 XCTest
+(1949 Telegram +79 core),one microphone-precondition skip,zero failures;99 Python
+tests across22 suites pass. Commita0b4e03 completes this slice; secret chats and
+native calls continue in the same approved block.
+
+Task4 native secret creation/session/TTL, negotiated formatting, same-session
+replies and prepared media are implemented. Recipe25 checks entropy/MTExp failure,
+reuses actual native entity encoders and supplies an atomic local TTL queue bridge;
+exact engine revision/protocol/encryption are unchanged. Canonical Python5 and
+warm fixtures pass. Valid signed negative native IDs are supported. Focused60
+XCTest pass (46 Telegram +14 core), including real native album queue, permanent
+secret removal journal and PostgreSQL/S3 personal defaultON/explicitOFF retention.
+An explicit fresh timer read also releases an obsolete queued receipt after a
+later participant change: ordinary RED1/1, then green. Native/synthetic compiler
+fixture failures are recorded separately from assertion REDs. Initial signed
+build exits0/equal QA payload. Actual isolated UI confirms creation/name/transition
+to handshake, disabled send/media for handshake/terminated, active bold input,
+TTL choices/custom0 refusal, cancel retaining selection and exact confirmed queued
+status. Final signed build exits0/equal QA payload; native comparison image/hash and
+reply/cancel/file-picker/preparation/cancel are observed. The fixture has no S3
+configuration and its queue action remains disabled; this is preparation proof.
+A native-menu refresh defect is reproduced by ordinary RED1case2failures and
+repaired: unchanged reading refresh preserves the action; changed permissions
+revoke it. Reading/model10 then pass, and actual reply/send-enabled/cancel-draft
+UI succeeds. Whole-suite gate and task commit follow below; no real
+Telegram handshake/delivery/call, personal account or physical capture is used.
+
+Task4 completion gate: first full run fails solely on an obsolete test that
+still treats all SecretChat peers as unsupported. That fixture now tests a
+native-representable oversized SecretID plus Empty namespace; the valid negative
+native album and invalid identity focused2 pass. Repaired whole suite exits0:
+2070 XCTest (1991 Telegram +79 core),one microphone-precondition skip,zero
+failures;104 Python tests across23 suites pass. Commits82717cd/caba6a8 complete
+this slice. Task5 native calls continue; no account/server acceptance is inferred.
+
+Native-call research only: exact reference tgcalls/tg_owt source pins are fetched
+into independent bare caches. Native wrapper needs a reviewed WebRTC dependency
+closure/build; no signaling-only/fake-connected completion is claimed.
+
+Task5 native call source and local acceptance are complete; whole-branch review
+and publication gates are tracked separately.
+72 focused XCTest pass, including real encrypted Postbox boundary, native/session
+admission, camera refusal, bounded signaling/video, stale contexts, shared call
+reservation, async video ACK, current proxy and workspace peer selection. New
+ordinary REDs cover seven UI/proxy assertions, recording reservation, target
+selection and the first frame arriving before camera ACK. Retry interface RED
+then current-context retry green. Native source closure/licensing is pinned
+independently; preparation5 Python pass. Actual both-version native pairs pass
+nonzero PCM/decoded VP8, wrong key refusal, mute/video controls, logs disabled
+and final release. Rotation0/90/180/270 verifies exact pixel placement and portrait
+output. Strict reflector tags and seven noexcept C ABI contracts pass. Native
+allocator P2P/proxy and failed-audio-factory tests pass. No physical devices,
+personal accounts, actual Telegram calls or remote delivery are used. Signed
+build and actual isolated native UI pass. Source comparison confirms the call
+header belongs to the right content controller. Initial outer inset/stack attempts
+fail native UI (overlap/hidden headings); the final detail-column composition with
+an expanding content group preserves every heading and the top call bar in both
+Telegram and Contacts. Actual QA covers audio/video outgoing and incoming,
+audio-only answer to video, decline, microphone, camera/cleared previews,
+fingerprint, live duration, close/hide/reopen, service switching and End/release.
+72 focused tests also cover closing the owning workspace and cancellation before
+any queued permission request. Physical device/live account acceptance is unrun.
+Task5 full gate at fd413ec exits0:2132 XCTest (2053 Telegram +79 core),one
+physical-microphone-precondition skip,zero failures;109 Python tests/24 suites,
+all pass. Native preparation additionally runs real allocator/audio/admission
+boundaries and both encrypted-media protocol fixtures. Whole-branch independent
+review and exact-head hosted checks are required before merge; they do not replace
+separately authorized physical-device/live-account acceptance.
+
+## Completed stage: extended Telegram privacy (block 12)
 
 The authorized continuation extends the existing common native privacy flow in
 source-confirmed TelegramSwift order: voice/video-message rules, gift autosave,
@@ -7064,3 +7232,38 @@ These are results for that exact preceding head, not this modal preview patch.
 Pending-caption/file restart reconciliation, albums/premium/inline media, other
 Telegram flows and live-account acceptance, archive/key backup, later channels
 and standalone packaging remain open. The full sequential goal remains active.
+
+## Block13 final integration review
+
+All five slices are implemented. One fresh whole-branch review found two
+Important TCP transport defects: SOCKS5 bypass and reflector teardown use after
+free/null dereference. Root reproduces direct destination with an assertion
+failure and failed-create/connect teardown with SIGSEGV in native fixtures.
+The single fix pass adds an own bounded SOCKS5 CONNECT adapter at both native
+TCP factories and a canonical, exact-hash guarded destructor repair. Canonical native rebuild and final gates pass. The final scripts/test.sh run
+exits0:2132 XCTest (2053 Telegram +79 core),one physical-microphone-precondition
+skip,zero failures;109 Python tests across24 suites. All14 native socket modes,
+actual loopback SOCKS5 CONNECT/media and both encrypted VP8/Opus protocol pairs
+pass. Failed creation/connect teardown no longer crashes. Exactly7 C ABI exports
+remain; prepared source/license pins are unchanged except reviewed adaptations.
+
+The final scripts/build-app.sh exits0. Strict deep signature passes. Canonical
+and bundled native dylibs have the same UUID and all17 code/data sections;
+unsigned bytes match after normalizing only the signing-related __LINKEDIT VM
+reservation. Raw signed/unsigned file hashes are not claimed equal. The isolated
+QA executable equals the unsigned built executable. Actual final native UI
+observes common Telegram workspace, outgoing synthetic video, live duration,
+mute, End and return to enabled Call menu. Earlier five-flow QA remains recorded
+above. Owned QA is stopped and its isolated data retained.
+
+One fresh whole-branch review, one TDD fix pass, no re-review, no deferred Minor.
+[All executor rulings](superpowers/plans/2026-10-13-telegram-block13-decisions.md)
+record decisions and their costs in order. Hosted exact-head CI and merge are
+required integration gates. The initial exact head5c2c243 passes PR CI38490398629
+(2132 XCTest,109 Python,native socket/loopback/media fixtures). Its duplicate
+push CI38490390035 takes18m25s for the cold build and is cancelled at the25-minute
+job limit during tests. That cancelled run is not a PASS. The job budget is now
+40 minutes; this operational-only change leaves application sources unchanged
+and requires fresh exact-head hosted checks before merge.
+No real-account or physical-device acceptance,
+notarized binary release, or block14 completion is inferred.

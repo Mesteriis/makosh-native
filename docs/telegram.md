@@ -3174,7 +3174,8 @@ recipe21 trees are preserved under ignored backups; generated source is never
 edited by hand. MtProtoKit is the already pinned/reviewed transitive dependency,
 now declared directly for native proxy validation. See THIRD_PARTY_NOTICES.md.
 
-Proxy links/import/export/QR, latency probes and proxying calls are not implemented.
+Proxy links/import/export/QR and latency probes remain outside this block.
+One-to-one calls now use the separately reviewed SOCKS5 transport described below.
 DEBUG data-settings providers use synthetic in-memory cache and a separate fake
 proxy store in that QA bundle's preferences; they never open Keychain, accounts
 or transport. Native tests exercise actual Postbox/MediaBox cloud removal and a
@@ -3228,7 +3229,194 @@ there is no purchase/upsell flow. DEBUG fixtures are in-memory only, with an
 explicit --telegram-privacy-basic-fixture for the non-Premium UI path.
 
 No PostgreSQL/S3 schema, file policy, message retention, engine pin/preparation or
-dependency change. Account/message auto-removal timers, local passcode, public
-fallback photo, remote peer search and the preceding UI parity gaps remain open.
+dependency change. Account/message auto-removal timers, public fallback photo,
+remote peer search and the preceding UI parity gaps remain open.
+Local Makosh passcode and automatic app locking are explicitly excluded by the
+user (2026-10-13), rather than deferred migration work.
 Native fixture/UI checks do not establish live account privacy mutations, Stars
 charging or real server normalization; account acceptance is separately scoped.
+
+
+## Block13 task1: remote peer discovery (2026-10-13)
+
+The existing common global-search view now keeps local dialogue matches first,
+then a separate remote-user/chat group. A bounded single text/username query
+admits typed contacts.search (limit20),300ms debounce and30s deadline. Archive,
+message-only media/scope filters, empty/control-bearing/oversized and #/$ queries
+do not initiate discovery. The native boundary preserves errors rather than
+converting network failure into an empty list; retry is explicit. Duplicate native
+IDs appear once; user/group namespaces stay distinct.
+
+An own MIT cache helper compiles inside independently pinned recipe22 TelegramCore.
+It validates bounded native results and required identities/hashes before native
+AccumulatedPeers/updatePeers. Invalid/unresolved/min results fail without partial
+cache publication. Canonical source and complete prepared-file hashes gate reuse.
+Opening freezes account/result context and resolves the current cached native peer
+again before using existing conversation/history/draft paths. It never sends,
+joins, imports communication contacts or changes archive/S3 policy. Reconnect,
+query replacement and disconnect revoke old result authority. The explicit DEBUG
+catalog contains synthetic remote Alice/Bob and a deterministic error query;
+fixtures never open a real account or network.
+
+Avatar editing, membership workflows, secret-chat expansion and native calls are
+subsequent tasks in this same approved block. The existing privacy exception
+picker's directory remains local at this slice. Real account/server acceptance is
+separate from synthetic/native-fixture validation. See development-status.md.
+
+## Block13 task2: static avatar editing (2026-10-13)
+
+Own profile-photo editing opens from Telegram settings. Permitted group/channel
+photo editing opens from the existing profile information editor; public fallback
+photo editing opens inside profile-photo privacy for the same account. Native
+picker cancellation leaves no draft; immutable selection/crop/rotation/flip yields
+up to640px square metadata-free JPEG, with explicit save/remove confirmation.
+Only current own identity or fresh group/channel change-info rights admit writes.
+Photo basis/account/peer/kind remain frozen; changed basis requires new consent.
+
+Recipe23's own MIT helper exposes existing native multipart upload and bounded
+full-response photo conversion. Typed users.getFullUser/messages.getFullChat/
+channels.getFullChannel supply fresh basis; own photos.uploadProfilePhoto/
+updateProfilePhoto and messages/channels.editPhoto use automaticFloodWait:false.
+Multipart progress and empty completion are not ACKs. Partial/min/duplicate/wrong
+peer replies cannot authorize success. An exact returned photo identity plus a
+fresh full read confirms upload/removal; missing ACK or post-write read failure
+remains uncertain. Cancel before commit releases preparation; closing/rebinding
+once committed retains a target uncertainty barrier until explicit refresh.
+
+Photo history/export, permanent message retention and per-chat S3 policy are
+unchanged; avatar bytes remain bounded transient memory/staging and native upload,
+never PostgreSQL byte storage or a new S3 copy. Explicit DEBUG
+--telegram-avatar-synthetic-preview uses account101 and native group/channel
+namespaces in the common workspace with --database-config isolated fixtures.
+It simulates server writes without opening accounts or Telegram network. The
+usual preview identity stays-1. Real server/account acceptance is separately scoped.
+
+## Block13 task3: group invitations and administration (2026-10-13)
+
+The existing profile opens Add member, Invite links, Join requests and Recent
+actions according to fresh native permissions. Discovery has its own account/
+context; selecting a result imports no contact and sends no invitation until
+explicit confirmation. A fresh full user, group rights and negative membership
+check precede a single native invite with fwdLimit0. Exact missing-invitee privacy
+refusal stays explicit; typed InvitedUsers plus fresh membership confirms success.
+
+Active/revoked links preserve native date/link cursors and owner selection for
+creators. Creation supports title32UTF16, optional expiry/positive Int32 usage
+limit and administrator approval, without paid creation or implicit sharing.
+Revoke checks the exact fresh link/owner and typed old/replacement ACK; the
+follow-up read must show revoked. Creation redirects to the own active list.
+Requests use date/user cursors; filtered rows are revalidated using bounded
+unfiltered pages before a decision. Post-write absence requires a complete
+unique scan (maximum10k/deadline30s) plus correct membership. Failure/overlap is
+never treated as absence. Unknown writes block replay until an explicit fresh
+state check; reconciliation cannot prove remote rollback or attribute concurrency.
+
+Native channel admin history preserves actor/date, exact edited text, participant
+rights/rank and invitation changes. The complete packet and peer directory are
+admitted before cache/journal mutation. Observed deleted/edited message bodies,
+attributes/media and CopyProtected metadata enter the durable archive journal
+without resurrection in native chat history. Explicit unavailable content never
+creates a fake empty archived version. Forum conversion uses fresh native scope.
+No SQL byte payload, new S3 bypass, ownership transfer or group deletion is added.
+
+Recipe24 independently generates own MIT peer/admin helpers and extends the
+existing hash-checked GPL native retention adaptation. Python preparation/test
+processes bypass timestamp bytecode caches after an actual same-second/same-size
+stale-bytecode reproduction; no global Python configuration changes. Build/run/
+test still use independent pinned sources. Native/local QA and remaining checks
+are recorded in development-status.md; real-account/server acceptance remains
+separately scoped.
+
+
+## Block13 task4: native secret-chat workflows (2026-10-13)
+
+A regular person's profile offers explicit secret-chat creation. Fresh full user
+and requirement RPCs retain errors; consent freezes account/user/revision before
+native createSecretChat. Native signed Int32 secret IDs (including negative IDs)
+remain distinct from regular users. The common workspace observes handshake,
+active and terminated sessions, public key verification, negotiated layer and
+TTL; missing/malformed keys cannot authorize send or timer changes. Unknown
+creation/TTL results require explicit fresh reconciliation and never auto-replay.
+
+Formatting uses the pinned native layer encoder admission:8/46 plain text;
+73 basic entities;101 underline/strike/noncollapsed blockquote;144 spoiler/custom
+emoji with the existing full-document account/Premium checks. Lossy Pre language,
+collapsed blockquote and unsupported entity kinds are refused explicitly. Replies
+require a current same-secret source with a nonzero native global ID; cloud
+selection quotes, forwarding and edit/delete expansion are not enabled here.
+Prepared local photos/documents/video/voice/round video use existing resource and
+native outbox paths, with checked legacy Int32 sizes and layer-dependent albums.
+Cloud-only covers/media spoilers/caption placement are hidden and refused rather
+than silently lost. Recording still requires current native participant privacy
+and TCC; view-once recording retains its cloud-only contract.
+
+Timer changes freeze session/key/layer/previous value and consent, then enqueue
+and verify the exact native Local service message and update peer/state timer in
+one Postbox transaction. UI says queued, never remote delivered. Native removal
+retains observed secret text, attributes and media references in the permanent
+journal. Secret personal files now defaultON; explicitOFF forbids every new S3
+copy and preserves earlier archives. No file bytes are inserted into PostgreSQL.
+Recipe25 safety/visibility changes and exact hashes are documented in notices.
+Synthetic native UI and real local encrypted Postbox/PostgreSQL/S3 fixtures do
+not establish a real account handshake, encrypted server delivery or hardware
+capture acceptance; those remain separately scoped.
+
+
+## Block13 task5: native one-to-one calls (2026-10-14)
+
+A private user's chat offers an audio/video call after a fresh full-user read.
+An active secret chat calls its regular participant; self, groups, channels,
+bots and unavailable/terminated secret targets are excluded. Account-bound
+incoming IDs require explicit Answer/Decline; answering a video call with audio
+never starts the camera. Native CallSessionManager owns the authenticated key,
+versions and signaling. Only real native transport Established marks Connected.
+The app advertises the independently built versions2.7.7/5.0.0 and maxLayer92.
+
+AppDelegate supplies one explicit call coordinator to all real workspaces.
+Reservation precedes TCC and survives End/rebind/controller retirement until the
+native audio and AVFoundation camera both acknowledge release. Context/token
+checks reject late callbacks. Camera toggles await actual start/stop and recheck
+context. Incoming observation performs no permission request or capture. Native
+signaling is bounded to256 packets/1MiB,64KiB each; video retains only latest
+bounded NV12 frames. Decoded rotation is applied before display. No call media,
+keys, signaling or relay/proxy credentials are logged, recorded, archived or
+written to S3/PostgreSQL. Existing permanent message/file policies remain intact.
+
+The native module is built independently from Dependencies/TelegramVoip.lock.json
+by scripts/prepare-telegram-voip.py. It compiles the reviewed native tgcalls/OWT
+closure and VP8/Opus, has seven own C ABI exports and a private codec symbol
+namespace. H264/HEVC/FFmpeg, group calls and screen sharing are excluded. The
+existing restricted emoji VP9 decoder is unchanged. An injected audio factory
+failure never falls back to physical devices. Unexpected C++ allocation errors
+fail-stop at noexcept boundaries rather than returning a false capture-release
+acknowledgement; recoverable admission/permission/device failures remain explicit.
+
+P2P denial disables host UDP/TCP and STUN candidates in the real allocator.
+An enabled proxy applies to calls too: SOCKS5 requires an advertised TCP relay,
+with direct/UDP relay bypass disabled. MTProto-only proxies cannot carry calls;
+unsupported combinations fail rather than fall back to a direct connection.
+Proxy configuration is reread before wire/capture and monitored during the call.
+
+The pinned OWT and raw reflector TCP factories originally ignored SOCKS5.
+Exact hash adaptations now install an own MIT bounded CONNECT adapter at both
+socket factories. The physical socket connects only to the configured proxy;
+the native RawTcpSocket media framing remains unchanged. IPv4, IPv6 and remote
+domain requests, no-auth and username/password authentication, partial reads/
+writes and a coalesced first media packet are handled without direct fallback.
+Malformed/denied replies terminate the tunnel. Credentials never enter logs.
+The adapter follows [RFC1928](https://www.rfc-editor.org/info/rfc1928/) and
+[RFC1929](https://www.rfc-editor.org/info/rfc1929/); it implements CONNECT only.
+The reflector teardown adaptation unsubscribes while its non-null socket is
+still alive, then deletes an owned socket. Native regression fixtures exercise
+creation/connect failure and successful teardown; a loopback SOCKS5 fixture
+checks the actual TCP destination without accounts or physical media devices.
+
+A separate nonmodal native window shows status, duration, native verification
+fingerprint, local/remote video, microphone/camera and End. Closing the window
+hides it; the compact bar in the content column of the common workspace reopens
+or ends it. Closing the owning workspace ends its call, including a pending
+permission step, and retains the media reservation until actual release. Physical
+camera/microphone and real Telegram remote-call acceptance remain separately
+authorized checks. Local acceptance uses actual encrypted native pairs with
+injected PCM/I420 and an explicitly labelled inert synthetic UI fixture selected
+with --telegram-calls-synthetic-preview and an isolated --database-config.

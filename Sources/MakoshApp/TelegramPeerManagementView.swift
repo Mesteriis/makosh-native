@@ -21,6 +21,8 @@ struct TelegramPeerManagementStatusView: View {
 
 struct TelegramPeerInfoEditor: View {
     @ObservedObject var controller: TelegramPeerManagementController
+    var avatarEditing: TelegramAvatarEditingController? = nil
+    var avatarTarget: TelegramAvatarTarget? = nil
     @State private var name = ""
     @State private var about = ""
     @State private var basis: TelegramPeerManagementSnapshot?
@@ -28,6 +30,11 @@ struct TelegramPeerInfoEditor: View {
     private var busy: Bool { controller.mutationStatus == .saving || controller.status != .ready }
     var body: some View {
         Form {
+            if let avatarEditing, let avatarTarget, controller.snapshot?.canEditInfo == true {
+                Section {
+                    TelegramAvatarEditingButton(controller: avatarEditing, target: avatarTarget, title: "Изменить фотографию")
+                }
+            }
             Section("Название") {
                 TextField("Название", text: $name).accessibilityIdentifier("telegram.profile.edit.title")
                 Text("\(name.utf16.count)/255").font(.caption).foregroundStyle(.secondary)

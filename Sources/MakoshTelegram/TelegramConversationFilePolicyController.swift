@@ -62,7 +62,8 @@ import TelegramCore
     }
     nonisolated static func defaultEnabled(identity: MessageArchiveIdentity) -> Bool {
         guard identity.service == "telegram", let peerID = Int64(identity.conversationID), peerID > 0 else { return false }
-        return PeerId(peerID).namespace == Namespaces.Peer.CloudUser
+        if telegramSecretPeerID(peerID) != nil { return true }
+        return telegramManagementPeerID(peerID)?.namespace == Namespaces.Peer.CloudUser
     }
     nonisolated static func legacyDefault(identity: MessageArchiveIdentity) -> Bool? {
         // Untagged receipts, including old preparations, follow the chat policy.

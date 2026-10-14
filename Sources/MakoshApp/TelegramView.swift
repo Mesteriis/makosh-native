@@ -17,6 +17,7 @@ struct TelegramDetailView: View {
     @ObservedObject private var sendApproval: TelegramSendApprovalController
     @State private var displayedApprovalID: UUID?
     @State private var secretVerificationPresented = false
+    @State private var secretTimerPresented = false
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
@@ -51,6 +52,14 @@ struct TelegramDetailView: View {
             case .unsupported(let explanation):
                 ContentUnavailableView("Нужен дополнительный шаг входа", systemImage: "person.crop.circle.badge.exclamationmark", description: Text(explanation)).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            #if DEBUG
+            if model.isSyntheticPreview && model.calls.accountID == 101 {
+                HStack {
+                    Button("Синтетический входящий звонок") { model.syntheticIncomingCall(video: false) }.accessibilityIdentifier("telegram.call.qa.incomingAudio")
+                    Button("Синтетический входящий видеозвонок") { model.syntheticIncomingCall(video: true) }.accessibilityIdentifier("telegram.call.qa.incomingVideo")
+                }.font(.caption).padding(6)
+            }
+            #endif
             TelegramPlaybackView(playback: playback)
             TelegramUploadView(model: model)
             TelegramMessageActionsStatus(controller: messageActions, synthetic: model.isSyntheticPreview)
@@ -89,7 +98,7 @@ struct TelegramDetailView: View {
                 attachmentActions.cancel(); profilePresented = false
                 closeMessageSearch()
             }
-            .onChange(of: model.messageActionContextID) { _, _ in secretVerificationPresented = false; messageActionRequest = nil; profilePresented = false; closeMessageSearch() }
+            .onChange(of: model.messageActionContextID) { _, _ in secretVerificationPresented = false; secretTimerPresented = false; messageActionRequest = nil; profilePresented = false; closeMessageSearch() }
             .onChange(of: model.phase) { _, _ in attachmentActions.cancel() }
             .onChange(of: model.historyWindowID) { _, _ in attachmentActions.cancel() }
             .onChange(of: search.messageQuery) { _, _ in
@@ -120,6 +129,9 @@ struct TelegramDetailView: View {
                 }
             }
             .sheet(item: $messageActionRequest) { request in TelegramMessageActionSheet(model: model, request: request) }
+            .sheet(isPresented: $secretTimerPresented) {
+                TelegramSecretTimerView(controller: model.secretChats, synthetic: model.isSyntheticPreview)
+            }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
                 TelegramContactProfileView(model: model, dossier: dossier,
                     contextID: model.contactProfileContextID, openDossier: openDossier)
@@ -202,6 +214,7 @@ struct TelegramDetailView: View {
                             .buttonStyle(.plain).help("Открыть темы").accessibilityLabel("Открыть темы")
                             .accessibilityIdentifier("telegram.forum.open")
                     }
+                    TelegramCallButtons(controller: model.calls, hasTarget: model.callPeerID != nil)
                     TelegramConversationFilePolicyMenu(files: model.archive.files, chatID: chat.id)
                     Button {
                         if messageSearchPresented { closeMessageSearch() }
@@ -214,6 +227,18 @@ struct TelegramDetailView: View {
                 }.padding(.horizontal, 16).frame(height: 50)
                 if let capabilities = model.conversationCapabilities {
                     TelegramConversationCapabilityBanner(capabilities: capabilities) { secretVerificationPresented = true }
+                    if capabilities.secret != nil {
+                        if model.composerSecretSession?.canSetTTL == true && !model.secretComposerFormattingSupported {
+                            Text("Это форматирование не поддерживается протоколом данного секретного чата.")
+                                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12)
+                                .accessibilityIdentifier("telegram.secret.formattingUnsupported")
+                        }
+                        HStack {
+                            Button("Таймер сообщений") { secretTimerPresented = true }
+                                .accessibilityIdentifier("telegram.secret.timer.open")
+                            Spacer()
+                        }.font(.caption).padding(.horizontal, 12).padding(.bottom, 8)
+                    }
                 }
                 Divider()
                 if messageSearchPresented {
@@ -416,7 +441,7 @@ struct TelegramDetailView: View {
             canCopy: item.actionMetadata?.canCopy == true, lineLimit: lineLimit,
             nativeActions: nativeMessageActions(item), quoteSelection: { quote in
                 _ = model.beginReply(to: item, contextID: context, quote: quote)
-            }, maximumQuoteLength: model.replyQuoteMaximumUTF16Count,
+            }, maximumQuoteLength: model.conversationReplyQuoteMaximum,
             customEmojiDescriptors: model.customEmojiDescriptors,
             customEmojiContext: model.customEmojiPlaybackContext) {
                 messageActionItems(item)

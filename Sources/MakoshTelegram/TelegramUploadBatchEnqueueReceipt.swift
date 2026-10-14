@@ -35,7 +35,7 @@ struct TelegramUploadBatchEnqueueReceipt: Sendable {
     init(draft: TelegramPendingUploadDraft, target: TelegramUploadTarget,
          resources: [TelegramUploadBatchResource], groupKeys: [Int64]) throws {
         guard draft.isValid, (6...19).contains(draft.resourceSchemaVersion), draft.disposition == .submissionStarted,
-              [Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace),
+              ([Namespaces.Peer.CloudUser, Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel].contains(PeerId(target.chatID).namespace) || telegramSecretPeerID(target.chatID) != nil),
               target.hasValidReplySource, target.accountID == draft.accountID, target.chatID == draft.chatID,
               draft.threadID == target.selectedThreadID,
               draft.replyTarget == target.replySource.map(TelegramComposerReplyTarget.init(source:)) else {

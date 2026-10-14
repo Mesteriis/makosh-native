@@ -1,5 +1,9 @@
 #!/bin/bash
 set -euo pipefail
+# Validate current recipe source even after equal-size, same-second edits.
+# These settings are confined to this test process and its children.
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPYCACHEPREFIX=/dev/null
 cd "$(dirname "$0")/.."
 source scripts/libpq-env.sh
 python3 scripts/prepare-telegram.py
@@ -9,6 +13,9 @@ python3 scripts/prepare-mozjpeg.py
 python3 scripts/prepare-code-highlight.py
 python3 scripts/prepare-rlottie.py
 python3 scripts/prepare-vpx.py
+python3 scripts/prepare-telegram-voip.py
+python3 scripts/test-telegram-voip-preparation.py
+python3 scripts/test-telegram-voip-native.py
 python3 scripts/test-vpx-preparation.py
 python3 scripts/test-vpx-rtcd-preparation.py
 python3 scripts/test-rlottie-preparation.py
@@ -18,6 +25,10 @@ python3 scripts/test-mozjpeg-preparation.py
 python3 scripts/test-opusfile-preparation.py
 python3 scripts/test-opus-preparation.py
 python3 scripts/test-telegram-preparation.py
+python3 scripts/test-telegram-remote-peer-preparation.py
+python3 scripts/test-telegram-avatar-preparation.py
+python3 scripts/test-telegram-group-preparation.py
+python3 scripts/test-telegram-secret-preparation.py
 python3 scripts/test-telegram-search-adaptation.py
 python3 scripts/test-telegram-retention-adaptation.py
 python3 scripts/test-telegram-read-adaptation.py

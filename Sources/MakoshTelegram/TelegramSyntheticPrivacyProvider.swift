@@ -2,10 +2,11 @@
 import Foundation
 
 @MainActor final class TelegramSyntheticPrivacyProvider: TelegramPrivacyProvider {
-    let accountID: Int64 = -1
+    let accountID: Int64
     private let capabilities: TelegramPrivacyCapabilities
     private var global = TelegramGlobalPrivacySetting(flags: (1 << 1) | (1 << 2) | (1 << 6), paidStars: nil, giftFlags: 0)
-    init(premium: Bool = true) {
+    init(premium: Bool = true, accountID: Int64 = -1) {
+        self.accountID = accountID
         capabilities = .init(isPremium: premium, nonPremiumMessageRestrictionAvailable: false, paidMessagesAvailable: true, maximumPaidStars: 10000)
     }
     private var settings = Dictionary(uniqueKeysWithValues: TelegramPrivacyKind.allCases.map { kind in

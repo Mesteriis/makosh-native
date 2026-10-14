@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import Postbox
+import TelegramCore
 
 /// Fixed synthetic windows for exercising the real navigation and views offline.
 /// Compiled out of release builds and never used by the account adapter.
@@ -10,6 +11,7 @@ struct TelegramSyntheticPages {
     var albums = false
     var forum = false
     var dataSettings = false
+    var secretChats = false
 
     func chats(folder: TelegramChatFolder, anchor: ChatListIndex?) ->
         (items: [TelegramChat], previous: ChatListIndex?, next: ChatListIndex?) {
@@ -98,10 +100,11 @@ struct TelegramSyntheticPages {
                     attachments: message.attachments)
                 entities.append(.init(offset: offset, length: emoji.0.utf16.count, kind: .customEmoji(stickerPack: nil, fileID: emoji.1)))
             }
-            message.actionMetadata = TelegramMessageActionMetadata(peerID: chatID, namespace: 0, messageID: Int32(id),
+            let secret = secretChats && telegramSecretPeerID(chatID) != nil
+            message.actionMetadata = TelegramMessageActionMetadata(peerID: chatID, namespace: secret ? Namespaces.Message.SecretIncoming : 0, messageID: Int32(id),
                 fingerprint: "synthetic-version-1-\(chatID)-\(id)", text: message.text,
-                authorID: message.isOutgoing ? -1 : 999, canReply: true, canEdit: message.isOutgoing && !unsupported,
-                canForward: id != 120, canDeleteLocally: true, canDeleteForEveryone: message.isOutgoing,
+                authorID: message.isOutgoing ? -1 : 999, canReply: true, canEdit: !secret && message.isOutgoing && !unsupported,
+                canForward: !secret && id != 120, canDeleteLocally: !secret, canDeleteForEveryone: !secret && message.isOutgoing,
                 allowsEmptyEdit: caption && !unsupported, editLimit: caption ? 1024 : 4096,
                 hasMedia: caption, threadID: scoped ? (id <= 65 ? 1 : 7) : nil,
                 formattedText: try? TelegramFormattedText(text: message.text, entities: entities), canCopy: id != 120)

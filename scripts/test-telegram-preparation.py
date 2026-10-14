@@ -9,6 +9,7 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+from telegram_preparation_test_support import write_secret_native_fixture
 
 spec = importlib.util.spec_from_file_location("preparation", Path(__file__).with_name("prepare-telegram.py"))
 preparation = importlib.util.module_from_spec(spec)
@@ -27,6 +28,13 @@ class PreparationTests(unittest.TestCase):
         destination = root / "engine"
         destination.mkdir()
         (destination / "One.swift").write_text("// synthetic\n")
+        helper = destination / "submodules/TelegramCore/Sources/TelegramEngine/Peers/MakoshRemotePeerSearch.swift"
+        helper.parent.mkdir(parents=True)
+        helper.write_text(preparation.remote_peer_helper_source())
+        helper.with_name("MakoshAvatarEditing.swift").write_text(preparation.avatar_helper_source())
+        helper.with_name("MakoshGroupMembership.swift").write_text(preparation.group_membership_helper_source())
+        helper.with_name("MakoshSecretChat.swift").write_text(preparation.secret_chat_helper_source())
+        write_secret_native_fixture(destination, preparation)
         record = {"source_sha": preparation.SHA, "source_tree": preparation.TREE,
                   "source_url": preparation.URL, "recipe": preparation.RECIPE,
                   "prepared_files": preparation.prepared_files(destination)}

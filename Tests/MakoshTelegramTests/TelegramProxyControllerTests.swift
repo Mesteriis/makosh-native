@@ -15,6 +15,18 @@ import XCTest
     private func draft(_ host: String = "proxy.example.invalid") -> TelegramProxyDraft {
         var d = TelegramProxyDraft(); d.host = host; d.port = "1080"; d.password = "SyntheticPassword"; d.username = "SyntheticUser"; return d
     }
+    func testCallProxyRequiresFreshVaultAndFullyAcknowledgedConfiguration() throws {
+        let store = TelegramProxyTestStore(), c = TelegramProxyController(vault: store.vault()); c.open()
+        XCTAssertNil(try c.currentCallProxy())
+        let target = Target(), id = UUID(); _ = try c.settingsForConnection(clientID: id); c.register(target, clientID: id)
+        c.confirm(try XCTUnwrap(c.prepare(.add(draft()), contextID: c.contextID)))
+        XCTAssertThrowsError(try c.currentCallProxy())
+        target.callbacks[0](true)
+        XCTAssertEqual(try c.currentCallProxy()?.host, "proxy.example.invalid")
+        store.unavailable = true
+        XCTAssertThrowsError(try c.currentCallProxy())
+        XCTAssertTrue(target.stopped)
+    }
     func testExplicitConfirmationWritesThenAppliesEveryOwnedConnectionAndWaitsForAcknowledgements() throws {
         let store = TelegramProxyTestStore(), c = TelegramProxyController(vault: store.vault())
         XCTAssertNil(c.enabled); XCTAssertEqual(store.writes, 0)

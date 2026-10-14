@@ -42,6 +42,7 @@ struct TelegramPrivacyView: View {
     @ObservedObject var controller: TelegramPrivacyController
     var blockedUsers: TelegramBlockedUsersController? = nil
     var twoStep: TelegramTwoStepController? = nil
+    var avatarEditing: TelegramAvatarEditingController? = nil
     let synthetic: Bool
     @State private var blockedPresented = false
     @State private var twoStepPresented = false
@@ -97,7 +98,7 @@ struct TelegramPrivacyView: View {
         .sheet(isPresented: $twoStepPresented) {
             if let twoStep { TelegramTwoStepView(controller: twoStep, synthetic: synthetic) { twoStepPresented = false } }
         }
-        .sheet(item: $selected) { kind in TelegramPrivacyDetailView(controller: controller, kind: kind, synthetic: synthetic) { selected = nil } }
+        .sheet(item: $selected) { kind in TelegramPrivacyDetailView(controller: controller, kind: kind, synthetic: synthetic, avatarEditing: avatarEditing) { selected = nil } }
         .sheet(item: $globalPage) { page in TelegramGlobalPrivacyView(controller: controller, page: page, synthetic: synthetic) { globalPage = nil }.id(page.id) }
     }
 }
@@ -106,6 +107,7 @@ struct TelegramPrivacyDetailView: View {
     @ObservedObject var controller: TelegramPrivacyController
     let kind: TelegramPrivacyKind
     let synthetic: Bool
+    var avatarEditing: TelegramAvatarEditingController? = nil
     let close: () -> Void
     @State private var draft: PrivacyDraft?
     @State private var confirmation: PrivacyDraft?
@@ -157,6 +159,11 @@ struct TelegramPrivacyDetailView: View {
                     if kind == .voiceCalls { relatedRow(.callP2P) }
                     if kind == .presence { relatedGlobalRow(.readTime) }
                     if kind == .giftsAutoSave { relatedGlobalRow(.giftTypes) }
+                    if kind == .profilePhoto, let avatarEditing, let accountID = avatarEditing.accountID, controller.snapshot?.accountID == accountID {
+                        Section("Публичная фотография") {
+                            TelegramAvatarEditingButton(controller: avatarEditing, target: .init(accountID: accountID, peerID: accountID, kind: .fallback), title: "Изменить публичную фотографию")
+                        }
+                    }
                     Section {
                         Button("Сохранить") { confirmation = activeDraft }.disabled(!enabled || activeDraft == nil).accessibilityIdentifier("telegram.privacy.save")
                         if activeDraft != nil { Button("Отменить изменения") { draft = nil }.accessibilityIdentifier("telegram.privacy.discardDraft") }

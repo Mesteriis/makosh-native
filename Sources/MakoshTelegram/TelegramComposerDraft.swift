@@ -14,7 +14,13 @@ struct TelegramComposerReplyTarget: Codable, Equatable, Sendable {
     init(source: TelegramMessageActionSource) {
         self.init(peerID: source.peerID, namespace: source.namespace, messageID: source.messageID, threadID: source.threadID, quote: source.replyQuote)
     }
-    var isValid: Bool { namespace == Namespaces.Message.Cloud && messageID > 0 }
+    var isValid: Bool {
+        guard messageID > 0 else { return false }
+        if telegramSecretPeerID(peerID) != nil {
+            return [Namespaces.Message.SecretIncoming, Namespaces.Message.Local].contains(namespace) && threadID == nil && quote == nil
+        }
+        return namespace == Namespaces.Message.Cloud
+    }
 }
 
 /// A versioned composer snapshot. An empty snapshot without a reply is a

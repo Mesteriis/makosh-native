@@ -27,7 +27,7 @@ struct TelegramUploadPreviewView: View {
         self.model = model; upload = model.upload; emojiCatalog = model.customEmojiCatalog; self.contextID = contextID
     }
     private var canDismiss: Bool { upload.canCancel || upload.phase == .uncertain }
-    private var canUseMediaOptions: Bool { upload.canUseMediaOptions }
+    private var canUseMediaOptions: Bool { upload.canUseMediaOptions && model.composerSupportsExtendedMediaOptions }
     private var title: String {
         if upload.presentation == .archive { return "Отправить архив" }
         if upload.items.count > 1 { return "Отправить вложения (\(upload.items.count))" }
@@ -252,7 +252,7 @@ struct TelegramUploadPreviewView: View {
         }
     }
     @ViewBuilder private func videoCoverButtons(revision: UUID) -> some View {
-        if upload.items.count == 1, upload.file?.mode == .video {
+        if model.composerSupportsExtendedMediaOptions, upload.items.count == 1, upload.file?.mode == .video {
             Button(upload.file?.videoCover == nil ? "Добавить обложку" : "Изменить обложку") { chooseVideoCover(revision: revision) }
                 .disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.choose")
             if upload.file?.videoCover != nil {

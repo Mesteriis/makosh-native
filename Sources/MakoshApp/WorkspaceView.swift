@@ -183,6 +183,7 @@ private enum Destination: String, CaseIterable, Identifiable {
 private struct EditorSelection: Identifiable { let id = UUID(); let contact: Contact? }
 
 struct WorkspaceView: View {
+    @EnvironmentObject private var callWindows: TelegramCallWindows
     @StateObject private var systemAppearance = TelegramSystemAppearance()
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
@@ -193,9 +194,9 @@ struct WorkspaceView: View {
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
-    init(proxy: TelegramProxyController? = nil) {
+    init(proxy: TelegramProxyController? = nil, callCoordinator: TelegramCallCoordinator? = nil) {
         _model = StateObject(wrappedValue: WorkspaceModel())
-        _telegram = StateObject(wrappedValue: TelegramModel(proxy: proxy))
+        _telegram = StateObject(wrappedValue: TelegramModel(proxy: proxy, calls: TelegramCallController(coordinator: callCoordinator)))
     }
     #if DEBUG
     init(syntheticTelegram: TelegramModel) {
@@ -257,17 +258,24 @@ struct WorkspaceView: View {
                 }.padding(24).navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
             }
         } detail: {
-            if destination == .contacts {
-                if let contact = model.selected { DossierView(contact: contact, model: model) { editor = EditorSelection(contact: contact) } }
-                else { ContentUnavailableView("Всё о человеке — рядом", systemImage: "person.text.rectangle", description: Text("Выберите контакт, чтобы открыть досье, заметки и источники.")) }
-            } else if destination == .telegram {
-                TelegramDetailView(model: telegram, dossier: model) { id in
-                    if model.selectContact(id) { destination = .contacts }
-                }
+            VStack(spacing: 0) {
+                TelegramCallCompactView(controller: telegram.calls)
+                Group {
+                    if destination == .contacts {
+                        if let contact = model.selected { DossierView(contact: contact, model: model) { editor = EditorSelection(contact: contact) } }
+                        else { ContentUnavailableView("Всё о человеке — рядом", systemImage: "person.text.rectangle", description: Text("Выберите контакт, чтобы открыть досье, заметки и источники.")) }
+                    } else if destination == .telegram {
+                        TelegramDetailView(model: telegram, dossier: model) { id in
+                            if model.selectContact(id) { destination = .contacts }
+                        }
+                    }
+                    else if destination == .meetings { MeetingsView() }
+                    else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            else if destination == .meetings { MeetingsView() }
-            else { ContentUnavailableView("\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square", description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта.")) }
         }
+        .onAppear { callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview) }
+        .onDisappear { callWindows.unregister(telegram.calls) }
         .tint(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
         .accentColor(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
         .preferredColorScheme(telegramWorkspaceScheme(theme: telegramTheme, telegramSelected: destination == .telegram, system: systemAppearance.scheme))

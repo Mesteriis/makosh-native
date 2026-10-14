@@ -244,6 +244,8 @@ public final class TelegramModel: ObservableObject {
     public let peerManagement = TelegramPeerManagementController()
     public let accountSessions = TelegramSessionsController()
     public let webSessions = TelegramWebSessionsController()
+    public let qrLogin = TelegramQRLoginController()
+    private var qrMigrationCount = 0
     public let accountPrivacy = TelegramPrivacyController()
     public let accountBlockedUsers = TelegramBlockedUsersController()
     public let accountTwoStep = TelegramTwoStepController()
@@ -1967,8 +1969,14 @@ public final class TelegramModel: ObservableObject {
         }
     }
 
+    public func beginQRLogin() {
+        guard !isBusy, phase == .phone, unauthorized != nil else { return }
+        qrMigrationCount = 0; error = nil; qrLogin.start()
+    }
+    public func cancelQRLogin() { qrLogin.cancel() }
+
     public func submitPhone(_ phone: String) {
-        guard !isBusy, phase == .phone, let configuration, let manager, let unauthorized else { return }
+        guard !isBusy, phase == .phone, !qrLogin.isActive, let configuration, let manager, let unauthorized else { return }
         let number = phone.trimmingCharacters(in: .whitespacesAndNewlines)
         guard number.hasPrefix("+"), (8...16).contains(number.count), number.dropFirst().utf8.allSatisfy({ (48...57).contains($0) }) else {
             error = "Введите номер в международном формате: + и цифры без пробелов."; return
@@ -2041,6 +2049,7 @@ public final class TelegramModel: ObservableObject {
         stopAuthorizedAccount()
         for disposable in [session, authState, action, chatList, history, connection, outgoing] { disposable.set(nil) }
         selectedChatID = nil
+        qrLogin.bind(nil)
         account = nil; unauthorized = nil; manager = nil; configuration = nil
         chats = []; messages = []; draft = ""
         isBusy = false; phase = .configuration; error = nil; connectionDescription = "Подключение остановлено; локальный сеанс сохранён"
@@ -2089,7 +2098,7 @@ public final class TelegramModel: ObservableObject {
         }, clientID: proxyClientID)
     }
 
-    private func observeUnauthorized(_ account: UnauthorizedAccount, token: UUID) {
+    private func observeUnauthorized(_ account: UnauthorizedAccount, token: UUID, continuingQR: Bool = false) {
         openingTimeout?.cancel(); openingTimeout = nil
         stopAuthorizedAccount()
         authorizationGeneration = UUID()
@@ -2099,6 +2108,19 @@ public final class TelegramModel: ObservableObject {
         registerProxy(network: account.network)
         self.isBusy = false
         self.connectionDescription = "Вход в отдельный сеанс Макоша"
+        if let manager {
+            qrLogin.bind(TelegramEngineQRLoginProvider(account: account, manager: manager, replace: { [weak self] next, retry in
+                guard let self, self.generation == token, self.unauthorized === account else { return }
+                if retry {
+                    self.qrMigrationCount += 1
+                    guard self.qrMigrationCount <= 3 else {
+                        self.qrLogin.cancel(); self.error = "Не удалось завершить переход QR-входа. Повторите вход."; return
+                    }
+                }
+                self.observeUnauthorized(next, token: token, continuingQR: retry)
+            }))
+            if continuingQR { qrLogin.start() }
+        } else { qrLogin.bind(nil) }
         authState.set((account.postbox.stateView() |> deliverOnMainQueue).start(next: { [weak self] view in
             guard let self, self.generation == token, self.authorizationGeneration == authToken, let state = view.state as? UnauthorizedAccountState else { return }
             switch state.contents {
@@ -2107,7 +2129,7 @@ public final class TelegramModel: ObservableObject {
                 self.challenge = TelegramAuthorizationChallenge(type: type)
                 self.codeExplanation = self.challenge.explanation
                 self.phase = self.challenge.phase
-            case .passwordEntry(let hint, _, _, _, _): self.phase = .password(hint: hint)
+            case .passwordEntry(let hint, _, _, _, _): self.qrLogin.cancel(); self.phase = .password(hint: hint)
             case .signUp: self.phase = .unsupported("Регистрация нового аккаунта не реализована.")
             case .passwordRecovery, .awaitingAccountReset: self.phase = .unsupported("Восстановление и сброс аккаунта выполняйте в официальном клиенте Telegram.")
             case .payment: self.phase = .unsupported("Telegram запросил платный способ входа. Макош не выполняет оплату.")
@@ -2121,6 +2143,7 @@ public final class TelegramModel: ObservableObject {
         stopAuthorizedAccount()
         authorizationGeneration = UUID()
         action.set(nil)
+        qrLogin.bind(nil)
         self.unauthorized = nil; self.account = account
         registerProxy(network: account.network)
         sendApproval.bind(account: account)

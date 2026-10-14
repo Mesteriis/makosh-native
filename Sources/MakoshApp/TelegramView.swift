@@ -5,6 +5,7 @@ import MakoshTelegram
 struct TelegramDetailView: View {
     @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
     @ObservedObject var model: TelegramModel
+    @ObservedObject private var qrLogin: TelegramQRLoginController
     @ObservedObject private var search: TelegramSearchModel
     @ObservedObject private var media: TelegramMediaController
     @ObservedObject private var upload: TelegramUploadController
@@ -26,7 +27,7 @@ struct TelegramDetailView: View {
     private let dossier: WorkspaceModel?
     private let openDossier: (UUID) -> Void
     init(model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in }) {
-        self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload
+        self.model = model; self.qrLogin = model.qrLogin; self.search = model.search; self.media = model.media; self.upload = model.upload
         self.playback = model.playback; self.messageActions = model.messageActions
         self.peerStatus = model.peerStatus
         self.messageSelection = model.messageSelection
@@ -167,10 +168,15 @@ struct TelegramDetailView: View {
             Spacer()
         }.padding(32).frame(maxWidth: 650, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
-    private var phoneForm: some View {
-        authForm(title: "Ваш номер телефона", detail: "Введите номер с кодом страны. Код входа отправит Telegram.") {
-            TextField("+34 …", text: $phone).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.phone")
-            Button("Запросить код") { model.submitPhone(phone) }.buttonStyle(.borderedProminent).disabled(model.isBusy || phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.phone.submit")
+    @ViewBuilder private var phoneForm: some View {
+        if qrLogin.phase != .idle {
+            TelegramQRLoginView(controller: qrLogin)
+        } else {
+            authForm(title: "Ваш номер телефона", detail: "Введите номер с кодом страны. Код входа отправит Telegram.") {
+                TextField("+34 …", text: $phone).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.phone")
+                Button("Запросить код") { model.submitPhone(phone) }.buttonStyle(.borderedProminent).disabled(model.isBusy || phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.phone.submit")
+                Button("Войти по QR-коду") { model.beginQRLogin() }.disabled(model.isBusy).accessibilityIdentifier("telegram.qr.begin")
+            }
         }
     }
     private var codeForm: some View {

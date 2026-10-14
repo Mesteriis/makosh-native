@@ -5,7 +5,7 @@
 The user explicitly excludes a local Makosh passcode and automatic app locking.
 They are not migration backlog items; the earlier passcode proposal is withdrawn.
 
-## Current stage: Telegram communication capabilities (block 13)
+## Completed: Telegram communication capabilities (block 13)
 
 Approved scope: remote user/chat discovery; editable avatars and public fallback
 photo; invitations/membership requests/admin history; complete native secret-chat
@@ -7267,3 +7267,21 @@ job limit during tests. That cancelled run is not a PASS. The job budget is now
 and requires fresh exact-head hosted checks before merge.
 No real-account or physical-device acceptance,
 notarized binary release, or block14 completion is inferred.
+
+## Block13 integration completed
+
+[PR13](https://github.com/Mesteriis/makosh-native/pull/13) merged after both
+exact-head hosted checks passed on be3b54db66a03a4ba5a0d77546a8b26ee9bf552f:
+[PR CI38492906985](https://github.com/Mesteriis/makosh-native/actions/runs/38492906985)
+and [push CI38492899965](https://github.com/Mesteriis/makosh-native/actions/runs/38492899965).
+The 40-minute job budget accommodates measured cold-runner variation. The earlier
+25-minute cancellation remains a cancelled result, not a passing check.
+Merge commit f3ef0a0a4181abe812530135a877c69455645a11 has exactly the tested PR tree; local main was fast-forwarded
+to that commit. This completion record/plan checkboxes are documentation only;
+application/native sources remain equal to the verified build. The final local
+main integration run is retained with the execution evidence.
+
+All five approved parts are implemented and integrated. Block14 remains separate:
+remaining settings/QR/web sessions/wallpaper/cache/download/visual polish,
+portable archive/S3/key backup and separately authorized live-account/hardware
+acceptance. Local Makosh passcode/autolock remains explicitly excluded.

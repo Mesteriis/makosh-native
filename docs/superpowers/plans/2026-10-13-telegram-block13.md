@@ -71,7 +71,7 @@ or copied outer UI. Missing media implementation cannot be reported as a call.
 
 **Files:** docs/development-status.md, docs/telegram.md, docs/reference-interface.md, THIRD_PARTY_NOTICES.md and only necessary build/CI integration files.
 **Interfaces:** Consumes all five working slices and their immutable source/build/QA evidence.
-- [ ] Review diff against all spec requirements and excluded block14 work. Record remaining actual runtime limitations, never silently re-scope a missing feature.
-- [ ] Run scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh; all required checks exit0. Inspect changed native flows with isolated synthetic database config.
-- [ ] Freeze public sources, refresh actual XERJ changed scopes and dispatch one bounded whole-branch reviewer. Resolve important findings with regression proof; record judgments.
-- [ ] Publish PR, validate exact-head hosted build/tests and merge under existing user authorization. Verify actual merged state, equal tested tree and clean local main.
+- [x] Review diff against all spec requirements and excluded block14 work. Record remaining actual runtime limitations, never silently re-scope a missing feature.
+- [x] Run scripts/dev-db.sh up, scripts/test.sh and scripts/build-app.sh; all required checks exit0. Inspect changed native flows with isolated synthetic database config.
+- [x] Freeze public sources, refresh actual XERJ changed scopes and dispatch one bounded whole-branch reviewer. Resolve important findings with regression proof; record judgments.
+- [x] Publish PR, validate exact-head hosted build/tests and merge under existing user authorization. Verify actual merged state, equal tested tree and clean local main.

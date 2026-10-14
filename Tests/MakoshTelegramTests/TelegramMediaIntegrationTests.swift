@@ -56,7 +56,7 @@ final class TelegramMediaIntegrationTests: XCTestCase {
             previous: nil, next: nil, isLoading: false)
     }
 
-    func testProjectionDoesNotFetchAndAcceptedReplacementInvalidatesOldResource() throws {
+    func testProjectionDoesNotFetchAndReplacementKeepsManualOriginalWhileInvalidatingPreview() throws {
         let model = try selectedModel()
         let provider = SpyProvider()
         model.media.bind(provider: provider)
@@ -64,9 +64,11 @@ final class TelegramMediaIntegrationTests: XCTestCase {
         XCTAssertTrue(provider.requests.isEmpty)
         let original = try attachment(130, in: model.messages)
         let oldKey = TelegramMediaKey(attachmentID: original.id, purpose: .full)
+        let previewKey = TelegramMediaKey(attachmentID:original.id,purpose:.preview)
+        model.media.start(original,purpose:.preview)
         model.media.start(original, purpose: .full)
-        XCTAssertEqual(provider.requests.count, 1)
-        XCTAssertEqual(provider.requests[0].id, original.id)
+        XCTAssertEqual(provider.requests.count, 2)
+        XCTAssertEqual(provider.requests.map(\.id),[original.id,original.id])
 
         var changed = model.messages
         let index = try XCTUnwrap(changed.firstIndex { $0.id.hasSuffix(":130") })
@@ -75,20 +77,29 @@ final class TelegramMediaIntegrationTests: XCTestCase {
             hasPreview: original.hasPreview, canDownload: original.canDownload)
         changed[index].attachments = [replacement]
         try refresh(model, messages: changed)
-        XCTAssertEqual(provider.requests[0].lease.cancellations, 1)
-        XCTAssertEqual(model.media.phase(for: oldKey), .idle)
-        XCTAssertEqual(provider.requests.count, 1, "Replacement projection must not auto-fetch")
+        XCTAssertEqual(provider.requests.map { $0.lease.cancellations },[1,0])
+        XCTAssertEqual(model.media.phase(for:previewKey),.idle)
+        XCTAssertEqual(model.media.phase(for: oldKey), .downloading(nil))
+        XCTAssertEqual(provider.requests.count, 2, "Replacement projection must not auto-fetch")
         provider.requests[0].receive(.data(URL(fileURLWithPath: "/synthetic/obsolete"), offset: 0, size: 1, complete: true))
-        XCTAssertNil(model.media.downloadedFile(for: oldKey))
-        XCTAssertEqual(model.media.phase(for: oldKey), .idle)
+        XCTAssertNil(model.media.downloadedFile(for:previewKey))
+        provider.requests[1].receive(.data(URL(fileURLWithPath:"/synthetic/manual-original"),offset:0,size:1,complete:true))
+        XCTAssertEqual(model.media.downloadedFile(for:oldKey)?.lastPathComponent,"manual-original")
+        XCTAssertEqual(model.media.phase(for: oldKey), .ready)
 
         let newKey = TelegramMediaKey(attachmentID: replacement.id, purpose: .full)
         model.media.start(replacement, purpose: .full)
-        XCTAssertEqual(provider.requests.count, 2)
+        XCTAssertEqual(provider.requests.count, 3)
         provider.requests[0].receive(.failed)
+        provider.requests[1].receive(.failed)
         XCTAssertEqual(model.media.phase(for: newKey), .downloading(nil))
-        provider.requests[1].receive(.data(URL(fileURLWithPath: "/synthetic/current"), offset: 0, size: 1, complete: true))
+        provider.requests[2].receive(.data(URL(fileURLWithPath: "/synthetic/current"), offset: 0, size: 1, complete: true))
         XCTAssertEqual(model.media.phase(for: newKey), .ready)
+        model.media.bind(provider:nil)
+        XCTAssertEqual(provider.requests.map { $0.lease.cancellations },[1,1,1])
+        provider.requests[1].receive(.data(URL(fileURLWithPath:"/synthetic/stale-account"),offset:0,size:1,complete:true))
+        XCTAssertEqual(model.media.phase(for:oldKey),.idle)
+        XCTAssertEqual(model.media.phase(for:newKey),.idle)
     }
 
     func testSearchRetainsReadyAttachmentAcrossHistoryPageAndFailedSearchPage() async throws {
@@ -129,7 +140,7 @@ final class TelegramMediaIntegrationTests: XCTestCase {
         XCTAssertEqual(provider.requests.count, 1)
     }
 
-    func testDifferentAttachmentsCancelIndependentlyAndChatChangeRejectsLateCallbacks() throws {
+    func testDifferentAttachmentsCancelIndependentlyAndAccountDisconnectRejectsLateCallbacks() throws {
         let model = try selectedModel()
         let provider = SpyProvider()
         model.media.bind(provider: provider)
@@ -148,13 +159,20 @@ final class TelegramMediaIntegrationTests: XCTestCase {
         XCTAssertEqual(model.media.phase(for: secondKey), .downloading(nil))
         let nextChat = try XCTUnwrap(model.chats.first { $0.id != model.selectedChatID })
         model.selectedChatID = nextChat.id
-        XCTAssertEqual(provider.requests.map { $0.lease.cancellations }, [1, 1])
+        XCTAssertEqual(provider.requests.map { $0.lease.cancellations }, [1, 0])
         provider.requests[1].receive(.data(URL(fileURLWithPath: "/synthetic/previous-chat"), offset: 0, size: 1, complete: true))
         provider.requests[0].receive(.progress(1))
+        XCTAssertEqual(model.media.phase(for:firstKey),.cancelled)
+        XCTAssertEqual(model.media.phase(for:secondKey),.ready)
+        XCTAssertEqual(model.media.downloadedFile(for:secondKey)?.lastPathComponent,"previous-chat")
+        XCTAssertEqual(provider.requests.count, 2, "Chat projection must not auto-fetch")
+        model.disconnect()
+        XCTAssertEqual(provider.requests.map { $0.lease.cancellations },[1,1])
+        provider.requests[1].receive(.data(URL(fileURLWithPath:"/synthetic/stale-account"),offset:0,size:1,complete:true))
         XCTAssertEqual(model.media.phase(for: firstKey), .idle)
         XCTAssertEqual(model.media.phase(for: secondKey), .idle)
         XCTAssertNil(model.media.downloadedFile(for: secondKey))
-        XCTAssertEqual(provider.requests.count, 2, "Chat projection must not auto-fetch")
+        XCTAssertEqual(provider.requests.count, 2, "Disconnect must not auto-fetch")
     }
 }
 #endif

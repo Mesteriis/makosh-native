@@ -10,7 +10,8 @@ final class TelegramEngineMediaProvider: TelegramMediaProvider {
     private let mediaBox: MediaBox
     private let postbox: Postbox
 
-    init(account: Account) { mediaBox = account.postbox.mediaBox; postbox = account.postbox }
+    convenience init(account: Account) { self.init(postbox:account.postbox) }
+    init(postbox:Postbox) { mediaBox = postbox.mediaBox; self.postbox = postbox }
 
     func startAutomatically(attachmentID: String, preferences: TelegramAutoDownloadPreferences,
         isCurrent: @escaping @MainActor () -> Bool,
@@ -28,6 +29,13 @@ final class TelegramEngineMediaProvider: TelegramMediaProvider {
 
     func start(attachmentID: String, purpose: TelegramMediaPurpose,
                receive: @escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
+        start(attachmentID:attachmentID,purpose:purpose,fetchAllowed:true,receive:receive)
+    }
+    func startCached(attachmentID:String,receive:@escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
+        start(attachmentID:attachmentID,purpose:.full,fetchAllowed:false,receive:receive)
+    }
+    private func start(attachmentID:String,purpose:TelegramMediaPurpose,fetchAllowed:Bool,
+        receive:@escaping @MainActor (TelegramMediaEvent) -> Void) -> any TelegramMediaLease {
         let lease = EngineMediaLease(receive: receive)
         guard let source = sources[attachmentID],
               let reference = purpose == .full ? source.full : source.preview else {
@@ -48,13 +56,16 @@ final class TelegramEngineMediaProvider: TelegramMediaProvider {
         lease.data.set((mediaBox.resourceData(resource, pathExtension: nil,
             option: .complete(waitUntilFetchStatus: false)) |> deliverOnMainQueue).start(next: { [weak lease] data in
                 guard let lease, !lease.finished else { return }
+                if !fetchAllowed, !data.complete || data.offset != 0 || data.size < 0 {
+                    lease.receive(.failed); lease.cancel(); return
+                }
                 lease.receive(.data(URL(fileURLWithPath: data.path), offset: data.offset,
                                     size: data.size, complete: data.complete))
                 if data.complete && data.offset == 0 && data.size >= 0 {
                     lease.finishTransfer()
                 }
             }))
-        if !lease.finished {
+        if fetchAllowed, !lease.finished {
             lease.fetch.set((fetchedMediaResource(mediaBox: mediaBox, userLocation: source.location,
                 userContentType: purpose == .preview ? .image : source.contentType, reference: reference, continueInBackground: false)
                 |> deliverOnMainQueue).start(error: { [weak lease] _ in

@@ -185,6 +185,9 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
         let phase = media.phase(for: key)
         HStack(spacing: 8) {
             switch phase {
+            case .queued:
+                Text("В очереди").font(.caption).foregroundStyle(.secondary)
+                Button("Отменить") { media.cancel(key) }.accessibilityIdentifier(prefix + ".cancel")
             case .idle, .cancelled, .failed, .timedOut:
                 Button(phase == .idle ? (purpose == .full ? "Загрузить файл" : "Загрузить превью") : "Повторить загрузку") {
                     media.start(attachment, purpose: purpose)
@@ -198,7 +201,7 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
                 if let progress { ProgressView(value: progress).frame(width: 90); Text(progress, format: .percent.precision(.fractionLength(0))).font(.caption) }
                 else { ProgressView().controlSize(.mini) }
                 Button("Отменить") { media.cancel(key) }.accessibilityIdentifier(prefix + ".cancel")
-            case .ready:
+            case .ready, .capturing:
                 Text(purpose == .full ? "Файл загружен" : "Превью загружено").font(.caption).foregroundStyle(.secondary)
                 if purpose == .full {
                     Button("Сохранить…") { actions.save(media: media, key: key, name: attachment.name) }

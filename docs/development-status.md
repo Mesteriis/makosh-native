@@ -1,15 +1,15 @@
 # Development status — 2026-10-14
 
-Block14 implementation and integration are complete in [PR14](https://github.com/Mesteriis/makosh-native/pull/14).
-The final integration evidence is at the end of this document. Real test-account,
+Telegram final-parity implementation and integration are complete in [PR15](https://github.com/Mesteriis/makosh-native/pull/15).
+Current verification is below; historical Block13/14 evidence remains later in this document. Real test-account,
 physical-device and actual login-Keychain acceptance remain separately scoped.
 
-## Continuous final parity — 2026-10-14
+## Completed: continuous final parity — 2026-10-14
 
-All five implementation slices are present on `feature/telegram-final-parity`;
-final review found two Important download issues, both resolved by the verified
-regression fix pass. [PR15](https://github.com/Mesteriis/makosh-native/pull/15)
-is attached; exact-head CI and merge remain pending. This supersedes historical
+All five implementation slices are integrated in `main` through
+[PR15](https://github.com/Mesteriis/makosh-native/pull/15). Final review found two
+Important download issues, both resolved by the verified regression fix pass.
+Both exact-head CI runs pass and the merge is verified. This supersedes historical
 Block14 aesthetic/transfer/format limitations below. Active-call device switching
 is an accepted permanent gap by explicit user decision; next-call selection stays.
 Local passcode/autolock remains excluded.
@@ -28,9 +28,9 @@ movable mirrored preview and recoverable auto-hidden controls. Mesh rendering
 and decorative wave remain owned approximations documented in reference-interface.md.
 
 Final integrated source: `scripts/dev-db.sh up`, `scripts/test.sh`,
-`scripts/build-app.sh` all exit0. XCTest2301 (2188Telegram+113Core),zero failures,
-one microphone-precondition skip;109Python tests across24suites pass. A separate
-focused131test set passes. Strict signed bundle/native UUID,17section payload and
+`scripts/build-app.sh` all exit0. XCTest2309 (2196Telegram+113Core),zero failures,
+one microphone-precondition skip;109Python tests across24suites pass. Integration
+includes the appearance/call focused131set and final transfer/cache focused95set. Strict signed bundle/native UUID,17section payload and
 unsigned QA executable equality pass. Existing upstream warnings and preexisting
 contactsd/XPC metadata diagnostics remain in private raw logs; a pass is not a
 claim of warning-free output.
@@ -64,7 +64,21 @@ Actual rebuilt owned UI again observes cross-chat manual ready/finished cleanup;
 one CUA AX transition failure is followed by fresh-state confirmation, not
 classified as product failure. Owned QA is stopped/data retained. Canonical
 XERJ v13 exits0/944files/863code with fresh fingerprint. No unresolved Important/
-Critical or deferred reviewer Minor; exact-head CI and merge are pending.
+Critical or deferred reviewer Minor.
+
+Checked source `55242276b11a1b173ca05bb4dd9ad403d20ddb4d` passes both
+[push CI](https://github.com/Mesteriis/makosh-native/actions/runs/38604894880)
+and [PR CI](https://github.com/Mesteriis/makosh-native/actions/runs/38604905910).
+Both hosted runs confirm2309XCTest/1microphone-precondition skip/0fail and
+109Python/24suites. Cancelled earlier06d6e25 runs are not passing evidence.
+PR15 merged2026-10-14 as `fb1ebd93d0f10dadb731061f57988b6ba961b108`.
+Its entire Git tree `3caccaef4142e9ca9c468b3a012fb8f74cf6b9a3` exactly equals
+the checked source tree. Local `main` fast-forward, dev-db up, full test suite,
+build and strict native artifact checks all exit0 with the same counts. The
+rebuilt main executable SHA256 exactly equals the accepted native-QA executable.
+This closure entry changes the status record only; source acceptance is tied to
+the checked/merged tree above. Private evidence and owned synthetic data remain
+retained; real-account/physical-device/login-Keychain acceptance is pending.
 
 ## Product scope decision — 2026-10-13
 

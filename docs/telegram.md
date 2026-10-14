@@ -483,9 +483,11 @@ created only for a new vault, never substituted for a missing existing key.
 There is no file fallback, iCloud sync or reuse of Telegram protocol keys.
 Ad-hoc development signing cannot access the entitlement-gated data-protection
 Keychain; no iOS device-only or lock-screen accessibility guarantee is claimed.
-PostgreSQL data and this key are both necessary for recovery. Portable encrypted
-backup/key export and restore are still unimplemented; a database dump alone is
-insufficient to move the archive to another machine.
+PostgreSQL data and this key are both necessary for recovery. Explicit portable
+encrypted backup/inspection/restore now includes the archive key protected by a
+separately saved random recovery key, raw history and verified encrypted S3
+objects. See [the recovery procedure and portability boundaries](archive-recovery.md).
+A database dump alone is insufficient to move the archive to another machine.
 
 Current boundaries:
 
@@ -3420,3 +3422,30 @@ camera/microphone and real Telegram remote-call acceptance remain separately
 authorized checks. Local acceptance uses actual encrypted native pairs with
 injected PCM/I420 and an explicitly labelled inert synthetic UI fixture selected
 with --telegram-calls-synthetic-preview and an isolated --database-config.
+
+## Block14 settings and recovery
+
+Connected websites support fresh account-bound listing and explicit named one/all
+termination; uncertainty survives controller close/rebind. QR is an explicit phone
+alternative with memory-only tokens, bounded renewal/migration and cancellation.
+General settings include local opt-in typed emoticon replacement and animation
+control respecting reduced motion. Message text11–18, color/image/two-color
+wallpaper, scheduled night mode and bounded native theme/wallpaper catalogue
+preview/application stay local to Makosh. Unsupported patterns/four-color/non-opaque
+palette variants are visibly unavailable rather than applied partially.
+
+Cloud-cache clearing can select chats with full fresh inventory and excludes
+resources shared with unselected/unknown/secret peers. The current-chat/window
+transfer manager freezes job/context capabilities for cancel/retry/save/finished
+cleanup; pause affects only automatic work. Its sheet retains the covered-window
+read/download barrier. No unsafe age/size eviction or persistent cross-chat queue
+is added. Next-call audio UIDs are validated/frozen and selected at the native ADM
+boundary; a missing selected device fails rather than falling back. ABI2 appends
+bounded UID fields while ABI1 remains accepted without reading its absent tail.
+
+Portable archive export/inspection/restore and exact operational/failure boundaries
+are described in [archive recovery](archive-recovery.md). It preserves permanent
+history and strict S3 OFF, exports no authorization/session/outbox/credentials and
+opens recovered data read-only without switching current accepted writes.
+Local Makosh passcode/autolock remains excluded. Real-account/physical-device
+acceptance waits for the user's separately selected test account and actions.

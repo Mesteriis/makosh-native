@@ -37,7 +37,9 @@ struct TelegramCacheSettingsView: View {
                                         HStack { Text(peer.title); Spacer(); Text(telegramByteCount(peer.totalBytes)).foregroundStyle(.secondary) }
                                         if peer.sharedBytes > 0 { Text("Общие с другими чатами: \(telegramByteCount(peer.sharedBytes))").font(.caption).foregroundStyle(.secondary) }
                                     }
-                                }.disabled(controller.phase != .idle).accessibilityIdentifier("telegram.data.cache.peer.\(peer.id)")
+                                }.disabled(controller.phase != .idle)
+                                    .accessibilityLabel("\(peer.title), \(telegramByteCount(peer.totalBytes))")
+                                    .accessibilityIdentifier("telegram.data.cache.peer.\(peer.id)")
                             }
                             if snapshot.peers.count > peerLimit { Button("Показать ещё чаты") { peerLimit += 100 }.accessibilityIdentifier("telegram.data.cache.morePeers") }
                             Text("Общие файлы, обнаруженные вне выбранных чатов, не включаются в очистку. Размеры ниже учитывают выбранную область.").font(.caption).foregroundStyle(.secondary)

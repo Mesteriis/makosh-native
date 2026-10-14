@@ -2,6 +2,15 @@ import XCTest
 @testable import MakoshTelegram
 
 @MainActor final class TelegramQRLoginTests: XCTestCase {
+    func testSyntheticPhoneEntryStartsOnlyAfterExplicitQRAndClearsOnPhoneReturn() {
+        let model = TelegramModel.syntheticQRLoginPreview()
+        XCTAssertEqual(model.phase, .phone); XCTAssertNil(model.qrLogin.displayURL)
+        model.beginQRLogin()
+        XCTAssertEqual(model.qrLogin.phase, .displaying)
+        XCTAssertNotNil(model.qrLogin.displayURL)
+        model.cancelQRLogin()
+        XCTAssertEqual(model.qrLogin.phase, .idle); XCTAssertNil(model.qrLogin.displayURL)
+    }
     private final class Request: TelegramQRLoginRequest { var cancelled = false; func cancel() { cancelled = true } }
     private final class Provider: TelegramQRLoginProvider {
         var reads: [(Request, @MainActor (Result<TelegramQRLoginResult, TelegramQRLoginError>) -> Void)] = []

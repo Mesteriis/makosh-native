@@ -140,11 +140,11 @@ No replacement shell or private-account QA is introduced.
 - Consumes: current native account/context controllers and the spec invariants.
 - Produces: Authenticated manifest/key envelope; snapshot export/inspect/restore into new empty target without overwrite or S3 OFF bypass.
 
-- [ ] Step1: Add `ArchiveBackupTests` regressions exercising wrong key/corruption/truncation/path escape, consistent snapshot, existing target/key conflict, object integrity and OFF before copy; derive expected values independently.
-- [ ] Step2: Run `python3 .local/block3-focused-test.py --filter ArchiveBackupTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
-- [ ] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
-- [ ] Step4: Run `python3 .local/block3-focused-test.py --filter ArchiveBackupTests`. Expected: all focused regressions pass.
-- [ ] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
+- [x] Step1: Add `ArchiveBackupTests` regressions exercising wrong key/corruption/truncation/path escape, consistent snapshot, existing target/key conflict, object integrity and OFF before copy; derive expected values independently.
+- [x] Step2: Run `python3 .local/block3-focused-test.py --filter ArchiveBackupTests`. Expected: failure caused by missing behavior; compilation/setup failures are separately recorded and repaired.
+- [x] Step3: Implement the specified interfaces in the listed focused files; confirm reference source before UI edits.
+- [x] Step4: Run `python3 .local/block3-focused-test.py --filter ArchiveBackupTests`. Expected: all focused regressions pass.
+- [x] Step5: Commit the slice and run task-done with that focused command. Expected: exit0.
 
 ### Task 7: Native acceptance and integration
 
@@ -157,9 +157,9 @@ No replacement shell or private-account QA is introduced.
 - Consumes: current native account/context controllers and the spec invariants.
 - Produces: Verified native artifacts and actual UI evidence; independent whole-branch review and exact-head merge.
 
-- [ ] Step1: Run `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh`. Expected: all exit0; any skips named.
-- [ ] Step2: Inspect actual native changed flows in a dedicated synthetic QA app/schema. Expected: concrete visible outcomes, no private accounts.
-- [ ] Step3: Refresh/check project/ref/engine XERJ and review the complete diff. Expected: fresh evidence; actual failures retained.
+- [x] Step1: Run `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh`. Expected: all exit0; any skips named.
+- [x] Step2: Inspect actual native changed flows in a dedicated synthetic QA app/schema. Expected: concrete visible outcomes, no private accounts.
+- [x] Step3: Refresh/check project/ref/engine XERJ and review the complete diff. Expected: fresh evidence; actual failures retained.
 - [ ] Step4: Commit verified docs, perform one independent whole-branch review and one TDD fix pass. Expected: no unresolved Important/Critical.
 - [ ] Step5: Publish PR, attach, wait for exact-head checks and merge under existing authorization; verify final tree. Expected: exact checked tree integrated.
 

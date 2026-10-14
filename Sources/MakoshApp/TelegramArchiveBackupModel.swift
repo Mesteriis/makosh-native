@@ -66,9 +66,9 @@ struct TelegramArchiveBackupContext: Sendable {
     private enum Success: Sendable { case exported(ArchiveBackupSummary), inspected(ArchiveBackupInspection), restored(String, ArchiveBackupSummary) }
     private enum Outcome: Sendable { case success(Success), failure(String), cancelled }
 
-    init(context: TelegramArchiveBackupContext?) {
+    init(context: TelegramArchiveBackupContext?, restoreID: UUID = UUID()) {
         self.context = context
-        targetSchema = (context?.synthetic == true ? "qa_telegram_dossier_r_" : "makosh_restored_") + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
+        targetSchema = (context?.synthetic == true ? "qa_telegram_dossier_r_" : "makosh_restored_") + restoreID.uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(12)
     }
     var canRestore: Bool {
         !busy && inspection != nil && context != nil && ArchiveBackup.isValidSchemaName(targetSchema)

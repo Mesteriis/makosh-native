@@ -1633,3 +1633,32 @@ unrelated purchase restore and ArchiverContext; source confirms file compression
 not this permanent PG/S3 recovery workflow. This is an own Makosh feature, not a
 claim of TelegramSwift backup parity. See [recovery procedure](archive-recovery.md).
 Actual final native flow evidence is recorded after the final build below.
+
+## Block14 observed native presentation
+
+The final isolated native QA preserves the common service sidebar and Telegram
+columns. Settings show the current synthetic profile thumbnail, grouped general/
+appearance/device/data pages, font11–18, scheduled night controls, local palette
+catalogue preview/application and explicit unavailable pattern. The native editor
+opens with the captured current settings on its first presentation and retains an
+applied two-color gradient across reopen. Web entries have named one/all confirmations.
+Per-chat cache selection names the chat, shows scoped bytes, preserves other/shared
+resources and has accessible title/size plus the normal on/off state. Downloads show
+manual ready/export/finished cleanup and automatic-only pause, retaining the covered
+window read/download barrier. These are desktop workflows from the verified
+reference conventions, implemented with existing own native components.
+
+The channel admin-history form exposes18 native event categories and observed
+actors; excluding edits plus selecting the synthetic owner removes only the edit.
+The current secret card shows avatar/status/key/timer and permanent-retention text.
+The call window shows avatar/status, audio gear, End and released-state Recall;
+next-call device choice persists in the isolated bundle. Settings avatar/secret
+fingerprint/call screenshots were inspected in the actual owned QA app. Static
+avatar/decorations/wave/ringtone/emoji-key/preview-position/auto-hide gaps recorded
+in the preceding Task5 section remain explicit; full aesthetic parity is not claimed.
+
+Backup is an own native Makosh flow:3 synthetic versions/1 actual S3 object survive
+export/inspection/new-schema restore and open in the existing read-only archive.
+The separate key/package are private; native Save and folder/key Open panels work.
+The final suggested target is immediately valid; manual correction is unnecessary.
+No real Telegram identity or physical camera/microphone acceptance is inferred.

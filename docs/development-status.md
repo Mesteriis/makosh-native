@@ -7337,3 +7337,41 @@ archive viewer are wired; actual changed UI and final whole-branch gates remain
 pending. See archive-recovery.md for format limits, separate-key handling and
 non-transactional S3/Keychain failure boundaries. No private account or actual
 login Keychain access was used by these tests.
+
+## Block14 native acceptance before final review
+
+The final presentation build exits0 and passes strict deep signing. Canonical and
+bundled native libraries retain the same UUID, all17 code/data sections and equal
+unsigned payload after normalizing only the signing-related LINKEDIT VM reservation.
+The owned QA executable matches that build. The full scripts/test.sh exits0:
+2225 XCTest(2114 Telegram +111 core),one microphone-precondition skip,zero failures;
+109 Python tests across24 suites. Native socket/SOCKS5/encrypted media/audio
+selection fixtures pass. Synthetic QA never captures physical media or uses a
+personal Telegram account/login Keychain.
+
+Actual native QA observes QR→phone cancellation; font18 in messages; opt-in
+emoticons/animation preferences; scheduled night controls; catalogue preview/apply
+and unavailable pattern; settings profile thumbnail; saved next-call synthetic
+microphone; named one/all web-session confirmation→empty list; selected-chat cache
+1MB→0 with9MB retained outside that clear; manual transfer ready→native Save→exact
+synthetic byte match→finished-list removal; automatic-only pause/resume;18 admin
+filter kinds and selected author with the excluded edit removed; current secret
+card/key/timer; call window→End→Recall→new call→End/Dismiss.
+
+Archive export/inspect/restore uses actual isolated PostgreSQL/S3:3 message versions
+and1 file, private package/separate key, original/edit/delete retained, existing
+read-only viewer and actual S3 plaintext preview. On the final build, native folder/
+key selection, inspection, automatically suggested lowercase target, confirmation,
+restore and read-only browsing all succeed without correcting the target by hand.
+Original source and exported bytes remain available. QA is stopped; isolated data
+is retained privately.
+
+Native QA exposed and repaired three presentation defects: path-panel dismissal
+blocking disabled native Save/NewFolder; uppercase default schema blocked restore;
+first wallpaper sheet captured stale appearance state. The default-schema model
+has deterministic RED→GREEN coverage(two tests); actual native controlled A/B and
+first-open/reopen flows verify the two sheet repairs. Explicit cache chat labels
+now expose title/size to accessibility. Repeated full gates after these repairs
+pass with the totals above. Earlier failed/compile/setup attempts remain private
+and are not counted as passing results. Final independent review, exact-head
+hosted checks and merge are still pending at this record.

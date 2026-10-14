@@ -54,8 +54,8 @@ enum TelegramAccent: String, CaseIterable, Identifiable {
 
 struct TelegramAppearanceView: View {
     @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
-    @State private var wallpaperPresented = false
-    @State private var wallpaperExpectedRaw = ""
+    @State private var wallpaperRequest: WallpaperRequest?
+    private struct WallpaperRequest: Identifiable { let id = UUID(); let raw: String }
     @State private var error: String?
     private var preferences: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     var systemScheme: ColorScheme = .light
@@ -75,7 +75,7 @@ struct TelegramAppearanceView: View {
                 }.accessibilityIdentifier("telegram.settings.fontSize")
             }
             Section("Фон чата") {
-                Button("Изменить фон…") { wallpaperExpectedRaw = appearanceRaw; wallpaperPresented = true }.accessibilityIdentifier("telegram.settings.wallpaper")
+                Button("Изменить фон…") { wallpaperRequest = .init(raw: appearanceRaw) }.accessibilityIdentifier("telegram.settings.wallpaper")
             }
             Section("Автоматическая ночная тема") {
                 Toggle("По расписанию", isOn: Binding(get: { preferences.night.enabled }, set: { enabled in update { $0.night.enabled = enabled } }))
@@ -131,7 +131,7 @@ struct TelegramAppearanceView: View {
                     .accessibilityIdentifier("telegram.settings.appearancePreview")
             }
         }.formStyle(.grouped)
-            .sheet(isPresented: $wallpaperPresented) { TelegramWallpaperEditor(expectedRaw: wallpaperExpectedRaw) }
+            .sheet(item: $wallpaperRequest) { request in TelegramWallpaperEditor(expectedRaw: request.raw) }
             .sheet(isPresented: $catalogPresented) { if let catalog { TelegramAppearanceCatalogView(controller: catalog) } }
     }
     private func update(_ change: (inout TelegramAppearancePreferences) -> Void) {

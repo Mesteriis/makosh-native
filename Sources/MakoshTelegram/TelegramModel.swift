@@ -1976,7 +1976,12 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func beginQRLogin() {
-        guard !isBusy, phase == .phone, unauthorized != nil else { return }
+        #if DEBUG
+        let synthetic = isSyntheticPreview
+        #else
+        let synthetic = false
+        #endif
+        guard !isBusy, phase == .phone, unauthorized != nil || synthetic else { return }
         qrMigrationCount = 0; error = nil; qrLogin.start()
     }
     public func cancelQRLogin() { qrLogin.cancel() }
@@ -2569,6 +2574,12 @@ public final class TelegramModel: ObservableObject {
     }
 
     private var extendedMessagesPreview = false
+    public static func syntheticQRLoginPreview() -> TelegramModel {
+        let model = syntheticPreview()
+        model.qrLogin.bind(TelegramSyntheticQRLoginProvider())
+        model.phase = .phone
+        return model
+    }
     public static func syntheticExtendedMessagesPreview(specialConversation: String? = nil) -> TelegramModel {
         let model = syntheticPreview(forum: true)
         model.extendedMessagesPreview = true

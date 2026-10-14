@@ -54,6 +54,8 @@ struct TelegramArchiveBackupView: View {
                         LabeledContent("Зашифрованные файлы", value: ByteCountFormatter.string(fromByteCount: receipt.summary.encryptedBytes, countStyle: .file))
                         TextField("Новый архив PostgreSQL", text: $model.targetSchema).textFieldStyle(.roundedBorder)
                             .accessibilityIdentifier("telegram.backup.schema")
+                        Text("Строчная латиница, цифры и _, до 63 символов. Первый символ — буква.")
+                            .font(.caption).foregroundStyle(.secondary)
                         Text("Создаётся новый архив. Текущий архив продолжит запись. Имеющиеся данные не перезаписываются. Для выключенного сохранения нужны уже существующие объекты S3.")
                             .font(.caption).foregroundStyle(.secondary)
                         Button("Восстановить в новый архив…") { confirmation = .init(receipt: receipt, schema: model.targetSchema) }
@@ -78,7 +80,7 @@ struct TelegramArchiveBackupView: View {
             if let error = model.error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("telegram.backup.error") }
         }.padding(24).frame(width: 650, height: 690)
             .background(TelegramBackupWindowAnchor(owner: panels).frame(width: 0, height: 0))
-            .interactiveDismissDisabled(disabled)
+            .interactiveDismissDisabled(model.busy)
             .sheet(item: $confirmation) { value in
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Восстановить архив?").font(.title2.bold())

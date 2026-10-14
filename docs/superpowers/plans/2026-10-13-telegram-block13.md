@@ -65,7 +65,7 @@ or copied outer UI. Missing media implementation cannot be reported as a call.
 - [x] Audit exact tgcalls/WebRTC source, licenses, submodule closure, platform/build recipes and headers; record reproducible source/binary hashes. Build/test must not read reference checkouts or credentials.
 - [x] Freeze exact native bridge signatures in the brief after source confirmation. Test malformed session/version/endpoint/key input, P2P policy, permission refusal, late signaling, cancellation/rebind and capture release; observe RED.
 - [x] Build reviewed transport/codecs independently, wire native session/key/signaling state, explicit capture controls and one-to-one call UI. No fake connected state or signaling-only completion claim.
-- [ ] Focused call/native media tests: PASS; synthetic lifecycle and actual transport/media fixture proof; commit and ledger. Real Telegram calls are a separately scoped acceptance check.
+- [x] Focused call/native media tests: PASS; synthetic lifecycle and actual transport/media fixture proof; commit and ledger. Real Telegram calls are a separately scoped acceptance check.
 
 ### Task 6: Whole-block integration
 

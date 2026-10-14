@@ -1,11 +1,11 @@
-# Development status — 2026-10-13
+# Development status — 2026-10-14
 
 ## Product scope decision — 2026-10-13
 
 The user explicitly excludes a local Makosh passcode and automatic app locking.
 They are not migration backlog items; the earlier passcode proposal is withdrawn.
 
-## Current stage: Telegram communication capabilities (block 13, in progress)
+## Current stage: Telegram communication capabilities (block 13)
 
 Approved scope: remote user/chat discovery; editable avatars and public fallback
 photo; invitations/membership requests/admin history; complete native secret-chat
@@ -138,7 +138,8 @@ Native-call research only: exact reference tgcalls/tg_owt source pins are fetche
 into independent bare caches. Native wrapper needs a reviewed WebRTC dependency
 closure/build; no signaling-only/fake-connected completion is claimed.
 
-Task5 native call source is integrated; final full acceptance remains in progress.
+Task5 native call source and local acceptance are complete; whole-branch review
+and publication gates are tracked separately.
 72 focused XCTest pass, including real encrypted Postbox boundary, native/session
 admission, camera refusal, bounded signaling/video, stale contexts, shared call
 reservation, async video ACK, current proxy and workspace peer selection. New
@@ -160,7 +161,12 @@ audio-only answer to video, decline, microphone, camera/cleared previews,
 fingerprint, live duration, close/hide/reopen, service switching and End/release.
 72 focused tests also cover closing the owning workspace and cancellation before
 any queued permission request. Physical device/live account acceptance is unrun.
-Full suite and final independent review/hosted checks follow.
+Task5 full gate at fd413ec exits0:2132 XCTest (2053 Telegram +79 core),one
+physical-microphone-precondition skip,zero failures;109 Python tests/24 suites,
+all pass. Native preparation additionally runs real allocator/audio/admission
+boundaries and both encrypted-media protocol fixtures. Whole-branch independent
+review and exact-head hosted checks are required before merge; they do not replace
+separately authorized physical-device/live-account acceptance.
 
 ## Completed stage: extended Telegram privacy (block 12)
 

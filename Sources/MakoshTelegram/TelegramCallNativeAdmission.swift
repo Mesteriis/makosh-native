@@ -28,6 +28,7 @@ struct TelegramCallRelay: Equatable, Sendable {
     let id: UInt8, turn: Bool, tcp: Bool
 }
 struct TelegramCallMediaConfiguration: Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    var audioDevices = TelegramCallAudioSelection()
     let version: String, key: Data, fingerprint: Data
     let outgoing: Bool, video: Bool, allowP2P: Bool
     let maxLayer: Int32

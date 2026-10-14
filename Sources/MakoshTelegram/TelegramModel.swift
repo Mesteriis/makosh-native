@@ -2181,7 +2181,7 @@ public final class TelegramModel: ObservableObject {
         groupMembership.bind(TelegramEngineGroupMembershipProvider(account: account))
         secretChats.bind(TelegramEngineSecretChatProvider(account: account))
         let callProxy = proxy
-        calls.bind(TelegramEngineCallProvider(engine: TelegramAccountCallEngine(account: account), proxy: { try callProxy.currentCallProxy() }, media: TelegramNativeCallMediaFactory()))
+        calls.bind(TelegramEngineCallProvider(engine: TelegramAccountCallEngine(account: account), proxy: { try callProxy.currentCallProxy() }, media: TelegramNativeCallMediaFactory(), audioSelection: { try .decode(UserDefaults.standard.string(forKey: TelegramCallAudioSelection.preferenceKey) ?? "") }))
         callSelectionAccount = nil; callSelectionPeer = nil; refreshCallSelection()
         groupMemberSearch.bind(TelegramEngineRemotePeerProvider(account: account))
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))

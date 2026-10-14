@@ -278,7 +278,7 @@ struct WorkspaceView: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onAppear { callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview) }
+        .onAppear { callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview, avatars: telegram.avatars) }
         .onDisappear { callWindows.unregister(telegram.calls) }
         .tint(destination == .telegram ? resolvedTelegramAccent : accent)
         .accentColor(destination == .telegram ? resolvedTelegramAccent : accent)

@@ -15,10 +15,11 @@ struct TelegramSettingsView: View {
     var proxy: TelegramProxyController? = nil
     var avatarEditing: TelegramAvatarEditingController? = nil
     var appearanceCatalog: TelegramAppearanceCatalogController? = nil
+    var avatars: TelegramAvatarStore? = nil
     var chats: [TelegramChat] = []
     var synthetic = false
     var close: (() -> Void)? = nil
-    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность", notifications = "Уведомления и звуки", data = "Данные и память" }
+    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность", notifications = "Уведомления и звуки", data = "Данные и память", calls = "Звонки" }
     @State private var page: Page?
     @AppStorage(TelegramLocalTheme.preferenceKey) private var theme = TelegramLocalTheme.system.rawValue
     @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
@@ -41,6 +42,7 @@ struct TelegramSettingsView: View {
             if synthetic { Text("Синтетический аккаунт · серверные изменения симулируются").font(.caption).foregroundStyle(.secondary).padding(10) }
             switch page {
             case .general: TelegramGeneralSettingsView()
+            case .calls: TelegramCallAudioSettingsView(synthetic: synthetic)
             case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme, catalog: appearanceCatalog)
             case .data:
                 if let autoDownload, let cache, let proxy { TelegramDataSettingsView(settings: autoDownload, cache: cache, proxy: proxy) }
@@ -57,12 +59,19 @@ struct TelegramSettingsView: View {
                 Form {
                     if let avatarEditing, let accountID = avatarEditing.accountID {
                         Section {
+                            if let avatars {
+                                HStack(spacing: 16) {
+                                    TelegramChatAvatar(title: "Мой профиль", peerID: accountID, store: avatars, size: 72)
+                                    Text("Мой профиль").font(.title3)
+                                }.padding(.vertical, 8).accessibilityIdentifier("telegram.settings.profile")
+                            }
                             TelegramAvatarEditingButton(controller: avatarEditing, target: .init(accountID: accountID, peerID: accountID, kind: .main), title: "Изменить фотографию профиля")
                         }
                     }
                     Section {
                         settingsRow(.general, symbol: "gearshape", id: "general")
                         settingsRow(.appearance, symbol: "paintpalette", id: "appearance")
+                        settingsRow(.calls, symbol: "phone", id: "calls")
                         if notifications != nil { settingsRow(.notifications, symbol: "bell", id: "notifications") }
                         if proxy != nil { settingsRow(.data, symbol: "externaldrive", id: "data") }
                         if sessions != nil { settingsRow(.devices, symbol: "desktopcomputer", id: "devices") }

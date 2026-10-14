@@ -5,10 +5,13 @@ import SwiftSignalKit
 @MainActor final class TelegramEngineCallProvider: TelegramCallProvider {
     private let engine: any TelegramCallEngine
     private let proxy: @MainActor () throws -> TelegramProxyServer?
+    private let audioSelection: @MainActor () throws -> TelegramCallAudioSelection
     private let media: any TelegramCallMediaFactory
     private var declining: [UUID: TelegramCallSignalRequest] = [:]
     var accountID: Int64 { engine.accountID }
-    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () throws -> TelegramProxyServer?, media: any TelegramCallMediaFactory) {
+    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () throws -> TelegramProxyServer?, media: any TelegramCallMediaFactory,
+        audioSelection: @escaping @MainActor () throws -> TelegramCallAudioSelection = { .init() }) {
+        self.audioSelection = audioSelection
         self.engine = engine; self.proxy = proxy; self.media = media
     }
     isolated deinit { for request in declining.values { request.cancel() } }
@@ -27,11 +30,11 @@ import SwiftSignalKit
         return request
     }
     func startOutgoing(basis: TelegramCallPeer, video: Bool, callID: UUID, receive: @escaping @MainActor (TelegramCallEvent) -> Bool) -> any TelegramCallLease {
-        let lease = EngineCallLease(engine: engine, proxy: proxy, factory: media, callID: callID, outgoing: true, video: video, receive: receive)
+        let lease = EngineCallLease(engine: engine, proxy: proxy, audioSelection: audioSelection, factory: media, callID: callID, outgoing: true, video: video, receive: receive)
         lease.startOutgoing(basis); return lease
     }
     func accept(incoming: TelegramIncomingCall, video: Bool, receive: @escaping @MainActor (TelegramCallEvent) -> Bool) -> any TelegramCallLease {
-        let lease = EngineCallLease(engine: engine, proxy: proxy, factory: media, callID: incoming.id, outgoing: false, video: video, receive: receive)
+        let lease = EngineCallLease(engine: engine, proxy: proxy, audioSelection: audioSelection, factory: media, callID: incoming.id, outgoing: false, video: video, receive: receive)
         lease.startIncoming(incoming); return lease
     }
     func decline(incoming: TelegramIncomingCall) {
@@ -47,6 +50,7 @@ import SwiftSignalKit
 @MainActor private final class EngineCallLease: TelegramCallLease {
     private let engine: any TelegramCallEngine
     private let proxy: @MainActor () throws -> TelegramProxyServer?
+    private let audioSelection: @MainActor () throws -> TelegramCallAudioSelection
     private let factory: any TelegramCallMediaFactory
     private let callID: UUID, outgoing: Bool, initialVideo: Bool
     private let receive: @MainActor (TelegramCallEvent) -> Bool
@@ -54,6 +58,7 @@ import SwiftSignalKit
     private var signaling: (any TelegramCallRequest)?
     private var launch: Task<Void, Never>?, proxyWatch: Task<Void, Never>?
     private var proxyBasis: TelegramProxyServer?, configuration: TelegramCallMediaConfiguration?
+    private var audioBasis = TelegramCallAudioSelection()
     private var media: TelegramCallMediaSession?
     private var pending: [Data] = [], pendingBytes = 0
     private var committed = false, stopped = false, released = false, pendingMediaStart = false
@@ -61,9 +66,9 @@ import SwiftSignalKit
     private var reason = DropCallReason.hangUp
     private var completions: [@MainActor () -> Void] = []
     private var retirement: EngineCallLease?
-    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () throws -> TelegramProxyServer?, factory: any TelegramCallMediaFactory,
+    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () throws -> TelegramProxyServer?, audioSelection: @escaping @MainActor () throws -> TelegramCallAudioSelection, factory: any TelegramCallMediaFactory,
          callID: UUID, outgoing: Bool, video: Bool, receive: @escaping @MainActor (TelegramCallEvent) -> Bool) {
-        self.engine = engine; self.proxy = proxy; self.factory = factory; self.callID = callID
+        self.engine = engine; self.proxy = proxy; self.audioSelection = audioSelection; self.factory = factory; self.callID = callID
         self.outgoing = outgoing; self.initialVideo = video; self.videoDesired = video; self.receive = receive
     }
     isolated deinit {
@@ -103,6 +108,8 @@ import SwiftSignalKit
     }
     private func captureProxyBasis() -> Bool {
         do {
+            audioBasis = try audioSelection()
+            guard audioBasis.isValid else { fail(.unavailable); return false }
             proxyBasis = try proxy()
             if let proxyBasis { guard proxyBasis.isValid, case .socks5 = proxyBasis.connection else { fail(.unsupported); return false } }
             return true
@@ -123,7 +130,8 @@ import SwiftSignalKit
         case let .requesting(ringing): if outgoing { _ = emit(.requesting(ringing: ringing)) } else { fail(.changed) }
         case .active:
             do { guard try proxy() == proxyBasis else { fail(.changed); return } } catch { fail(.changed); return }
-            guard let value = TelegramCallMediaConfiguration(session: session, internalID: callID, outgoing: outgoing, video: initialVideo, proxy: proxyBasis) else { fail(.unsupported); return }
+            guard var value = TelegramCallMediaConfiguration(session: session, internalID: callID, outgoing: outgoing, video: initialVideo, proxy: proxyBasis) else { fail(.unsupported); return }
+            value.audioDevices = audioBasis
             videoPossible = session.isVideoPossible
             guard emit(.videoAvailability(videoPossible)) else { return }
             if !videoPossible && videoDesired { fail(.unsupported); return }

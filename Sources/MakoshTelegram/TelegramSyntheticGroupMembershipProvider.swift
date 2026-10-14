@@ -32,7 +32,12 @@ import TelegramCore
     }
     func load(peerID: Int64, page: TelegramGroupMembershipSection, ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?,
         receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest {
+        load(peerID: peerID, page: page, ownerID: ownerID, query: query, cursor: cursor, historyFilter: .all, receive: receive)
+    }
+    func load(peerID: Int64, page: TelegramGroupMembershipSection, ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?, historyFilter: TelegramAdminHistoryFilter,
+        receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest {
         let request = SyntheticGroupMembershipRequest()
+        guard historyFilter.isValid, page == .history || historyFilter == .all else { receive(.failure(.unavailable)); return request }
         guard let state = state(peerID), state.snapshot.permits(page) else { receive(.failure(.unavailable)); return request }
         if query == "synthetic_failure" { receive(.failure(.failed)); return request }
         var result = TelegramGroupMembershipPage(snapshot: state.snapshot)
@@ -66,7 +71,12 @@ import TelegramCore
             result.events = descriptions.enumerated().map { index, title in
                 .init(id: Int64(100-index), actorID: 101, actor: "Synthetic owner", summary: title, date: Int32(100_000-index),
                     previousText: index == 1 ? "Текст до правки · QA" : nil, currentText: index > 0 ? "Сохранённый текст · QA" : "Название QA")
-            }.filter { query.isEmpty || $0.summary.localizedCaseInsensitiveContains(query) }
+            }.filter { row in
+                let kind: TelegramAdminEventKind = row.id == 100 ? .info : row.id == 99 ? .editMessages : .deleteMessages
+                return (query.isEmpty || row.summary.localizedCaseInsensitiveContains(query))
+                    && (historyFilter.kinds?.contains(kind) ?? true)
+                    && (historyFilter.adminIDs.isEmpty || historyFilter.adminIDs.contains(row.actorID))
+            }
         }
         receive(.success(result)); return request
     }

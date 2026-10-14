@@ -147,8 +147,12 @@ struct TelegramDetailView: View {
                 TelegramSecretTimerView(controller: model.secretChats, synthetic: model.isSyntheticPreview)
             }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
-                TelegramContactProfileView(model: model, dossier: dossier,
-                    contextID: model.contactProfileContextID, openDossier: openDossier)
+                if model.conversationCapabilities?.secret != nil, let chatID = model.selectedChatID {
+                    TelegramSecretProfileView(model: model, controller: model.secretChats, chatID: chatID)
+                } else {
+                    TelegramContactProfileView(model: model, dossier: dossier,
+                        contextID: model.contactProfileContextID, openDossier: openDossier)
+                }
             }
             .sheet(isPresented: Binding(get: { attachmentActions.preview != nil }, set: { if !$0 { attachmentActions.preview = nil } })) {
                 VStack(spacing: 16) {
@@ -213,7 +217,9 @@ struct TelegramDetailView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Button {
-                        model.loadContactProfile(); profilePresented = true
+                        if model.conversationCapabilities?.secret != nil { model.secretChats.refreshSession() }
+                        else { model.loadContactProfile() }
+                        profilePresented = true
                     } label: {
                         HStack(spacing: 10) {
                             TelegramChatAvatar(title: chat.title, peerID: chat.id, store: model.avatars, size: 36)

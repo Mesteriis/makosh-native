@@ -18,6 +18,16 @@ import CoreVideo
     public var permitsStart: @MainActor () -> Bool = { true }
     public var accountID: Int64? { provider?.accountID }
     public var isBusy: Bool { call?.isActive == true || isReleasingMedia || coordinator.isBusy }
+    public func canRecall(callID: UUID) -> Bool {
+        guard let call, call.id == callID, !call.isActive, !isBusy, permitsStart(), peerStatus == .ready,
+              let peer, peer.isValid, peer.canVoice, peer.accountID == accountID,
+              call.accountID == accountID, call.peerID == peer.peerID else { return false }
+        return true
+    }
+    @discardableResult public func recall(callID: UUID, video: Bool) -> Bool {
+        guard canRecall(callID: callID), let peer, !video || peer.canVideo else { return false }
+        return startOutgoing(basis: peer, video: video, contextID: peerContextID)
+    }
     private let permissions: any TelegramCallPermissions
     private let coordinator: TelegramCallCoordinator
     private var coordinatorObservation: AnyCancellable?

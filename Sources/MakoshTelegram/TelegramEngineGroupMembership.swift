@@ -124,15 +124,27 @@ private func groupRequests(account: Account, basis: TelegramNativeGroupBasis, qu
     }
 }
 private func groupHistory(account: Account, basis: TelegramNativeGroupBasis, query: String,
-    cursor: TelegramGroupMembershipCursor?) -> Signal<TelegramGroupMembershipPage, TelegramGroupMembershipError> {
-    guard basis.snapshot.canHistory, let channel = basis.full.peer as? TelegramChannel, case let .personal(hash) = channel.accessHash,
+    cursor: TelegramGroupMembershipCursor?, filter: TelegramAdminHistoryFilter) -> Signal<TelegramGroupMembershipPage, TelegramGroupMembershipError> {
+    guard filter.isValid, basis.snapshot.canHistory, let channel = basis.full.peer as? TelegramChannel, case let .personal(hash) = channel.accessHash,
           query.utf16.count <= 255, !query.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { return .fail(.unavailable) }
     let maxID: Int64
     if let cursor { guard case let .history(id) = cursor, id > 0 else { return .fail(.unavailable) }; maxID = id } else { maxID = 0 }
-    return account.network.request(Api.functions.channels.getAdminLog(flags: 0,
-        channel: .inputChannel(channelId: channel.id.id._internalGetInt64Value(), accessHash: hash), q: query, eventsFilter: nil,
-        admins: nil, maxId: maxID, minId: 0, limit: 50), automaticFloodWait: false) |> mapError { _ in TelegramGroupMembershipError.failed }
-        |> mapToSignal { response in
+    return groupUnwrap(account.postbox.transaction { transaction -> [Api.InputUser]? in
+        var users: [Api.InputUser] = []
+        for id in filter.adminIDs.sorted() {
+            guard let peerID = telegramManagementPeerID(id), let user = transaction.getPeer(peerID) as? TelegramUser,
+                  case let .personal(value) = user.accessHash, value != 0 else { return nil }
+            users.append(.inputUser(userId: peerID.id._internalGetInt64Value(), accessHash: value))
+        }
+        return users
+    }) |> mapToSignal { admins in
+        let flags: Int32 = (filter.nativeFlags == nil ? 0 : 1) | (admins.isEmpty ? 0 : 2)
+        return account.network.request(Api.functions.channels.getAdminLog(flags: flags,
+            channel: .inputChannel(channelId: channel.id.id._internalGetInt64Value(), accessHash: hash), q: query,
+            eventsFilter: filter.nativeFlags.map { .channelAdminLogEventsFilter(flags: $0) },
+            admins: admins.isEmpty ? nil : admins, maxId: maxID, minId: 0, limit: 50), automaticFloodWait: false)
+            |> mapError { _ in TelegramGroupMembershipError.failed }
+    } |> mapToSignal { response in
             groupUnwrap(account.postbox.transaction { transaction -> TelegramGroupMembershipPage? in
                 switch response {
                 case let .adminLogResults(events, chats, users):
@@ -153,6 +165,7 @@ private func groupHistory(account: Account, basis: TelegramNativeGroupBasis, que
                         switch event {
                         case let .channelAdminLogEvent(id, date, actorID, action):
                             let nativeID = PeerId(namespace: Namespaces.Peer.CloudUser, id: ._internalFromInt64Value(actorID))
+                            guard filter.adminIDs.isEmpty || filter.adminIDs.contains(nativeID.toInt64()) else { return nil }
                             guard let actor = directory.peers[nativeID], let presentation = telegramGroupAdminPresentation(action) else { return nil }
                             let subjects = presentation.subjectIDs.compactMap { directory.peers[PeerId($0)].map(telegramPeerTitle) }
                             guard subjects.count == presentation.subjectIDs.count else { return nil }
@@ -180,14 +193,14 @@ private func groupHistory(account: Account, basis: TelegramNativeGroupBasis, que
         }
 }
 func telegramNativeGroupPage(account: Account, basis: TelegramNativeGroupBasis, page: TelegramGroupMembershipSection,
-    ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?) -> Signal<TelegramGroupMembershipPage, TelegramGroupMembershipError> {
+    ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?, historyFilter: TelegramAdminHistoryFilter = .all) -> Signal<TelegramGroupMembershipPage, TelegramGroupMembershipError> {
     guard basis.snapshot.permits(page) else { return .fail(.unavailable) }
     let result: Signal<TelegramGroupMembershipPage, TelegramGroupMembershipError>
     switch page {
     case .overview: guard cursor == nil else { return .fail(.unavailable) }; result = .single(.init(snapshot: basis.snapshot))
     case .activeLinks, .revokedLinks: result = groupLinks(account: account, basis: basis, ownerID: ownerID ?? basis.snapshot.accountID, revoked: page == .revokedLinks, cursor: cursor)
     case .requests: result = groupRequests(account: account, basis: basis, query: query, cursor: cursor)
-    case .history: result = groupHistory(account: account, basis: basis, query: query, cursor: cursor)
+    case .history: result = groupHistory(account: account, basis: basis, query: query, cursor: cursor, filter: historyFilter)
     }
     if page == .activeLinks || page == .revokedLinks {
         return result |> mapToSignal { value in groupCreators(account: account, basis: basis) |> map { creators in var value = value; value.creators = creators; return value } }
@@ -201,9 +214,14 @@ func telegramNativeGroupPage(account: Account, basis: TelegramNativeGroupBasis, 
     init(account: Account) { self.account = account }
     func load(peerID: Int64, page: TelegramGroupMembershipSection, ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?,
         receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest {
+        load(peerID: peerID, page: page, ownerID: ownerID, query: query, cursor: cursor, historyFilter: .all, receive: receive)
+    }
+    func load(peerID: Int64, page: TelegramGroupMembershipSection, ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?, historyFilter: TelegramAdminHistoryFilter,
+        receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest {
         let request = TelegramNativeGroupRequest(), account = account
+        guard historyFilter.isValid, page == .history || historyFilter == .all else { receive(.failure(.unavailable)); return request }
         request.start(telegramNativeGroupBasis(account: account, peerID: peerID) |> mapToSignal { basis in
-            telegramNativeGroupPage(account: account, basis: basis, page: page, ownerID: ownerID, query: query, cursor: cursor)
+            telegramNativeGroupPage(account: account, basis: basis, page: page, ownerID: ownerID, query: query, cursor: cursor, historyFilter: historyFilter)
         }, receive: receive)
         return request
     }

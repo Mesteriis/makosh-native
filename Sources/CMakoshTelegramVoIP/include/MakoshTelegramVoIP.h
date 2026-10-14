@@ -26,6 +26,8 @@ typedef struct {
     size_t server_count;
     char proxy_host[256], proxy_username[256], proxy_password[256];
     uint16_t proxy_port;
+    // ABI2 only. Empty UID uses the system default. ABI1 callers need no tail.
+    char audio_input_uid[128], audio_output_uid[128];
 } MKCallConfig;
 typedef struct {
     void *context;

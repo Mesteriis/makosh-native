@@ -17,6 +17,11 @@ import TelegramCore
     @Published public private(set) var lastSubmittedChange: TelegramGroupMembershipChange?
     public private(set) var peerID: Int64?, ownerID: Int64?
     public private(set) var query = ""
+    @Published public private(set) var historyFilter = TelegramAdminHistoryFilter.all
+    @discardableResult public func filterHistory(_ filter: TelegramAdminHistoryFilter, contextID: UUID) -> Bool {
+        guard contextID == self.contextID, page == .history, snapshot?.canHistory == true, !isBusy, filter.isValid else { return false }
+        historyFilter = filter; self.contextID = UUID(); events = []; next = nil; load(cursor: nil); return true
+    }
     public private(set) var next: TelegramGroupMembershipCursor?
     public var accountID: Int64? { provider?.accountID }
     public var isBusy: Bool { phase == .validating || phase == .committing }
@@ -48,7 +53,7 @@ import TelegramCore
         read?.cancel(); write?.cancel(); read = nil; write = nil
         readDeadline?.cancel(); writeDeadline?.cancel(); readDeadline = nil; writeDeadline = nil
         snapshot = nil; links = []; requests = []; events = []; creators = []; peerID = nil; ownerID = nil
-        query = ""; next = nil; status = .idle; phase = .idle; page = .overview; lastCreatedLink = nil; lastSubmittedChange = nil
+        query = ""; historyFilter = .all; next = nil; status = .idle; phase = .idle; page = .overview; lastCreatedLink = nil; lastSubmittedChange = nil
     }
     @discardableResult public func show(_ page: TelegramGroupMembershipSection, query: String = "") -> Bool {
         guard !isBusy, snapshot?.permits(page) == true, validQuery(query) else { return false }
@@ -89,7 +94,8 @@ import TelegramCore
             guard let self, self.readID == token else { return }
             self.readID = nil; self.read?.cancel(); self.read = nil; self.status = .timedOut
         }
-        let request = provider.load(peerID: peerID, page: section, ownerID: owner, query: query, cursor: cursor) { [weak self] result in
+        let filter = section == .history ? historyFilter : .all
+        let request = provider.load(peerID: peerID, page: section, ownerID: owner, query: query, cursor: cursor, historyFilter: filter) { [weak self] result in
             guard let self, self.readID == token, self.contextID == context, self.accountID == provider.accountID else { return }
             self.readID = nil; self.readDeadline?.cancel(); self.readDeadline = nil; self.read?.cancel(); self.read = nil
             guard case let .success(value) = result, value.snapshot.accountID == provider.accountID, value.snapshot.peerID == peerID,
@@ -123,7 +129,8 @@ import TelegramCore
         case .requests:
             guard value.links.isEmpty, value.events.isEmpty, value.requests.allSatisfy({ $0.origin == cursor && $0.id != accountID }) else { return false }
         case .history:
-            guard value.links.isEmpty, value.requests.isEmpty else { return false }
+            guard value.links.isEmpty, value.requests.isEmpty,
+                  historyFilter.adminIDs.isEmpty || value.events.allSatisfy({ historyFilter.adminIDs.contains($0.actorID) }) else { return false }
             for pair in zip(value.events, value.events.dropFirst()) { if pair.0.id <= pair.1.id { return false } }
             if case let .history(maxID) = cursor, value.events.first.map({ $0.id >= maxID }) == true { return false }
         }

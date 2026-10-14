@@ -5,6 +5,33 @@ import CoreVideo
 @testable import MakoshTelegram
 
 @MainActor final class TelegramEngineCallProviderTests: XCTestCase {
+    func testAudioSelectionIsFrozenBeforeRemoteCommitAndNeverChangesActiveCall() async throws {
+        let engine = CallEngineFixture(), factory = CallMediaFactoryFixture()
+        var selection = TelegramCallAudioSelection(inputUID: "qa-one", outputUID: "qa-output")
+        let controller = TelegramCallController(permissions: EngineCallPermissions())
+        controller.bind(TelegramEngineCallProvider(engine: engine, proxy: { nil }, media: factory, audioSelection: { selection }))
+        controller.selectPeer(42)
+        XCTAssertTrue(controller.startOutgoing(basis: engine.peerValue, video: false, contextID: controller.peerContextID))
+        await fulfillment(of: [engine.requested], timeout: 2)
+        selection.inputUID = "qa-two"
+        engine.emit(engine.active()); await drain()
+        XCTAssertEqual(factory.configurations.first?.audioDevices.inputUID, "qa-one")
+        engine.emit(engine.active()); await drain()
+        XCTAssertEqual(factory.configurations.count, 1)
+        controller.end(callID: try XCTUnwrap(controller.call?.id))
+        factory.cores.first?.inbox?.release(); await drain()
+    }
+    func testUnreadableAudioPreferencesRefuseBeforeRemoteCommitAndCapture() async throws {
+        let engine = CallEngineFixture(), factory = CallMediaFactoryFixture()
+        let controller = TelegramCallController(permissions: EngineCallPermissions())
+        controller.bind(TelegramEngineCallProvider(engine: engine, proxy: { nil }, media: factory, audioSelection: { throw CocoaError(.coderInvalidValue) }))
+        controller.selectPeer(42)
+        XCTAssertTrue(controller.startOutgoing(basis: engine.peerValue, video: false, contextID: controller.peerContextID))
+        for _ in 0..<20 { await Task.yield() }; await drain()
+        XCTAssertTrue(engine.requests.isEmpty); XCTAssertTrue(factory.cores.isEmpty)
+        XCTAssertEqual(controller.call?.phase, .failed)
+        if let id = controller.call?.id { controller.end(callID: id) }
+    }
     private func start(_ engine: CallEngineFixture, _ factory: CallMediaFactoryFixture) async throws -> TelegramCallController {
         let controller = TelegramCallController(permissions: EngineCallPermissions())
         controller.bind(TelegramEngineCallProvider(engine: engine, proxy: { nil }, media: factory))

@@ -19,9 +19,21 @@ struct TelegramGroupMembershipView: View {
     @State private var pending: GroupConfirmation?
     @State private var creating = false
     @State private var confirmationFailed = false
+    @State private var historyEditor: TelegramAdminHistoryFilterDraft?
+    @State private var historyActors: [Int64: String] = [:]
     private var blocked: Bool { controller.isBusy || controller.status != .ready || controller.phase == .uncertain }
     var body: some View {
         VStack(spacing: 0) {
+            if mode == .history {
+                HStack {
+                    Button("Фильтр событий") {
+                        historyEditor = .init(id: controller.contextID, filter: controller.historyFilter, actors: historyActors)
+                    }.disabled(controller.snapshot?.canHistory != true || controller.isBusy)
+                        .accessibilityIdentifier("telegram.group.history.filter.open")
+                    Spacer()
+                    Text(controller.historyFilter == .all ? "Все события" : "Выбранные события").font(.caption).foregroundStyle(.secondary)
+                }.padding(12)
+            }
             if mode == .links { linkControls }
             if mode == .invite || mode == .requests || mode == .history {
                 TextField(mode == .invite ? "Имя или имя пользователя" : "Поиск", text: $query)
@@ -63,6 +75,10 @@ struct TelegramGroupMembershipView: View {
             }.accessibilityIdentifier("telegram.group.confirm")
         } message: { Text($0.message) }
         .sheet(isPresented: $creating) { TelegramGroupInviteEditor(controller: controller) }
+        .sheet(item: $historyEditor) { TelegramAdminHistoryFilterView(controller: controller, basis: $0) }
+        .onChange(of: controller.events, initial: true) { _, events in
+            for event in events where historyActors.count < 1000 || historyActors[event.actorID] != nil { historyActors[event.actorID] = event.actor }
+        }
         .onDisappear { if mode == .invite { search.search("") } }
     }
     private func confirm(_ change: TelegramGroupMembershipChange, _ message: String) {
@@ -148,8 +164,8 @@ struct TelegramGroupMembershipView: View {
             VStack(alignment: .leading, spacing: 7) {
                 HStack { Text(event.actor).font(.body.weight(.medium)); Spacer(); Text(Date(timeIntervalSince1970: Double(event.date)), format: .dateTime).font(.caption).foregroundStyle(.secondary) }
                 Text(event.summary)
-                if event.copyProtected { eventTexts(event) }
-                else { eventTexts(event).textSelection(.enabled) }
+                if event.allowsCopy { eventTexts(event).textSelection(.enabled) }
+                else { eventTexts(event) }
                 if event.contentUnavailable { Text("Содержимое недоступно в ответе Telegram.").font(.caption).foregroundStyle(.secondary) }
             }.padding(12)
             Divider()

@@ -17,12 +17,13 @@ template <size_t N> inline bool validHost(const char (&value)[N]) {
     });
 }
 inline bool validateCall(const MKCallConfig &config) {
-    if (config.abi_version != 1 || !terminated(config.version) ||
+    if ((config.abi_version != 1 && config.abi_version != 2) || !terminated(config.version) ||
         (std::string_view(config.version) != "2.7.7" && std::string_view(config.version) != "5.0.0") ||
         (config.max_layer < 65 || config.max_layer > 92) || config.outgoing > 1 || config.allow_p2p > 1 ||
         config.allow_tcp > 1 || config.video > 1 || config.use_proxy > 1 ||
         std::none_of(std::begin(config.key), std::end(config.key), [](uint8_t b) { return b != 0; }) ||
         config.server_count > 32 || (config.server_count && !config.servers)) return false;
+    if (config.abi_version == 2 && (!terminated(config.audio_input_uid) || !terminated(config.audio_output_uid))) return false;
     bool relay = false, proxyRelay = false;
     for (size_t i = 0; i < config.server_count; ++i) {
         const auto &server = config.servers[i];

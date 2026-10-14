@@ -90,10 +90,11 @@ public:
         descriptor.remoteMediaStateUpdated = [weak](tgcalls::AudioState, tgcalls::VideoState state) {
             if (const auto self = weak.lock()) self->emit([&](const auto &cb) { if (cb.remote_video) cb.remote_video(cb.context, state == tgcalls::VideoState::Active); });
         };
-        descriptor.createAudioDeviceModule = [weak, factory = std::move(factory)](webrtc::TaskQueueFactory *queue) {
+        const CallAudioDevices devices = config.abi_version == 2 ? CallAudioDevices{config.audio_input_uid, config.audio_output_uid} : CallAudioDevices{};
+        descriptor.createAudioDeviceModule = [weak, factory = std::move(factory), devices](webrtc::TaskQueueFactory *queue) {
             return prepareCallAudio(factory, queue, [weak] {
                 if (const auto self = weak.lock()) self->emit([](const auto &cb) { cb.state(cb.context, 0); });
-            }, [weak] { if (const auto self = weak.lock()) self->mediaReleased(); });
+            }, [weak] { if (const auto self = weak.lock()) self->mediaReleased(); }, devices);
         };
         // Create a source even for audio calls, so later camera activation never renegotiates the device boundary.
         capture = tgcalls::VideoCaptureInterface::Create(tgcalls::StaticThreads::getThreads(), "external", false, video);

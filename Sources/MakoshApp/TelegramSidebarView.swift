@@ -119,7 +119,7 @@ struct TelegramSidebarView: View {
             .sheet(isPresented: $settingsPresented) {
                 TelegramSettingsView(sessions: model.accountSessions, webSessions: model.webSessions, privacy: model.accountPrivacy, blockedUsers: model.accountBlockedUsers, twoStep: model.accountTwoStep, notifications: model.notifications,
                     autoDownload: model.autoDownloadSettings, cache: model.cache, proxy: model.proxy, avatarEditing: model.avatarEditing, appearanceCatalog: model.appearanceCatalog,
-                    chats: model.chats, synthetic: model.isSyntheticPreview) { settingsPresented = false }
+                    avatars: model.avatars, chats: model.chats, synthetic: model.isSyntheticPreview) { settingsPresented = false }
             }
             .sheet(isPresented:$downloadsPresented) { TelegramDownloadsView(model:model) }
             .onAppear { forumTopics.setVisible(true) }

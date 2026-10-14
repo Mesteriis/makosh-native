@@ -4,6 +4,14 @@ import TelegramCore
 @testable import MakoshTelegram
 
 @MainActor final class TelegramCallCBridgeTests: XCTestCase {
+    func testExplicitAudioUIDsAreCopiedIntoVersionedCConfiguration() throws {
+        let fixture = CallCFixture()
+        var config = try configuration(); config.audioDevices = .init(inputUID: "qa-input", outputUID: "qa-output")
+        let bridge = try XCTUnwrap(TelegramCallCBridge(configuration: config, inbox: TelegramCallMediaInbox(deliver: { _ in }), functions: fixture.functions))
+        XCTAssertEqual(fixture.audioUIDs, ["qa-input", "qa-output"])
+        XCTAssertEqual(fixture.abiVersion, 2)
+        bridge.stop(); fixture.release()
+    }
     func testCABIReceivesCompleteNativeKeyVersionAndBothRelayAddresses() throws {
         let fixture = CallCFixture(), output = CallCOutput()
         let inbox = TelegramCallMediaInbox(deliver: output.append)
@@ -55,6 +63,9 @@ private final class CallCOutput: @unchecked Sendable {
 private final class CallCFixture: @unchecked Sendable {
     private let lock = NSLock()
     private var callbacks: MKCallCallbacks?
+    private var savedAudioUIDs: [String] = [], savedABIVersion: UInt32 = 0
+    var audioUIDs: [String] { lock.withLock { savedAudioUIDs } }
+    var abiVersion: UInt32 { lock.withLock { savedABIVersion } }
     private var savedVersion = "", savedKey = Data(), savedHosts: [String] = [], savedMutes: [Int32] = [], savedSignals: [Data] = []
     private var savedOutgoing: UInt8 = 0, savedP2P: UInt8 = 0, stopCount = 0, destroyCount = 0
     var version: String { lock.withLock { savedVersion } }
@@ -70,6 +81,8 @@ private final class CallCFixture: @unchecked Sendable {
         .init(create: { [self] config, callback in
             lock.withLock {
                 callbacks = callback.pointee
+                savedABIVersion = config.pointee.abi_version
+                savedAudioUIDs = [withUnsafeBytes(of: config.pointee.audio_input_uid) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }, withUnsafeBytes(of: config.pointee.audio_output_uid) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }]
                 savedVersion = withUnsafeBytes(of: config.pointee.version) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
                 savedKey = withUnsafeBytes(of: config.pointee.key) { Data($0) }
                 savedOutgoing = config.pointee.outgoing; savedP2P = config.pointee.allow_p2p

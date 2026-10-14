@@ -7308,8 +7308,17 @@ The manager preserves the existing no-sheet/no-modal automatic-read/download
 visibility barrier; manual transfers remain active in that sheet.
 
 These are focused code/test results, not actual new native UI or live Telegram
-acceptance. Reference presentation, portable encrypted archive/S3/key recovery,
-full gates, actual isolated native UI, final review and GitHub integration remain.
+acceptance. Portable encrypted archive/S3/key recovery, full gates, actual isolated native UI,
+final review and GitHub integration remain. Reference presentation source adds
+settings/call avatars, current secret card/key/TTL, exact admin filters and
+released-device Recall. Next-call audio selection freezes validated UIDs before
+remote commit and propagates them through ABI2; legacy ABI1 remains admitted.
+The native dummy-ADM tests reproduce selection, missing-device refusal and the
+macOS default/concrete duplicate; all native audio/admission checks pass. Combined
+Telegram presentation/group/secret/call/provider tests pass110, zero failures.
+Initial missing/internal API and catch-shadow compile errors, obsolete ABI2
+fixture and ordinary assertion REDs are retained privately; these failed attempts
+are not counted as passing gates.
 The user will provide a test account only after implementation. No personal
 account, hardware capture, local passcode/autolock or full reference parity is
 claimed. Local dev PostgreSQL/S3 startup exits0; full final gates are still pending.

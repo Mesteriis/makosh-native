@@ -20,11 +20,14 @@ public struct TelegramNightSchedule: Codable, Equatable, Sendable {
 }
 public enum TelegramLocalWallpaper: Codable, Equatable, Sendable {
     case automatic, solid(UInt32), gradient(UInt32, UInt32), image(String)
+    case colors(TelegramWallpaperColors), pattern(TelegramWallpaperPatternSelection)
     var isValid: Bool {
         switch self {
         case .automatic: return true
         case let .solid(color): return color <= 0xffffff
         case let .gradient(a,b): return a <= 0xffffff && b <= 0xffffff
+        case let .colors(value): return value.isValid
+        case let .pattern(value): return value.isValid
         case let .image(name):
             guard name.hasSuffix(".jpg"), name.utf8.count == 40 else { return false }
             return UUID(uuidString: String(name.dropLast(4))) != nil

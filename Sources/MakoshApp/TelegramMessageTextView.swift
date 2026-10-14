@@ -44,9 +44,9 @@ struct TelegramMessageTextView<MenuContent: View>: View {
         native.enumerateAttribute(.font,in:NSRange(location:0,length:native.length)) { value, range, _ in
             if let font = value as? NSFont { native.addAttribute(.font,value:NSFontManager.shared.convert(font,toSize:CGFloat(appearance.fontSize)),range:range) }
         }
-        if let color = appearance.effectivePalette(isDark:colorScheme == .dark)?.text {
+        if let palette = appearance.effectivePalette(isDark:colorScheme == .dark),let color = palette.text {
             native.enumerateAttribute(.foregroundColor,in:NSRange(location:0,length:native.length)) { value, range, _ in
-                if let prior = value as? NSColor, prior == NSColor.labelColor { native.addAttribute(.foregroundColor,value:NSColor(telegramRGBColor(color)),range:range) }
+                if let prior = value as? NSColor, prior == NSColor.labelColor { native.addAttribute(.foregroundColor,value:NSColor(cgColor:palette.color("text",rgb:color)) ?? NSColor.labelColor,range:range) }
             }
         }
         if !revealed {

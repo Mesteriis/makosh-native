@@ -26,7 +26,7 @@ struct TelegramSettingsView: View {
     @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
     private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     private var resolvedScheme: ColorScheme { telegramWorkspaceScheme(theme:theme,telegramSelected:true,system:systemAppearance.scheme,night:appearance.night,date:systemAppearance.now,cloudDark:appearance.cloudPalette?.isDark) }
-    private var resolvedAccent: Color { appearance.effectivePalette(isDark:resolvedScheme == .dark).map { telegramRGBColor($0.accent) } ?? TelegramAccent(preference:accent).color }
+    private var resolvedAccent: Color { appearance.effectivePalette(isDark:resolvedScheme == .dark).map { telegramPaletteColor($0,"accent",$0.accent) } ?? TelegramAccent(preference:accent).color }
     var body: some View {
         VStack(spacing: 0) {
             HStack {

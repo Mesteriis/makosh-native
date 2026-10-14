@@ -55,9 +55,9 @@
 
 ### Task 3: Complete bounded wallpaper and palette variants
 
-**Files:** Create TelegramWallpaperPattern.swift and TelegramWallpaperVariantTests.swift; modify TelegramAppearancePreferences.swift, TelegramCloudPalette.swift, TelegramEngineAppearanceCatalog.swift, TelegramWallpaperFiles.swift, Sources/MakoshApp/TelegramWallpaperEditor.swift and TelegramAppearanceCatalogView.swift. If required, reviewed pinned SVG helper preparation/lock/notices are root-owned.
+**Files:** Create TelegramWallpaperPattern.swift and TelegramWallpaperVariantTests.swift; modify TelegramAppearancePreferences.swift, TelegramCloudPalette.swift, TelegramEngineAppearanceCatalog.swift, TelegramWallpaperFiles.swift, Sources/MakoshApp/TelegramWallpaperEditor.swift and TelegramAppearanceCatalogView.swift, TelegramAppearanceCatalog.swift, TelegramView.swift, TelegramMessageTextView.swift, WorkspaceView.swift and TelegramSettingsView.swift. Native SVG rendering is preflight allowlisted; no new dependency.
 
-**Interfaces:** Consumes existing preference encoding/local UUID images and catalog prepare. Produces1–4color wallpaper with rotation and normalized pattern overlay/intensity; legacy solid/gradient/image decode unchanged. Palette alpha encoded with actual SwiftUI consumer support.
+**Interfaces:** Consumes existing preference encoding/local UUID images and catalog prepare. Produces1–4color wallpaper with two-color45degree rotation and3/4color placement advance and normalized pattern overlay/intensity; legacy solid/gradient/image decode unchanged. Palette alpha encoded with actual SwiftUI consumer support.
 
 - [ ] Write tests: testFourColorWallpaperRoundTrip, testPatternMalformedExternalAndComplexityRefusal, testPatternIntensityAndRotationPixels, testPaletteAlphaSurvivesPersistenceAndRendering, testOldPreferencesStillDecode, testCloudPatternUsesBoundedDecoder. Test real renderer output/side effects; no source-text checks.
 - [ ] Run `python3 .local/block3-focused-test.py --filter 'TelegramWallpaperVariantTests|TelegramAppearance'`. Expected: RED. Implement bounded owned decoding/rendering, matching reference editor/color/pattern workflow; private atomic file writes and same preview/application renderer.

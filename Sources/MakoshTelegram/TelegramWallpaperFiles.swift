@@ -5,14 +5,21 @@ import Darwin
 public enum TelegramWallpaperFiles {
     public static func readSelection(_ url: URL) throws -> Data {
         guard url.isFileURL else { throw TelegramAppearanceError.image }
-        let fd = open(url.path,O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        let fd = open(url.path,O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw TelegramAppearanceError.image }; defer { close(fd) }
         return try read(fd, limit:32 * 1024 * 1024)
     }
     public static func install(_ prepared: Data, directory: URL? = nil) throws -> String {
+        try installAsset(prepared,extension:"jpg",directory:directory)
+    }
+    public static func installPattern(_ prepared:Data,directory:URL? = nil) throws -> String {
+        guard TelegramWallpaperPattern.normalizedImage(prepared) != nil else { throw TelegramAppearanceError.image }
+        return try installAsset(prepared,extension:"png",directory:directory)
+    }
+    private static func installAsset(_ prepared:Data,extension suffix:String,directory:URL?) throws -> String {
         guard !prepared.isEmpty, prepared.count <= 8 * 1024 * 1024 else { throw TelegramAppearanceError.image }
         let root = try rootFD(directory,create:true); defer { close(root) }
-        let name = UUID().uuidString.lowercased() + ".jpg"
+        let name = UUID().uuidString.lowercased() + "." + suffix
         let fd = openat(root,name,O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,0o600)
         guard fd >= 0 else { throw TelegramAppearanceError.image }
         do {
@@ -30,8 +37,16 @@ public enum TelegramWallpaperFiles {
     }
     public static func load(_ name: String, directory: URL? = nil) throws -> Data {
         guard TelegramLocalWallpaper.image(name).isValid else { throw TelegramAppearanceError.invalid }
+        return try loadAsset(name,directory:directory)
+    }
+    public static func loadPattern(_ name:String,directory:URL? = nil) throws -> Data {
+        guard TelegramWallpaperPattern.validName(name) else { throw TelegramAppearanceError.invalid }
+        let bytes = try loadAsset(name,directory:directory)
+        guard TelegramWallpaperPattern.normalizedImage(bytes) != nil else { throw TelegramAppearanceError.image }; return bytes
+    }
+    private static func loadAsset(_ name:String,directory:URL?) throws -> Data {
         let root = try rootFD(directory,create:false); defer { close(root) }
-        let fd = openat(root,name,O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        let fd = openat(root,name,O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw TelegramAppearanceError.image }; defer { close(fd) }
         return try read(fd,limit:8 * 1024 * 1024)
     }

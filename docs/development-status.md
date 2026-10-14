@@ -7469,3 +7469,10 @@ wallpaper variants and call presentation. These changes are not yet complete.
 Real Telegram account/peer/actions will be supplied by the user at the end.
 Local passcode/autolock remain excluded. Prior block14 evidence below describes
 its already integrated scope and must not be read as acceptance of this new work.
+
+Tasks1–3 are implemented on the final-parity branch: account cache maintenance,
+manual cross-chat/restart downloads with fresh S3-policy admission, and1–4color
+wallpapers/patterns/palette opacity. The current full local suite exits0:
+2170Telegram+113Core=2283XCTest,one microphone-precondition skip,zero failures;
+109Python tests/24suites. The native final build/UI and call-presentation work
+remain pending; test success is not real-account or native-flow acceptance.

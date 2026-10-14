@@ -3449,3 +3449,47 @@ history and strict S3 OFF, exports no authorization/session/outbox/credentials a
 opens recovered data read-only without switching current accepted writes.
 Local Makosh passcode/autolock remains excluded. Real-account/physical-device
 acceptance waits for the user's separately selected test account and actions.
+
+## Continuous final parity implementation
+
+This pass supersedes Block14 implementation limits above. Cache retention is
+account-owned with known cloud-resource age/size selection and non-forced fresh
+removal. Permanent PostgreSQL/S3 data is outside cache eviction. Manual full
+downloads survive chat selection; encrypted Postbox metadata restores them with
+fresh native message/resource comparison. Preview/automatic work stays visible
+scope-owned. Ready rows restore cache-only; failed/cancelled rows require explicit
+retry. The idle deadline renews only on advancing progress/growing partial data.
+
+The journal is bounded1000records/2MiB and stores message/attachment identity,
+state and bounded display-validation metadata, never cache paths/access hashes
+or file bytes. Serial CAS commits precede durable acknowledgement. Failed local
+mutations/tombstones reconcile against fresh CAS state on explicit refresh;
+warning remains until commit, and newer cancellation wins over older writes.
+Four manual network/preflight jobs run concurrently; archive waits use a separate
+8FD budget. Fresh preflight admits OFF without archive capacity, and completion
+rechecks policy. OFF→ON waits on its native cache lease/URL within the1000job cap
+until FD admission; external forced deletion before admission fails visibly.
+Accepted FD captures retain their independent ownership. A fresh
+PG chat policy gates every capture; OFF forbids spool/S3 copies and progresses
+independently of unrelated storage errors. Accepted archive originals remain
+owned after transfer cancellation. Complete capturing files remain exportable.
+
+Color wallpaper supports1–4colors,45degree two-color rotation,3/4color placement
+advance and pattern intensity. Signed cloud intensity renders by absolute
+magnitude, as the selected reference does; the editor uses0–100. PNG/WebP/simple SVG/gzip masks
+are bounded and normalized to private metadata-free PNG. Strict XML preflight
+allows only supported static shapes, limits nesting/nodes/numeric complexity
+and forbids external references/entities/scripts/fonts. Image backgrounds keep
+legacy JPEG storage; both assets use exclusive private UUID filenames and fsync.
+Native palette opacity reaches accent/background/text/incoming/outgoing rendering.
+
+Call presentation adds compatible four-emoji visual hashes, owned PCM ringtone,
+state decoration, account/resource-bound muted video avatars (16MiB/30seconds/
+1024px;4visible observations), mirrored corner preview and activity-based video
+control visibility. VoiceOver keeps controls visible; keyboard/mouse/visible
+Reveal restore End access. Auxiliary-window occlusion and reduced motion stop
+video-avatar/decoration ownership. Ringtone follows global call state even while
+the window is hidden. Device switching during an active call is deliberately
+excluded by the user; validated next-call selection remains. Observed native synthetic UI
+acceptance and separately chosen real-account/physical-device acceptance are
+reported independently in development-status.md.

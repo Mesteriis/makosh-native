@@ -20,11 +20,16 @@ enum TelegramAvatarEvent: Sendable {
 @MainActor protocol TelegramAvatarLease: AnyObject { func cancel() }
 @MainActor protocol TelegramAvatarProvider: AnyObject {
     func start(key: TelegramAvatarKey, receive: @escaping @MainActor (TelegramAvatarEvent) -> Void) -> any TelegramAvatarLease
+    func startVideo(key:TelegramAvatarKey,receive:@escaping @MainActor (TelegramAvatarVideoEvent)->Void) -> (any TelegramAvatarLease)?
+}
+extension TelegramAvatarProvider {
+    func startVideo(key:TelegramAvatarKey,receive:@escaping @MainActor (TelegramAvatarVideoEvent)->Void) -> (any TelegramAvatarLease)? { nil }
 }
 
 /// Each visible avatar owns a cancellable observation; native references stay in
 /// the account-bound provider. No avatar bytes or cache paths enter a dossier.
 @MainActor public final class TelegramAvatarStore: ObservableObject {
+    let videoFeed = TelegramAvatarVideoFeed()
     @MainActor private final class Job {
         let key: TelegramAvatarKey
         let continuation: AsyncStream<TelegramImagePreview?>.Continuation
@@ -51,6 +56,7 @@ enum TelegramAvatarEvent: Sendable {
     func bind(_ provider: (any TelegramAvatarProvider)?) {
         let previous = jobs; jobs.removeAll()
         self.provider = provider; contextID = UUID()
+        videoFeed.bind(provider)
         for job in previous.values { job.stop() }
     }
 

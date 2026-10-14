@@ -4,6 +4,68 @@ Block14 implementation and integration are complete in [PR14](https://github.com
 The final integration evidence is at the end of this document. Real test-account,
 physical-device and actual login-Keychain acceptance remain separately scoped.
 
+## Continuous final parity — 2026-10-14
+
+All five implementation slices are present on `feature/telegram-final-parity`;
+final review found two Important download issues, both resolved by the verified
+regression fix pass. [PR15](https://github.com/Mesteriis/makosh-native/pull/15)
+is attached; exact-head CI and merge remain pending. This supersedes historical
+Block14 aesthetic/transfer/format limitations below. Active-call device switching
+is an accepted permanent gap by explicit user decision; next-call selection stays.
+Local passcode/autolock remains excluded.
+
+Cache maintenance has account-owned age/size policies, fresh non-forced native
+removal and protection for active/unknown/secret/local resources. Manual full
+transfers survive chat changes and restore from encrypted bounded Postbox metadata
+with fresh native source validation. Automatic/preview work keeps visible scope.
+Fresh PostgreSQL OFF forbids every new spool/S3 copy; bounded FD backpressure
+preserves accepted originals without putting file bytes into PostgreSQL.
+
+Wallpapers now support1–4colors, two-color rotation,3/4color placement, bounded
+PNG/WebP/static SVG/gzip patterns and palette opacity. Call presentation includes
+muted video avatars, owned ringtone/state wave, compatible four-emoji key,
+movable mirrored preview and recoverable auto-hidden controls. Mesh rendering
+and decorative wave remain owned approximations documented in reference-interface.md.
+
+Final integrated source: `scripts/dev-db.sh up`, `scripts/test.sh`,
+`scripts/build-app.sh` all exit0. XCTest2301 (2188Telegram+113Core),zero failures,
+one microphone-precondition skip;109Python tests across24suites pass. A separate
+focused131test set passes. Strict signed bundle/native UUID,17section payload and
+unsigned QA executable equality pass. Existing upstream warnings and preexisting
+contactsd/XPC metadata diagnostics remain in private raw logs; a pass is not a
+claim of warning-free output.
+
+Actual owned native QA uses a new isolated schema/bundle, synthetic providers and
+no Telegram account/network/capture. Observed: common service sidebar; account-wide
+manual download after changing chat and exact59byte export; finished-list cleanup;
+cache1month/5GiB persists after restart; four exact HEX colors/red-green-blue-white,
+invalid HEX disables Save, pattern/intensity70 and colors persist after restart;
+readable message bubbles on the applied vivid wallpaper; real muted synthetic
+MP4 avatar; compatible emoji key; synthetic video/control auto-hide and Space
+recovery; pointer movement to bottom-left with key/End unobscured, expanded key
+and resized window safe. Native downloads restart durability is proven by actual
+encrypted Postbox tests, not by the synthetic GUI fixture. Original pattern assets
+and QA data stay private. No physical microphone/camera or actual Keychain login
+acceptance is inferred. Real Telegram account/peer/actions still await the user.
+
+
+Independent final review: two Important/P2 download findings, no Critical/Minor.
+All executor/review rulings are preserved in [the decisions record](telegram-final-parity-decisions.md).
+Cancellation-save failure followed by Refresh could hide an uncommitted intent;
+four archive waits could block OFF downloads. Both reproduced by RED assertions.
+The fix retains/coalesces failed journal mutations and removal tombstones until
+fresh CAS commits, separates network/archive admission, and rechecks policy before
+fetch/completion. Four and eight saturated waits plus OFF→ON→OFF are covered with
+actual PostgreSQL/S3; explicit retry after refused admission and overflowing
+older writes also have assertion RED→GREEN. Final frozen-source full suite exits0:
+2309XCTest (2196Telegram+113Core),one microphone-precondition skip,zero failures;
+109Python/24suites. Final signed build and strict native artifact checks exit0.
+Actual rebuilt owned UI again observes cross-chat manual ready/finished cleanup;
+one CUA AX transition failure is followed by fresh-state confirmation, not
+classified as product failure. Owned QA is stopped/data retained. Canonical
+XERJ v13 exits0/944files/863code with fresh fingerprint. No unresolved Important/
+Critical or deferred reviewer Minor; exact-head CI and merge are pending.
+
 ## Product scope decision — 2026-10-13
 
 The user explicitly excludes a local Makosh passcode and automatic app locking.
@@ -7458,3 +7520,28 @@ mutations, website revocation, secret delivery, remote calls, physical devices
 and actual login-Keychain behavior remain unverified here. Documented reference
 rendering, safe age/size eviction and persistent cross-chat-download limits remain
 explicit. Local Makosh passcode/autolock is excluded, not backlog work.
+# Telegram remaining parity: continuous final pass (2026-10-14)
+
+User explicitly excludes switching devices during an active call; it is an
+accepted gap, not pending implementation. Next-call selection stays. All other
+previously listed implementation gaps are active under the single
+[final parity plan](superpowers/plans/2026-10-14-telegram-final-parity.md): safe
+age/size cache maintenance, persistent account-owned manual downloads, theme/
+wallpaper variants and call presentation. These changes are not yet complete.
+Real Telegram account/peer/actions will be supplied by the user at the end.
+Local passcode/autolock remain excluded. Prior block14 evidence below describes
+its already integrated scope and must not be read as acceptance of this new work.
+
+Tasks1–3 are implemented on the final-parity branch: account cache maintenance,
+manual cross-chat/restart downloads with fresh S3-policy admission, and1–4color
+wallpapers/patterns/palette opacity. The current full local suite exits0:
+2170Telegram+113Core=2283XCTest,one microphone-precondition skip,zero failures;
+109Python tests/24suites. The native final build/UI and call-presentation work
+remain pending; test success is not real-account or native-flow acceptance.
+
+Call presentation is now implemented and tested: compatible emoji hashes,
+original PCM ringtone, state decoration, muted bounded video avatars, movable
+mirrored preview and recoverable video controls. Current full scripts/test.sh
+exits0:2184Telegram+113Core=2297XCTest,one microphone-precondition skip,zero
+failures;109Python/24suites. Native final acceptance/review/integration remain
+pending; only synthetic data and owned media have been used.

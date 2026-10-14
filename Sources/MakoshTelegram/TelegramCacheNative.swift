@@ -3,7 +3,7 @@ import TelegramCore
 import Postbox
 import SwiftSignalKit
 
-nonisolated func telegramCacheSnapshot(transaction: Transaction, stats: CacheUsageStats, accountID: Int64) -> TelegramCacheSnapshot? {
+nonisolated func telegramCacheSnapshot(transaction: Transaction, stats: CacheUsageStats, accountID: Int64, modificationTime: ((String) -> Int64?)? = nil) -> TelegramCacheSnapshot? {
     guard stats.media.count <= 10_000, stats.mediaResourceIds.count <= 10_000 else { return nil }
     var resourceCount = 0
     for ids in stats.mediaResourceIds.values {
@@ -34,8 +34,10 @@ nonisolated func telegramCacheSnapshot(transaction: Transaction, stats: CacheUsa
         guard !excluded.contains(id), let media = transaction.getMedia(id), let observed = stats.mediaResourceIds[id], observed.count <= 10_000 else { continue }
         let ids = Set(observed), allowed = Set(telegramCacheResources(media).map(\.id))
         guard value.1 > 0, !ids.isEmpty, ids.isSubset(of: allowed), ids.isDisjoint(with:excludedResources) else { continue }
+        let resources = ids.map(\.stringRepresentation).sorted()
+        let times = resources.compactMap { modificationTime?($0) }.filter { $0 > 0 }
         items.append(.init(namespace: id.namespace, id: id.id, bytes: value.1, kind: value.0,
-            resources: ids.map(\.stringRepresentation).sorted(),peerIDs:value.2.sorted()))
+            resources: resources,peerIDs:value.2.sorted(),modifiedAt:times.count == resources.count ? times.max() : nil))
     }
     var titles: [Int64:String] = [:]
     for id in Set(items.flatMap(\.peerIDs)) {
@@ -51,7 +53,10 @@ nonisolated func telegramReadCache(account: Account) -> Signal<TelegramCacheSnap
     TelegramEngine(account: account).resources.collectCacheUsageStats()
         |> mapToSignal { result -> Signal<TelegramCacheSnapshot?, NoError> in
             guard case let .result(stats) = result else { return .complete() }
-            return account.postbox.transaction { telegramCacheSnapshot(transaction: $0, stats: stats, accountID: account.peerId.toInt64()) }
+            return account.postbox.transaction { telegramCacheSnapshot(transaction: $0, stats: stats, accountID: account.peerId.toInt64(),modificationTime:{ id in
+                let value = account.postbox.mediaBox.resourceUsageWithInfo(id:MediaResourceId(id))
+                return value > 0 ? Int64(value) : nil
+            }) }
         }
 }
 

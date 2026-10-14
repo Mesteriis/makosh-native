@@ -17,7 +17,7 @@ python3 scripts/xerj-index.py MMail --check
 xerj search --url http://127.0.0.1:19320 --prefix mk-com-mail 'IMAPSession connectAndLogin' -k 3
 python3 scripts/xerj-index.py project
 python3 scripts/xerj-index.py project --check
-xerj search --url http://127.0.0.1:19320 --prefix mk-own-v12 'undoMerge expectedRevision' -k 3
+xerj search --url http://127.0.0.1:19320 --prefix mk-own-v13 'undoMerge expectedRevision' -k 3
 ```
 
 Reference preparation is optional research work. Application build/run/test uses
@@ -98,3 +98,9 @@ above remain historical scope-specific results, not full dependency coverage.
 Raw local report pointers: `.local/crm-index-report.json`, `.local/communications-index-report.json`, `.local/aether-index.json`, `.local/yandex-index.json`, `.local/freshness/`. Public lock and research documents contain only source metadata and aggregate outcomes.
 
 Final block13 TCP adaptations add two reviewed lock entries; v11 refuses unsupported frozen JSON schema evolution (actual exit1). Current project uses a separate mk-own-v12/project-v12 scope. Prior indexes are retained; only the new successful fingerprint may be reused.
+
+The final-parity call-key data lock adds new provenance JSON fields. The v12
+refresh actually exits1 with frozen-dataset schema evolution refusal. The
+current project uses separate `mk-own-v13`/`project-v13`; prior states are
+retained. No lock fields or source files are excluded to disguise this failure.
+Reference/engine and bounded debug-snapshot scopes remain unchanged.

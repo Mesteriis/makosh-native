@@ -5,11 +5,12 @@ struct TelegramDownloadsView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var media: TelegramMediaController
     @ObservedObject private var settings: TelegramAutoDownloadSettings
+    @ObservedObject private var files: TelegramFileArchiveController
     @StateObject private var actions = TelegramAttachmentActions()
     @State private var limit = 100
     @State private var showCache = false
     @Environment(\.dismiss) private var dismiss
-    init(model: TelegramModel) { self.model = model; media = model.media; settings = model.autoDownloadSettings }
+    init(model: TelegramModel) { self.model = model; media = model.media; settings = model.autoDownloadSettings; files = model.archive.files }
     var body: some View {
         let transfers = media.transfers
         VStack(spacing:0) {
@@ -25,9 +26,25 @@ struct TelegramDownloadsView: View {
                             _ = model.setAutomaticDownloadsPaused(!model.automaticDownloadsPaused,contextID:context)
                         }.disabled(settings.accountID == nil || settings.error != nil).accessibilityIdentifier("telegram.downloads.auto.pause")
                     }
-                    Text("Загрузки файлов текущего чата. Пока это окно открыто, автозагрузка переписки временно остановлена; ручные передачи продолжаются.").font(.caption).foregroundStyle(.secondary)
+                    Text("Загрузки файлов этого аккаунта. Ручные передачи продолжаются при смене чата. Пока это окно открыто, автозагрузка переписки временно остановлена.").font(.caption).foregroundStyle(.secondary)
                 }
-                if transfers.isEmpty { Section { Text("Нет загрузок в текущем чате").accessibilityIdentifier("telegram.downloads.empty") } }
+                if transfers.isEmpty { Section { Text("Нет загрузок в этом аккаунте").accessibilityIdentifier("telegram.downloads.empty") } }
+                if media.isQueueLoading { Section { ProgressView("Восстановление очереди…") } }
+                if media.isQueueSaving { Section { ProgressView("Сохранение очереди…") } }
+                if let error = files.error {
+                    Section("Сохранение файлов в S3") {
+                        Text(error).foregroundStyle(.red).accessibilityIdentifier("telegram.downloads.archive.error")
+                        Button("Повторить сохранение",action:files.retry).accessibilityIdentifier("telegram.downloads.archive.retry")
+                        Text("Полученные архивом копии сохраняются при отмене загрузки.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let error = media.queueError {
+                    Section {
+                        Text(error).foregroundStyle(.red).accessibilityIdentifier("telegram.downloads.queue.error")
+                        Button("Обновить сохранённую очередь",action:media.retryQueuePersistence).disabled(media.isQueueLoading || media.isQueueSaving)
+                            .accessibilityIdentifier("telegram.downloads.queue.reload")
+                    }
+                }
                 ForEach(Array(transfers.prefix(limit))) { transfer in
                     Section {
                         VStack(alignment:.leading,spacing:8) {
@@ -49,7 +66,7 @@ struct TelegramDownloadsView: View {
                 Section {
                     let context = media.transferContextID
                     Button("Убрать завершённые из списка") { _ = media.clearFinishedTransfers(contextID:context) }
-                        .disabled(actions.isBusy || !transfers.contains { if case .downloading = $0.phase { return false }; return true })
+                        .disabled(actions.isBusy || !transfers.contains { if [.queued,.capturing].contains($0.phase) { return false }; if case .downloading = $0.phase { return false }; return true })
                         .accessibilityIdentifier("telegram.downloads.clearFinished")
                     Button("Использование памяти…") { showCache = true }.accessibilityIdentifier("telegram.downloads.cache")
                 }
@@ -59,10 +76,17 @@ struct TelegramDownloadsView: View {
             }.formStyle(.grouped)
         }.frame(width:600,height:620)
             .onDisappear { actions.cancel() }
-            .sheet(isPresented:$showCache) { TelegramCacheSettingsView(controller:model.cache) }
+            .sheet(isPresented:$showCache) { TelegramCacheSettingsView(controller:model.cache,maintenance:model.cacheMaintenance) }
     }
     @ViewBuilder private func controls(_ transfer: TelegramMediaTransfer) -> some View {
         switch transfer.phase {
+        case .capturing:
+            Text("Получен · ожидает сохранения").font(.caption).foregroundStyle(.secondary)
+            Button("Сохранить…") { actions.save(media:media,key:transfer.key,name:transfer.attachment.name,transfer:transfer) }.disabled(actions.isBusy)
+            Button("Отменить ожидание") { _ = media.cancelTransfer(transfer) }.accessibilityIdentifier("telegram.downloads.cancel.\(transfer.id)")
+        case .queued:
+            Text("В очереди").font(.caption).foregroundStyle(.secondary)
+            Button("Отменить") { _ = media.cancelTransfer(transfer) }.accessibilityIdentifier("telegram.downloads.cancel.\(transfer.id)")
         case .downloading:
             Button("Отменить") { _ = media.cancelTransfer(transfer) }.accessibilityIdentifier("telegram.downloads.cancel.\(transfer.id)")
         case .ready:

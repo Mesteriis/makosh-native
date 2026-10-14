@@ -50,7 +50,7 @@ public final class TelegramPlaybackController: ObservableObject {
     public func open(attachment: TelegramAttachment, media: TelegramMediaController) {
         let key = TelegramMediaKey(attachmentID: attachment.id, purpose: .full)
         guard !isBusy, !isActive, attachment.playback != nil, attachment.canDownload,
-              media.phase(for: key) == .ready else { return }
+              [.ready,.capturing].contains(media.phase(for:key)) else { return }
         let id = UUID(), lifetime = Lifetime(), engine = makeEngine()
         token = id; self.lifetime = lifetime; self.engine = engine
         self.attachment = attachment; position = 0; duration = 0; hasVideo = false

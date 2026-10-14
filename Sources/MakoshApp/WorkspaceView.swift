@@ -219,7 +219,7 @@ struct WorkspaceView: View {
     @State private var destination: Destination? = .contacts
     private var telegramAppearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     private var resolvedTelegramScheme: ColorScheme { telegramWorkspaceScheme(theme:telegramTheme,telegramSelected:true,system:systemAppearance.scheme,night:telegramAppearance.night,date:systemAppearance.now,cloudDark:telegramAppearance.cloudPalette?.isDark) }
-    private var resolvedTelegramAccent: Color { telegramAppearance.effectivePalette(isDark:resolvedTelegramScheme == .dark).map { telegramRGBColor($0.accent) } ?? TelegramAccent(preference:telegramAccent).color }
+    private var resolvedTelegramAccent: Color { telegramAppearance.effectivePalette(isDark:resolvedTelegramScheme == .dark).map { telegramPaletteColor($0,"accent",$0.accent) } ?? TelegramAccent(preference:telegramAccent).color }
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false

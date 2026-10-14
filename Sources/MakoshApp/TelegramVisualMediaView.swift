@@ -58,12 +58,12 @@ struct TelegramVisualMediaView<MenuContent: View>: View {
                 videoControl
             } else {
                 switch phase {
-                case .ready:
+                case .ready, .capturing:
                     if decodeFailed {
                         Image(systemName: "exclamationmark.triangle").help("Превью недоступно. Файл можно сохранить через контекстное меню.")
                     } else if thumbnail == nil { ProgressView().controlSize(.small) }
                     else if attachment.playback == .video { videoControl }
-                case .downloading:
+                case .queued, .downloading:
                     VStack(spacing: 6) {
                         ProgressView().controlSize(.small)
                         Button("Отменить") { media.cancel(key) }.controlSize(.small)
@@ -118,12 +118,12 @@ struct TelegramVisualMediaView<MenuContent: View>: View {
     @ViewBuilder private func fullFileActions(isHidden: Bool) -> some View {
         let full = TelegramMediaKey(attachmentID: attachment.id, purpose: .full)
         switch media.phase(for: full) {
-        case .ready:
+        case .ready, .capturing:
             Button("Сохранить файл…") { actions.save(media: media, key: full, name: attachment.name) }.disabled(actions.isBusy || playback.isBusy)
             if !isHidden, attachment.playback != nil {
                 Button("Открыть проигрыватель") { playback.open(attachment: attachment, media: media) }.disabled(actions.isBusy || playback.isBusy)
             }
-        case .downloading:
+        case .queued, .downloading:
             Button("Отменить загрузку файла") { media.cancel(full) }
         default:
             if attachment.canDownload { Button("Загрузить файл") { media.start(attachment, purpose: .full) } }

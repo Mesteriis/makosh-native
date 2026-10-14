@@ -11,6 +11,7 @@ enum TelegramNativePlaybackError: LocalizedError, Equatable {
 final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
     private let mimeType: String?
     private let keepsItemAtEnd: Bool
+    private let muted: Bool, maximumDuration: Double, maximumVideoDimension: CGFloat
     private(set) var player: AVPlayer?
     private var asset: AVURLAsset?
     private var generation: UUID?
@@ -19,8 +20,9 @@ final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
     private var notifications: [NSObjectProtocol] = []
     private var timeObserver: Any?
 
-    init(mimeType: String? = nil, keepsItemAtEnd: Bool = false) {
-        self.mimeType = mimeType; self.keepsItemAtEnd = keepsItemAtEnd
+    init(mimeType: String? = nil, keepsItemAtEnd: Bool = false,muted:Bool = false,maximumDuration:Double = 7*24*60*60,maximumVideoDimension:CGFloat = 8192) {
+        self.mimeType = mimeType; self.keepsItemAtEnd = keepsItemAtEnd; self.muted = muted
+        self.maximumDuration = maximumDuration; self.maximumVideoDimension = maximumVideoDimension
     }
 
     isolated deinit { cleanUp() }
@@ -52,7 +54,7 @@ final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
                 try validate(token)
                 let duration = try await asset.load(.duration).seconds
                 try validate(token)
-                guard playable, duration.isFinite, duration > 0, duration <= 7 * 24 * 60 * 60 else {
+                guard playable, duration.isFinite, duration > 0, duration <= maximumDuration else {
                     throw TelegramNativePlaybackError.unavailable
                 }
                 let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -65,7 +67,7 @@ final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
                         try validate(token)
                         let width = abs(size.width), height = abs(size.height)
                         guard width.isFinite, height.isFinite, width > 0, height > 0,
-                              width <= 8192, height <= 8192, width * height <= 40_000_000 else {
+                              width <= maximumVideoDimension, height <= maximumVideoDimension, width * height <= 40_000_000 else {
                             throw TelegramNativePlaybackError.unavailable
                         }
                     }
@@ -76,6 +78,7 @@ final class TelegramNativePlaybackEngine: TelegramPlaybackEngine {
                 }
                 let item = AVPlayerItem(asset: asset)
                 let player = AVPlayer(playerItem: item)
+                player.isMuted = muted
                 player.allowsExternalPlayback = false
                 self.player = player
                 // No autoplay. Observe readiness with cancellable polling; controller owns the loading deadline.

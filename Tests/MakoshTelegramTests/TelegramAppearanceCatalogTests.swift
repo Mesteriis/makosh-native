@@ -12,7 +12,7 @@ final class TelegramAppearanceCatalogTests: XCTestCase {
         XCTAssertEqual(value.text,0xddeeff)
     }
     func testMalformedDuplicateOrOversizedPaletteIsRefused() {
-        for text in ["name=X\nisDark=1\naccent=#zzzzzz", "name=X\nisDark=2\naccent=#123456", "name=X\nisDark=0\naccent=#123456\naccent=#ffffff", "name=X\nisDark=0\naccent=#123456:0.5", "name=X\nisDark=0", "name=X\nisDark=0\naccent=+fffff"] {
+        for text in ["name=X\nisDark=1\naccent=#zzzzzz", "name=X\nisDark=2\naccent=#123456", "name=X\nisDark=0\naccent=#123456\naccent=#ffffff", "name=X\nisDark=0\naccent=#123456:1.5", "name=X\nisDark=0", "name=X\nisDark=0\naccent=+fffff"] {
             XCTAssertThrowsError(try TelegramCloudPalette.parse(Data(text.utf8)))
         }
         XCTAssertThrowsError(try TelegramCloudPalette.parse(Data(repeating:32,count:1_048_577)))
@@ -25,7 +25,7 @@ final class TelegramAppearanceCatalogTests: XCTestCase {
         XCTAssertEqual(mapped.snapshot.accountID,1); XCTAssertEqual(mapped.snapshot.choices.count,2)
         guard case let .theme(value) = mapped.snapshot.choices[0].kind else { return XCTFail("Missing native theme") }
         XCTAssertTrue(value.isDark); XCTAssertEqual(value.accent,0x123456)
-        XCTAssertEqual(mapped.snapshot.choices[1].kind,.wallpaper(.gradient(0x123456,0xabcdef)))
+        XCTAssertEqual(mapped.snapshot.choices[1].kind,.wallpaper(.colors(.init(colors:[0x123456,0xabcdef]))))
         XCTAssertNil(telegramAppearanceCatalog(themes:.themesNotModified,wallpapers:.wallPapers(hash:0,wallpapers:[]),accountID:1))
         XCTAssertNil(telegramAppearanceCatalog(themes:.themes(hash:0,themes:[theme,theme]),wallpapers:.wallPapers(hash:0,wallpapers:[]),accountID:1))
     }

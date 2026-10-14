@@ -40,7 +40,7 @@ extension TelegramProxyController {
     let accountID: Int64 = -1
     private var items: [TelegramCacheItem] = TelegramCacheKind.allCases.enumerated().map { index, kind in
         .init(namespace: 0, id: Int64(index + 1), bytes: Int64(index + 1) * 1_048_576,
-            kind: kind, resources: ["synthetic-cloud-\(index)"],peerIDs:index == 1 ? [10007,10010] : [index < 2 ? 10007 : 10010])
+            kind: kind, resources: ["synthetic-cloud-\(index)"],peerIDs:index == 1 ? [10007,10010] : [index < 2 ? 10007 : 10010],modifiedAt:Int64(Date().timeIntervalSince1970) - Int64(index + 1) * 86400)
     }
     private var snapshot: TelegramCacheSnapshot { .init(accountID: accountID, items: items,peerTitles:[10007:"Синтетический личный чат",10010:"Синтетическая группа"]) }
     func scan(receive: @escaping @MainActor (TelegramCacheSnapshot?) -> Void) -> any TelegramCacheRequest {
@@ -58,5 +58,12 @@ extension TelegramProxyController {
         receive(.committing); items.removeAll { ids.contains("\($0.namespace):\($0.id)") }; receive(.finished(snapshot)); return Request()
     }
     private final class Request: TelegramCacheRequest { func cancel() {} }
+    func evict(expected:TelegramCacheSnapshot,items selected:[TelegramCacheItem],permitted:@escaping @MainActor () -> Bool,receive:@escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest {
+        guard expected == snapshot else { receive(.changed(snapshot)); return Request() }
+        guard !selected.isEmpty, selected.allSatisfy(items.contains), permitted() else { receive(.refused); return Request() }
+        receive(.committing)
+        guard permitted() else { receive(.refused); return Request() }
+        items.removeAll { selected.contains($0) }; receive(.finished(snapshot)); return Request()
+    }
 }
 #endif

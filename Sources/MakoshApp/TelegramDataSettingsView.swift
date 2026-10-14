@@ -12,6 +12,7 @@ func telegramByteCount(_ bytes: Int64) -> String { ByteCountFormatter.string(fro
 struct TelegramDataSettingsView: View {
     @ObservedObject var settings: TelegramAutoDownloadSettings
     @ObservedObject var cache: TelegramCacheController
+    var maintenance: TelegramCacheMaintenance? = nil
     @ObservedObject var proxy: TelegramProxyController
     private struct RuleChoice: Identifiable { let id: TelegramDownloadKind; let context: UUID; let value: TelegramAutoDownloadPreferences }
     @State private var rule: RuleChoice?
@@ -51,7 +52,7 @@ struct TelegramDataSettingsView: View {
             }
         }.formStyle(.grouped)
             .sheet(item: $rule) { item in TelegramDownloadRuleEditor(settings: settings, kind: item.id, contextID: item.context, value: item.value) }
-            .sheet(isPresented: $showCache) { TelegramCacheSettingsView(controller: cache) }
+            .sheet(isPresented: $showCache) { TelegramCacheSettingsView(controller: cache,maintenance:maintenance) }
             .sheet(isPresented: $showProxy) { TelegramProxySettingsView(controller: proxy) }
             .alert("Сбросить автозагрузку?", isPresented: Binding(get: { resetContext != nil }, set: { if !$0 { resetContext = nil } })) {
                 Button("Отмена", role: .cancel) {}

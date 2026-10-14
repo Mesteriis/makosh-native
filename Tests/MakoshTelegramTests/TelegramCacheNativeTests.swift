@@ -30,7 +30,28 @@ private nonisolated func cacheCatalogue(_ box: Postbox, invalid: Bool = false, f
         return telegramCacheSnapshot(transaction: tx, stats: stats, accountID: 11)
     }
 }
+private nonisolated func cacheTimestamps(_ box: Postbox) -> Signal<[Int64?],NoError> {
+    box.transaction { tx -> [Int64?] in
+    let resources = (1...2).map { index in
+        CloudPhotoSizeMediaResource(datacenterId:2,photoId:301,accessHash:53,sizeSpec:"s\(index)",size:8,fileReference:nil)
+    }
+    let image = TelegramMediaImage(imageId:.init(namespace:Namespaces.Media.CloudImage,id:301),representations:resources.map {
+        .init(dimensions:.init(width:10,height:10),resource:$0,progressiveSizes:[],immediateThumbnailData:nil,hasVideo:false,isPersonal:false)
+    },immediateThumbnailData:nil,reference:nil,partialReference:nil,flags:[])
+    tx.storeMediaIfNotPresent(media:image)
+    let stats = CacheUsageStats(media:[PeerId(37):[.image:[image.imageId:16]]],mediaResourceIds:[image.imageId:resources.map(\.id)],peers:[:],otherSize:0,otherPaths:[],cacheSize:0,tempPaths:[],tempSize:0,immutableSize:0)
+    let known = telegramCacheSnapshot(transaction:tx,stats:stats,accountID:11,modificationTime:{ $0.hasSuffix("s1") ? 100 : 200 })
+    let unknown = telegramCacheSnapshot(transaction:tx,stats:stats,accountID:11,modificationTime:{ $0.hasSuffix("s1") ? 100 : nil })
+    return [known?.items.first?.modifiedAt,unknown?.items.first?.modifiedAt]
+    }
+}
+
 @MainActor final class TelegramCacheNativeTests: XCTestCase {
+    func testCatalogueUsesLatestTimestampAndProtectsAnyUnknownResource() async throws {
+        let box = try await telegramDataPostbox(test:self)
+        let values = try await telegramDataValue(cacheTimestamps(box),test:self)
+        XCTAssertEqual(values,[200,nil])
+    }
     func testCatalogueCountsSharedCloudResourceOnceAndExcludesLocalOtherImmutableAndTempPaths() async throws {
         let box = try await telegramDataPostbox(test: self)
         let value = try await telegramDataValue(cacheCatalogue(box), test: self)

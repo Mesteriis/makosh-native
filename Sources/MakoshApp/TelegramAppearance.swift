@@ -2,6 +2,13 @@ import SwiftUI
 import AppKit
 import MakoshTelegram
 
+/// Default bubbles keep their own readable surface over arbitrary wallpaper.
+/// Explicit cloud bubble colors/opacity continue to take precedence.
+func telegramDefaultBubbleColor(outgoing:Bool,scheme:ColorScheme,accent:Color = .accentColor) -> Color {
+    let base: Color = scheme == .dark ? Color(red:0.10,green:0.12,blue:0.14) : .white
+    return outgoing ? base.mix(with:accent,by:0.14) : base
+}
+
 func telegramWorkspaceScheme(theme: String, telegramSelected: Bool, system: ColorScheme, night: TelegramNightSchedule = .init(), date: Date = Date(), cloudDark: Bool? = nil) -> ColorScheme {
     guard telegramSelected else { return system }
     if night.enabled { return night.isNight(at: date) ? .dark : .light }

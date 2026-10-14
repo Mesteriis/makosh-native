@@ -379,3 +379,18 @@ Clang lifetime annotation, enforce relay/proxy candidate policy, install Makosh'
 own SOCKS5 CONNECT adapter and repair reflector socket teardown. They do not
 replace native call cryptography, encrypted handshake or media packet formats. Full call VP8/Opus codec
 symbols stay hidden inside this dylib; the existing512px/8MB emoji decoder is unchanged.
+
+## Call-key emoji compatibility data
+
+`Sources/MakoshTelegram/TelegramCallEmojiTable.swift` contains only the333ordered
+emoji strings from reviewed iOS pin `a24bbe45f9861f736a79916a50898512f751e0dc`,
+`submodules/TelegramCallsUI/CallsEmoji/Sources/CallsEmoji.m`. Source SHA256 is
+`247d234fc2983c7fed56ec101bbd0d74f4222391c0307f44873ffbfaaa0adca7`; newline-joined
+data SHA256 is `c22c3a00d5a68df075fecc8cb8b730a45817a246a5ca70fa3b75d248ac5b54e9`.
+[Independent provenance lock](Dependencies/TelegramCallEmoji.lock.json) records
+the selected fork/tree and previously reviewed official equivalent. The official
+[iOS source grant](https://telegram.org/apps) is GPLv2-or-later; this data is
+adapted under GPL3-or-later. The mapping algorithm, PCM ringtone, wave and native
+SwiftUI/AppKit presentation are independently authored Makosh code (MIT). No
+outer GPLv2-only UI, audio or branding asset is copied. Existing GPL text and this
+notice are bundled; no engine recipe, source revision or capture entitlement changes.

@@ -9,20 +9,26 @@ struct TelegramAppearanceResource {
     let reference: MediaResourceReference
     let size: Int64
     let palette: Bool
+    var pattern: (TelegramWallpaperColors,Int)? = nil
 }
 struct TelegramAppearanceCatalogMapping {
     let snapshot: TelegramAppearanceCatalogSnapshot
     let resources: [String:TelegramAppearanceResource]
 }
+func telegramPrepareAppearance(_ bytes:Data,source:TelegramAppearanceResource) throws -> TelegramCloudAppearanceKind {
+    if source.palette { return .theme(try TelegramCloudPalette.parse(bytes)) }
+    if let (colors,intensity) = source.pattern { return .pattern(.init(data:try TelegramWallpaperPattern.prepare(bytes),colors:colors,intensity:intensity)) }
+    return .image(try TelegramWallpaperImage.prepare(bytes))
+}
 func telegramAppearanceCatalog(themes: Api.account.Themes, wallpapers: Api.account.WallPapers, accountID: Int64) -> TelegramAppearanceCatalogMapping? {
     guard case let .themes(_, themes) = themes, case let .wallPapers(_, wallpapers) = wallpapers,
           themes.count <= 512, wallpapers.count <= 1024 else { return nil }
     var choices: [TelegramCloudAppearanceChoice] = [], resources: [String:TelegramAppearanceResource] = [:]
-    func document(_ value: Api.Document, palette: Bool, slug: String?) -> TelegramAppearanceResource? {
+    func document(_ value: Api.Document, palette: Bool, slug: String?,pattern:Bool = false) -> TelegramAppearanceResource? {
         guard case let .document(_,id,hash,reference,_,mime,size,_,_,dc,_) = value,
               id != 0, (1...1000).contains(dc), size > 0, size <= (palette ? 1_048_576 : 32 * 1024 * 1024),
               reference.size <= 65536,
-              palette || ["image/jpeg","image/png","image/webp","image/heic"].contains(mime) else { return nil }
+              palette || (pattern ? ["image/png","image/webp","image/svg+xml","application/x-tgwallpattern"].contains(mime) && size <= 2_097_152 : ["image/jpeg","image/png","image/webp","image/heic"].contains(mime)) else { return nil }
         let resource = CloudDocumentMediaResource(datacenterId:Int(dc),fileId:id,accessHash:hash,size:size,fileReference:reference.makeData(),fileName:nil)
         let mediaReference: MediaResourceReference = slug.map { .wallpaper(wallpaper:.slug($0),resource:resource) } ?? .standalone(resource:resource)
         return .init(resource:resource,reference:mediaReference,size:size,palette:palette)
@@ -30,6 +36,14 @@ func telegramAppearanceCatalog(themes: Api.account.Themes, wallpapers: Api.accou
     func colors(_ settings: Api.WallPaperSettings?) -> [UInt32] {
         guard let settings, case let .wallPaperSettings(_,a,b,c,d,_,_,_) = settings else { return [] }
         return [a,b,c,d].compactMap { $0 }.map { UInt32(bitPattern:$0) & 0xffffff }
+    }
+    func colorSettings(_ settings:Api.WallPaperSettings?) -> (TelegramWallpaperColors,Int)? {
+        let values = colors(settings)
+        guard !values.isEmpty else { return nil }
+        var rotation = 0, intensity = 50
+        if let settings,case let .wallPaperSettings(_,_,_,_,_,i,r,_) = settings { intensity = Int(i ?? 50); rotation = values.count == 2 ? Int(r ?? 0) : 0 }
+        let result = TelegramWallpaperColors(colors:values,rotation:rotation)
+        guard result.isValid,(-100...100).contains(intensity) else { return nil }; return (result,intensity)
     }
     for theme in themes {
         guard case let .theme(_,id,_,_,title,file,settings,_,_) = theme, id != 0 else { return nil }
@@ -59,14 +73,17 @@ func telegramAppearanceCatalog(themes: Api.account.Themes, wallpapers: Api.accou
     for wallpaper in wallpapers {
         switch wallpaper {
         case let .wallPaperNoFile(id,_,settings):
-            let values = colors(settings), kind: TelegramCloudAppearanceKind
-            if values.count == 1 { kind = .wallpaper(.solid(values[0])) }
-            else if values.count == 2 { kind = .wallpaper(.gradient(values[0],values[1])) }
+            let kind: TelegramCloudAppearanceKind
+            if let (values,_) = colorSettings(settings) { kind = .wallpaper(.colors(values)) }
             else { kind = .unavailable("Этот вариант цветного фона недоступен") }
             choices.append(.init(id:"wallpaper:\(id)",title:"Цветной фон · \(id)",kind:kind))
-        case let .wallPaper(id,flags,_,slug,file,_):
+        case let .wallPaper(id,flags,_,slug,file,settings):
             let key = "wallpaper:\(id)", kind: TelegramCloudAppearanceKind
-            if flags & (1 << 3) != 0 { kind = .unavailable("Узор с наложением цветов недоступен") }
+            if flags & (1 << 3) != 0 {
+                if slug.utf8.count <= 256,let values = colorSettings(settings),var resource = document(file,palette:false,slug:slug,pattern:true) {
+                    resource.pattern = values; resources[key] = resource; kind = .downloadWallpaper
+                } else { kind = .unavailable("Формат или настройки узора не поддерживаются") }
+            }
             else if slug.utf8.count <= 256, let resource = document(file,palette:false,slug:slug) { resources[key] = resource; kind = .downloadWallpaper }
             else { kind = .unavailable("Формат или размер изображения не поддерживается") }
             choices.append(.init(id:key,title:"Изображение · \(id)",kind:kind))
@@ -105,7 +122,7 @@ private final class AppearanceCatalogBackend {
                     do {
                         let bytes = try TelegramWallpaperFiles.readSelection(URL(fileURLWithPath:value.path))
                         guard bytes.count == source.size else { throw TelegramAppearanceError.image }
-                        let result: TelegramCloudAppearanceKind = source.palette ? .theme(try TelegramCloudPalette.parse(bytes)) : .image(try TelegramWallpaperImage.prepare(bytes))
+                        let result = try telegramPrepareAppearance(bytes,source:source)
                         guard !cancelled.with({ $0 }) else { return }; subscriber.putNext(result); subscriber.putCompletion()
                     } catch { if !cancelled.with({ $0 }) { subscriber.putError(.image) } }
                 }

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "repository": "https://github.com/overtake/Telegram-iOS",
+  "revision": "a24bbe45f9861f736a79916a50898512f751e0dc",
+  "source": "submodules/TelegramCallsUI/CallsEmoji/Sources/CallsEmoji.m",
+  "sourceSHA256": "247d234fc2983c7fed56ec101bbd0d74f4222391c0307f44873ffbfaaa0adca7",
+  "count": 333,
+  "tableSHA256": "c22c3a00d5a68df075fecc8cb8b730a45817a246a5ca70fa3b75d248ac5b54e9",
+  "license": "GPL-3.0-or-later",
+  "grant": "https://telegram.org/apps",
+  "adaptation": "Data only. Mapping is independently implemented; no outer macOS source or assets.",
+  "sourceTree": "0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0",
+  "officialEquivalentRevision": "0699602bbc2756d1feaeb67df485e376dce44ad2"
+}

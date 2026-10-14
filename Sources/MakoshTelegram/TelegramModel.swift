@@ -257,8 +257,14 @@ public final class TelegramModel: ObservableObject {
         return accountBlockedUsers.change(userID: PeerId(profile.peerID).id._internalGetInt64Value(), title: String(profile.displayName.prefix(512)))
     }
     public let media = TelegramMediaController()
+    private var backgroundDownloads: TelegramEngineDownloadJournal?
     public let autoDownloadSettings: TelegramAutoDownloadSettings
     public let cache = TelegramCacheController()
+    public let cacheMaintenance: TelegramCacheMaintenance
+    private var permitsCloudCacheRemoval: Bool {
+        phase == .ready && !isBusy && upload.phase == .idle && !voiceRecording.isActive &&
+        !archive.isArchiving && !archive.files.isBusy && archive.files.error == nil && media.inFlightCount == 0
+    }
     public let proxy: TelegramProxyController
     private let proxyClientID = UUID()
     private lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
@@ -714,6 +720,7 @@ public final class TelegramModel: ObservableObject {
     public init(proxy: TelegramProxyController? = nil, calls: TelegramCallController? = nil, autoDownloadDefaults: UserDefaults = .standard) {
         self.calls = calls ?? TelegramCallController()
         autoDownloadSettings = TelegramAutoDownloadSettings(defaults: autoDownloadDefaults)
+        cacheMaintenance = TelegramCacheMaintenance(defaults:autoDownloadDefaults)
         self.proxy = proxy ?? TelegramProxyController()
         callControlObservation = self.calls.$call.combineLatest(self.calls.$isReleasingMedia, self.calls.$captureReserved).sink { [weak self] _, _, _ in self?.objectWillChange.send() }
         self.calls.permitsStart = { [weak self] in self?.voiceRecording.isActive == false }
@@ -726,12 +733,16 @@ public final class TelegramModel: ObservableObject {
             if !self.chats.contains(where: { $0.id == chat.id }) { self.chats.insert(chat, at: 0) }
             self.selectedChatID = chat.id
         }
-        automaticArchiveObservation = archive.files.objectWillChange.sink { [weak self] _ in self?.automaticDownloads.archiveCapacityChanged() }
+        automaticArchiveObservation = archive.files.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor [weak self] in self?.automaticDownloads.archiveCapacityChanged(); self?.media.archiveCapacityChanged() }
+        }
         cache.permitsClear = { [weak self] in
             guard let self else { return false }
-            return self.phase == .ready && !self.isBusy && self.upload.phase == .idle &&
-                !self.voiceRecording.isActive && !self.archive.isArchiving &&
-                !self.archive.files.isBusy && self.archive.files.error == nil && self.media.automaticInFlightCount == 0
+            return self.permitsCloudCacheRemoval && !self.cacheMaintenance.isRunning
+        }
+        cacheMaintenance.permitsClear = { [weak self] in
+            guard let self else { return false }
+            return self.permitsCloudCacheRemoval && self.cache.phase == .idle
         }
         notifications.didActivate = { [weak self] event in self?.activateNotification(event) == true }
         emojiCatalogObservation = customEmojiCatalog.$snapshot.sink { [weak self] snapshot in
@@ -2178,6 +2189,7 @@ public final class TelegramModel: ObservableObject {
         setupAccount(account)
         autoDownloadSettings.bind(accountID: account.peerId.toInt64())
         cache.bind(TelegramEngineCacheProvider(account: account))
+        cacheMaintenance.bind(provider:TelegramEngineCacheProvider(account:account))
         avatars.bind(TelegramEngineAvatarProvider(account: account))
         peerStatus.bind(account: account)
         forumTopics.bind(account: account); forumTopics.selectChat(selectedChatID)
@@ -2201,6 +2213,18 @@ public final class TelegramModel: ObservableObject {
         let mediaProvider = TelegramEngineMediaProvider(account: account)
         self.mediaProvider = mediaProvider
         media.bind(provider: mediaProvider)
+        let downloadAccountID = account.peerId.toInt64()
+        backgroundDownloads = TelegramEngineDownloadJournal(postbox:account.postbox,accountID:downloadAccountID,media:media,provider:mediaProvider,
+            reserveFile:{ [files = archive.files] record,attachment in
+                let identity = MessageArchiveIdentity(service:"telegram",accountID:String(downloadAccountID),conversationID:String(record.peerID),messageID:"\(record.namespace):\(record.messageID)")
+                let descriptor = MessageArchiveAttachment(id:attachment.id,kind:attachment.kind == .photo ? "photo" : "file",name:attachment.name,size:attachment.byteCount)
+                return files.reserveManualDownload(identity:identity,attachment:descriptor)
+            },
+            completedFile:{ [files = archive.files] record,attachment,url,size in
+                let identity = MessageArchiveIdentity(service:"telegram",accountID:String(downloadAccountID),conversationID:String(record.peerID),messageID:"\(record.namespace):\(record.messageID)")
+                let descriptor = MessageArchiveAttachment(id:attachment.id,kind:attachment.kind == .photo ? "photo" : "file",name:attachment.name,size:attachment.byteCount)
+                files.accept(file:url,byteCount:size,identity:identity,attachment:descriptor)
+            })
         upload.bind(provider: TelegramEngineUploadProvider(account: account, approval: sendApproval), recoveryStore: recovery, requiresRecovery: true)
         restorePendingUpload()
         messageActions.bind(provider: TelegramEngineMessageActionsProvider(account: account, approval: sendApproval))
@@ -2240,7 +2264,7 @@ public final class TelegramModel: ObservableObject {
 
     private func stopAuthorizedAccount() {
         automaticDownloads.setPaused(false); automaticDownloadsPaused = false
-        cancelAutomaticDownloads(); autoDownloadSettings.bind(accountID: nil); cache.bind(nil)
+        cancelAutomaticDownloads(); autoDownloadSettings.bind(accountID: nil); cache.bind(nil); cacheMaintenance.bind(provider:nil)
         notifications.bind(accountID: nil)
         sendApproval.dispose(); capabilityObservation.set(nil); conversationCapabilities = nil
         pendingEmojiInsertion = nil; customEmojiInsertion = nil
@@ -2277,6 +2301,7 @@ public final class TelegramModel: ObservableObject {
         pendingForwardStage = nil
         mediaProvider = nil; historyMediaSources = []
         media.bind(provider: nil)
+        backgroundDownloads = nil
         search.bind(account: nil); globalSearch.bind(account: nil); sharedMedia.bind(account: nil)
         accountGeneration = UUID(); conversationGeneration = UUID()
         messageEditSessions = [:]; messageEditSession = nil; submittedEditSession = nil; editDrafts = [:]
@@ -2368,20 +2393,19 @@ public final class TelegramModel: ObservableObject {
     public func cancelMediaLoads() {
         cancelAutomaticDownloads()
         playback.stop()
-        #if DEBUG
-        if isSyntheticPreview {
-            media.bind(provider: TelegramSyntheticMediaProvider())
-            refreshMediaSources()
-            return
-        }
-        #endif
-        media.bind(provider: mediaProvider)
+        media.retain(attachments:[])
         refreshMediaSources()
     }
 
     private func refreshMediaSources() {
         let sources = historyMediaSources + Array(search.mediaSources.values) + Array(globalSearch.mediaSources.values) + Array(sharedMedia.mediaSources.values)
-        mediaProvider?.sources = Dictionary(sources.map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
+        var nativeSources = Dictionary(sources.map { ($0.attachment.id, $0) }, uniquingKeysWith: { _, last in last })
+        if let provider = mediaProvider {
+            for key in media.manualAttachmentKeys where nativeSources[key] == nil {
+                if let source = provider.sources[key], source.attachment == media.retainedManualAttachment(key) { nativeSources[key] = source }
+            }
+            provider.sources = nativeSources
+        }
         let attachments = (messages + search.messages + globalSearch.messages + sharedMedia.messages).flatMap(\.attachments)
         playback.retain(attachments: attachments)
         media.retain(attachments: attachments)
@@ -2400,7 +2424,11 @@ public final class TelegramModel: ObservableObject {
                 guard let (identity, attachment) = archivedSources[id] else { return nil }
                 return files.reserveAutomaticCapture(identity: identity, attachment: attachment)
             }
-        } else { media.completedFullFile = nil; media.reserveAutomaticFile = nil }
+            media.reserveManualFile = { [files = archive.files] id in
+                guard let (identity,attachment) = archivedSources[id] else { return nil }
+                return files.reserveManualDownload(identity:identity,attachment:attachment)
+            }
+        } else { media.completedFullFile = nil; media.reserveAutomaticFile = nil; media.reserveManualFile = nil }
     }
 
     private func loadChatList(anchor: ChatListIndex? = nil, clear: Bool = false) {
@@ -2542,7 +2570,8 @@ public final class TelegramModel: ObservableObject {
     public static func syntheticPreview(albums: Bool = false, forum: Bool = false, twoStepResetWaitSeconds: Int32 = 7 * 86400, dataDefaults: UserDefaults = .standard, dataSettings: Bool = false, privacyPremium: Bool = true, calls: TelegramCallController? = nil) -> TelegramModel {
         let model = TelegramModel(proxy: TelegramProxyController.synthetic(defaults: dataDefaults), calls: calls, autoDownloadDefaults: dataDefaults)
         model.autoDownloadSettings.bind(accountID: -1)
-        model.cache.bind(TelegramSyntheticCacheProvider())
+        let cacheProvider = TelegramSyntheticCacheProvider()
+        model.cache.bind(cacheProvider); model.cacheMaintenance.bind(provider:cacheProvider)
         let pages = TelegramSyntheticPages(albums: albums, forum: forum, dataSettings: dataSettings)
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())
@@ -2632,6 +2661,7 @@ public final class TelegramModel: ObservableObject {
         let model = syntheticPreview(calls: controller)
         model.syntheticAccountID = 101
         let provider = TelegramSyntheticCallProvider(); model.syntheticCalls = provider; controller.bind(provider)
+        model.avatars.bind(TelegramSyntheticAvatarProvider())
         let group = PeerId(namespace: Namespaces.Peer.CloudGroup, id: ._internalFromInt64Value(91)).toInt64()
         model.chats = [.init(id: 42, title: "Synthetic Alice", preview: "Звонки QA", unreadCount: 0),
             .init(id: 43, title: "Synthetic Bob", preview: "Другой собеседник QA", unreadCount: 0),

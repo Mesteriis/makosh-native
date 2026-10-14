@@ -3,6 +3,7 @@ import Combine
 
 public enum TelegramCloudAppearanceKind: Equatable, Sendable {
     case theme(TelegramCloudPalette), wallpaper(TelegramLocalWallpaper), image(Data)
+    case pattern(TelegramPreparedPattern)
     case downloadTheme, downloadWallpaper, unavailable(String)
 }
 public struct TelegramCloudAppearanceChoice: Identifiable, Equatable, Sendable {
@@ -16,7 +17,7 @@ public struct TelegramAppearanceCatalogSnapshot: Equatable, Sendable {
         choices.count <= 2048 && Set(choices.map(\.id)).count == choices.count && choices.allSatisfy { item in
             guard !item.id.isEmpty, item.id.utf8.count <= 128, !item.title.isEmpty, item.title.utf8.count <= 256,
                   ![item.id,item.title].contains(where:{ $0.unicodeScalars.contains { $0.value < 32 || $0.value == 127 } }) else { return false }
-            switch item.kind { case let .theme(value): return value.isValid; case let .wallpaper(value): return value.isValid; case .image: return false; default: return true }
+            switch item.kind { case let .theme(value): return value.isValid; case let .wallpaper(value): return value.isValid; case .image,.pattern: return false; default: return true }
         }
     }
 }
@@ -79,6 +80,7 @@ public struct TelegramAppearanceCatalogSnapshot: Equatable, Sendable {
             case let .success(.theme(value)) where value.isValid && choice.kind == .downloadTheme: kind = .theme(value)
             case let .success(.wallpaper(value)) where value.isValid && choice.kind == .downloadWallpaper: kind = .wallpaper(value)
             case let .success(.image(data)) where !data.isEmpty && data.count <= 8 * 1024 * 1024 && choice.kind == .downloadWallpaper: kind = .image(data)
+            case let .success(.pattern(value)) where value.isValid && choice.kind == .downloadWallpaper: kind = .pattern(value)
             default: self.phase = .failed; return
             }
             self.prepared = .init(choice:choice,kind:kind,contextID:contextID); self.phase = .ready

@@ -12,6 +12,7 @@ struct TelegramSettingsView: View {
     var notifications: TelegramNotificationController? = nil
     var autoDownload: TelegramAutoDownloadSettings? = nil
     var cache: TelegramCacheController? = nil
+    var cacheMaintenance: TelegramCacheMaintenance? = nil
     var proxy: TelegramProxyController? = nil
     var avatarEditing: TelegramAvatarEditingController? = nil
     var appearanceCatalog: TelegramAppearanceCatalogController? = nil
@@ -25,7 +26,7 @@ struct TelegramSettingsView: View {
     @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
     private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     private var resolvedScheme: ColorScheme { telegramWorkspaceScheme(theme:theme,telegramSelected:true,system:systemAppearance.scheme,night:appearance.night,date:systemAppearance.now,cloudDark:appearance.cloudPalette?.isDark) }
-    private var resolvedAccent: Color { appearance.effectivePalette(isDark:resolvedScheme == .dark).map { telegramRGBColor($0.accent) } ?? TelegramAccent(preference:accent).color }
+    private var resolvedAccent: Color { appearance.effectivePalette(isDark:resolvedScheme == .dark).map { telegramPaletteColor($0,"accent",$0.accent) } ?? TelegramAccent(preference:accent).color }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -45,7 +46,7 @@ struct TelegramSettingsView: View {
             case .calls: TelegramCallAudioSettingsView(synthetic: synthetic)
             case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme, catalog: appearanceCatalog)
             case .data:
-                if let autoDownload, let cache, let proxy { TelegramDataSettingsView(settings: autoDownload, cache: cache, proxy: proxy) }
+                if let autoDownload, let cache, let proxy { TelegramDataSettingsView(settings: autoDownload, cache: cache, maintenance:cacheMaintenance, proxy: proxy) }
             case .notifications:
                 if let notifications, notifications.accountID != nil { TelegramNotificationSettingsView(controller: notifications, chats: chats, synthetic: synthetic) }
                 else { ContentUnavailableView("Подключите Telegram", systemImage: "bell", description: Text("Уведомления доступны для подключённого аккаунта.")) }

@@ -259,6 +259,11 @@ public final class TelegramModel: ObservableObject {
     public let media = TelegramMediaController()
     public let autoDownloadSettings: TelegramAutoDownloadSettings
     public let cache = TelegramCacheController()
+    public let cacheMaintenance: TelegramCacheMaintenance
+    private var permitsCloudCacheRemoval: Bool {
+        phase == .ready && !isBusy && upload.phase == .idle && !voiceRecording.isActive &&
+        !archive.isArchiving && !archive.files.isBusy && archive.files.error == nil && media.inFlightCount == 0
+    }
     public let proxy: TelegramProxyController
     private let proxyClientID = UUID()
     private lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
@@ -714,6 +719,7 @@ public final class TelegramModel: ObservableObject {
     public init(proxy: TelegramProxyController? = nil, calls: TelegramCallController? = nil, autoDownloadDefaults: UserDefaults = .standard) {
         self.calls = calls ?? TelegramCallController()
         autoDownloadSettings = TelegramAutoDownloadSettings(defaults: autoDownloadDefaults)
+        cacheMaintenance = TelegramCacheMaintenance(defaults:autoDownloadDefaults)
         self.proxy = proxy ?? TelegramProxyController()
         callControlObservation = self.calls.$call.combineLatest(self.calls.$isReleasingMedia, self.calls.$captureReserved).sink { [weak self] _, _, _ in self?.objectWillChange.send() }
         self.calls.permitsStart = { [weak self] in self?.voiceRecording.isActive == false }
@@ -729,9 +735,11 @@ public final class TelegramModel: ObservableObject {
         automaticArchiveObservation = archive.files.objectWillChange.sink { [weak self] _ in self?.automaticDownloads.archiveCapacityChanged() }
         cache.permitsClear = { [weak self] in
             guard let self else { return false }
-            return self.phase == .ready && !self.isBusy && self.upload.phase == .idle &&
-                !self.voiceRecording.isActive && !self.archive.isArchiving &&
-                !self.archive.files.isBusy && self.archive.files.error == nil && self.media.automaticInFlightCount == 0
+            return self.permitsCloudCacheRemoval && !self.cacheMaintenance.isRunning
+        }
+        cacheMaintenance.permitsClear = { [weak self] in
+            guard let self else { return false }
+            return self.permitsCloudCacheRemoval && self.cache.phase == .idle
         }
         notifications.didActivate = { [weak self] event in self?.activateNotification(event) == true }
         emojiCatalogObservation = customEmojiCatalog.$snapshot.sink { [weak self] snapshot in
@@ -2178,6 +2186,7 @@ public final class TelegramModel: ObservableObject {
         setupAccount(account)
         autoDownloadSettings.bind(accountID: account.peerId.toInt64())
         cache.bind(TelegramEngineCacheProvider(account: account))
+        cacheMaintenance.bind(provider:TelegramEngineCacheProvider(account:account))
         avatars.bind(TelegramEngineAvatarProvider(account: account))
         peerStatus.bind(account: account)
         forumTopics.bind(account: account); forumTopics.selectChat(selectedChatID)
@@ -2240,7 +2249,7 @@ public final class TelegramModel: ObservableObject {
 
     private func stopAuthorizedAccount() {
         automaticDownloads.setPaused(false); automaticDownloadsPaused = false
-        cancelAutomaticDownloads(); autoDownloadSettings.bind(accountID: nil); cache.bind(nil)
+        cancelAutomaticDownloads(); autoDownloadSettings.bind(accountID: nil); cache.bind(nil); cacheMaintenance.bind(provider:nil)
         notifications.bind(accountID: nil)
         sendApproval.dispose(); capabilityObservation.set(nil); conversationCapabilities = nil
         pendingEmojiInsertion = nil; customEmojiInsertion = nil
@@ -2542,7 +2551,8 @@ public final class TelegramModel: ObservableObject {
     public static func syntheticPreview(albums: Bool = false, forum: Bool = false, twoStepResetWaitSeconds: Int32 = 7 * 86400, dataDefaults: UserDefaults = .standard, dataSettings: Bool = false, privacyPremium: Bool = true, calls: TelegramCallController? = nil) -> TelegramModel {
         let model = TelegramModel(proxy: TelegramProxyController.synthetic(defaults: dataDefaults), calls: calls, autoDownloadDefaults: dataDefaults)
         model.autoDownloadSettings.bind(accountID: -1)
-        model.cache.bind(TelegramSyntheticCacheProvider())
+        let cacheProvider = TelegramSyntheticCacheProvider()
+        model.cache.bind(cacheProvider); model.cacheMaintenance.bind(provider:cacheProvider)
         let pages = TelegramSyntheticPages(albums: albums, forum: forum, dataSettings: dataSettings)
         model.preview = pages
         model.accountSessions.bind(TelegramSyntheticSessionsProvider())

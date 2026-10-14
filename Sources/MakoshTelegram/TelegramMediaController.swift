@@ -184,6 +184,9 @@ public final class TelegramMediaController: ObservableObject {
     var automaticInFlightCount: Int {
         jobs.values.filter { job in if case .downloading = job.phase { return job.automatic }; return false }.count
     }
+    var inFlightCount: Int {
+        jobs.values.filter { if case .downloading = $0.phase { return true }; return false }.count
+    }
     func cancelAutomaticDownloads(except retained: Set<String>) {
         for key in jobs.keys.filter({ jobs[$0]?.automatic == true && !retained.contains($0.attachmentID) }) { remove(key) }
     }

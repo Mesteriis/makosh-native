@@ -15,6 +15,7 @@ struct TelegramCacheItem: Equatable, Sendable {
     let kind: TelegramCacheKind
     let resources: [String]
     var peerIDs: [Int64] = []
+    var modifiedAt: Int64? = nil
 }
 public enum TelegramCacheScope: Equatable, Sendable {
     case all, peers(Set<Int64>)
@@ -53,7 +54,7 @@ public struct TelegramCacheSnapshot: Equatable, Sendable {
         guard accountID != 0, items.count <= 10_000, peerTitles.count <= 10_000, peerTitles.values.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1024 && !$0.unicodeScalars.contains { $0.value < 32 || $0.value == 127 } }) else { return false }
         var identities = Set<String>(), resources = Set<String>(), sum: Int64 = 0
         for item in items {
-            guard item.namespace >= 0, item.bytes > 0, !item.resources.isEmpty, item.resources.count <= 10_000, item.peerIDs.count <= 10_000, !item.peerIDs.contains(0), Set(item.peerIDs).count == item.peerIDs.count,
+            guard item.namespace >= 0, item.bytes > 0, item.modifiedAt.map({ $0 > 0 }) ?? true, !item.resources.isEmpty, item.resources.count <= 10_000, item.peerIDs.count <= 10_000, !item.peerIDs.contains(0), Set(item.peerIDs).count == item.peerIDs.count,
                   identities.insert("\(item.namespace):\(item.id)").inserted else { return false }
             for id in item.resources {
                 guard telegramCacheResourceIDIsValid(id), resources.insert(id).inserted, resources.count <= 10_000 else { return false }
@@ -83,9 +84,15 @@ enum TelegramCacheEvent { case committing, changed(TelegramCacheSnapshot?), fini
     func clear(expected: TelegramCacheSnapshot, categories: Set<TelegramCacheKind>, scope: TelegramCacheScope, permitted: @escaping @MainActor () -> Bool, receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest
     func clear(expected: TelegramCacheSnapshot, categories: Set<TelegramCacheKind>, permitted: @escaping @MainActor () -> Bool,
         receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest
+    func evict(expected: TelegramCacheSnapshot, items: [TelegramCacheItem], permitted: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest
 }
 @MainActor private final class RefusedScopedCacheRequest: TelegramCacheRequest { func cancel() {} }
 extension TelegramCacheProvider {
+    func evict(expected: TelegramCacheSnapshot, items: [TelegramCacheItem], permitted: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest {
+        receive(.refused); return RefusedScopedCacheRequest()
+    }
     func clear(expected: TelegramCacheSnapshot, categories: Set<TelegramCacheKind>, scope: TelegramCacheScope, permitted: @escaping @MainActor () -> Bool, receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest {
         guard scope == .all else { receive(.refused); return RefusedScopedCacheRequest() }
         return clear(expected:expected,categories:categories,permitted:permitted,receive:receive)

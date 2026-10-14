@@ -1620,7 +1620,9 @@ Remaining aesthetic differences: static avatar rendering, no video avatars or
 decorations, no wave/ringtone, native32-byte hex verification instead of the
 reference emoji presentation, fixed local video position and no control auto-hide.
 Audio selection affects subsequent calls; changing devices during an existing
-call is unavailable. Actual changed UI is observed in the section below.
+call is unavailable. **Accepted permanent gap (user,2026-10-14): switching
+microphone/output/camera during an active call is deliberately excluded.**
+Next-call device selection remains supported. Actual changed UI is observed below.
 Physical hot-plug/capture acceptance remains pending; source/synthetic checks do
 not establish hardware behavior.
 # Block14 archive recovery

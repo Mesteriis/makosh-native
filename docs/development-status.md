@@ -7458,3 +7458,15 @@ mutations, website revocation, secret delivery, remote calls, physical devices
 and actual login-Keychain behavior remain unverified here. Documented reference
 rendering, safe age/size eviction and persistent cross-chat-download limits remain
 explicit. Local Makosh passcode/autolock is excluded, not backlog work.
+# Telegram remaining parity: continuous final pass (2026-10-14)
+
+User explicitly excludes switching devices during an active call; it is an
+accepted gap, not pending implementation. Next-call selection stays. All other
+previously listed implementation gaps are active under the single
+[final parity plan](superpowers/plans/2026-10-14-telegram-final-parity.md): safe
+age/size cache maintenance, persistent account-owned manual downloads, theme/
+wallpaper variants and call presentation. These changes are not yet complete.
+Real Telegram account/peer/actions will be supplied by the user at the end.
+Local passcode/autolock remain excluded. Prior block14 evidence below describes
+its already integrated scope and must not be read as acceptance of this new work.
+

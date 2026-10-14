@@ -59,7 +59,7 @@ struct TelegramDownloadsView: View {
             }.formStyle(.grouped)
         }.frame(width:600,height:620)
             .onDisappear { actions.cancel() }
-            .sheet(isPresented:$showCache) { TelegramCacheSettingsView(controller:model.cache) }
+            .sheet(isPresented:$showCache) { TelegramCacheSettingsView(controller:model.cache,maintenance:model.cacheMaintenance) }
     }
     @ViewBuilder private func controls(_ transfer: TelegramMediaTransfer) -> some View {
         switch transfer.phase {

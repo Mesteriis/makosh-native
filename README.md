@@ -38,8 +38,10 @@ survive edits and removal from Telegram's cache. A durable same-transaction
 Postbox journal waits for the archive commit before acknowledgement, including
 when PostgreSQL is unavailable. Completed full-file downloads receive independent
 encrypted copies in S3; PostgreSQL contains metadata, object keys and receipts,
-never attachment payload bytes. Historical backfill and portable archive/key
-backup remain unfinished.
+never attachment payload bytes. The local archive provides explicit encrypted
+backup, full inspection and restore into a new archive, with a separate recovery
+key and read-only restored browsing. See the [recovery procedure](docs/archive-recovery.md).
+Historical backfill remains unfinished.
 Content removed before this client receives it cannot be recovered. See the
 [retention boundaries](docs/telegram.md#independent-local-message-retention).
 

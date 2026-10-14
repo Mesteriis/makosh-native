@@ -69,10 +69,13 @@ private final class CallNativeEndpoint: @unchecked Sendable {
         self.functions = functions; callbacks = CallNativeCallbacks(inbox: inbox, functions: functions)
         queue.sync {
             var config = MKCallConfig()
-            config.abi_version = 1; config.outgoing = configuration.outgoing ? 1 : 0
+            config.abi_version = 2; config.outgoing = configuration.outgoing ? 1 : 0
             config.video = configuration.video ? 1 : 0; config.allow_p2p = configuration.allowP2P ? 1 : 0
             config.max_layer = configuration.maxLayer
-            guard callCString(configuration.version, into: &config.version), configuration.key.count == 256 else { return }
+            guard configuration.audioDevices.isValid,
+                  callCString(configuration.audioDevices.inputUID, into: &config.audio_input_uid),
+                  callCString(configuration.audioDevices.outputUID, into: &config.audio_output_uid),
+                  callCString(configuration.version, into: &config.version), configuration.key.count == 256 else { return }
             withUnsafeMutableBytes(of: &config.key) { $0.copyBytes(from: configuration.key) }
             var servers: [MKCallServer] = []
             for value in configuration.servers {

@@ -62,8 +62,9 @@ public struct TelegramMessagePresentationKey: Equatable, Sendable {
         return "\(message.author): \(detail)"
     }
 
-    public static func attributedString(_ value: TelegramFormattedText, revealingSpoilers: Bool = false) -> NSAttributedString {
-        let font = NSFont.systemFont(ofSize: 14)
+    public static func attributedString(_ value: TelegramFormattedText, revealingSpoilers: Bool = false, fontSize: CGFloat = 14) -> NSAttributedString {
+        let size = fontSize.isFinite && (11...18).contains(fontSize) ? fontSize : 14
+        let font = NSFont.systemFont(ofSize: size)
         let hidden = revealingSpoilers ? [] : mergedSpoilers(value.entities)
         let result = NSMutableAttributedString(string: plainText(value, revealingSpoilers: revealingSpoilers),
             attributes: [.font: font, .foregroundColor: NSColor.labelColor])
@@ -78,7 +79,7 @@ public struct TelegramMessagePresentationKey: Equatable, Sendable {
                     case .italic: current = NSFontManager.shared.convert(current, toHaveTrait: .italicFontMask)
                     default:
                         let traits = NSFontManager.shared.traits(of: current)
-                        current = NSFont.monospacedSystemFont(ofSize: 14, weight: traits.contains(.boldFontMask) ? .bold : .regular)
+                        current = NSFont.monospacedSystemFont(ofSize: size, weight: traits.contains(.boldFontMask) ? .bold : .regular)
                         if traits.contains(.italicFontMask) { current = NSFontManager.shared.convert(current, toHaveTrait: .italicFontMask) }
                     }
                     result.addAttribute(.font, value: current, range: run)

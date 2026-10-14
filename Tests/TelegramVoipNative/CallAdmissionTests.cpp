@@ -20,11 +20,16 @@ int main() {
     config.allow_p2p = 1;
     config.max_layer = 92;
     assert(makosh::validateCall(config));
+    std::memset(config.audio_input_uid, 'x', sizeof(config.audio_input_uid));
+    assert(makosh::validateCall(config)); // ABI1 never reads the appended fields.
+    config.abi_version = 2; assert(!makosh::validateCall(config));
+    config.audio_input_uid[0] = 0; assert(makosh::validateCall(config));
+    config.abi_version = 1;
     config.max_layer = 65; assert(makosh::validateCall(config)); config.max_layer = 92;
     for (int field = 0; field != 8; ++field) {
         auto invalid = config;
         switch (field) {
-        case 0: invalid.abi_version = 2; break;
+        case 0: invalid.abi_version = 3; break;
         case 1: std::memset(invalid.key, 0, sizeof(invalid.key)); break;
         case 2: std::memcpy(invalid.version, "6.0.0", 6); break;
         case 3: invalid.outgoing = 2; break;

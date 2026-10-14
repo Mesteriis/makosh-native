@@ -29,6 +29,8 @@ private struct TelegramSessionConfirmation: Identifiable {
 struct TelegramSessionsView: View {
     @ObservedObject var controller: TelegramSessionsController
     let synthetic: Bool
+    var webSessions: TelegramWebSessionsController? = nil
+    @State private var showWebSessions = false
     @State private var selected: TelegramAccountSession?
     @State private var selectedTTL: Int32?
     @State private var confirmation: TelegramSessionConfirmation?
@@ -44,6 +46,9 @@ struct TelegramSessionsView: View {
             }.padding(.horizontal, 20).padding(.vertical, 10)
             if let snapshot = controller.snapshot {
                 Form {
+                    Section {
+                        if webSessions != nil { Button("Подключённые сайты") { showWebSessions = true }.accessibilityIdentifier("telegram.sessions.websites") }
+                    }
                     Section("Это устройство") {
                         if let current = snapshot.current { row(current) }
                         Button("Завершить все другие сеансы", role: .destructive) { confirm(.terminateOthers) }
@@ -72,6 +77,7 @@ struct TelegramSessionsView: View {
             } else if controller.status == .loading { Spacer(); ProgressView("Загружаем устройства…"); Spacer() }
             else { ContentUnavailableView("Список устройств недоступен", systemImage: "desktopcomputer", description: Text("Подключите выбранный аккаунт Telegram или повторите загрузку.")) }
         }
+        .sheet(isPresented: $showWebSessions) { if let webSessions { TelegramWebSessionsView(controller: webSessions) } }
         .onAppear { controller.open() }.onDisappear { controller.close() }
         .onChange(of: controller.snapshot?.accountID) { _, _ in selected = nil; confirmation = nil }
         .sheet(item: $selected) { session in

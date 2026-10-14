@@ -30,19 +30,24 @@ import SwiftSignalKit
     }
     func clear(expected: TelegramCacheSnapshot, categories: Set<TelegramCacheKind>, permitted: @escaping @MainActor () -> Bool,
         receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest {
+        clear(expected:expected,categories:categories,scope:.all,permitted:permitted,receive:receive)
+    }
+    func clear(expected: TelegramCacheSnapshot, categories: Set<TelegramCacheKind>, scope: TelegramCacheScope, permitted: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest {
+        guard scope.isValid, !expected.selectedItems(categories:categories,scope:scope).isEmpty else { receive(.refused); return NativeCacheRequest() }
         let request = NativeCacheRequest()
         let scanRequest = scan { [weak self, weak request] fresh in
             guard let self, let request, !request.cancelled else { return }
             guard fresh == expected, expected.accountID == self.accountID else { receive(.changed(fresh)); return }
             var resolved = false
-            request.disposables.add((telegramResolveCacheSelection(postbox: self.account.postbox, expected: expected, categories: categories)
+            request.disposables.add((telegramResolveCacheSelection(postbox: self.account.postbox, expected: expected, categories: categories, scope: scope)
                 |> take(1) |> deliverOnMainQueue).start(next: { [weak self, weak request] media in
                     guard let self, let request, !request.cancelled else { return }; resolved = true
                     guard let media else { receive(.changed(nil)); return }
                     guard permitted() else { receive(.refused); return }
                     receive(.committing)
                     guard !request.cancelled, permitted() else { return }
-                    let ids = Set(expected.items.filter { categories.contains($0.kind) }.flatMap(\.resources).map(MediaResourceId.init))
+                    let ids = Set(expected.selectedItems(categories:categories,scope:scope).flatMap(\.resources).map(MediaResourceId.init))
                     var acknowledged = false
                     request.disposables.add((telegramRemoveCloudCache(mediaBox: self.account.postbox.mediaBox, media: media, restrictingTo: ids)
                         |> take(1) |> deliverOnMainQueue).start(next: { [weak self, weak request] _ in

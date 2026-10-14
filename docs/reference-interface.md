@@ -1587,3 +1587,78 @@ hex вместо набора emoji; нет выбора отдельных ау
 доводка относятся к отдельному блоку14; видеогруппы/демонстрация экрана вне
 утверждённого объёма личных звонков13. Отдельная реальная проверка устройств и
 собеседника не подменяется синтетическим окном.
+
+## Telegram block14 task5: profiles, history and calls
+
+Reference579cebbf: UserInfoEntries2433–2435 exposes the secret key in the user
+card; ChannelEventLogController455–468 opens event/admin filters;
+PhoneCallWindowController988–998 and1295–1300 exposes Recall. These sources
+were confirmed against current source after fresh XERJ retrieval. Existing
+72px contact-profile photos remain; settings now uses the same account-bound
+AvatarStore. Secret chats open their own current-session card with native key
+and TTL entries, pending/terminated states and permanent archive/S3 explanation.
+Current-session admission is shared with the composer; TTL confirmations still
+freeze and revalidate native session/context.
+
+Admin filters select all18 pinned event categories and up to100 observed actors.
+The author picker lists up to1000 actors already observed by this view, rather
+than the complete current administrator roster. Filtering starts a fresh cursor/
+context and keeps the query; missing native personal hashes fail visibly.
+Unexpected actor responses fail before journal publication. Protected bodies
+remain visible where actually supplied, without copy selection.
+
+The call window uses account-bound avatar thumbnails and a blurred photo
+background, plus explicit audio/video Recall after capture release for the still
+selected peer. Settings and the call window expose input/output selection for
+the next call. CoreAudio inventory reads properties only; synthetic QA uses its
+own inventory. Frozen UIDs cross the versioned own C ABI. The ADM wrapper chooses
+the concrete macOS entry instead of its duplicate default alias and refuses
+missing/changed devices; no automatic fallback from an explicit selection.
+Legacy ABI1 does not read the new tail. No new third-party sources/assets/sounds.
+
+Remaining aesthetic differences: static avatar rendering, no video avatars or
+decorations, no wave/ringtone, native32-byte hex verification instead of the
+reference emoji presentation, fixed local video position and no control auto-hide.
+Audio selection affects subsequent calls; changing devices during an existing
+call is unavailable. Actual changed UI and physical hot-plug/capture acceptance
+are pending; focused/source tests do not establish those outcomes.
+# Block14 archive recovery
+
+The common Telegram sidebar opens the existing local ArchiveView; backup is a
+secondary native sheet using the same grouped form/window conventions. Restored
+history reuses that ArchiveView, with an explicit read-only title and no queue
+retry/capture controls. Anchored AppKit panels only handle path selection.
+Current pinned reference searches for ExportDataController/backup/restore lead to
+unrelated purchase restore and ArchiverContext; source confirms file compression,
+not this permanent PG/S3 recovery workflow. This is an own Makosh feature, not a
+claim of TelegramSwift backup parity. See [recovery procedure](archive-recovery.md).
+Actual final native flow evidence is recorded after the final build below.
+
+## Block14 observed native presentation
+
+The final isolated native QA preserves the common service sidebar and Telegram
+columns. Settings show the current synthetic profile thumbnail, grouped general/
+appearance/device/data pages, font11–18, scheduled night controls, local palette
+catalogue preview/application and explicit unavailable pattern. The native editor
+opens with the captured current settings on its first presentation and retains an
+applied two-color gradient across reopen. Web entries have named one/all confirmations.
+Per-chat cache selection names the chat, shows scoped bytes, preserves other/shared
+resources and has accessible title/size plus the normal on/off state. Downloads show
+manual ready/export/finished cleanup and automatic-only pause, retaining the covered
+window read/download barrier. These are desktop workflows from the verified
+reference conventions, implemented with existing own native components.
+
+The channel admin-history form exposes18 native event categories and observed
+actors; excluding edits plus selecting the synthetic owner removes only the edit.
+The current secret card shows avatar/status/key/timer and permanent-retention text.
+The call window shows avatar/status, audio gear, End and released-state Recall;
+next-call device choice persists in the isolated bundle. Settings avatar/secret
+fingerprint/call screenshots were inspected in the actual owned QA app. Static
+avatar/decorations/wave/ringtone/emoji-key/preview-position/auto-hide gaps recorded
+in the preceding Task5 section remain explicit; full aesthetic parity is not claimed.
+
+Backup is an own native Makosh flow:3 synthetic versions/1 actual S3 object survive
+export/inspection/new-schema restore and open in the existing read-only archive.
+The separate key/package are private; native Save and folder/key Open panels work.
+The final suggested target is immediately valid; manual correction is unnecessary.
+No real Telegram identity or physical camera/microphone acceptance is inferred.

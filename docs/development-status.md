@@ -7285,3 +7285,135 @@ All five approved parts are implemented and integrated. Block14 remains separate
 remaining settings/QR/web sessions/wallpaper/cache/download/visual polish,
 portable archive/S3/key backup and separately authorized live-account/hardware
 acceptance. Local Makosh passcode/autolock remains explicitly excluded.
+
+
+## Block14 historical implementation checkpoints (2026-10-14)
+
+Branch feature/telegram-block14 follows the written spec/plan. Connected websites
+and explicit native QR sign-in are implemented: focused10 website tests and8 QR
+controller tests pass. Remaining appearance/general settings now include actual
+message font11–18, typed opt-in emoticon replacement, animation control, local
+color/gradient/image wallpaper and scheduled night mode. Native Telegram theme/
+wallpaper catalogue uses bounded own desktop-palette parsing, preview and local
+application; unsupported variants show an explicit unavailable state. Combined
+appearance/message/attributed/send-key checks pass42 tests.
+
+Per-chat cloud-cache selection preserves full fresh catalogue admission and
+excludes resources observed in unselected, unknown or secret peers, including
+shared resources with distinct MediaIds. Transfer management adds token/context
+bound cancel/retry/save/finished-list cleanup and automatic-only pause. Borrowed
+originals survive reset through export; an old export failure cannot invalidate
+a replacement transfer. Combined cache/media/automatic/transfer checks pass35 tests.
+The manager preserves the existing no-sheet/no-modal automatic-read/download
+visibility barrier; manual transfers remain active in that sheet.
+
+These are focused code/test results, not actual new native UI or live Telegram
+acceptance. Portable encrypted archive/S3/key recovery, full gates, actual isolated native UI,
+final review and GitHub integration remain. Reference presentation source adds
+settings/call avatars, current secret card/key/TTL, exact admin filters and
+released-device Recall. Next-call audio selection freezes validated UIDs before
+remote commit and propagates them through ABI2; legacy ABI1 remains admitted.
+The native dummy-ADM tests reproduce selection, missing-device refusal and the
+macOS default/concrete duplicate; all native audio/admission checks pass. Combined
+Telegram presentation/group/secret/call/provider tests pass110, zero failures.
+Initial missing/internal API and catch-shadow compile errors, obsolete ABI2
+fixture and ordinary assertion REDs are retained privately; these failed attempts
+are not counted as passing gates.
+The user will provide a test account only after implementation. No personal
+account, hardware capture, local passcode/autolock or full reference parity is
+claimed. Local dev PostgreSQL/S3 startup exits0; full final gates are still pending.
+
+## Block14 portable archive slice
+
+Encrypted portable export/inspection/restore is implemented with29 backup
+regressions,7 injected Keychain checks,9 existing archive checks,4 file repository
+checks and6 archive controller checks:55 XCTest,zero failures. These include
+actual local PostgreSQL/S3 restored file export, consistent multi-part snapshots,
+authenticated malformed input, corruption/wrong-key/conflict refusal, all-current
+OFF preservation and cancellation during a policy check. Read-only export/policy
+access/restored browsing use a PostgreSQL read-only session without bootstrap DDL.
+Native path selection, named inspected-receipt confirmation and the existing
+archive viewer are wired; actual changed UI and final whole-branch gates remain
+pending. See archive-recovery.md for format limits, separate-key handling and
+non-transactional S3/Keychain failure boundaries. No private account or actual
+login Keychain access was used by these tests.
+
+## Block14 native acceptance before final review
+
+The final presentation build exits0 and passes strict deep signing. Canonical and
+bundled native libraries retain the same UUID, all17 code/data sections and equal
+unsigned payload after normalizing only the signing-related LINKEDIT VM reservation.
+The owned QA executable matches that build. The full scripts/test.sh exits0:
+2225 XCTest(2114 Telegram +111 core),one microphone-precondition skip,zero failures;
+109 Python tests across24 suites. Native socket/SOCKS5/encrypted media/audio
+selection fixtures pass. Synthetic QA never captures physical media or uses a
+personal Telegram account/login Keychain.
+
+Actual native QA observes QR→phone cancellation; font18 in messages; opt-in
+emoticons/animation preferences; scheduled night controls; catalogue preview/apply
+and unavailable pattern; settings profile thumbnail; saved next-call synthetic
+microphone; named one/all web-session confirmation→empty list; selected-chat cache
+1MB→0 with9MB retained outside that clear; manual transfer ready→native Save→exact
+synthetic byte match→finished-list removal; automatic-only pause/resume;18 admin
+filter kinds and selected author with the excluded edit removed; current secret
+card/key/timer; call window→End→Recall→new call→End/Dismiss.
+
+Archive export/inspect/restore uses actual isolated PostgreSQL/S3:3 message versions
+and1 file, private package/separate key, original/edit/delete retained, existing
+read-only viewer and actual S3 plaintext preview. On the final build, native folder/
+key selection, inspection, automatically suggested lowercase target, confirmation,
+restore and read-only browsing all succeed without correcting the target by hand.
+Original source and exported bytes remain available. QA is stopped; isolated data
+is retained privately.
+
+Native QA exposed and repaired three presentation defects: path-panel dismissal
+blocking disabled native Save/NewFolder; uppercase default schema blocked restore;
+first wallpaper sheet captured stale appearance state. The default-schema model
+has deterministic RED→GREEN coverage(two tests); actual native controlled A/B and
+first-open/reopen flows verify the two sheet repairs. Explicit cache chat labels
+now expose title/size to accessibility. Repeated full gates after these repairs
+pass with the totals above. Earlier failed/compile/setup attempts remain private
+and are not counted as passing results. Final independent review, exact-head
+hosted checks and merge are still pending at this record.
+
+## Block14 final independent review and fix pass
+
+One fresh inherited-model reviewer inspected the whole380b9db..6d0649e branch.
+It found one Important core API defect and no Critical/Minor findings: the new
+readOnly file repository protected PostgreSQL, but local preparation and replay
+could still mutate its spool/S3. Root confirms the effect as Important and fixes
+all mutating entry points plus the shared upload admission. Two regressions first
+fail20 ordinary assertions, including actual local S3 absent→present and removal
+of retained queue files; both then pass. The focused archive/repository/controller
+gate passes45 XCTest,zero failures. Read-only listing and explicit export remain
+covered against actual PostgreSQL/S3. The initial incorrect fixture byte count
+is a separate test-setup failure, not the behavioral RED.
+
+All eight source-review exclusions have explicit decisions/costs in the decisions
+document. No minor is deferred by this review. The one fix pass is verified by
+regression and suite execution; no second reviewer is dispatched. The post-review native gate also reproduces first-action NSOpenPanel Open disabled
+by the entire restore Form section's panelTask disabled state. A controlled A/B
+changes only that section to worker-busy admission; native modal ownership and
+explicit action guards retain overlap protection. Fresh first-action folder/key
+selection, inspection, default target restore, read-only original/edit/delete and
+actual S3 text preview then succeed. No private identity or login Keychain is used.
+The signed post-fix build/artifact check passes; the full suite is repeated after
+this native repair. Exact-head hosted integration remains pending here.
+
+## Block14 final local gates — ready for hosted integration
+
+Final native-presentation repair is included in scripts/test.sh exit0:
+2227 XCTest(2114 Telegram +113 core),one microphone-precondition skip,zero failures;
+109 Python tests across24 suites. scripts/build-app.sh exits0; strict deep
+signature, native UUID/all17 code-data sections and unsigned payload verification
+pass. Actual first-action folder/key selection, inspection, default-schema restore,
+read-only original/edit/delete and actual S3 text preview all succeed. The owned
+synthetic QA is stopped; data retained. No real account/hardware/login Keychain
+acceptance is claimed. The single independent review's Important finding has
+RED→GREEN coverage; no unresolved Critical/Important/Minor finding remains.
+
+Draft PR14 is attached. Earlier6d0649e push/PR runs were cancelled after the fix;
+they are not passing evidence. The final fixed head must pass hosted push/PR
+checks before the authorized merge. Live test account/actions will be supplied
+by the user only after implementation. All documented reference differences
+remain explicit; local Makosh passcode/autolock remains excluded.

@@ -7,18 +7,24 @@ public final class MessageArchiveStore {
     private let lock = NSRecursiveLock()
     private var db: OpaquePointer?
     private let prefix: String
+    private let readOnly: Bool
     private var vault = UUID()
     private var initialized = false
     private var encryptionKey = SymmetricKey(size: .bits256)
     private var lookupKey = SymmetricKey(size: .bits256)
     private let encoder: JSONEncoder = { let e = JSONEncoder(); e.outputFormatting = [.sortedKeys]; return e }()
 
-    public init(connectionString: String, schema: String = "makosh", keyProvider: (UUID, Bool) throws -> Data) throws {
+    public convenience init(connectionString: String, schema: String = "makosh", readOnly: Bool = false, keyProvider: (UUID, Bool) throws -> Data) throws {
+        try self.init(connectionString: connectionString, schema: schema, keyProvider: keyProvider, restoring: nil, readOnly: readOnly)
+    }
+    init(connectionString: String, schema: String, keyProvider: (UUID, Bool) throws -> Data, restoring: ArchiveBackupBootstrap?, readOnly: Bool = false) throws {
         let bytes = Array(schema.utf8)
         guard !bytes.isEmpty, bytes.count <= 63, (97...122).contains(bytes[0]),
               bytes.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 95 }),
               !connectionString.utf8.contains(0) else { throw MessageArchiveError.invalid }
         prefix = "\"\(schema)\"."
+        self.readOnly = readOnly
+        if let restoring { vault = restoring.verified.header.vaultID }
         db = connectionString.withCString { dsn in
             "dbname".withCString { k in "connect_timeout".withCString { t in "5".withCString { v in
                 let keys: [UnsafePointer<CChar>?] = [k,t,nil], values: [UnsafePointer<CChar>?] = [dsn,v,nil]
@@ -33,9 +39,27 @@ public final class MessageArchiveStore {
             _ = try query("SET client_encoding TO 'UTF8'")
             _ = try query("SET statement_timeout TO '15s'")
             _ = try query("SET lock_timeout TO '5s'")
+            if readOnly { _ = try query("SET default_transaction_read_only TO on") }
             try transaction {
+                if readOnly {
+                    let meta = try metadata()
+                    guard let uuid = UUID(uuidString: meta[1]) else { throw MessageArchiveError.integrity }
+                    vault = uuid
+                    let raw: Data
+                    do { raw = try keyProvider(vault, false) } catch { throw MessageArchiveError.keyUnavailable }
+                    guard raw.count == 32 else { throw MessageArchiveError.keyUnavailable }
+                    encryptionKey = HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: raw), salt: Data(vault.uuidString.utf8), info: Data("makosh-archive-aes-v1".utf8), outputByteCount: 32)
+                    lookupKey = HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: raw), salt: Data(vault.uuidString.utf8), info: Data("makosh-archive-hmac-v1".utf8), outputByteCount: 32)
+                    guard !meta[2].isEmpty, let check = try? open(meta[2], aad: binding("key",0)), check == Data("archive-key-check-v1".utf8) else { throw MessageArchiveError.keyUnavailable }
+                    return
+                }
                 _ = try query("SELECT pg_advisory_xact_lock(hashtext('makosh-archive'),hashtext($1))", [schema])
-                _ = try query("CREATE SCHEMA IF NOT EXISTS \"\(schema)\"")
+                if restoring != nil {
+                    guard try query("SELECT 1 FROM pg_namespace WHERE nspname=$1", [schema]).isEmpty else { throw ArchiveBackupError.conflict }
+                    _ = try query("CREATE SCHEMA \"\(schema)\"")
+                } else {
+                    _ = try query("CREATE SCHEMA IF NOT EXISTS \"\(schema)\"")
+                }
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_metadata (id SMALLINT PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL, vault UUID NOT NULL, key_check TEXT)")
                 let inserted = try query("INSERT INTO \(prefix)archive_metadata VALUES (1,1,$1::uuid,NULL) ON CONFLICT DO NOTHING RETURNING vault", [vault.uuidString])
                 let meta = try metadata()
@@ -44,6 +68,7 @@ public final class MessageArchiveStore {
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_receipts (observation UUID PRIMARY KEY, digest TEXT NOT NULL)")
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_file_events (sequence BIGSERIAL PRIMARY KEY, object UUID NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','stored')), attachment_token TEXT NOT NULL, ciphertext TEXT NOT NULL, UNIQUE(object,state))")
                 _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_conversation_file_policy (stream_token TEXT PRIMARY KEY, ciphertext TEXT NOT NULL)")
+                _ = try query("CREATE TABLE IF NOT EXISTS \(prefix)archive_storage_aliases (source_storage TEXT NOT NULL, destination_storage TEXT NOT NULL, ciphertext TEXT NOT NULL, PRIMARY KEY(source_storage,destination_storage), CHECK(source_storage<>destination_storage))")
                 let populated = try query("SELECT 1 FROM \(prefix)archive_events LIMIT 1")
                 let mayCreate = !inserted.isEmpty && meta[2].isEmpty && populated.isEmpty
                 let raw: Data
@@ -63,8 +88,11 @@ public final class MessageArchiveStore {
                 _ = try query("CREATE TRIGGER archive_no_rewrite BEFORE UPDATE OR DELETE OR TRUNCATE ON \(prefix)archive_receipts FOR EACH STATEMENT EXECUTE FUNCTION \(prefix)archive_no_rewrite()")
                 _ = try query("DROP TRIGGER IF EXISTS archive_no_rewrite ON \(prefix)archive_file_events")
                 _ = try query("CREATE TRIGGER archive_no_rewrite BEFORE UPDATE OR DELETE OR TRUNCATE ON \(prefix)archive_file_events FOR EACH STATEMENT EXECUTE FUNCTION \(prefix)archive_no_rewrite()")
+                _ = try query("DROP TRIGGER IF EXISTS archive_no_rewrite ON \(prefix)archive_storage_aliases")
+                _ = try query("CREATE TRIGGER archive_no_rewrite BEFORE UPDATE OR DELETE OR TRUNCATE ON \(prefix)archive_storage_aliases FOR EACH STATEMENT EXECUTE FUNCTION \(prefix)archive_no_rewrite()")
                 _ = try query("CREATE INDEX IF NOT EXISTS archive_file_attachment ON \(prefix)archive_file_events(attachment_token,sequence DESC)")
                 _ = try query("CREATE INDEX IF NOT EXISTS archive_stream_sequence ON \(prefix)archive_events(stream_token,sequence DESC)")
+                if let restoring { try restoreBackupRows(restoring) }
             }
             initialized = true
         } catch { PQfinish(db); self.db = nil; throw error }
@@ -83,12 +111,16 @@ public final class MessageArchiveStore {
         return token(scope)
     }
     public func conversationFileSavingEnabled(identity: MessageArchiveIdentity, defaultEnabled: Bool) throws -> Bool {
+        try explicitConversationFileSavingEnabled(identity: identity) ?? defaultEnabled
+    }
+    public func explicitConversationFileSavingEnabled(identity: MessageArchiveIdentity) throws -> Bool? {
         lock.lock(); defer { lock.unlock() }
         return try transaction {
             _ = try metadata()
             let stream = try conversationPolicyToken(identity)
-            let rows = try query("SELECT ciphertext FROM \(prefix)archive_conversation_file_policy WHERE stream_token=$1", [stream])
-            guard let row = rows.first else { return defaultEnabled }
+            let rows = try query("SELECT CASE WHEN octet_length(ciphertext)<=32768 THEN ciphertext ELSE NULL END FROM \(prefix)archive_conversation_file_policy WHERE stream_token=$1", [stream])
+            guard let row = rows.first else { return nil }
+            guard rows.count == 1 else { throw MessageArchiveError.integrity }
             let policy: ConversationFilePolicy
             do {
                 policy = try JSONDecoder().decode(ConversationFilePolicy.self,
@@ -126,13 +158,8 @@ public final class MessageArchiveStore {
         lock.lock(); defer { lock.unlock() }
         return try transaction {
             _ = try metadata()
-            try ArchiveFileRecord.validateMetadata(identity: record.identity,attachment: record.attachment)
+            try record.validate(vaultID: vault)
             let i = record.identity
-            guard record.capturedAt.timeIntervalSince1970.isFinite,
-                  record.plaintextByteCount >= 0, record.plaintextByteCount <= 4 * 1024 * 1024 * 1024,
-                  record.byteCount > record.plaintextByteCount, record.byteCount <= 4 * 1024 * 1024 * 1024 + 1024 * 1024,
-                  [record.sha256,record.plaintextSHA256,record.storageID].allSatisfy({ $0.utf8.count == 64 && $0.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) }),
-                  record.objectKey == "vaults/\(vault.uuidString.lowercased())/files/\(record.id.uuidString.lowercased())" else { throw MessageArchiveError.invalid }
             let payload = try encode(record)
             guard payload.count <= 16384 else { throw MessageArchiveError.invalid }
             let aad = binding("file-\(record.id.uuidString)-\(record.state.rawValue)",0)
@@ -224,7 +251,7 @@ public final class MessageArchiveStore {
         }
     }
     private func metadata() throws -> [String] {
-        let rows = try query("SELECT version,vault,key_check FROM \(prefix)archive_metadata WHERE id=1 FOR UPDATE")
+        let rows = try query("SELECT version,vault,key_check FROM \(prefix)archive_metadata WHERE id=1" + (readOnly ? "" : " FOR UPDATE"))
         guard let row = rows.first, rows.count == 1 else { throw MessageArchiveError.integrity }
         guard row[0] == "1" else { throw MessageArchiveError.unsupportedSchema }
         if initialized {
@@ -261,5 +288,114 @@ public final class MessageArchiveStore {
         defer { PQclear(result) }
         guard PQresultStatus(result) == PGRES_COMMAND_OK || PQresultStatus(result) == PGRES_TUPLES_OK else { throw MessageArchiveError.database }
         return (0..<PQntuples(result)).map { row in (0..<PQnfields(result)).map { col in PQgetisnull(result,row,col) == 1 ? "" : String(cString: PQgetvalue(result,row,col)) } }
+    }
+}
+
+// A bounded MVCC snapshot: unrelated contacts, sessions and credentials are never selected.
+extension MessageArchiveStore {
+    public func disabledConversationFilePolicies() throws -> [MessageArchiveIdentity] {
+        lock.lock(); defer { lock.unlock() }
+        _ = try query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        do {
+            let rows = try query("SELECT version,vault,key_check FROM \(prefix)archive_metadata WHERE id=1")
+            guard let meta = rows.first, rows.count == 1, meta[0] == "1", meta[1] == vault.uuidString.lowercased(),
+                  try open(meta[2], aad: binding("key",0)) == Data("archive-key-check-v1".utf8) else { throw MessageArchiveError.integrity }
+            _ = try query("DECLARE makosh_policy_cursor NO SCROLL CURSOR FOR SELECT stream_token,CASE WHEN octet_length(ciphertext)<=32768 THEN ciphertext ELSE NULL END FROM \(prefix)archive_conversation_file_policy ORDER BY stream_token COLLATE \"C\"")
+            var result: [MessageArchiveIdentity] = [], scanned = 0, retained = 0
+            while true {
+                try Task.checkCancellation()
+                let rows = try query("FETCH FORWARD 16 FROM makosh_policy_cursor")
+                if rows.isEmpty { break }
+                for row in rows {
+                    scanned += 1
+                    guard scanned <= ArchiveBackupLimits.objects, row[0].utf8.count <= 256 else { throw ArchiveBackupError.invalid }
+                    let payload = try open(row[1], aad: binding("conversation-file-policy-\(row[0])",0))
+                    guard payload.count <= 16384 else { throw MessageArchiveError.integrity }
+                    let policy = try JSONDecoder().decode(ConversationFilePolicy.self, from: payload)
+                    let identity = MessageArchiveIdentity(service: policy.service, accountID: policy.accountID, conversationID: policy.conversationID, messageID: "archive-policy")
+                    guard try conversationPolicyToken(identity) == row[0] else { throw MessageArchiveError.integrity }
+                    if !policy.enabled {
+                        retained += payload.count + 128
+                        guard retained <= ArchiveBackupLimits.metadata else { throw ArchiveBackupError.invalid }
+                        result.append(identity)
+                    }
+                }
+            }
+            _ = try query("CLOSE makosh_policy_cursor"); _ = try query("COMMIT"); return result
+        } catch { _ = try? query("ROLLBACK"); throw error }
+    }
+    func acceptsStorageAlias(source: String, destination: String) throws -> Bool {
+        guard ArchiveFileRecord.validHash(source), ArchiveFileRecord.validHash(destination) else { throw MessageArchiveError.invalid }
+        lock.lock(); defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let rows = try query("SELECT ciphertext FROM \(prefix)archive_storage_aliases WHERE source_storage=$1 AND destination_storage=$2", [source, destination])
+            guard let row = rows.first else { return false }
+            let alias = try JSONDecoder().decode(ArchiveBackupStorageAlias.self, from: open(row[0], aad: binding("storage-alias-\(source)-\(destination)",0)))
+            guard rows.count == 1, alias.vaultID == vault, alias.source == source, alias.destination == destination else { throw MessageArchiveError.integrity }
+            return true
+        }
+    }
+    private func restoreBackupRows(_ bootstrap: ArchiveBackupBootstrap) throws {
+        let header = bootstrap.verified.header
+        guard header.vaultID == vault else { throw ArchiveBackupError.integrity }
+        let validator = try ArchiveBackupRowValidator(vaultID: vault, rootKey: header.rootKey)
+        let reader = try ArchiveBackupRecordReader(bootstrap.verified.database)
+        while let row = try reader.next() {
+            try Task.checkCancellation(); try validator.accept(row)
+            if row.table == .metadata { continue }
+            let columns = row.table.columns.joined(separator: ",")
+            let placeholders = (1...row.values.count).map { "$" + String($0) }.joined(separator: ",")
+            _ = try query("INSERT INTO \(prefix)\(row.table.rawValue)(\(columns)) VALUES(\(placeholders))", row.values.map(Optional.some))
+        }
+        _ = try validator.finish()
+        guard validator.counts == header.counts else { throw ArchiveBackupError.integrity }
+        for table in [ArchiveBackupTable.events, .files] {
+            _ = try query("SELECT setval(pg_get_serial_sequence($1,'sequence'),GREATEST(COALESCE((SELECT max(sequence) FROM \(prefix)\(table.rawValue)),0),1),(SELECT count(*)>0 FROM \(prefix)\(table.rawValue)))", [prefix + table.rawValue])
+        }
+        if let destination = bootstrap.destinationStorageID {
+            for source in Set(bootstrap.verified.objects.map { $0.record.storageID }).sorted() where source != destination {
+                let alias = ArchiveBackupStorageAlias(vaultID: vault, source: source, destination: destination)
+                let token = "storage-alias-\(source)-\(destination)", payload = try encode(alias)
+                let rows = try query("SELECT ciphertext FROM \(prefix)archive_storage_aliases WHERE source_storage=$1 AND destination_storage=$2", [source, destination])
+                if let row = rows.first {
+                    guard try open(row[0], aad: binding(token,0)) == payload else { throw MessageArchiveError.integrity }
+                } else {
+                    _ = try query("INSERT INTO \(prefix)archive_storage_aliases VALUES($1,$2,$3)", [source, destination, try seal(payload, aad: binding(token,0))])
+                }
+            }
+        }
+        for identity in bootstrap.disabledPolicies {
+            let stream = try conversationPolicyToken(identity)
+            let policy = ConversationFilePolicy(service: identity.service, accountID: identity.accountID, conversationID: identity.conversationID, enabled: false)
+            _ = try query("INSERT INTO \(prefix)archive_conversation_file_policy VALUES($1,$2) ON CONFLICT(stream_token) DO UPDATE SET ciphertext=EXCLUDED.ciphertext", [stream, try seal(encode(policy), aad: binding("conversation-file-policy-\(stream)",0))])
+        }
+        try Task.checkCancellation()
+        try bootstrap.installKey(vault, header.rootKey)
+    }
+    func writeBackupSnapshot(_ receive: (ArchiveBackupRow) throws -> Void) throws {
+        lock.lock(); defer { lock.unlock() }
+        _ = try query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        do {
+            for table in ArchiveBackupTable.allCases {
+                if table == .aliases {
+                    let present = try query("SELECT to_regclass($1)::text", [prefix + table.rawValue])
+                    if present.first?.first?.isEmpty != false { continue }
+                }
+                let columns = table.columns.map { column in
+                    let cap = ["ciphertext", "key_check"].contains(column) ? 6 * 1024 * 1024 : 2048
+                    return "CASE WHEN octet_length(\(column)::text)<=\(cap) THEN \(column)::text ELSE NULL END"
+                }.joined(separator: ",")
+                _ = try query("DECLARE makosh_backup_cursor NO SCROLL CURSOR FOR SELECT \(columns) FROM \(prefix)\(table.rawValue) ORDER BY \(table.order)")
+                while true {
+                    try Task.checkCancellation()
+                    let rows = try query("FETCH FORWARD 16 FROM makosh_backup_cursor")
+                    if rows.isEmpty { break }
+                    for values in rows { try receive(.init(table: table, values: values)) }
+                }
+                _ = try query("CLOSE makosh_backup_cursor")
+            }
+            _ = try query("COMMIT")
+        } catch { _ = try? query("ROLLBACK"); throw error }
     }
 }

@@ -8,6 +8,7 @@ import Combine
     private var evaluation: Task<Void, Never>?
     private var context: UUID?, accountID: Int64?
     private var active = false
+    private var paused = false
     private var eligibility: @MainActor () -> Bool = { true }
     private var attachments: [TelegramAttachment] = []
     private var attempted = Set<String>()
@@ -18,6 +19,10 @@ import Combine
         settings.objectWillChange.sink { [weak self] _ in self?.schedule() }.store(in: &subscriptions)
     }
     isolated deinit { evaluation?.cancel(); media.cancelAutomaticDownloads(except: []) }
+    func setPaused(_ value: Bool) {
+        guard paused != value else { return }; paused = value; attempted = []
+        if value { media.cancelAutomaticDownloads(except:[]) }; schedule()
+    }
     func archiveCapacityChanged() { schedule() }
     func replace(attachments: [TelegramAttachment], contextID: UUID, active: Bool,
         eligibility: @escaping @MainActor () -> Bool = { true }) {
@@ -47,7 +52,7 @@ import Combine
         if preferences != previousPreferences {
             previousPreferences = preferences; attempted = []; media.cancelAutomaticDownloads(except: [])
         }
-        let eligible = active && settings.accountID != nil && settings.error == nil ? attachments.filter { attachment in
+        let eligible = !paused && active && settings.accountID != nil && settings.error == nil ? attachments.filter { attachment in
             TelegramDownloadPeer.allCases.contains { preferences.allows(attachment, peer: $0) }
         } : []
         media.cancelAutomaticDownloads(except: Set(eligible.map(\.id)))
@@ -57,7 +62,7 @@ import Combine
             let capturedContext = context, capturedAccount = accountID
             let started = media.startAutomatically(attachment, preferences: preferences) { [weak self] in
                 guard let self else { return false }
-                return self.active && self.context == capturedContext && self.accountID == capturedAccount &&
+                return !self.paused && self.active && self.context == capturedContext && self.accountID == capturedAccount &&
                     self.settings.accountID == capturedAccount && self.settings.error == nil &&
                     self.settings.preferences == preferences && self.attachments.contains(attachment) && self.eligibility()
             }

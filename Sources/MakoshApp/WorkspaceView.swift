@@ -14,17 +14,23 @@ final class WorkspaceModel: ObservableObject {
     @Published var notice: String?
     private var store: ContactStore?
     private var archiveConfiguration: DatabaseConfiguration?
+    @Published private(set) var archiveBackupContext: TelegramArchiveBackupContext?
     #if DEBUG
     private var pendingUploadQAConfigured = false
     #endif
     private struct DatabaseConfiguration: Decodable {
         let connectionString: String
         let schema: String
-        private enum CodingKeys: String, CodingKey { case connectionString, schema }
+        let archiveSchema: String?
+        private enum CodingKeys: String, CodingKey { case connectionString, schema, archiveSchema }
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             connectionString = try values.decode(String.self, forKey: .connectionString)
             schema = try values.decodeIfPresent(String.self, forKey: .schema) ?? "makosh"
+            archiveSchema = try values.decodeIfPresent(String.self, forKey: .archiveSchema)
+            if let archiveSchema, !ArchiveBackup.isValidSchemaName(archiveSchema) {
+                throw ArchiveBackupError.invalid
+            }
         }
     }
     init(requireExplicitDatabaseConfiguration: Bool = false) {
@@ -47,7 +53,8 @@ final class WorkspaceModel: ObservableObject {
                     .appendingPathComponent("Makosh/database.json")
             }
             let configuration = try JSONDecoder().decode(DatabaseConfiguration.self, from: Data(contentsOf: configURL))
-            guard !requireExplicitDatabaseConfiguration || configuration.schema.hasPrefix("qa_telegram_dossier_") else {
+            guard !requireExplicitDatabaseConfiguration || (configuration.schema.hasPrefix("qa_telegram_dossier_")
+                && (configuration.archiveSchema ?? configuration.schema).hasPrefix("qa_telegram_dossier_")) else {
                 self.error = "Для этой проверки нужна отдельная схема qa_telegram_dossier_…"
                 return
             }
@@ -65,17 +72,35 @@ final class WorkspaceModel: ObservableObject {
     }
     var selected: Contact? { contacts.first { $0.id == selectedID } }
     var ready: Bool { store != nil }
-    func configureArchive(_ archive: TelegramArchiveController) {
+    func configureArchive(_ archive: TelegramArchiveController, synthetic: Bool = false) {
         guard let configuration = archiveConfiguration else { return }
-        archive.configure(connectionString: configuration.connectionString, schema: configuration.schema)
+        let schema = configuration.archiveSchema ?? configuration.schema
+        if !synthetic { archive.configure(connectionString: configuration.connectionString, schema: schema) }
         let args = CommandLine.arguments
         let support = FileManager.default.urls(for: .applicationSupportDirectory,in: .userDomainMask)[0].appendingPathComponent("Makosh",isDirectory: true)
         let storage: URL
         if let index = args.firstIndex(of: "--storage-config"), args.indices.contains(index+1), !args[index+1].hasPrefix("--") {
             storage = URL(fileURLWithPath: args[index+1])
         } else { storage = support.appendingPathComponent("s3.json") }
-        archive.files.configure(connectionString: configuration.connectionString,schema: configuration.schema,
-            configurationFile: storage,spoolDirectory: support.appendingPathComponent("FileArchiveQueue",isDirectory: true))
+        if !synthetic {
+            archive.files.configure(connectionString: configuration.connectionString,schema: schema,
+                configurationFile: storage,spoolDirectory: support.appendingPathComponent("FileArchiveQueue",isDirectory: true))
+        }
+        if archiveBackupContext == nil {
+            let keys: ArchiveBackupKeys
+            #if DEBUG
+            if synthetic {
+                guard schema.hasPrefix("qa_telegram_dossier_") else { return }
+                keys = .init(lookup: { _ in Data(repeating: 0x51, count: 32) }, install: { _, key in
+                    guard key == Data(repeating: 0x51, count: 32) else { throw ArchiveBackupError.conflict }
+                })
+            } else { keys = .keychain }
+            #else
+            keys = .keychain
+            #endif
+            archiveBackupContext = .init(connectionString: configuration.connectionString, schema: schema,
+                storageFile: storage, keys: keys, synthetic: synthetic)
+        }
     }
     #if DEBUG
     func configurePendingUploadRecoveryQAIfRequested(_ telegram: TelegramModel) {
@@ -185,12 +210,16 @@ private struct EditorSelection: Identifiable { let id = UUID(); let contact: Con
 struct WorkspaceView: View {
     @EnvironmentObject private var callWindows: TelegramCallWindows
     @StateObject private var systemAppearance = TelegramSystemAppearance()
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
     @AppStorage(TelegramAccent.preferenceKey) private var telegramAccent = TelegramAccent.blue.rawValue
     @StateObject private var model: WorkspaceModel
     @StateObject private var telegram: TelegramModel
     @State private var destination: Destination? = .contacts
+    private var telegramAppearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
+    private var resolvedTelegramScheme: ColorScheme { telegramWorkspaceScheme(theme:telegramTheme,telegramSelected:true,system:systemAppearance.scheme,night:telegramAppearance.night,date:systemAppearance.now,cloudDark:telegramAppearance.cloudPalette?.isDark) }
+    private var resolvedTelegramAccent: Color { telegramAppearance.effectivePalette(isDark:resolvedTelegramScheme == .dark).map { telegramRGBColor($0.accent) } ?? TelegramAccent(preference:telegramAccent).color }
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
@@ -248,7 +277,7 @@ struct WorkspaceView: View {
                     }.padding(16)
                 }.frame(maxHeight: .infinity, alignment: .top).navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
             } else if destination == .telegram {
-                TelegramSidebarView(model: telegram).navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
+                TelegramSidebarView(model: telegram, backupContext: model.archiveBackupContext).navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 390)
             } else {
                 VStack(alignment: .leading, spacing: 16) {
                     Label(destination?.rawValue ?? "", systemImage: destination?.symbol ?? "square").font(.title2.bold())
@@ -274,16 +303,16 @@ struct WorkspaceView: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onAppear { callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview) }
+        .onAppear { callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview, avatars: telegram.avatars) }
         .onDisappear { callWindows.unregister(telegram.calls) }
-        .tint(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
-        .accentColor(destination == .telegram ? TelegramAccent(preference: telegramAccent).color : accent)
-        .preferredColorScheme(telegramWorkspaceScheme(theme: telegramTheme, telegramSelected: destination == .telegram, system: systemAppearance.scheme))
+        .tint(destination == .telegram ? resolvedTelegramAccent : accent)
+        .accentColor(destination == .telegram ? resolvedTelegramAccent : accent)
+        .preferredColorScheme(telegramWorkspaceScheme(theme: telegramTheme, telegramSelected: destination == .telegram, system: systemAppearance.scheme, night: ((try? TelegramAppearancePreferences.decode(appearanceRaw)) ?? .init()).night, date: systemAppearance.now, cloudDark: telegramAppearance.cloudPalette?.isDark))
         .background(Color(nsColor: .windowBackgroundColor))
         .modifier(TelegramNotificationHost(controller: telegram.notifications))
         .onReceive(telegram.notifications.$activationRequest.dropFirst()) { _ in destination = .telegram }
         .onAppear {
-            if !telegram.isSyntheticPreview { model.configureArchive(telegram.archive) }
+            model.configureArchive(telegram.archive, synthetic: telegram.isSyntheticPreview)
             #if DEBUG
             if telegram.isSyntheticPreview { model.configurePendingUploadRecoveryQAIfRequested(telegram) }
             #endif

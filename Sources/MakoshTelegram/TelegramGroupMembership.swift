@@ -81,6 +81,7 @@ public struct TelegramGroupAdminEvent: Equatable, Identifiable, Sendable {
     public let previousText: String?, currentText: String?
     public var copyProtected = false
     public var contentUnavailable = false
+    public var allowsCopy: Bool { !copyProtected }
     var isValid: Bool {
         id > 0 && date > 0 && telegramManagementPeerID(actorID)?.namespace == Namespaces.Peer.CloudUser
             && !actor.isEmpty && actor.utf16.count <= 512 && !summary.isEmpty && summary.utf16.count <= 8192
@@ -128,4 +129,13 @@ enum TelegramGroupMembershipEvent { case committing, saved(TelegramGroupMembersh
     var accountID: Int64 { get }
     func load(peerID: Int64, page: TelegramGroupMembershipSection, ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?, receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest
     func apply(basis: TelegramGroupMembershipSnapshot, change: TelegramGroupMembershipChange, receive: @escaping @MainActor (TelegramGroupMembershipEvent) -> Bool) -> any TelegramGroupMembershipRequest
+    func load(peerID: Int64, page: TelegramGroupMembershipSection, ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?, historyFilter: TelegramAdminHistoryFilter, receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest
+}
+
+@MainActor private final class TelegramUnavailableHistoryRead: TelegramGroupMembershipRequest { func cancel() {} }
+extension TelegramGroupMembershipProvider {
+    func load(peerID: Int64, page: TelegramGroupMembershipSection, ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?, historyFilter: TelegramAdminHistoryFilter, receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest {
+        guard historyFilter == .all else { receive(.failure(.unavailable)); return TelegramUnavailableHistoryRead() }
+        return load(peerID: peerID, page: page, ownerID: ownerID, query: query, cursor: cursor, receive: receive)
+    }
 }

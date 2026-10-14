@@ -3,8 +3,19 @@ import AppKit
 import MakoshTelegram
 
 struct TelegramDetailView: View {
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @AppStorage(TelegramLocalTheme.preferenceKey) private var telegramTheme = TelegramLocalTheme.system.rawValue
+    @Environment(\.colorScheme) private var colorScheme
+    private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
+    private var palette: TelegramCloudPalette? { appearance.effectivePalette(isDark:colorScheme == .dark) }
+    private var wallpaper: TelegramLocalWallpaper { if appearance.wallpaper == .automatic, let background = palette?.background { return .solid(background) }; return appearance.wallpaper }
+    private func bubbleStyle(outgoing: Bool) -> AnyShapeStyle {
+        if outgoing, let colors = palette?.outgoing, !colors.isEmpty { return AnyShapeStyle(LinearGradient(colors:colors.map(telegramRGBColor),startPoint:.top,endPoint:.bottom)) }
+        if !outgoing, let color = palette?.incoming { return AnyShapeStyle(telegramRGBColor(color)) }
+        return AnyShapeStyle(outgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08))
+    }
     @ObservedObject var model: TelegramModel
+    @ObservedObject private var qrLogin: TelegramQRLoginController
     @ObservedObject private var search: TelegramSearchModel
     @ObservedObject private var media: TelegramMediaController
     @ObservedObject private var upload: TelegramUploadController
@@ -26,7 +37,7 @@ struct TelegramDetailView: View {
     private let dossier: WorkspaceModel?
     private let openDossier: (UUID) -> Void
     init(model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in }) {
-        self.model = model; self.search = model.search; self.media = model.media; self.upload = model.upload
+        self.model = model; self.qrLogin = model.qrLogin; self.search = model.search; self.media = model.media; self.upload = model.upload
         self.playback = model.playback; self.messageActions = model.messageActions
         self.peerStatus = model.peerStatus
         self.messageSelection = model.messageSelection
@@ -87,7 +98,10 @@ struct TelegramDetailView: View {
                 Text("Вложение сохранено в выбранный файл.").font(.caption).foregroundStyle(.secondary).padding(12)
                     .accessibilityIdentifier("telegram.media.saved")
             }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(TelegramLocalTheme(preference: telegramTheme).chatBackground)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background {
+            if model.phase == .ready { TelegramWallpaperBackground(wallpaper: wallpaper, fallback: TelegramLocalTheme(preference: telegramTheme).chatBackground) }
+            else { TelegramLocalTheme(preference: telegramTheme).chatBackground }
+        }
             .modifier(TelegramUploadDropModifier(model: model))
             .overlay {
                 TelegramRoundVideoRecorderView(recording: model.voiceRecording, upload: upload,
@@ -133,8 +147,12 @@ struct TelegramDetailView: View {
                 TelegramSecretTimerView(controller: model.secretChats, synthetic: model.isSyntheticPreview)
             }
             .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
-                TelegramContactProfileView(model: model, dossier: dossier,
-                    contextID: model.contactProfileContextID, openDossier: openDossier)
+                if model.conversationCapabilities?.secret != nil, let chatID = model.selectedChatID {
+                    TelegramSecretProfileView(model: model, controller: model.secretChats, chatID: chatID)
+                } else {
+                    TelegramContactProfileView(model: model, dossier: dossier,
+                        contextID: model.contactProfileContextID, openDossier: openDossier)
+                }
             }
             .sheet(isPresented: Binding(get: { attachmentActions.preview != nil }, set: { if !$0 { attachmentActions.preview = nil } })) {
                 VStack(spacing: 16) {
@@ -167,10 +185,15 @@ struct TelegramDetailView: View {
             Spacer()
         }.padding(32).frame(maxWidth: 650, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
-    private var phoneForm: some View {
-        authForm(title: "Ваш номер телефона", detail: "Введите номер с кодом страны. Код входа отправит Telegram.") {
-            TextField("+34 …", text: $phone).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.phone")
-            Button("Запросить код") { model.submitPhone(phone) }.buttonStyle(.borderedProminent).disabled(model.isBusy || phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.phone.submit")
+    @ViewBuilder private var phoneForm: some View {
+        if qrLogin.phase != .idle {
+            TelegramQRLoginView(controller: qrLogin)
+        } else {
+            authForm(title: "Ваш номер телефона", detail: "Введите номер с кодом страны. Код входа отправит Telegram.") {
+                TextField("+34 …", text: $phone).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.phone")
+                Button("Запросить код") { model.submitPhone(phone) }.buttonStyle(.borderedProminent).disabled(model.isBusy || phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("telegram.phone.submit")
+                Button("Войти по QR-коду") { model.beginQRLogin() }.disabled(model.isBusy).accessibilityIdentifier("telegram.qr.begin")
+            }
         }
     }
     private var codeForm: some View {
@@ -194,7 +217,9 @@ struct TelegramDetailView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Button {
-                        model.loadContactProfile(); profilePresented = true
+                        if model.conversationCapabilities?.secret != nil { model.secretChats.refreshSession() }
+                        else { model.loadContactProfile() }
+                        profilePresented = true
                     } label: {
                         HStack(spacing: 10) {
                             TelegramChatAvatar(title: chat.title, peerID: chat.id, store: model.avatars, size: 36)
@@ -307,7 +332,7 @@ struct TelegramDetailView: View {
                                                     TelegramMessageMetadataView(message: item)
                                                         .gridCellAnchor(.trailing)
                                                 }
-                                            }.padding(11).background(item.isOutgoing ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                                            }.padding(11).background(bubbleStyle(outgoing: item.isOutgoing), in: RoundedRectangle(cornerRadius: 12))
                                             if !item.isOutgoing { Spacer(minLength: 44) }
                                         }.accessibilityElement(children: .contain)
                                             .accessibilityIdentifier("telegram.message.\(item.id)")

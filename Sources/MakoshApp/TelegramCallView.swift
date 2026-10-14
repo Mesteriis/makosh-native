@@ -9,18 +9,19 @@ import MakoshTelegram
     private struct Entry {
         weak var controller: TelegramCallController?
         let synthetic: Bool
+        let avatars: TelegramAvatarStore?
         let observation: AnyCancellable
     }
     private var entries: [ObjectIdentifier: Entry] = [:]
     private var window: NSWindow?
     private var shown: String?
-    func register(_ controller: TelegramCallController, synthetic: Bool) {
+    func register(_ controller: TelegramCallController, synthetic: Bool, avatars: TelegramAvatarStore? = nil) {
         let key = ObjectIdentifier(controller)
         guard entries[key] == nil else { return }
         let observation = controller.$call.combineLatest(controller.$incoming, controller.$incomingReady).sink { [weak self] _, _, _ in
             Task { @MainActor [weak self] in self?.reconcile() }
         }
-        entries[key] = Entry(controller: controller, synthetic: synthetic, observation: observation)
+        entries[key] = Entry(controller: controller, synthetic: synthetic, avatars: avatars, observation: observation)
         reconcile()
     }
     func unregister(_ controller: TelegramCallController) {
@@ -53,7 +54,7 @@ import MakoshTelegram
         }
         if shown != key {
             shown = key
-            window?.contentView = NSHostingView(rootView: TelegramCallWindowView(controller: controller, synthetic: synthetic))
+            window?.contentView = NSHostingView(rootView: TelegramCallWindowView(controller: controller, synthetic: synthetic, avatars: entries[ObjectIdentifier(controller)]?.avatars))
             window?.makeKeyAndOrderFront(nil)
         } else if force { window?.makeKeyAndOrderFront(nil) }
     }
@@ -115,18 +116,35 @@ struct TelegramCallButtons: View {
 private struct TelegramCallWindowView: View {
     @ObservedObject var controller: TelegramCallController
     let synthetic: Bool
+    let avatars: TelegramAvatarStore?
+    @State private var audioSettingsPresented = false
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 0.15, green: 0.22, blue: 0.28), Color(red: 0.08, green: 0.12, blue: 0.19)], startPoint: .top, endPoint: .bottom)
+                .overlay {
+                    if let avatars, let id = controller.call?.peerID ?? controller.incoming.first?.peerID {
+                        GeometryReader { geometry in
+                            TelegramChatAvatar(title: title, peerID: id, store: avatars, size: max(geometry.size.width, geometry.size.height))
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .blur(radius: 45).overlay(Color.black.opacity(0.6)).clipped()
+                        }.allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                }
             if let frame = controller.remoteFrame, controller.remoteVideoEnabled {
                 CallVideoImage(frame: frame).accessibilityLabel("Видео собеседника").accessibilityIdentifier("telegram.call.remoteVideo")
             }
             VStack(spacing: 14) {
+                HStack { Spacer(); Button { audioSettingsPresented = true } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).accessibilityLabel("Аудиоустройства следующего звонка").accessibilityIdentifier("telegram.call.audio.open") }.padding(.top, 26)
                 if synthetic { Text("СИНТЕТИЧЕСКАЯ ПРОВЕРКА · БЕЗ УСТРОЙСТВ").font(.caption2.bold()).padding(.top, 25).accessibilityIdentifier("telegram.call.synthetic") }
                 Spacer(minLength: 10)
                 if controller.remoteFrame == nil {
-                    Text(String(title.prefix(1)).uppercased()).font(.system(size: 56, weight: .light)).frame(width: 110, height: 110)
-                        .background(Color.white.opacity(0.12), in: Circle())
+                    if let avatars, let id = controller.call?.peerID ?? controller.incoming.first?.peerID {
+                        TelegramChatAvatar(title: title, peerID: id, store: avatars, size: 110)
+                    } else {
+                        Text(String(title.prefix(1)).uppercased()).font(.system(size: 56, weight: .light)).frame(width: 110, height: 110)
+                            .background(Color.white.opacity(0.12), in: Circle())
+                    }
                 }
                 Text(title).font(.title2.weight(.medium)).lineLimit(2).multilineTextAlignment(.center).accessibilityIdentifier("telegram.call.title")
                 if let call = controller.call {
@@ -152,6 +170,11 @@ private struct TelegramCallWindowView: View {
                     .allowsHitTesting(false).accessibilityLabel("Ваше видео").accessibilityIdentifier("telegram.call.localVideo")
             }
         }.foregroundStyle(.white).preferredColorScheme(.dark).frame(minWidth: 358, minHeight: 477)
+            .sheet(isPresented: $audioSettingsPresented) {
+                VStack { HStack { Text("Аудиоустройства").font(.headline); Spacer(); Button("Готово") { audioSettingsPresented = false } }.padding()
+                    TelegramCallAudioSettingsView(synthetic: synthetic)
+                }.frame(width: 480, height: 420)
+            }
     }
     private var title: String { controller.call?.title ?? controller.incoming.first?.title ?? "Telegram" }
     @ViewBuilder private func activeControls(_ call: TelegramCallSnapshot) -> some View {
@@ -164,6 +187,14 @@ private struct TelegramCallWindowView: View {
                 control("Завершить", "phone.down.fill", .red, "end") { controller.end(callID: call.id) }.disabled(call.phase == .ending)
             }
         } else {
+            HStack(spacing: 26) {
+                control("Позвонить снова", "phone.fill", .green, "recall") { _ = controller.recall(callID: call.id, video: false) }
+                    .disabled(!controller.canRecall(callID: call.id))
+                if controller.peer?.canVideo == true {
+                    control("Видеозвонок", "video.fill", .green, "recallVideo") { _ = controller.recall(callID: call.id, video: true) }
+                        .disabled(!controller.canRecall(callID: call.id))
+                }
+            }
             Button(controller.isReleasingMedia ? "Освобождение устройств…" : "Закрыть", action: controller.dismissEnded)
                 .disabled(controller.isReleasingMedia).accessibilityIdentifier("telegram.call.dismiss")
         }

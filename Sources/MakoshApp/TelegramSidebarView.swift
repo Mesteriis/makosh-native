@@ -6,10 +6,15 @@ struct TelegramSidebarView: View {
     @ObservedObject private var search: TelegramSearchModel
     @ObservedObject private var globalSearch: TelegramSearchModel
     @ObservedObject private var forumTopics: TelegramForumTopicsController
+    private let backupContext: TelegramArchiveBackupContext?
     @State private var connectionPresented = false
     @State private var settingsPresented = false
+    @State private var downloadsPresented = false
     @FocusState private var searchFocused: Bool
-    init(model: TelegramModel) { self.model = model; self.search = model.search; self.globalSearch = model.globalSearch; self.forumTopics = model.forumTopics }
+    init(model: TelegramModel, backupContext: TelegramArchiveBackupContext? = nil) {
+        self.model = model; self.search = model.search; self.globalSearch = model.globalSearch; self.forumTopics = model.forumTopics
+        self.backupContext = backupContext
+    }
     private var searching: Bool { search.hasChatQuery || globalSearch.hasMessageQuery }
     private var showsForum: Bool {
         !searching && model.isForumTopicsListPresented && model.phase == .ready && forumTopics.snapshot?.chatID == model.selectedChatID
@@ -32,7 +37,11 @@ struct TelegramSidebarView: View {
                 Text(showsForum ? (model.selectedChat?.title ?? "Темы") : model.phase == .ready ? (model.chatFolder == .archive ? "Архив" : "Диалоги") : "Telegram")
                     .font(.headline).lineLimit(1)
                 Spacer(minLength: 4)
-                TelegramArchiveButton(archive: model.archive)
+                TelegramArchiveButton(archive: model.archive, backupContext: backupContext)
+                if model.phase == .ready {
+                    Button { downloadsPresented = true } label: { Image(systemName:"arrow.down.circle") }
+                        .buttonStyle(.plain).help("Загрузки").accessibilityLabel("Загрузки Telegram").accessibilityIdentifier("telegram.downloads.open")
+                }
                 Button { settingsPresented = true } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.plain).help("Настройки Telegram").accessibilityLabel("Настройки Telegram")
                     .accessibilityIdentifier("telegram.settings.open")
@@ -112,10 +121,11 @@ struct TelegramSidebarView: View {
             }
         }.frame(maxHeight: .infinity, alignment: .top)
             .sheet(isPresented: $settingsPresented) {
-                TelegramSettingsView(sessions: model.accountSessions, privacy: model.accountPrivacy, blockedUsers: model.accountBlockedUsers, twoStep: model.accountTwoStep, notifications: model.notifications,
-                    autoDownload: model.autoDownloadSettings, cache: model.cache, proxy: model.proxy, avatarEditing: model.avatarEditing,
-                    chats: model.chats, synthetic: model.isSyntheticPreview) { settingsPresented = false }
+                TelegramSettingsView(sessions: model.accountSessions, webSessions: model.webSessions, privacy: model.accountPrivacy, blockedUsers: model.accountBlockedUsers, twoStep: model.accountTwoStep, notifications: model.notifications,
+                    autoDownload: model.autoDownloadSettings, cache: model.cache, proxy: model.proxy, avatarEditing: model.avatarEditing, appearanceCatalog: model.appearanceCatalog,
+                    avatars: model.avatars, chats: model.chats, synthetic: model.isSyntheticPreview) { settingsPresented = false }
             }
+            .sheet(isPresented:$downloadsPresented) { TelegramDownloadsView(model:model) }
             .onAppear { forumTopics.setVisible(true) }
             .onDisappear { forumTopics.setVisible(false) }
             .onChange(of: model.selectedChatID) { _, _ in model.isForumTopicsListPresented = true }

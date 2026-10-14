@@ -7,10 +7,12 @@ struct TelegramArchiveButton: View {
     @ObservedObject var archive: TelegramArchiveController
     @ObservedObject private var files: TelegramFileArchiveController
     @State private var showingArchive = false
+    private let backupContext: TelegramArchiveBackupContext?
 
-    init(archive: TelegramArchiveController) {
+    init(archive: TelegramArchiveController, backupContext: TelegramArchiveBackupContext? = nil) {
         self.archive = archive
         self.files = archive.files
+        self.backupContext = backupContext
     }
     private var hasError: Bool { archive.error != nil || files.error != nil }
     private var busy: Bool { archive.isArchiving || files.isBusy }
@@ -32,17 +34,19 @@ struct TelegramArchiveButton: View {
             .accessibilityLabel(hasError ? "Локальный архив, есть ошибка" : busy ? "Локальный архив, запись" : "Локальный архив")
             .accessibilityValue(status)
             .accessibilityIdentifier("telegram.archive.open")
-            .sheet(isPresented: $showingArchive) { TelegramArchiveView(archive: archive) }
+            .sheet(isPresented: $showingArchive) { TelegramArchiveView(archive: archive, backupContext: backupContext) }
     }
 }
 
 private struct TelegramArchiveView: View {
     @ObservedObject var archive: TelegramArchiveController
+    var backupContext: TelegramArchiveBackupContext? = nil
+    @State private var showingBackup = false
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Локальный архив сообщений", systemImage: "lock.doc").font(.title2.bold())
+                Label(archive.isReadOnly ? "Восстановленный архив" : "Локальный архив сообщений", systemImage: "lock.doc").font(.title2.bold())
                 Spacer()
                 Button("Обновить", action: archive.reload).disabled(archive.isLoading)
                     .accessibilityIdentifier("telegram.archive.refresh")
@@ -51,6 +55,9 @@ private struct TelegramArchiveView: View {
             }
             Text("Сохранённые снимки остаются здесь при правках и удалениях в Telegram. Архив доступен без подключения к Telegram.")
                 .font(.callout).foregroundStyle(.secondary)
+            if !archive.isReadOnly {
+                Button("Резервная копия…") { showingBackup = true }.accessibilityIdentifier("telegram.archive.backup")
+            } else { Text("Только просмотр и выгрузка файлов. Запись сообщений продолжает исходный рабочий архив.").font(.caption).foregroundStyle(.secondary) }
             if archive.isSynthetic {
                 Text(archive.usesSyntheticS3 ? "СИНТЕТИЧЕСКИЙ АРХИВ • изолированные PostgreSQL/S3, личные аккаунты и Связка ключей не используются" : "СИНТЕТИЧЕСКИЙ АРХИВ • данные в памяти, личные аккаунты и PostgreSQL не используются")
                     .font(.caption.bold()).foregroundStyle(.secondary)
@@ -71,7 +78,7 @@ private struct TelegramArchiveView: View {
                             .accessibilityIdentifier("telegram.archive.retry")
                     }
                 }
-                TelegramFileArchiveStatus(files: archive.files)
+                if !archive.isReadOnly { TelegramFileArchiveStatus(files: archive.files) }
             }
             Divider()
             if archive.isLoading && archive.records.isEmpty {
@@ -96,6 +103,7 @@ private struct TelegramArchiveView: View {
             }
         }.padding(24).frame(minWidth: 720, idealWidth: 780, minHeight: 520, idealHeight: 620)
             .onAppear(perform: archive.reload)
+            .sheet(isPresented: $showingBackup) { TelegramArchiveBackupView(context: backupContext) }
     }
     private func archiveRow(_ record: MessageArchiveRecord) -> some View {
         let observation = record.observation, identity = observation.identity
@@ -131,6 +139,19 @@ private struct TelegramArchiveView: View {
             Divider()
         }.accessibilityIdentifier("telegram.archive.record.\(record.sequence)")
     }
+}
+
+struct TelegramRestoredArchiveView: View {
+    @StateObject private var archive: TelegramArchiveController
+    init(context: TelegramArchiveBackupContext, schema: String) {
+        let controller = TelegramArchiveController()
+        controller.configureReadOnly(connectionString: context.connectionString, schema: schema, keys: context.keys,
+            configurationFile: context.storageFile,
+            spoolDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("makosh-restored-view-\(UUID().uuidString)"),
+            synthetic: context.synthetic)
+        _archive = StateObject(wrappedValue: controller)
+    }
+    var body: some View { TelegramArchiveView(archive: archive) }
 }
 
 private struct TelegramFileArchiveStatus: View {

@@ -34,6 +34,17 @@ public struct ArchiveFileRecord: Codable, Equatable, Sendable, Identifiable {
             .allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1024 }),
               attachment.name.utf8.count <= 1024, attachment.kind.utf8.count <= 64 else { throw MessageArchiveError.invalid }
     }
+    func validate(vaultID: UUID) throws {
+        try Self.validateMetadata(identity: identity, attachment: attachment)
+        guard capturedAt.timeIntervalSince1970.isFinite,
+              plaintextByteCount >= 0, plaintextByteCount <= 4 * 1024 * 1024 * 1024,
+              byteCount > plaintextByteCount, byteCount <= 4 * 1024 * 1024 * 1024 + 1024 * 1024,
+              [sha256, plaintextSHA256, storageID].allSatisfy(Self.validHash),
+              objectKey == "vaults/\(vaultID.uuidString.lowercased())/files/\(id.uuidString.lowercased())" else { throw MessageArchiveError.invalid }
+    }
+    static func validHash(_ value: String) -> Bool {
+        value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+    }
 
     public init(id: UUID, identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment,
                 objectKey: String, storageID: String, receipt: ArchiveFileEnvelopeReceipt,

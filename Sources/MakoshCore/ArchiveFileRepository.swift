@@ -36,18 +36,20 @@ public actor ArchiveFileRepository {
     private let storage: S3ObjectStore
     private let directorySync: @Sendable (URL) throws -> Void
     private var processing = Set<UUID>()
+    private let readOnly: Bool
     public init(connectionString: String, schema: String, configuration: S3ObjectStoreConfiguration,
-                spoolDirectory: URL, keyProvider: @escaping @Sendable (UUID,Bool) throws -> Data = MessageArchiveKeychain.open) throws {
+                spoolDirectory: URL, readOnly: Bool = false, keyProvider: @escaping @Sendable (UUID,Bool) throws -> Data = MessageArchiveKeychain.open) throws {
         try self.init(connectionString: connectionString,schema: schema,configuration: configuration,
-                      spoolDirectory: spoolDirectory,keyProvider: keyProvider,directorySync: Self.syncDirectory)
+                      spoolDirectory: spoolDirectory,keyProvider: keyProvider,directorySync: Self.syncDirectory,readOnly: readOnly)
     }
     init(connectionString: String, schema: String, configuration: S3ObjectStoreConfiguration,
          spoolDirectory: URL, keyProvider: @escaping @Sendable (UUID,Bool) throws -> Data,
-         directorySync: @escaping @Sendable (URL) throws -> Void) throws {
+         directorySync: @escaping @Sendable (URL) throws -> Void, readOnly: Bool = false) throws {
         self.connectionString = connectionString; self.schema = schema; self.configuration = configuration
         self.spool = spoolDirectory; self.keyProvider = keyProvider
         self.directorySync = directorySync
         self.storage = try S3ObjectStore(configuration: configuration)
+        self.readOnly = readOnly
     }
     private var storageID: String {
         SHA256.hash(data: Data((configuration.endpoint + "\u{0}" + configuration.region + "\u{0}" + configuration.bucket).utf8)).map { String(format: "%02x",$0) }.joined()
@@ -57,12 +59,15 @@ public actor ArchiveFileRepository {
     }
     private func open() throws -> MessageArchiveStore {
         if let store { return store }
-        let result = try MessageArchiveStore(connectionString: connectionString,schema: schema,keyProvider: keyProvider)
+        let result = try MessageArchiveStore(connectionString: connectionString,schema: schema,readOnly: readOnly,keyProvider: keyProvider)
         store = result; return result
     }
     private func keys() throws -> ArchiveFileVault {
         if let vault { return vault }
         let result = try open().fileVault(); vault = result; return result
+    }
+    private func requireWritable() throws {
+        guard !readOnly else { throw MessageArchiveError.invalid }
     }
     private func prepareSpool() throws {
         guard spool.isFileURL else { throw MessageArchiveError.invalid }
@@ -134,6 +139,7 @@ public actor ArchiveFileRepository {
 
     public func capture(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity, attachment: MessageArchiveAttachment,
                         defaultEnabled: Bool = true, reservedID: UUID? = nil) async throws -> ArchiveFileRecord {
+        try requireWritable()
         let local = try !conversationFileSavingEnabled(identity: identity,defaultEnabled: defaultEnabled)
         guard let record = try await self.capture(capture,identity: identity,attachment: attachment,
             purpose: .outgoing(defaultEnabled: defaultEnabled),local: local,reservedID: reservedID) else {
@@ -145,6 +151,7 @@ public actor ArchiveFileRepository {
     private func capture(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity,
                          attachment: MessageArchiveAttachment, purpose: ArchiveFilePurpose,local: Bool = false,
                          reservedID: UUID? = nil) async throws -> ArchiveFileRecord? {
+        try requireWritable()
         var queued = false
         do {
         try ArchiveFileRecord.validateMetadata(identity: identity,attachment: attachment)
@@ -163,6 +170,7 @@ public actor ArchiveFileRepository {
 
     private func upload(_ record: ArchiveFileRecord,
                         legacyConversationDefault: (@Sendable (MessageArchiveIdentity) -> Bool?)? = nil) async throws -> ArchiveFileRecord? {
+        try requireWritable()
         switch record.purpose {
         case let .some(.conversation(defaultEnabled)), let .some(.outgoing(defaultEnabled)):
             guard try conversationFileSavingEnabled(identity: record.identity,defaultEnabled: defaultEnabled) else { return nil }
@@ -190,16 +198,19 @@ public actor ArchiveFileRepository {
         catch { store = nil; throw error }
     }
     public func setConversationFileSavingEnabled(identity: MessageArchiveIdentity, enabled: Bool) throws {
+        try requireWritable()
         do { try open().setConversationFileSavingEnabled(identity: identity,enabled: enabled) }
         catch { store = nil; throw error }
     }
     public func captureConversationFile(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity,
                                         attachment: MessageArchiveAttachment, defaultEnabled: Bool) async throws -> ArchiveFileRecord? {
+        try requireWritable()
         guard try conversationFileSavingEnabled(identity: identity,defaultEnabled: defaultEnabled) else { return nil }
         return try await self.capture(capture,identity: identity,attachment: attachment,purpose: .conversation(defaultEnabled: defaultEnabled))
     }
 
     @discardableResult public func resume(legacyConversationDefault: (@Sendable (MessageArchiveIdentity) -> Bool?)? = nil) async throws -> Int {
+        try requireWritable()
         try prepareSpool()
         let vault = try keys()
         let files = try FileManager.default.contentsOfDirectory(at: spool,includingPropertiesForKeys: nil)
@@ -226,6 +237,7 @@ public actor ArchiveFileRepository {
     /// Resolve one pre-reserved outgoing capture. Local records retain their
     /// original policy; a missing/corrupt receipt never authorizes recapture.
     public func recoverOutgoingCapture(id: UUID, identity: MessageArchiveIdentity, attachmentID: String) async throws -> ArchiveFileRecord? {
+        try requireWritable()
         try prepareSpool()
         let vault = try keys()
         func matches(_ record: ArchiveFileRecord) -> Bool {
@@ -261,7 +273,10 @@ public actor ArchiveFileRepository {
             try prepareSpool()
             guard try load(record.id,vault: vault,local: true) == record else { throw MessageArchiveError.integrity }
         } else {
-            guard record.state == .stored, record.storageID == storageID else { throw MessageArchiveError.integrity }
+            guard record.state == .stored else { throw MessageArchiveError.integrity }
+            if record.storageID != storageID {
+                guard try open().acceptsStorageAlias(source: record.storageID, destination: storageID) else { throw MessageArchiveError.integrity }
+            }
             let authenticated = try open().files(identity: record.identity,attachmentID: record.attachment.id)
             guard authenticated.contains(record) else { throw MessageArchiveError.integrity }
         }

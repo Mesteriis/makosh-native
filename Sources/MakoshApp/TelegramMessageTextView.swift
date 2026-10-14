@@ -4,6 +4,9 @@ import MakoshTelegram
 
 /// Reading view over captured message entities; revealing never changes the source.
 struct TelegramMessageTextView<MenuContent: View>: View {
+    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
+    @Environment(\.colorScheme) private var colorScheme
+    private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     let value: TelegramFormattedText?
     let identity: String
     var canCopy = false
@@ -37,7 +40,15 @@ struct TelegramMessageTextView<MenuContent: View>: View {
     }
     private func decorated(_ value: TelegramFormattedText, presentation: NSAttributedString? = nil) -> NSAttributedString {
         let native = NSMutableAttributedString(attributedString: presentation ??
-            TelegramMessagePresentation.attributedString(value, revealingSpoilers: revealed))
+            TelegramMessagePresentation.attributedString(value, revealingSpoilers: revealed, fontSize: CGFloat(appearance.fontSize)))
+        native.enumerateAttribute(.font,in:NSRange(location:0,length:native.length)) { value, range, _ in
+            if let font = value as? NSFont { native.addAttribute(.font,value:NSFontManager.shared.convert(font,toSize:CGFloat(appearance.fontSize)),range:range) }
+        }
+        if let color = appearance.effectivePalette(isDark:colorScheme == .dark)?.text {
+            native.enumerateAttribute(.foregroundColor,in:NSRange(location:0,length:native.length)) { value, range, _ in
+                if let prior = value as? NSColor, prior == NSColor.labelColor { native.addAttribute(.foregroundColor,value:NSColor(telegramRGBColor(color)),range:range) }
+            }
+        }
         if !revealed {
             for entity in value.entities {
                 if case .spoiler = entity.kind {
@@ -107,7 +118,7 @@ struct TelegramMessageTextView<MenuContent: View>: View {
                     TelegramNativeMessageReading(presentation: native, value: value, key: key, offset: offset,
                         canCopy: canCopy, revealingSpoilers: revealed, maximumQuoteLength: maximumQuoteLength,
                         actions: nativeActions, quote: quoteSelection, activate: activate,
-                        customEmojiDescriptors: customEmojiDescriptors, customEmojiContext: customEmojiContext, lineLimit: limit)
+                        customEmojiDescriptors: customEmojiDescriptors, customEmojiContext: appearance.animationsEnabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? customEmojiContext : nil, lineLimit: limit)
                 } else if canCopy { Text(attributed).textSelection(.enabled) }
                 else { Text(attributed).textSelection(.disabled) }
             }

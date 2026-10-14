@@ -9,15 +9,22 @@ private nonisolated func cacheFile(_ id: Int64, resource: TelegramMediaResource)
         resource: resource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil,
         mimeType: "application/octet-stream", size: 8, attributes: [.FileName(fileName: "Synthetic.bin")], alternativeRepresentations: [])
 }
-private nonisolated func cacheCatalogue(_ box: Postbox, invalid: Bool = false, foreignMapping: Bool = false) -> Signal<TelegramCacheSnapshot?, NoError> {
+private nonisolated func cacheCatalogue(_ box: Postbox, invalid: Bool = false, foreignMapping: Bool = false, secretReference: Bool = false, distinctSecretReference: Bool = false) -> Signal<TelegramCacheSnapshot?, NoError> {
     box.transaction { tx in
         let cloud = cacheFile(301, resource: CloudDocumentMediaResource(datacenterId: 2, fileId: 301, accessHash: 53,
             size: 8, fileReference: nil, fileName: nil))
         let local = cacheFile(302, resource: LocalFileMediaResource(fileId: 302, size: 16, isSecretRelated: false))
         tx.storeMediaIfNotPresent(media: cloud); tx.storeMediaIfNotPresent(media: local)
-        let stats = CacheUsageStats(media: [PeerId(37): [.file: [cloud.fileId: invalid ? -1 : 8, local.fileId: 16]],
-            PeerId(38): [.file: [cloud.fileId: 8]]],
-            mediaResourceIds: [cloud.fileId: [foreignMapping ? local.resource.id : cloud.resource.id], local.fileId: [local.resource.id]],
+        var media: [PeerId:[PeerCacheUsageCategory:[MediaId:Int64]]] = [PeerId(37): [.file: [cloud.fileId: invalid ? -1 : 8, local.fileId: 16]],PeerId(38): [.file: [cloud.fileId:8]]]
+        var resources = [cloud.fileId: [foreignMapping ? local.resource.id : cloud.resource.id], local.fileId: [local.resource.id]]
+        if secretReference { media[PeerId(namespace:Namespaces.Peer.SecretChat,id:PeerId.Id._internalFromInt64Value(1))] = [.file:[cloud.fileId:8]] }
+        if distinctSecretReference {
+            let secret = cacheFile(303,resource:cloud.resource); tx.storeMediaIfNotPresent(media:secret)
+            media[PeerId(namespace:Namespaces.Peer.SecretChat,id:PeerId.Id._internalFromInt64Value(2))] = [.file:[secret.fileId:8]]
+            resources[secret.fileId] = [cloud.resource.id]
+        }
+        let stats = CacheUsageStats(media: media,
+            mediaResourceIds: resources,
             peers: [:], otherSize: 999, otherPaths: ["/synthetic/retained"], cacheSize: 999,
             tempPaths: ["/synthetic/sending"], tempSize: 999, immutableSize: 999)
         return telegramCacheSnapshot(transaction: tx, stats: stats, accountID: 11)
@@ -29,7 +36,18 @@ private nonisolated func cacheCatalogue(_ box: Postbox, invalid: Bool = false, f
         let value = try await telegramDataValue(cacheCatalogue(box), test: self)
         let snapshot = try XCTUnwrap(value)
         XCTAssertEqual(snapshot.totalBytes, 8); XCTAssertEqual(snapshot.bytes(for: .files), 8)
+        XCTAssertEqual(snapshot.items.first?.peerIDs,[37,38])
         XCTAssertEqual(snapshot.items.count, 1); XCTAssertEqual(snapshot.items.first?.resources, ["telegram-cloud-document-2-301"])
+    }
+    func testCloudResourceAlsoReferencedBySecretChatIsExcluded() async throws {
+        let box = try await telegramDataPostbox(test:self)
+        let value = try await telegramDataValue(cacheCatalogue(box,secretReference:true),test:self)
+        XCTAssertEqual(value?.totalBytes,0)
+    }
+    func testSeparateMediaIdentitySharingSecretResourceIsExcluded() async throws {
+        let box = try await telegramDataPostbox(test:self)
+        let value = try await telegramDataValue(cacheCatalogue(box,distinctSecretReference:true),test:self)
+        XCTAssertEqual(value?.totalBytes,0)
     }
     func testInvalidOrForeignCacheMappingCannotAuthorizeResources() async throws {
         let box = try await telegramDataPostbox(test: self)

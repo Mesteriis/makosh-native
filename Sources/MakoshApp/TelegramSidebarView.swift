@@ -8,6 +8,7 @@ struct TelegramSidebarView: View {
     @ObservedObject private var forumTopics: TelegramForumTopicsController
     @State private var connectionPresented = false
     @State private var settingsPresented = false
+    @State private var downloadsPresented = false
     @FocusState private var searchFocused: Bool
     init(model: TelegramModel) { self.model = model; self.search = model.search; self.globalSearch = model.globalSearch; self.forumTopics = model.forumTopics }
     private var searching: Bool { search.hasChatQuery || globalSearch.hasMessageQuery }
@@ -33,6 +34,10 @@ struct TelegramSidebarView: View {
                     .font(.headline).lineLimit(1)
                 Spacer(minLength: 4)
                 TelegramArchiveButton(archive: model.archive)
+                if model.phase == .ready {
+                    Button { downloadsPresented = true } label: { Image(systemName:"arrow.down.circle") }
+                        .buttonStyle(.plain).help("Загрузки").accessibilityLabel("Загрузки Telegram").accessibilityIdentifier("telegram.downloads.open")
+                }
                 Button { settingsPresented = true } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.plain).help("Настройки Telegram").accessibilityLabel("Настройки Telegram")
                     .accessibilityIdentifier("telegram.settings.open")
@@ -116,6 +121,7 @@ struct TelegramSidebarView: View {
                     autoDownload: model.autoDownloadSettings, cache: model.cache, proxy: model.proxy, avatarEditing: model.avatarEditing, appearanceCatalog: model.appearanceCatalog,
                     chats: model.chats, synthetic: model.isSyntheticPreview) { settingsPresented = false }
             }
+            .sheet(isPresented:$downloadsPresented) { TelegramDownloadsView(model:model) }
             .onAppear { forumTopics.setVisible(true) }
             .onDisappear { forumTopics.setVisible(false) }
             .onChange(of: model.selectedChatID) { _, _ in model.isForumTopicsListPresented = true }

@@ -7285,3 +7285,31 @@ All five approved parts are implemented and integrated. Block14 remains separate
 remaining settings/QR/web sessions/wallpaper/cache/download/visual polish,
 portable archive/S3/key backup and separately authorized live-account/hardware
 acceptance. Local Makosh passcode/autolock remains explicitly excluded.
+
+
+## Block14 implementation in progress (2026-10-14)
+
+Branch feature/telegram-block14 follows the written spec/plan. Connected websites
+and explicit native QR sign-in are implemented: focused10 website tests and8 QR
+controller tests pass. Remaining appearance/general settings now include actual
+message font11–18, typed opt-in emoticon replacement, animation control, local
+color/gradient/image wallpaper and scheduled night mode. Native Telegram theme/
+wallpaper catalogue uses bounded own desktop-palette parsing, preview and local
+application; unsupported variants show an explicit unavailable state. Combined
+appearance/message/attributed/send-key checks pass42 tests.
+
+Per-chat cloud-cache selection preserves full fresh catalogue admission and
+excludes resources observed in unselected, unknown or secret peers, including
+shared resources with distinct MediaIds. Transfer management adds token/context
+bound cancel/retry/save/finished-list cleanup and automatic-only pause. Borrowed
+originals survive reset through export; an old export failure cannot invalidate
+a replacement transfer. Combined cache/media/automatic/transfer checks pass35 tests.
+The manager preserves the existing no-sheet/no-modal automatic-read/download
+visibility barrier; manual transfers remain active in that sheet.
+
+These are focused code/test results, not actual new native UI or live Telegram
+acceptance. Reference presentation, portable encrypted archive/S3/key recovery,
+full gates, actual isolated native UI, final review and GitHub integration remain.
+The user will provide a test account only after implementation. No personal
+account, hardware capture, local passcode/autolock or full reference parity is
+claimed. Local dev PostgreSQL/S3 startup exits0; full final gates are still pending.

@@ -40,17 +40,22 @@ extension TelegramProxyController {
     let accountID: Int64 = -1
     private var items: [TelegramCacheItem] = TelegramCacheKind.allCases.enumerated().map { index, kind in
         .init(namespace: 0, id: Int64(index + 1), bytes: Int64(index + 1) * 1_048_576,
-            kind: kind, resources: ["synthetic-cloud-\(index)"])
+            kind: kind, resources: ["synthetic-cloud-\(index)"],peerIDs:index == 1 ? [10007,10010] : [index < 2 ? 10007 : 10010])
     }
-    private var snapshot: TelegramCacheSnapshot { .init(accountID: accountID, items: items) }
+    private var snapshot: TelegramCacheSnapshot { .init(accountID: accountID, items: items,peerTitles:[10007:"Синтетический личный чат",10010:"Синтетическая группа"]) }
     func scan(receive: @escaping @MainActor (TelegramCacheSnapshot?) -> Void) -> any TelegramCacheRequest {
         receive(snapshot); return Request()
     }
     func clear(expected: TelegramCacheSnapshot, categories: Set<TelegramCacheKind>, permitted: @escaping @MainActor () -> Bool,
         receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest {
+        clear(expected:expected,categories:categories,scope:.all,permitted:permitted,receive:receive)
+    }
+    func clear(expected: TelegramCacheSnapshot, categories: Set<TelegramCacheKind>, scope: TelegramCacheScope, permitted: @escaping @MainActor () -> Bool,
+        receive: @escaping @MainActor (TelegramCacheEvent) -> Void) -> any TelegramCacheRequest {
         guard expected == snapshot else { receive(.changed(snapshot)); return Request() }
         guard permitted() else { receive(.refused); return Request() }
-        receive(.committing); items.removeAll { categories.contains($0.kind) }; receive(.finished(snapshot)); return Request()
+        let ids = Set(snapshot.selectedItems(categories:categories,scope:scope).map { "\($0.namespace):\($0.id)" })
+        receive(.committing); items.removeAll { ids.contains("\($0.namespace):\($0.id)") }; receive(.finished(snapshot)); return Request()
     }
     private final class Request: TelegramCacheRequest { func cancel() {} }
 }

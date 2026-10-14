@@ -263,6 +263,11 @@ public final class TelegramModel: ObservableObject {
     private let proxyClientID = UUID()
     private lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
     private var automaticArchiveObservation: AnyCancellable?
+    @Published public private(set) var automaticDownloadsPaused = false
+    @discardableResult public func setAutomaticDownloadsPaused(_ paused: Bool, contextID: UUID) -> Bool {
+        guard autoDownloadSettings.accountID != nil, autoDownloadSettings.contextID == contextID else { return false }
+        automaticDownloads.setPaused(paused); automaticDownloadsPaused = paused; return true
+    }
     public func setVisibleAutomaticDownloads(messageIDs: Set<String>, context: TelegramHistoryReadContext,
         windowIsActive: Bool, eligibility: @escaping @MainActor () -> Bool) {
         guard historyReadContext == context else { return }
@@ -2229,6 +2234,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        automaticDownloads.setPaused(false); automaticDownloadsPaused = false
         cancelAutomaticDownloads(); autoDownloadSettings.bind(accountID: nil); cache.bind(nil)
         notifications.bind(accountID: nil)
         sendApproval.dispose(); capabilityObservation.set(nil); conversationCapabilities = nil

@@ -49,6 +49,14 @@ enum TelegramMediaEvent {
     case fetchCompleted
 }
 
+public struct TelegramMediaTransfer: Identifiable, Equatable, Sendable {
+    public let id, contextID: UUID
+    public let key: TelegramMediaKey
+    public let attachment: TelegramAttachment
+    public let phase: TelegramMediaPhase
+    public let automatic: Bool
+}
+
 /// Owns each provider lease until cancellation or removal, including completed files.
 /// File content and export validation belong to the provider/export boundary.
 @MainActor
@@ -85,6 +93,36 @@ public final class TelegramMediaController: ObservableObject {
     var completedFullFile: (@MainActor (String,URL,Int64) -> Void)?
     var reserveAutomaticFile: (@MainActor (String) -> (any TelegramMediaArchiveReservation)?)?
 
+    @Published public private(set) var transferContextID = UUID()
+    public var transfers: [TelegramMediaTransfer] {
+        jobs.keys.filter { $0.purpose == .full }.compactMap { transfer(for:$0) }.sorted { $0.key.attachmentID < $1.key.attachmentID }
+    }
+    public func transfer(for key: TelegramMediaKey) -> TelegramMediaTransfer? {
+        guard let job = jobs[key], let attachment = attachments[key.attachmentID] else { return nil }
+        return .init(id:job.token,contextID:transferContextID,key:key,attachment:attachment,phase:job.phase,automatic:job.automatic)
+    }
+    private func matchesTransfer(_ transfer: TelegramMediaTransfer) -> Bool {
+        transfer.contextID == transferContextID && jobs[transfer.key]?.token == transfer.id && attachments[transfer.key.attachmentID] == transfer.attachment
+    }
+    @discardableResult public func cancelTransfer(_ transfer: TelegramMediaTransfer) -> Bool {
+        guard matchesTransfer(transfer), let job = jobs[transfer.key], case .downloading = job.phase else { return false }
+        finish(transfer.key,phase:.cancelled); return true
+    }
+    @discardableResult public func retryTransfer(_ transfer: TelegramMediaTransfer) -> Bool {
+        guard matchesTransfer(transfer), let job = jobs[transfer.key], [.failed,.cancelled,.timedOut].contains(job.phase), transfer.key.purpose == .full else { return false }
+        return start(transfer.attachment,purpose:.full,automatic:nil)
+    }
+    @discardableResult public func invalidateTransfer(_ transfer: TelegramMediaTransfer) -> Bool {
+        guard matchesTransfer(transfer), jobs[transfer.key]?.phase == .ready else { return false }
+        finish(transfer.key,phase:.failed); return true
+    }
+    @discardableResult public func clearFinishedTransfers(contextID: UUID) -> Bool {
+        guard contextID == transferContextID else { return false }
+        for key in Array(jobs.keys) where key.purpose == .full {
+            if case .downloading = jobs[key]?.phase { continue }; remove(key)
+        }
+        return true
+    }
     public init() {}
 
     isolated deinit {
@@ -98,9 +136,10 @@ public final class TelegramMediaController: ObservableObject {
         return jobs[key]?.file
     }
 
-    public func withDownloadedFile(for key: TelegramMediaKey,
+    public func withDownloadedFile(for key: TelegramMediaKey, transfer: TelegramMediaTransfer? = nil,
                                    operation: @MainActor (URL, Int64) async throws -> Void) async throws -> Bool {
         guard let job = jobs[key], job.phase == .ready, let url = job.file else { return false }
+        if let transfer { guard transfer.key == key, matchesTransfer(transfer) else { return false } }
         job.holder.borrows += 1
         defer { job.holder.endBorrow() }
         try await operation(url, job.size)
@@ -116,6 +155,7 @@ public final class TelegramMediaController: ObservableObject {
         let previous = jobs
         jobs.removeAll()
         attachments.removeAll()
+        transferContextID = UUID()
         provider = nil
         completedFullFile = nil
         reserveAutomaticFile = nil
@@ -244,7 +284,7 @@ public final class TelegramMediaController: ObservableObject {
     private func finish(_ key: TelegramMediaKey, phase: TelegramMediaPhase) {
         guard let old = jobs[key] else { return }
         // Invalidate before invoking provider cancellation, which may emit events.
-        jobs[key] = Job(token: UUID(), phase: phase)
+        jobs[key] = Job(token: UUID(), phase: phase, automatic: old.automatic)
         revision &+= 1
         old.deadline?.cancel()
         old.holder.release()

@@ -16,30 +16,32 @@ final class TelegramAttachmentActions: ObservableObject {
 
     func showPreview(media: TelegramMediaController, key: TelegramMediaKey) {
         guard !isBusy else { return }
+        guard let transfer = media.transfer(for:key) else { error = TelegramFileError.unavailable.localizedDescription; return }
         begin()
         task = Task { [weak self] in
             guard let self else { return }
             defer { finish() }
             do {
-                let available = try await media.withDownloadedFile(for: key) { url, size in
+                let available = try await media.withDownloadedFile(for: key, transfer: transfer) { url, size in
                     let image = try await TelegramDownloadedFileIO.image(source: url, expectedSize: size)
                     try Task.checkCancellation()
                     self.preview = image
                 }
                 if !available { throw TelegramFileError.unavailable }
             } catch is CancellationError { }
-            catch { report(error, media: media, key: key) }
+            catch { report(error, media: media, key: key, transfer: transfer) }
         }
     }
 
-    func save(media: TelegramMediaController, key: TelegramMediaKey, name: String) {
+    func save(media: TelegramMediaController, key: TelegramMediaKey, name: String, transfer: TelegramMediaTransfer? = nil) {
         guard !isBusy else { return }
+        guard let transfer = transfer ?? media.transfer(for:key) else { error = TelegramFileError.unavailable.localizedDescription; return }
         begin()
         task = Task { [weak self] in
             guard let self else { return }
             defer { finish() }
             do {
-                let available = try await media.withDownloadedFile(for: key) { url, size in
+                let available = try await media.withDownloadedFile(for: key, transfer: transfer) { url, size in
                     guard let destination = await self.chooseDestination(name: name) else { return }
                     try Task.checkCancellation()
                     try await TelegramDownloadedFileIO.copy(source: url, expectedSize: size, destination: destination)
@@ -48,7 +50,7 @@ final class TelegramAttachmentActions: ObservableObject {
                 }
                 if !available { throw TelegramFileError.unavailable }
             } catch is CancellationError { }
-            catch { report(error, media: media, key: key) }
+            catch { report(error, media: media, key: key, transfer: transfer) }
         }
     }
 
@@ -99,11 +101,11 @@ final class TelegramAttachmentActions: ObservableObject {
 
     private func begin() { isBusy = true; error = nil; saved = false }
     private func finish() { task = nil; isBusy = false }
-    private func report(_ error: Error, media: TelegramMediaController, key: TelegramMediaKey) {
+    private func report(_ error: Error, media: TelegramMediaController, key: TelegramMediaKey, transfer: TelegramMediaTransfer) {
         guard !Task.isCancelled else { return }
         let safe = error as? TelegramFileError ?? .unavailable
         self.error = safe.localizedDescription
-        if safe == .unavailable { media.cancel(key) }
+        if safe == .unavailable { _ = media.invalidateTransfer(transfer) }
     }
 
     private func chooseDestination(name: String,title: String = "Сохранить вложение Telegram") async -> URL? {

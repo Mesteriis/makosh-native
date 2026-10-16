@@ -1,9 +1,10 @@
 import AppKit
 import ImageIO
 import MakoshTelegram
+import MakoshCore
 
 @MainActor enum TelegramVideoCoverImageInput {
-    enum Input { case files([URL]), bytes(Data) }
+    enum Input: Sendable { case files([URL]), bytes(Data) }
     /// Called only by an explicit Paste action in this editor.
     static func pasteboard() throws -> Input {
         let pasteboard = NSPasteboard.general
@@ -18,7 +19,7 @@ import MakoshTelegram
         }
         throw TelegramUploadFileError.invalidImage
     }
-    static func adding(_ input: Input, to images: TelegramUploadVideoCoverImages,
+    @concurrent nonisolated static func adding(_ input: Input, to images: TelegramUploadVideoCoverImages,
                        canvasSize: CGSize, imageSize: CGSize) async throws -> TelegramUploadVideoCoverImages {
         var admission = images
         var previews: [TelegramImagePreview] = []
@@ -50,12 +51,18 @@ import MakoshTelegram
         try result.append(previews, canvasSize: canvasSize, imageSize: imageSize)
         return result
     }
-    static func copy(_ item: TelegramUploadVideoCoverImages.Item) throws {
+    nonisolated static func encodedPNG(_ item: TelegramUploadVideoCoverImages.Item) throws -> Data {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { throw TelegramUploadFileError.invalidImage }
         CGImageDestinationAddImage(destination, item.image, nil)
         guard CGImageDestinationFinalize(destination), data.length <= 20 * 1024 * 1024 else { throw TelegramUploadFileError.tooLarge }
+        return data as Data
+    }
+    static func copy(_ item: TelegramUploadVideoCoverImages.Item,
+                     isCurrent: @MainActor () -> Bool) async throws {
+        let data = try await BackgroundWork.run { try encodedPNG(item) }
+        guard isCurrent() else { throw CancellationError() }
         NSPasteboard.general.clearContents()
-        guard NSPasteboard.general.setData(data as Data, forType: .png) else { throw TelegramUploadFileError.unavailable }
+        guard NSPasteboard.general.setData(data, forType: .png) else { throw TelegramUploadFileError.unavailable }
     }
 }

@@ -1,9 +1,30 @@
 # Telegram channel
 
-## Notifications on this Mac (2026-10-13)
+## Real-account startup and received locations
+
+Authorized-account insertion calls native `resetStateManagement()` before
+binding providers. This queues initial getState/getDifference before update
+groups; a legitimately absent initial cursor is neither fabricated nor cleared.
+Two encrypted synthetic native regressions reproduce the old premature-operation
+and nil-cursor failure. The real outgoing marker survives the crash/restart and
+is shown read without automatic resend.
+
+Received native map messages are location snapshots with finite latitude/
+longitude admission. Their coordinates and original venue/address/live metadata
+enter the existing encrypted message archive as a `location` descriptor, with
+no binary file or S3 copy. Display labels are byte-bounded independently of
+retention. Oversized archival events follow existing visible failure and
+unacknowledged-journal behavior. The user may explicitly open a received location
+in Maps; passive rendering does not contact a map provider or access device
+location. Interactive map/live-location UI and outbound location sending remain
+unimplemented. See the reference ledger for exact differences.
+
+## Notifications on this Mac (updated2026-10-15)
 
 The common workspace opens Notifications and Sounds from Telegram settings;
-each profile opens a local per-chat exception editor. Account-scoped local
+each profile opens a local per-chat exception editor. The global section also
+provides a chooser for all currently loaded chats, including chats with no
+existing exception, and shows each exception's local enablement state. Account-scoped local
 preferences support a master switch, previews, system/silent sound, Dock attention,
 active-app suppression, timed snooze, private/group/channel policies and per-chat
 overrides. They never write server notification settings. Server mute, hidden
@@ -37,7 +58,18 @@ Unread badges use full native filtered root counters, including bot/private tags
 with separate group/channel switches and messages/chats modes. Archived counters
 are excluded; loading another chat-list page cannot change this count.
 
-Own UNUserNotificationCenter delivery asks permission only from an explicit button.
+Own UNUserNotificationCenter delivery checks the authoritative OS status before
+submission. The first eligible incoming event requests initial permission once;
+at most100 deduplicated pending cards wait for consent. Grant is followed by a
+fresh OS status and current account/route/privacy/foreground check. Denial or an
+error does not prompt again on each message; explicit manual retry remains
+available, while a denied OS setting links to macOS settings. The ordinary bundle
+has its own grant, separate from any QA bundle. Active-window suppression is enabled
+by default and has its own switch in Notifications and Sounds. Suppression
+requires the owning window to be key, visible and not minimized as well as the
+application being active; a minimized app alone never suppresses a card. Window
+attachment/key/visibility/minimization changes refresh this state, and asynchronous
+consent/submission callbacks re-read it before validating a card.
 Spoilers and service login codes are masked; protected and secret content remains
 generic. Screen-lock events remove existing owned cards and hide subsequent titles,
 body and sound; this is best-effort removal, not erasure of content already seen by
@@ -106,30 +138,54 @@ scripts. No upstream application installer or private config is executed/read.
 
 ## Account and data boundaries
 
-Opening the app or selecting Telegram does not connect an account. Enter your
-own API ID and API hash in the native setup form, then click **Подключить
-Telegram**, or use **Подключить с локальными API-данными** after explicitly
-installing your local API configuration. Phone, code and optional two-step password are entered in the app.
-The agent has not authenticated an account, read private dialogs or sent a
-message. Do not paste credentials or login codes into this repository/chat.
+Opening the app or selecting Telegram does not connect an account. Click
+**Подключить Telegram** to open Makosh's separate session. The application API
+ID/hash are compiled into the binary; the setup form has no API fields and the
+application never reads an API JSON file. Phone, code and optional two-step
+password are entered in the app. Real test-account observations and remaining
+acceptance gaps are recorded in development-status.md. Do not paste credentials
+or login codes into this repository/chat.
 
-Manually entered API credentials remain in memory. Optional user-authorized
-local credentials are stored in `~/Library/Application Support/Makosh/telegram-api.json`
-as `{ "apiID": "…", "apiHash": "…" }`. The loader opens only on the explicit
-saved-data Connect action, checks the same open descriptor for owner, regular-file
-type, no group/world permissions and a maximum 8192-byte size, and refuses
-symlinks. Values never prefill the screen or enter logs; no automatic connection
-occurs. This is a private mode-0600 file, not Keychain storage. Protect its backups.
-To import only the API ID/hash from a selected legacy dotenv configuration:
+### Application API pair at build time
+
+Set both `MAKOSH_TELEGRAM_API_ID` and `MAKOSH_TELEGRAM_API_HASH` in the build
+environment/CI Secrets, or place the same two assignments in the ignored private
+file `.local/telegram-build.env` (owner-only mode0600). The file is parsed as
+strict ASCII assignments, never sourced/evaluated as shell code. A supplied
+environment pair takes precedence; an incomplete or invalid pair fails instead
+of falling back to another source. This is Makosh's own application API pair;
+credentials embedded in third-party reference applications are never copied.
+
+`scripts/build-app.sh` prepares an ignored private Swift target under
+`.local/build-configuration`, then compiles it. Missing/invalid credentials stop
+an ordinary product build. The explicit `--allow-unconfigured-telegram` option
+permits a source/CI build only when the pair is absent; its connection button is
+disabled with an explanation. Invalid provided data still fails. `scripts/test.sh`
+uses that explicit mode for synthetic tests, and CI uses the same option for
+forks without secrets. Neither mode authenticates an account. Direct SwiftPM
+commands require preparing this target first, as with the other pinned packages.
+
+The generator checks descriptor ownership, regular-file type, private mode,
+size and symlinks before reading local input. Generated source stays mode0600 in
+a mode0700 directory, outside Git and XERJ. A rejected input invalidates previous
+generated credentials, preventing reuse of a stale API pair. No values are
+printed. The resulting binary needs neither the build input nor generated source
+at runtime. The pair can be extracted from a distributed client binary; it is
+application configuration, not a replacement for personal authorization.
+
+To import only the application API ID/hash from a selected legacy dotenv file:
 
 ```sh
 python3 scripts/import-telegram-api.py --from-env /path/to/legacy/.env
+./scripts/build-app.sh
 ```
 
 The importer selects only `HERMES_TELEGRAM_API_ID` and `HERMES_TELEGRAM_API_HASH`,
-does not evaluate shell code, prints no values and refuses an existing destination.
-It transfers no phone, authorization key, session or messages. No credentials
-belong in Git. OTP and password fields clear on submission. A separate encrypted TelegramCore
+prints no values and refuses an existing destination. It now creates the private
+build input, never runtime JSON. Existing legacy JSON is preserved by this
+increment but ignored by the application and build scripts. Imports transfer no
+phone, authorization key, session or messages. No credentials belong in Git.
+OTP and password fields clear on submission. A separate encrypted TelegramCore
 session lives in `~/Library/Application Support/Makosh/Telegram`; its random
 48-byte encryption key/salt is stored in the macOS Keychain under Makosh's own
 service. Existing Telegram app sessions and system contacts are never imported.
@@ -163,6 +219,24 @@ must succeed before resuming. Native network fixtures cover that lifecycle,
 including inherited datacenter-migration modes and rejected admission. The QR
 image has a non-secret accessibility label; a synthetic decoder checks its exact
 URL payload. Real QR/2FA acceptance remains separate from these fixtures.
+
+Authorized startup also binds incoming calls and unread counters. Native call
+signal/transaction/signaling transformations are constructed in nonisolated
+helpers, preserving CallSessionManager/Postbox queue ownership; the existing
+provider delivers presentation snapshots on MainActor. Unread-counter delivery
+now reaches the main queue before the controller's actor-isolated map closure.
+Native encrypted synthetic fixtures cover initial incoming calls, a missing
+call peer, initial unread counters and the full model startup/cache-view/
+disconnect lifecycle. These tests use a closed loopback proxy and start no call
+or physical capture device. Swift actor checks remain enabled.
+
+MediaBox auxiliary callbacks and network/notice factories are also constructed
+nonisolated, including the real local-resource fetch path. The UI model routes
+commands and publishes checked results; session/Keychain work, native chat/history
+projection, upload/image processing and native call execution belong to their
+workers. [Main-thread boundaries](main-thread-boundaries.md) define the same
+contract for Contacts and future mail/other service adapters. No actor/runtime
+check is disabled to accommodate a callback.
 
 A fresh native unauthorized Postbox can have `nil` account state. Its first view
 now presents the existing phone form, without writing a fabricated protocol state

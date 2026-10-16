@@ -112,6 +112,26 @@ public final class ContactStore {
             state.contacts[index] = contact
         }
     }
+    public func addSourceNote(contactID: UUID, note: ContactNote) throws -> UUID {
+        let source = note.source.identity
+        guard !trimmed(note.text).isEmpty, note.text.utf8.count <= 64 * 1024,
+              [source.service, source.accountID, source.externalID].allSatisfy({ !$0.isEmpty && $0.utf8.count <= 4096 }),
+              note.source.fetchedAt.timeIntervalSince1970.isFinite else { throw StoreError.invalid("Некорректная заметка источника.") }
+        return try mutate { state in
+            let owners = state.contacts.indices.filter { state.contacts[$0].notes.contains(where: { $0.id == note.id }) }
+            if let index = owners.first {
+                guard owners.count == 1, let existing = state.contacts[index].notes.first(where: { $0.id == note.id }),
+                      existing.text.utf8.elementsEqual(note.text.utf8), existing.source == note.source else {
+                    throw StoreError.invalid("Идентификатор заметки уже связан с другим содержимым.")
+                }
+                return state.contacts[index].id
+            }
+            guard let index = state.contacts.firstIndex(where: { $0.id == contactID }) else { throw StoreError.missingContact }
+            state.contacts[index].notes.append(note); state.contacts[index].revision += 1
+            state.contacts[index].events.append(.init(kind: "sourceNote", detail: "Добавлена заметка с источником"))
+            return contactID
+        }
+    }
     public func addNote(contactID: UUID, text: String) throws {
         guard !trimmed(text).isEmpty else { throw StoreError.invalid("Заметка не может быть пустой.") }
         try mutate { state in

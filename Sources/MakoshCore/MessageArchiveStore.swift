@@ -213,7 +213,20 @@ public final class MessageArchiveStore {
                     continue
                 }
                 _ = try query("INSERT INTO \(prefix)archive_receipts VALUES($1::uuid,$2)", [observation.id.uuidString,receipt])
-                let digest = mac(try encode(observation.event))
+                let digest: String
+                if let sourcePayload = observation.sourcePayload {
+                    // Rich service-only changes (e.g. reactions or a replaced file resource)
+                    // are versions even when the shared text/event projection is unchanged.
+                    struct RichEvent: Encodable {
+                        let domain = "makosh-archive-rich-event-v1"
+                        let event: MessageArchiveEvent
+                        let sourcePayload: Data
+                    }
+                    digest = mac(try encode(RichEvent(event: observation.event, sourcePayload: sourcePayload)))
+                } else {
+                    // Preserve the exact legacy digest for observations without service metadata.
+                    digest = mac(try encode(observation.event))
+                }
                 let latest = try query("SELECT event_digest FROM \(prefix)archive_events WHERE message_token=$1 ORDER BY sequence DESC LIMIT 1", [message])
                 if latest.first?.first == digest { continue }
                 let next = try query("SELECT nextval(pg_get_serial_sequence($1,'sequence'))", [prefix + "archive_events"])

@@ -10,8 +10,9 @@ import SwiftSignalKit
         let fixture = try await fixture(), repository = Repository(fixture.draft), store = session(repository)
         let controller = TelegramUploadController()
         controller.bind(provider: Provider(), recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload1 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload1)
         defer { controller.clear() }
         let context = controller.captionContextID, preparation = fixture.draft.id
         let input = try TelegramComposerInput(formattedText: .init(text: "Exact 😀", entities: [.init(offset: 6, length: 2, kind: .bold)]),
@@ -36,8 +37,9 @@ import SwiftSignalKit
         let reopened = TelegramUploadController()
         reopened.bind(provider: Provider(), recoveryStore: store, requiresRecovery: true)
         defer { reopened.clear() }
-        XCTAssertTrue(reopened.restore(draft: saved, items: [fixture.items[0]], target: target,
-            restorationEpoch: reopened.recoveryRestoreEpoch))
+        let restoredUpload2 = await reopened.restore(draft: saved, items: [fixture.items[0]], target: target,
+            restorationEpoch: reopened.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload2)
         XCTAssertTrue(reopened.usesCaptionPlaceholder)
         XCTAssertEqual(reopened.captionInput, input); XCTAssertEqual(reopened.preparationContextID, preparation)
     }
@@ -47,8 +49,9 @@ import SwiftSignalKit
         let fixture = try await fixture(mixed: true), controller = TelegramUploadController(), provider = Provider()
         let repository = Repository(fixture.draft), session = session(repository)
         controller.bind(provider: provider, recoveryStore: session, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload3 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload3)
         defer { controller.clear() }
         XCTAssertFalse(controller.isVisualMedia, "A mixed list must retain its ordinary list layout")
         XCTAssertFalse(controller.canGroupItems)
@@ -97,8 +100,9 @@ import SwiftSignalKit
         weak let observed = repository
         var original: TelegramPendingUploadSession? = session(try XCTUnwrap(repository))
         controller.bind(provider: Provider(), recoveryStore: original, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload4 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload4)
         repository?.holdNextWrite = true
         XCTAssertTrue(controller.updatePresentation(.file, contextID: fixture.draft.id, revision: controller.itemsRevision))
         await drain(); XCTAssertNotNil(repository?.held)
@@ -116,8 +120,9 @@ import SwiftSignalKit
         let fixture = try await fixture(), controller = TelegramUploadController(), provider = Provider()
         let repository = Repository(fixture.draft), session = session(repository)
         controller.bind(provider: provider, recoveryStore: session, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload5 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload5)
         defer { controller.clear() }
         repository.holdNextWrite = true
         XCTAssertTrue(controller.updatePresentation(.file, contextID: fixture.draft.id, revision: controller.itemsRevision))
@@ -139,8 +144,9 @@ import SwiftSignalKit
         let fixture = try await fixture(mixed: true, extraDocument: true), controller = TelegramUploadController()
         let repository = Repository(fixture.draft), store = session(repository)
         controller.bind(provider: Provider(), recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload6 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload6)
         defer { controller.clear() }
         XCTAssertTrue(controller.updateCaptionPlacement(true, contextID: controller.captionContextID, revision: controller.captionRevision))
         XCTAssertTrue(controller.updateMediaSpoiler(true, contextID: controller.captionContextID, revision: controller.captionRevision))
@@ -184,8 +190,9 @@ import SwiftSignalKit
         let fixture = try await fixture(mixed: true), controller = TelegramUploadController()
         let repository = Repository(fixture.draft), store = session(repository)
         controller.bind(provider: Provider(), recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload7 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload7)
         defer { controller.clear() }
         let before = fixture.draft
         let replacement = try TelegramPendingUploadDraft(id: before.id, accountID: before.accountID, chatID: before.chatID,
@@ -250,8 +257,9 @@ import SwiftSignalKit
         let fixture = try await fixture(), controller = TelegramUploadController()
         let repository = Repository(fixture.draft), original = session(repository), nextRepository = Repository(nil)
         controller.bind(provider: Provider(), recoveryStore: original, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload8 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload8)
         repository.holdNextWrite = true
         XCTAssertTrue(controller.updateGrouping(false, contextID: fixture.draft.id, revision: controller.itemsRevision))
         await drain(); XCTAssertNotNil(repository.held)
@@ -270,8 +278,9 @@ import SwiftSignalKit
         weak let observed = repository
         var original: TelegramPendingUploadSession? = session(try XCTUnwrap(repository))
         controller.bind(provider: Provider(), recoveryStore: original, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload9 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload9)
         repository?.holdNextWrite = true
         XCTAssertTrue(controller.removeItem(id: fixture.items[0].id, contextID: fixture.draft.id, revision: controller.itemsRevision))
         await drain(); XCTAssertNotNil(repository?.held)
@@ -289,8 +298,9 @@ import SwiftSignalKit
         let fixture = try await fixture(mixed: true, extraDocument: true), controller = TelegramUploadController(), provider = Provider()
         let repository = Repository(fixture.draft), original = session(repository), nextRepository = Repository(nil)
         controller.bind(provider: provider, recoveryStore: original, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload10 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload10)
         XCTAssertTrue(controller.moveItem(id: fixture.items[2].id, to: 1, contextID: fixture.draft.id, revision: controller.itemsRevision))
         await drain()
         XCTAssertTrue(controller.updateCaptionPlacement(true, contextID: controller.captionContextID, revision: controller.captionRevision))
@@ -310,17 +320,20 @@ import SwiftSignalKit
         defer { for item in restoreItems { try? item.discard() } }
         let controlItems = try await stages(fixture.sources), control = TelegramUploadController()
         control.bind(provider: Provider(), recoveryStore: session(Repository(before)), requiresRecovery: true)
-        XCTAssertTrue(control.restore(draft: before, items: [controlItems[0], controlItems[2], controlItems[1]], target: target,
-            restorationEpoch: control.recoveryRestoreEpoch), "The old pointer and equivalent owned stages must be independently admissible")
+        let restoredUpload11 = await control.restore(draft: before, items: [controlItems[0], controlItems[2], controlItems[1]], target: target,
+            restorationEpoch: control.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload11, "The old pointer and equivalent owned stages must be independently admissible")
         control.clear()
         controller.bind(provider: provider, recoveryStore: original, requiresRecovery: true)
-        XCTAssertFalse(controller.restore(draft: before, items: orderedRestore, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch), "A pending item CAS cannot restore its old pointer")
+        let restoredUpload12 = await controller.restore(draft: before, items: orderedRestore, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertFalse(restoredUpload12, "A pending item CAS cannot restore its old pointer")
         repository.release(commit: commitBeforeFailure, acknowledged: acknowledged); await drain()
         if !acknowledged {
             XCTAssertTrue(controller.canRetryDetachedRecovery); XCTAssertNotNil(controller.detachedRecoveryStatus)
-            XCTAssertFalse(controller.restore(draft: before, items: orderedRestore, target: target,
-                restorationEpoch: controller.recoveryRestoreEpoch), "Failure must keep the unconfirmed order/mode blocked")
+            let restoredUpload13 = await controller.restore(draft: before, items: orderedRestore, target: target,
+                restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertFalse(restoredUpload13, "Failure must keep the unconfirmed order/mode blocked")
             var retained: TelegramPendingUploadDraft?
             if replacement == .cancelled {
                 retained = before.updating(captionInput: rich, captionAboveMedia: true, mediaSpoiler: true, disposition: .cancelled)
@@ -351,8 +364,9 @@ import SwiftSignalKit
         let fixture = try await fixture(mixed: true, extraDocument: true), controller = TelegramUploadController(), provider = Provider()
         let repository = Repository(fixture.draft), store = session(repository)
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload14 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload14)
         defer { controller.clear() }
         XCTAssertTrue(controller.updateCaptionPlacement(true, contextID: controller.captionContextID, revision: controller.captionRevision))
         XCTAssertTrue(controller.updateMediaSpoiler(true, contextID: controller.captionContextID, revision: controller.captionRevision))
@@ -393,8 +407,9 @@ import SwiftSignalKit
         let fixture = try await fixture(), controller = TelegramUploadController(), provider = Provider()
         let repository = Repository(fixture.draft), original = session(repository)
         controller.bind(provider: provider, recoveryStore: original, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: fixture.draft, items: fixture.items, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload15 = await controller.restore(draft: fixture.draft, items: fixture.items, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload15)
         let rich = try TelegramComposerInput(formattedText: TelegramFormattedText(text: "latest 😀", entities: [.init(offset: 7, length: 2, kind: .bold)]),
             selection: .init(location: 7, length: 2))
         XCTAssertTrue(controller.updateCaptionInput(rich, contextID: controller.captionContextID))
@@ -416,12 +431,14 @@ import SwiftSignalKit
         let controlItems = try await stages(fixture.sources)
         let control = TelegramUploadController()
         control.bind(provider: Provider(), recoveryStore: session(Repository(before)), requiresRecovery: true)
-        XCTAssertTrue(control.restore(draft: before, items: controlItems, target: target,
-            restorationEpoch: control.recoveryRestoreEpoch), "The same fresh stages must pass an independent restore")
+        let restoredUpload16 = await control.restore(draft: before, items: controlItems, target: target,
+            restorationEpoch: control.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload16, "The same fresh stages must pass an independent restore")
         control.clear()
         controller.bind(provider: provider, recoveryStore: original, requiresRecovery: true)
-        XCTAssertFalse(controller.restore(draft: before, items: restoreItems, target: target,
-            restorationEpoch: controller.recoveryRestoreEpoch), "An unconfirmed old mode must not become sendable")
+        let restoredUpload17 = await controller.restore(draft: before, items: restoreItems, target: target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertFalse(restoredUpload17, "An unconfirmed old mode must not become sendable")
         var retained: TelegramPendingUploadDraft?
         if replacement == .cancelled {
             retained = before.updating(captionInput: rich, captionAboveMedia: true, mediaSpoiler: true, disposition: .cancelled)
@@ -449,6 +466,46 @@ import SwiftSignalKit
 
     private let target = TelegramUploadTarget(accountID: 1, chatID: 42, title: "Synthetic")
     private func drain() async { for _ in 0..<200 { await Task.yield() } }
+
+    // Catches accepting old exports after their epoch, caller admission or task was revoked.
+    func testDelayedBatchRestoreRechecksEpochAdmissionCancellationAndNewerRestore() async throws {
+        for mutation in ["epoch", "admission", "cancel", "newer"] {
+            let fixture = try await fixture(), controller = TelegramUploadController(), provider = Provider()
+            defer { for item in fixture.items { try? item.discard() }; controller.clear() }
+            let store = session(Repository(fixture.draft))
+            controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+            let epoch = controller.recoveryRestoreEpoch, gate = UploadValidationGate()
+            defer { gate.release() }
+            controller.willValidateUpload = { try gate.hold() }
+            var admitted = true
+            let operation = Task {
+                await controller.restore(draft: fixture.draft, bundle: .init(items: fixture.items, archive: nil),
+                    target: target, restorationEpoch: epoch, admission: { admitted })
+            }
+            let deadline = ContinuousClock.now + .seconds(3)
+            while !gate.started, ContinuousClock.now < deadline { await Task.yield() }
+            XCTAssertTrue(gate.started); XCTAssertFalse(gate.ranOnMain)
+            var newerItems: [TelegramUploadBatchItem] = []
+            switch mutation {
+            case "epoch": controller.clear()
+            case "admission": admitted = false
+            case "cancel": operation.cancel()
+            default:
+                controller.willValidateUpload = nil
+                newerItems = try await stages(fixture.sources)
+                let newer = await controller.restore(draft: fixture.draft, items: newerItems, target: target, restorationEpoch: epoch)
+                XCTAssertTrue(newer)
+            }
+            gate.release()
+            let restored = await operation.value
+            XCTAssertFalse(restored, mutation)
+            XCTAssertEqual(controller.items, newerItems)
+            XCTAssertEqual(controller.phase, mutation == "newer" ? .ready : .idle)
+            XCTAssertTrue(provider.submissions.isEmpty)
+            for item in fixture.items { XCTAssertTrue(FileManager.default.fileExists(atPath: item.file.url.path)) }
+        }
+    }
+
     private func session(_ repository: Repository) -> TelegramPendingUploadSession {
         TelegramPendingUploadSession(repository: repository, files: { throw TelegramPendingUploadPersistenceError.unavailable })
     }

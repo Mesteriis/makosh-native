@@ -6,6 +6,9 @@ export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPYCACHEPREFIX=/dev/null
 cd "$(dirname "$0")/.."
 source scripts/libpq-env.sh
+# Tests use synthetic accounts. Public source/CI can explicitly omit the API pair.
+python3 scripts/prepare-telegram-build-config.py --allow-unconfigured
+python3 scripts/test-telegram-build-config.py
 python3 scripts/prepare-telegram.py
 python3 scripts/prepare-opus.py
 python3 scripts/prepare-opusfile.py
@@ -14,6 +17,20 @@ python3 scripts/prepare-code-highlight.py
 python3 scripts/prepare-rlottie.py
 python3 scripts/prepare-vpx.py
 python3 scripts/prepare-telegram-voip.py
+python3 scripts/prepare-whatsapp.py --test
+python3 scripts/test-whatsapp-adaptation.py
+python3 scripts/test-whatsapp-opus.py
+python3 scripts/test-whatsapp-qa.py
+swift package resolve
+python3 scripts/verify-mail-dependencies.py
+python3 scripts/verify-teams-dependencies.py
+python3 scripts/verify-telemost-dependencies.py
+python3 scripts/test-telemost-dependencies.py
+python3 scripts/test-telemost-qa.py
+python3 scripts/test-teams-dependencies.py
+python3 scripts/test-teams-qa.py
+python3 scripts/test-runtime-bundle.py
+python3 scripts/test-mail-system-trust.py
 python3 scripts/test-telegram-voip-preparation.py
 python3 scripts/test-telegram-voip-native.py
 python3 scripts/test-vpx-preparation.py

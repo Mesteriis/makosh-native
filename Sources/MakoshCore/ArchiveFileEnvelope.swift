@@ -50,6 +50,7 @@ private func readExactly(_ fd: Int32, _ count: Int, at position: Int64? = nil) t
     try data.withUnsafeMutableBytes { bytes in
         var offset = 0
         while offset < count {
+            try Task.checkCancellation()
             let n = position.map { Darwin.pread(fd, bytes.baseAddress!.advanced(by: offset),count-offset,off_t($0)+off_t(offset)) }
                 ?? Darwin.read(fd, bytes.baseAddress!.advanced(by: offset), count - offset)
             if n < 0 && errno == EINTR { continue }
@@ -63,6 +64,7 @@ private func writeExactly(_ fd: Int32, _ data: Data) throws {
     try data.withUnsafeBytes { bytes in
         var offset = 0
         while offset < bytes.count {
+            try Task.checkCancellation()
             let n = Darwin.write(fd, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
             if n < 0 && errno == EINTR { continue }
             guard n > 0 else { throw ArchiveFileEnvelopeError.output }
@@ -103,10 +105,12 @@ public final class ArchiveFileCapture: @unchecked Sendable {
     /// Content identity for idempotent preparation retries. Reads the frozen
     /// inode in bounded chunks without consuming its encryption capability.
     public func plaintextSHA256() throws -> String {
+        try Task.checkCancellation()
         lock.lock(); defer { lock.unlock() }
         try stable(fd, original)
         var hash = SHA256(), offset: Int64 = 0
         while offset < original.st_size {
+            try Task.checkCancellation()
             let count = Int(min(Int64(envelopeChunk), original.st_size - offset))
             hash.update(data: try readExactly(fd, count, at: offset))
             offset += Int64(count)
@@ -115,6 +119,7 @@ public final class ArchiveFileCapture: @unchecked Sendable {
         return digest(hash)
     }
     public func seal(to destination: URL, key: Data, objectID: UUID) throws -> ArchiveFileEnvelopeReceipt {
+        try Task.checkCancellation()
         lock.lock(); defer { lock.unlock() }
         guard !used else { throw ArchiveFileEnvelopeError.invalid }; used = true
         let key = try derived(key, objectID)
@@ -128,6 +133,7 @@ public final class ArchiveFileCapture: @unchecked Sendable {
         try emit(head)
         let chunks = max(1, (original.st_size + Int64(envelopeChunk) - 1) / Int64(envelopeChunk))
         for index in 0..<chunks {
+            try Task.checkCancellation()
             let count = Int(min(Int64(envelopeChunk), original.st_size - index * Int64(envelopeChunk)))
             let bytes = try readExactly(fd,count,at: index * Int64(envelopeChunk)); plaintextHash.update(data: bytes)
             let aad = head + integer(UInt64(index)) + integer(UInt64(chunks)) + integer(UInt64(count))
@@ -139,6 +145,7 @@ public final class ArchiveFileCapture: @unchecked Sendable {
             try emit(integer(UInt64(sealed.count))); try emit(sealed)
         }
         try stable(fd,original)
+        try Task.checkCancellation()
         guard fsync(output) == 0 else { throw ArchiveFileEnvelopeError.output }
         success = true
         return ArchiveFileEnvelopeReceipt(byteCount: written, sha256: digest(encryptedHash), plaintextByteCount: original.st_size, plaintextSHA256: digest(plaintextHash))
@@ -147,6 +154,7 @@ public final class ArchiveFileCapture: @unchecked Sendable {
 
 public enum ArchiveFileEnvelope {
     public static func open(file: URL, to destination: URL, key: Data, objectID: UUID, plaintextByteCount: Int64) throws -> String {
+        try Task.checkCancellation()
         guard plaintextByteCount >= 0, plaintextByteCount <= envelopeCap else { throw ArchiveFileEnvelopeError.invalid }
         let key = try derived(key,objectID)
         let (input, original) = try sourceFD(file)
@@ -159,6 +167,7 @@ public enum ArchiveFileEnvelope {
         var hash = SHA256()
         let chunks = max(1, (plaintextByteCount + Int64(envelopeChunk) - 1) / Int64(envelopeChunk))
         for index in 0..<chunks {
+            try Task.checkCancellation()
             let count = Int(min(Int64(envelopeChunk), plaintextByteCount - index * Int64(envelopeChunk)))
             let length = number(try readExactly(input,8))
             guard length == UInt64(count + 28) else { throw ArchiveFileEnvelopeError.integrity }
@@ -173,6 +182,7 @@ public enum ArchiveFileEnvelope {
         var extra: UInt8 = 0
         guard Darwin.read(input,&extra,1) == 0 else { throw ArchiveFileEnvelopeError.integrity }
         try stable(input,original)
+        try Task.checkCancellation()
         guard fsync(output) == 0 else { throw ArchiveFileEnvelopeError.output }
         success = true
         return digest(hash)

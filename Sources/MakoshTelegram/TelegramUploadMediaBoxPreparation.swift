@@ -35,7 +35,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
         self.expectedPlaintextSHA256 = expectedPlaintextSHA256
         task = Task { [weak self] in
             do {
-                try TelegramUploadFileIO.validateOwnedStage(file)
+                try await BackgroundWork.run { try TelegramUploadFileIO.validateOwnedStage(file) }
                 try await TelegramUploadFileIO.verifyMetadata(file)
                 if let sourceFacts {
                     try await TelegramUploadBatchItem(id: sourceFacts.itemID, file: file, originalFile: originalFile,
@@ -60,7 +60,7 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
                 if case .webP = file.metadata {
                     webPJPEG = try await TelegramUploadWebPIO.thumbnail(file, expectedPlaintextSHA256: expectedPlaintextSHA256)
                 } else { webPJPEG = nil }
-                let cover = try file.videoCover.map { try TelegramUploadVideoCoverIO.validatedBytes($0) }
+                let cover = try await BackgroundWork.run { try file.videoCover.map { try TelegramUploadVideoCoverIO.validatedBytes($0) } }
                 try Task.checkCancellation()
                 guard let self, !self.stopped else { return }
                 self.store(mediaBox: mediaBox, file: file, videoJPEG: jpeg, webPJPEG: webPJPEG, gifJPEG: gifJPEG,
@@ -108,37 +108,40 @@ final class TelegramUploadMediaBoxPreparation: TelegramUploadLease {
         data.set((telegramUploadMediaBoxReadback(mediaBox, resource: resource, thumbnail: thumbnail?.resource, cover: cover?.resource)
             |> deliverOnMainQueue).start(next: { [weak self] original, preview, coverData in
                 guard let self, !self.stopped, !self.finished else { return }
-                guard original.complete, original.offset == 0, original.size == file.size,
-                      validUploadCacheFile(original.path, size: file.size) else {
-                    self.finish(.failure(.unavailable)); return
-                }
-                if let cover, let coverBytes {
-                    guard let coverData, coverData.complete, coverData.offset == 0, coverData.size == cover.size,
-                          validUploadCacheFile(coverData.path, size: cover.size, expected: coverBytes) else {
-                        self.finish(.failure(.unavailable)); return
-                    }
-                }
-                if let thumbnail, let jpeg {
-                    guard let preview, preview.complete, preview.offset == 0, preview.size == thumbnail.size,
-                          validUploadCacheFile(preview.path, size: thumbnail.size, expected: jpeg.data) else {
-                        self.finish(.failure(.unavailable)); return
-                    }
-                }
-                if let expected = self.expectedPlaintextSHA256 {
-                    self.task = Task { [weak self] in
-                        do {
-                            guard try await uploadPlaintextMatches(URL(fileURLWithPath: original.path), size: file.size, expected: expected) else {
+                let originalInfo = (original.complete, original.offset, original.size, original.path)
+                let previewInfo = preview.map { ($0.complete, $0.offset, $0.size, $0.path) }
+                let coverInfo = coverData.map { ($0.complete, $0.offset, $0.size, $0.path) }
+                let coverSize = cover?.size, previewSize = thumbnail?.size, previewBytes = jpeg?.data
+                self.task?.cancel()
+                self.task = Task { [weak self] in
+                    do {
+                        let valid = try await BackgroundWork.run {
+                            guard originalInfo.0, originalInfo.1 == 0, originalInfo.2 == file.size,
+                                  validUploadCacheFile(originalInfo.3, size: file.size) else { return false }
+                            if let coverSize, let coverBytes {
+                                guard let coverInfo, coverInfo.0, coverInfo.1 == 0, coverInfo.2 == coverSize,
+                                      validUploadCacheFile(coverInfo.3, size: coverSize, expected: coverBytes) else { return false }
+                            }
+                            if let previewSize, let previewBytes {
+                                guard let previewInfo, previewInfo.0, previewInfo.1 == 0, previewInfo.2 == previewSize,
+                                      validUploadCacheFile(previewInfo.3, size: previewSize, expected: previewBytes) else { return false }
+                            }
+                            return true
+                        }
+                        guard valid else { throw TelegramUploadFileError.unavailable }
+                        if let expected = self?.expectedPlaintextSHA256 {
+                            guard try await uploadPlaintextMatches(URL(fileURLWithPath: originalInfo.3), size: file.size, expected: expected) else {
                                 throw TelegramUploadFileError.unavailable
                             }
-                            try Task.checkCancellation()
-                            guard let self, !self.stopped else { return }
-                            self.finish(.success(prepared))
-                        } catch {
-                            guard let self, !self.stopped, !Task.isCancelled else { return }
-                            self.finish(.failure(.unavailable))
                         }
+                        try Task.checkCancellation()
+                        guard let self, !self.stopped else { return }
+                        self.finish(.success(prepared))
+                    } catch {
+                        guard let self, !self.stopped, !Task.isCancelled else { return }
+                        self.finish(.failure(.unavailable))
                     }
-                } else { self.finish(.success(prepared)) }
+                }
             }))
     }
 

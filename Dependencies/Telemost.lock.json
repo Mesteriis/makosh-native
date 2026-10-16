@@ -1,0 +1,23 @@
+{
+  "source": {
+    "url": "https://github.com/Bezooom/yandex-messenger-native",
+    "revision": "f0a237c6016088a8e3816dde2e56c06e4a47c5eb",
+    "license": "MIT",
+    "role": "research-only"
+  },
+  "runtime": {
+    "implementation": "native-swift-official-rest",
+    "externalDependencies": []
+  },
+  "officialContracts": [
+    "https://yandex.ru/dev/telemost/doc/ru/access",
+    "https://yandex.ru/dev/telemost/doc/ru/conferences/conference-create",
+    "https://yandex.ru/dev/telemost/doc/ru/conferences/conference-read",
+    "https://yandex.ru/dev/telemost/doc/ru/conferences/conference-update",
+    "https://yandex.ru/dev/telemost/doc/ru/cohosts/cohosts-read",
+    "https://yandex.ru/dev/id/doc/ru/codes/code-url",
+    "https://yandex.ru/dev/id/doc/ru/user-information"
+  ],
+  "contractReviewedAt": "2026-10-16",
+  "copiedUpstreamCode": false
+}

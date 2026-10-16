@@ -2,6 +2,7 @@ import Foundation
 import Postbox
 import TelegramCore
 import SwiftSignalKit
+import MakoshCore
 
 enum TelegramUploadBatchEvent: Equatable {
     case awaitingApproval, committing, accepted([TelegramUploadQueueID]), progress(Double?), queueFailed, rejected, uncertain
@@ -154,7 +155,7 @@ enum TelegramUploadBatchAdmission {
                 throw TelegramPendingUploadPersistenceError.incompatibleData
             }
             let capture = try TelegramPendingUploadFiles.captureFile(item.file)
-            let cover = try item.file.videoCover.map(TelegramPendingUploadFiles.captureCover)
+            let cover = try await BackgroundWork.run { try item.file.videoCover.map(TelegramPendingUploadFiles.captureCover) }
             let matches = try await Task.detached(priority: .utility) {
                 try capture.plaintextSHA256() == saved.file.plaintextSHA256 &&
                     (cover == nil || cover?.plaintextSHA256() == saved.videoCover?.file.plaintextSHA256)

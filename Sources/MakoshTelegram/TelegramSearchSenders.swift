@@ -38,12 +38,7 @@ public struct TelegramSearchSender: Identifiable, Equatable, Sendable {
         #endif
         guard let account, let chatID else { return }
         let context = self.context
-        membership.set((account.postbox.transaction { transaction -> Bool in
-            if transaction.getPeer(PeerId(chatID)) is TelegramGroup { return true }
-            if let peer = transaction.getPeer(PeerId(chatID)) as? TelegramChannel,
-               case .group = peer.info { return true }
-            return false
-        } |> deliverOnMainQueue).start(next: { [weak self] value in
+        membership.set((telegramSearchSenderMembership(postbox: account.postbox, chatID: chatID) |> deliverOnMainQueue).start(next: { [weak self] value in
             guard let self, self.context == context else { return }
             self.available = value
         }))
@@ -78,32 +73,10 @@ public struct TelegramSearchSender: Identifiable, Equatable, Sendable {
                 guard let self, self.requestID == token else { return }
                 self.requestID = nil; self.request.set(nil); self.status = .timedOut
             }
-            let members = TelegramEngine(account: account).peers.searchGroupMembers(peerId: PeerId(chatID), query: query)
-                |> mapToSignal { peers in account.postbox.transaction { transaction -> [Peer] in
-                    var values = peers.map { $0._asPeer() }
-                    if let own = transaction.getPeer(account.peerId), query.isEmpty || telegramPeerTitle(own).localizedCaseInsensitiveContains(query) { values.append(own) }
-                    if let chat = transaction.getPeer(PeerId(chatID)) as? TelegramChannel, case .group = chat.info,
-                       query.isEmpty || telegramPeerTitle(chat).localizedCaseInsensitiveContains(query) { values.append(chat) }
-                    return values
-                } }
-            let history = account.viewTracker.aroundMessageOfInterestHistoryViewForLocation(
-                .peer(peerId: PeerId(chatID), threadId: self.threadID), count: 100, trackHoles: false) |> take(1)
-            self.request.set((combineLatest(members, history) |> take(1) |> deliverOnMainQueue).start(next: { [weak self] peers, history in
+            let candidates = telegramSearchSenderCandidates(account: account, chatID: chatID,
+                threadID: self.threadID, query: query)
+            self.request.set((candidates |> deliverOnMainQueue).start(next: { [weak self] ranked in
                 guard let self, self.context == context, self.requestID == token else { return }
-                let recent = history.0.entries.reversed().compactMap { $0.message.author?.id }
-                var unique: Set<Int64> = []
-                let recentPeers = history.0.entries.reversed().compactMap { $0.message.author }.filter {
-                    query.isEmpty || telegramPeerTitle($0).localizedCaseInsensitiveContains(query)
-                }
-                let ranked = (peers + recentPeers).sorted { lhs, rhs in
-                    if lhs.id == account.peerId { return rhs.id != account.peerId }
-                    if rhs.id == account.peerId { return false }
-                    let a = recent.firstIndex(of: lhs.id) ?? Int.max, b = recent.firstIndex(of: rhs.id) ?? Int.max
-                    return a != b ? a < b : telegramPeerTitle(lhs).localizedStandardCompare(telegramPeerTitle(rhs)) == .orderedAscending
-                }.compactMap { peer -> TelegramSearchSender? in
-                    guard unique.insert(peer.id.toInt64()).inserted else { return nil }
-                    return TelegramSearchSender(id: peer.id.toInt64(), title: telegramPeerTitle(peer))
-                }
                 self.receive(ranked, token: token)
             }))
         }
@@ -117,4 +90,43 @@ public struct TelegramSearchSender: Identifiable, Equatable, Sendable {
     #if DEBUG
     func useSyntheticPreview(isGroup: Bool) { cancel(); context = UUID(); synthetic = true; available = isGroup }
     #endif
+}
+
+nonisolated func telegramSearchSenderMembership(postbox: Postbox, chatID: Int64) -> Signal<Bool, NoError> {
+    return postbox.transaction { transaction -> Bool in
+        if transaction.getPeer(PeerId(chatID)) is TelegramGroup { return true }
+        if let peer = transaction.getPeer(PeerId(chatID)) as? TelegramChannel,
+           case .group = peer.info { return true }
+        return false
+    }
+}
+
+nonisolated func telegramSearchSenderCandidates(account: Account, chatID: Int64, threadID: Int64?, query: String) -> Signal<[TelegramSearchSender], NoError> {
+    let members = TelegramEngine(account: account).peers.searchGroupMembers(peerId: PeerId(chatID), query: query)
+        |> mapToSignal { peers in account.postbox.transaction { transaction -> [Peer] in
+            var values = peers.map { $0._asPeer() }
+            if let own = transaction.getPeer(account.peerId), query.isEmpty || telegramPeerTitle(own).localizedCaseInsensitiveContains(query) { values.append(own) }
+            if let chat = transaction.getPeer(PeerId(chatID)) as? TelegramChannel, case .group = chat.info,
+               query.isEmpty || telegramPeerTitle(chat).localizedCaseInsensitiveContains(query) { values.append(chat) }
+            return values
+        } }
+    let history = account.viewTracker.aroundMessageOfInterestHistoryViewForLocation(
+        .peer(peerId: PeerId(chatID), threadId: threadID), count: 100, trackHoles: false) |> take(1)
+    return combineLatest(members, history) |> take(1) |> map { peers, history in
+        let recent = history.0.entries.reversed().compactMap { $0.message.author?.id }
+        var unique: Set<Int64> = []
+        let recentPeers = history.0.entries.reversed().compactMap { $0.message.author }.filter {
+            query.isEmpty || telegramPeerTitle($0).localizedCaseInsensitiveContains(query)
+        }
+        let ranked = (peers + recentPeers).sorted { lhs, rhs in
+            if lhs.id == account.peerId { return rhs.id != account.peerId }
+            if rhs.id == account.peerId { return false }
+            let a = recent.firstIndex(of: lhs.id) ?? Int.max, b = recent.firstIndex(of: rhs.id) ?? Int.max
+            return a != b ? a < b : telegramPeerTitle(lhs).localizedStandardCompare(telegramPeerTitle(rhs)) == .orderedAscending
+        }.compactMap { peer -> TelegramSearchSender? in
+            guard unique.insert(peer.id.toInt64()).inserted else { return nil }
+            return TelegramSearchSender(id: peer.id.toInt64(), title: telegramPeerTitle(peer))
+        }
+        return ranked
+    }
 }

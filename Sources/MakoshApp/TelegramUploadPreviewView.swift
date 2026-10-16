@@ -258,7 +258,10 @@ struct TelegramUploadPreviewView: View {
             if upload.file?.videoCover != nil {
                 Button("Удалить обложку") {
                     guard let edit = upload.beginVideoCoverEdit(contextID: contextID, revision: revision) else { return }
-                    if !upload.commitVideoCover(nil, editID: edit) { upload.cancelVideoCoverEdit(edit) }
+                    Task { @MainActor in
+                        let committed = await upload.commitVideoCover(nil, editID: edit)
+                        if !committed { upload.cancelVideoCoverEdit(edit) }
+                    }
                 }.disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.remove")
             }
             Divider()

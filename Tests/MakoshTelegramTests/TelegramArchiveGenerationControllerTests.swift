@@ -43,7 +43,7 @@ import SwiftSignalKit
                 let controller = TelegramUploadController()
                 controller.bind(provider: TelegramSyntheticUploadProvider(postbox: box), recoveryStore: originalStore, requiresRecovery: true)
                 let originalBundle = try await originalStore.restoreBundle(draft: originalDraft)
-                guard controller.restore(draft: originalDraft, bundle: originalBundle, target: fixture.target,
+                guard await controller.restore(draft: originalDraft, bundle: originalBundle, target: fixture.target,
                                          restorationEpoch: controller.recoveryRestoreEpoch) else {
                     try originalBundle.discard(); return XCTFail("Original picker must restore")
                 }
@@ -61,7 +61,7 @@ import SwiftSignalKit
 
                 controller.bind(provider: TelegramSyntheticUploadProvider(postbox: box), recoveryStore: otherStore, requiresRecovery: true)
                 let nextBundle = try await otherStore.restoreBundle(draft: nextDraft)
-                guard controller.restore(draft: nextDraft, bundle: nextBundle, target: nextTarget,
+                guard await controller.restore(draft: nextDraft, bundle: nextBundle, target: nextTarget,
                                          restorationEpoch: controller.recoveryRestoreEpoch) else {
                     try nextBundle.discard(); return XCTFail("The other chat must restore while the old ZIP callback is held")
                 }

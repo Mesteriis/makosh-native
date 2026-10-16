@@ -14,7 +14,9 @@ private func captureEndToEnd(_ postbox: Postbox, peer: PeerId, deletedID: Messag
             StoreMessage(id: MessageId(peerId: peer, namespace: Namespaces.Message.Cloud, id: number),
                 globallyUniqueId: nil, groupingKey: nil, threadId: nil, timestamp: number,
                 flags: [.Incoming], tags: [], globalTags: [], localTags: [], forwardInfo: nil,
-                authorId: peer, text: text, attributes: [], media: [])
+                authorId: peer, text: text, attributes: [], media: number == 1 ? [TelegramMediaMap(
+                    latitude: text == "edited" ? 41 : 40, longitude: -3, heading: nil, accuracyRadius: nil,
+                    venue: MapVenue(title: "Synthetic place", address: "Synthetic address", provider: nil, id: nil, type: nil))] : [])
         }
         _ = transaction.addMessages((1...55).map { message(Int32($0), "original-\($0)") }, location: .Random)
         transaction.updateMessage(deletedID) { _ in .update(message(1,"edited")) }
@@ -83,6 +85,9 @@ private actor EndToEndArchiveRepository: TelegramArchiveRepository {
     }
 
     func testEncryptedPostboxCaptureSurvivesRealDeletionAndPostgresFailureAcrossReopen() async throws {
+        // Match actual account startup: native media decoders must exist before
+        // Postbox renders stored messages for the retention journal.
+        initializeAccountManagement()
         guard let dsn = ProcessInfo.processInfo.environment["MAKOSH_TEST_DATABASE_URL"], !dsn.isEmpty else {
             throw MessageArchiveError.database
         }
@@ -148,6 +153,12 @@ private actor EndToEndArchiveRepository: TelegramArchiveRepository {
             if case let .message(content) = record.observation.event { return content.text }; return nil
         }
         XCTAssertTrue(texts.contains("original-1")); XCTAssertTrue(texts.contains("edited"))
+        let locations = first.flatMap { record -> [MessageArchiveAttachment] in
+            if case let .message(content) = record.observation.event { return content.attachments }; return []
+        }
+        XCTAssertTrue(locations.contains { $0.kind == "location" && $0.name.contains("40.0, -3.0") })
+        XCTAssertTrue(locations.contains { $0.kind == "location" && $0.name.contains("41.0, -3.0") })
+        XCTAssertTrue(locations.allSatisfy { $0.name.contains("Synthetic place") && $0.size == nil })
         XCTAssertTrue(first.contains { $0.observation.event == .removedFromSource })
         XCTAssertEqual(Set(records.map { $0.observation.identity.accountID }), ["1234"])
         XCTAssertEqual(try independent.append(captured.flatMap { telegramArchiveItem($0, accountID: 1234).observations }), 0)

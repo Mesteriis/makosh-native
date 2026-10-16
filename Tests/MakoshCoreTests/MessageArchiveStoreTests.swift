@@ -3,6 +3,26 @@ import Foundation
 @testable import MakoshCore
 
 final class MessageArchiveStoreTests: XCTestCase {
+    func testMetadataOnlySourcePayloadChangeIsRetainedAndReplayDeduplicates() throws {
+        let db = try database(), archive = try store(db)
+        let base = observation("unchanged visible text")
+        let first = MessageArchiveObservation(identity: base.identity, observedAt: base.observedAt, source: .update,
+            event: base.event, sourcePayload: Data("{\"importance\":\"normal\"}".utf8))
+        let second = MessageArchiveObservation(identity: base.identity, observedAt: base.observedAt, source: .update,
+            event: base.event, sourcePayload: Data("{\"importance\":\"high\"}".utf8))
+        XCTAssertEqual(try archive.append([first]), 1)
+        XCTAssertEqual(try archive.append([second]), 1)
+        XCTAssertEqual(try archive.append([second]), 0)
+        XCTAssertEqual(try archive.append([MessageArchiveObservation(identity: second.identity, source: .update,
+            event: second.event, sourcePayload: second.sourcePayload)]), 0)
+        let retained = try records(archive)
+        XCTAssertEqual(retained.count, 2)
+        XCTAssertEqual(retained.first?.observation.sourcePayload, second.sourcePayload)
+        XCTAssertEqual(retained.last?.observation.sourcePayload, first.sourcePayload)
+        let legacy = observation("legacy", message: "legacy")
+        XCTAssertEqual(try archive.append([legacy, observation("legacy", message: "legacy")]), 1)
+    }
+
     private let key = Data(repeating: 0x31, count: 32)
     private func database() throws -> PostgresTestDatabase {
         let database = try PostgresTestDatabase()

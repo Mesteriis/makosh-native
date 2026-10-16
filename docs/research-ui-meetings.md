@@ -10,6 +10,37 @@ XERJ `mk-ui-aether`: exit 3 completed-with-junk, 70 files, 923 records, 57/57 cl
 
 ## Yandex Messenger / Telemost reference
 
+### Current contract refresh — 2026-10-16
+
+The same locked reference SHA and both project/reference XERJ content fingerprints
+were checked fresh. The local node was initially stopped (actual search exit2);
+after starting the existing loopback node, `MeetingsView` and `TelemostClient`
+queries exit0 and source reads confirm the previously recorded boundaries.
+`telemost_window.rs` supplies copy-link/browser workflows; its GStreamer/GTK call
+surface remains research. The inspected upstream screenshot shows chat, not a
+verified meeting screen. No upstream code, login, session store or installer ran.
+
+The official docs currently conflict: the [overview](https://yandex.ru/dev/telemost/doc/ru/)
+restricts access to business-domain accounts, while
+[create](https://yandex.ru/dev/telemost/doc/ru/conferences/conference-create)
+explicitly permits public meetings for personal Yandex ID. Personal eligibility
+is therefore unverified, not categorically absent or promised. Official
+[read](https://yandex.ru/dev/telemost/doc/ru/conferences/conference-read)/
+[update](https://yandex.ru/dev/telemost/doc/ru/conferences/conference-update)
+address known conferences. [Cohost paging](https://yandex.ru/dev/telemost/doc/ru/cohosts/cohosts-read)
+does not establish a live participant roster or an all-conferences catalogue;
+no all-account meeting-list contract was found in the inspected reference/docs.
+
+Yandex [PKCE](https://yandex.ru/dev/id/doc/ru/codes/code-url) documents secretless
+authorization-code exchange using the verifier. The separate
+[refresh contract](https://www.yandex.ru/dev/id/doc/ru/tokens/refresh-client)
+does not document that exception. The proposed native first stage uses explicit
+reauthorization after expiry and does not embed a client secret. Its concrete
+scope and acceptance are in the [proposed specification](superpowers/specs/2026-10-16-telemost-migration-design.md).
+No implementation, own OAuth registration, real provider call or media port is
+claimed by this research refresh. The following paragraphs retain the earlier
+2026-10-10 audit as historical evidence.
+
 Pinned `f0a237c6016088a8e3816dde2e56c06e4a47c5eb`. [MIT license](https://github.com/Bezooom/yandex-messenger-native/blob/f0a237c6016088a8e3816dde2e56c06e4a47c5eb/LICENSE). [Cargo.toml](https://github.com/Bezooom/yandex-messenger-native/blob/f0a237c6016088a8e3816dde2e56c06e4a47c5eb/Cargo.toml) identifies a Linux GTK4/libadwaita application, optional WebKit6/soup3, GStreamer WebRTC and XDG portal dependencies. That is not a macOS SwiftUI embedding surface. No build/portability/live service claim was tested.
 
 Actual XERJ query `TelemostClient` returned [src/api/telemost.rs](https://github.com/Bezooom/yandex-messenger-native/blob/f0a237c6016088a8e3816dde2e56c06e4a47c5eb/src/api/telemost.rs#L23); source comments explicitly identify HTTP mapping as best-effort and needing live confirmation. The client offers create/start/end/info methods against messenger endpoints; those names are not evidence of official API support. `src/api/gst_webrtc.rs` provides a Linux GStreamer backend and remains a second-stage research reference.

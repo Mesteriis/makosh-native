@@ -9,26 +9,44 @@ extension TelegramProxyController {
         return .init(vault: .init(lookup: store.lookup, add: store.add, update: store.update))
     }
 }
-@MainActor private final class TelegramSyntheticProxyStore {
+/// Debug-only legacy Foundation boundary: UserDefaults is documented thread-safe
+/// (NSUserDefaults.h), but is not Sendable in this SDK. All mutable synthetic
+/// state/defaults access is serialized here; only immutable Data attributes leave.
+private final class TelegramSyntheticProxyStore: @unchecked Sendable {
+    private let lock = NSLock()
     private var item: [String: Any]?
     private let defaults: UserDefaults
-    init(defaults: UserDefaults) {
-        self.defaults = defaults
-        if let data = defaults.data(forKey: "telegram.synthetic.proxy.data"),
-           let token = defaults.data(forKey: "telegram.synthetic.proxy.token") {
-            item = [kSecValueData as String:data, kSecAttrGeneric as String:token]
-        }
-    }
+    private var loaded = false
+    init(defaults: UserDefaults) { self.defaults = defaults }
     func lookup(_ query: [String: Any]) -> (OSStatus, [String: Any]?) {
-        item.map { (errSecSuccess, $0) } ?? (errSecItemNotFound, nil)
+        lock.withLock { load(); return item.map { (errSecSuccess, $0) } ?? (errSecItemNotFound, nil) }
     }
     func add(_ value: [String: Any]) -> OSStatus {
-        guard item == nil else { return errSecDuplicateItem }; item = value; save(); return errSecSuccess
+        lock.withLock {
+            load(); guard item == nil else { return errSecDuplicateItem }
+            guard let data = value[kSecValueData as String] as? Data,
+                  let token = value[kSecAttrGeneric as String] as? Data else { return errSecParam }
+            item = [kSecValueData as String: data, kSecAttrGeneric as String: token]
+            save(); return errSecSuccess
+        }
     }
     func update(_ query: [String: Any], _ value: [String: Any]) -> OSStatus {
-        guard let expected = query[kSecAttrGeneric as String] as? Data,
-              expected == item?[kSecAttrGeneric as String] as? Data else { return errSecItemNotFound }
-        for (key, value) in value { item?[key] = value }; save(); return errSecSuccess
+        lock.withLock {
+            load()
+            guard let expected = query[kSecAttrGeneric as String] as? Data,
+                  expected == item?[kSecAttrGeneric as String] as? Data else { return errSecItemNotFound }
+            guard let data = value[kSecValueData as String] as? Data,
+                  let token = value[kSecAttrGeneric as String] as? Data else { return errSecParam }
+            item = [kSecValueData as String: data, kSecAttrGeneric as String: token]
+            save(); return errSecSuccess
+        }
+    }
+    private func load() {
+        guard !loaded else { return }; loaded = true
+        if let data = defaults.data(forKey: "telegram.synthetic.proxy.data"),
+           let token = defaults.data(forKey: "telegram.synthetic.proxy.token") {
+            item = [kSecValueData as String: data, kSecAttrGeneric as String: token]
+        }
     }
     private func save() {
         for (attribute, key) in [(kSecValueData, "telegram.synthetic.proxy.data"), (kSecAttrGeneric, "telegram.synthetic.proxy.token")] {

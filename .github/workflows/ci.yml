@@ -8,12 +8,18 @@ jobs:
   build-test:
     runs-on: macos-26
     timeout-minutes: 40
+    env:
+      RUSTUP_TOOLCHAIN: "1.97.0"
+      MAKOSH_TELEGRAM_API_ID: ${{ secrets.MAKOSH_TELEGRAM_API_ID }}
+      MAKOSH_TELEGRAM_API_HASH: ${{ secrets.MAKOSH_TELEGRAM_API_HASH }}
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
         run: |
           swift --version
           xcodebuild -version
+          rustup toolchain install 1.97.0 --profile minimal --component rustfmt --component clippy
+          rustc --version
       - name: Install build dependencies and CI PostgreSQL
         run: brew install libpq postgresql@18 pkg-config openssl@3 cmake ninja
       - name: Start isolated CI PostgreSQL
@@ -36,7 +42,7 @@ jobs:
       - name: Build without research checkouts
         run: |
           test ! -e .references
-          ./scripts/build-app.sh
+          ./scripts/build-app.sh --allow-unconfigured-telegram
           test ! -e .references
           test "$(git --git-dir .local/telegram-source.git rev-parse --is-bare-repository)" = true
       - name: Start isolated CI S3
@@ -53,7 +59,7 @@ jobs:
           done
           python3 scripts/dev-s3.py init
           python3 scripts/dev-s3.py probe
-      - name: Test contact and Telegram invariants
+      - name: Test common and communication invariants
         run: |
           ./scripts/test.sh
           test ! -e .references

@@ -5,6 +5,40 @@ import CryptoKit
 @testable import MakoshCore
 
 final class ArchiveFileEnvelopeTests: XCTestCase {
+    func testCancelledCryptoDoesNotConsumeCaptureOrCreateOutput() async throws {
+        let root = try directory(), source = root.appendingPathComponent("source"), output = root.appendingPathComponent("cancelled")
+        try Data("synthetic".utf8).write(to: source)
+        let capture = try ArchiveFileCapture(file: source, byteCount: 9), key = key, objectID = UUID()
+        let hashing = Task.detached {
+            while !Task.isCancelled { await Task.yield() }
+            do { _ = try capture.plaintextSHA256(); return false }
+            catch is CancellationError { return true }
+        }
+        hashing.cancel()
+        let hashCancelled = try await hashing.value
+        XCTAssertTrue(hashCancelled)
+        let sealing = Task.detached {
+            while !Task.isCancelled { await Task.yield() }
+            do { _ = try capture.seal(to: output, key: key, objectID: objectID); return false }
+            catch is CancellationError { return true }
+        }
+        sealing.cancel()
+        let sealCancelled = try await sealing.value
+        XCTAssertTrue(sealCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+        let valid = try capture.seal(to: root.appendingPathComponent("valid"), key: key, objectID: objectID)
+        XCTAssertEqual(valid.plaintextByteCount, 9)
+        let opening = Task.detached {
+            while !Task.isCancelled { await Task.yield() }
+            do { _ = try ArchiveFileEnvelope.open(file: root.appendingPathComponent("valid"), to: output, key: key,
+                objectID: objectID, plaintextByteCount: 9); return false }
+            catch is CancellationError { return true }
+        }
+        opening.cancel()
+        let openCancelled = try await opening.value
+        XCTAssertTrue(openCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+    }
     private let key = Data(repeating: 0x42, count: 32)
     private func directory() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

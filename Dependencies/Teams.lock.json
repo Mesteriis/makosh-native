@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "url": "https://github.com/rvben/teams-cli",
+    "revision": "9c8a72c32369f9d9bd15b793099522a80070a063",
+    "license": "MIT"
+  },
+  "implementation": "Native Swift Graph/OAuth contract port; no Rust crate or CLI linked",
+  "reviewedSource": {
+    "LICENSE": "f46c9ce38950d6eaca881c4c7f65fe3d9f56aba7640f8fabf52a4aafbc545480",
+    "Cargo.toml": "b32f63484aa4fd74ae5e1fa94554a51c52b7f483ded6962bfa1490588048587d",
+    "Cargo.lock": "23fd49472450ba0ec5f2e13fecd1e957588c6c8e7e5d7a923383c8e39ecf542e",
+    "README.md": "1d01ecf18b88cdaf39ef6faa349c8aa771209584b1d2ee43e307448b278551c6",
+    "src/lib.rs": "833b55d52bebd463cabc643577bc04992a7e9bdf8e99684020983d1a9b9f78dd",
+    "src/auth.rs": "078899cfdee98579fa572b82eab5c74132afebdd4e791d3b91bdcc7744fc2100",
+    "src/graph.rs": "0b0948f59bc5130b9cf338b8f6b017bc22a2f822e6d8c2fba1512684df2d6e98",
+    "src/config.rs": "7588d4a9f3935932f542f1b623d17613b81ca7f81637c20862ef4bfd7995e895",
+    "src/error.rs": "f59928760d74515b1963ea822a4cca1ce83ce4abaa5eda637bcd5050b1a556ae",
+    "src/schema.rs": "1fae24cca29d0e91cd00a0ddee26973c380ce8da76aa851687d3fc9066e60c68",
+    "src/tui.rs": "086d364037d576c9a4ea2c82d48feed20754f8de585a1b04e18f59dab6795079",
+    "src/main.rs": "7cc84be98dfd5e316f08ceb19230cb65f2bd9348ed9633aa4b21fb8e28403f68"
+  },
+  "retainedSource": [
+    {
+      "path": "Dependencies/Teams/Reference/auth.rs",
+      "sha256": "078899cfdee98579fa572b82eab5c74132afebdd4e791d3b91bdcc7744fc2100"
+    },
+    {
+      "path": "Dependencies/Teams/Reference/graph.rs",
+      "sha256": "0b0948f59bc5130b9cf338b8f6b017bc22a2f822e6d8c2fba1512684df2d6e98"
+    }
+  ],
+  "notices": [
+    {
+      "path": "LICENSES/Teams-cli-MIT.txt",
+      "sha256": "f46c9ce38950d6eaca881c4c7f65fe3d9f56aba7640f8fabf52a4aafbc545480"
+    }
+  ],
+  "adaptations": {
+    "Sources/MakoshTeams/TeamsGraphClient.swift": "src/graph.rs public endpoints, independently bounded/paginated",
+    "Sources/MakoshTeams/TeamsOAuth.swift": "src/auth.rs public delegated PKCE/device contracts; own OIDC validation"
+  },
+  "linkedRustDependencies": []
+}

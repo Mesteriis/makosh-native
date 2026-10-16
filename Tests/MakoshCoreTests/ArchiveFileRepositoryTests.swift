@@ -25,6 +25,38 @@ final class ArchiveFileRepositoryTests: XCTestCase {
         return try ArchiveFileRepository(connectionString: db.connectionString,schema: db.schema,configuration: config,spoolDirectory: root.appendingPathComponent("queue"),keyProvider: { _,_ in key })
     }
 
+    func testPendingOutgoingCanOpenLocallyAfterS3OffWithoutUpload() async throws {
+        let db=try database(),root=try directory()
+        let unavailable=try S3ObjectStoreConfiguration(endpoint:"http://127.0.0.1:9",region:"us-east-1",bucket:"synthetic-bucket",accessKeyID:"synthetic",secretAccessKey:"synthetic")
+        let repository=try repository(db,root,unavailable),id=UUID(),bytes=Data("pending encrypted preparation".utf8),source=root.appendingPathComponent("source")
+        try bytes.write(to:source)
+        do{_=try await repository.capture(ArchiveFileCapture(file:source,byteCount:Int64(bytes.count)),identity:identity,attachment:attachment,defaultEnabled:true,reservedID:id);XCTFail("No object store at port9")}catch{}
+        try await repository.setConversationFileSavingEnabled(identity:identity,enabled:false)
+        let value=try await repository.recoverOutgoingCapture(id:id,identity:identity,attachmentID:attachment.id,uploadPending:false)
+        let record=try XCTUnwrap(value);XCTAssertEqual(record.state,.pending)
+        let target=root.appendingPathComponent("recovered");try await repository.export(record,to:target);XCTAssertEqual(try Data(contentsOf:target),bytes)
+        do{_=try await repository.recoverOutgoingCapture(id:id,identity:identity,attachmentID:"wrong",uploadPending:false);XCTFail("Scope must be authenticated")}catch{}
+    }
+
+    func testReservedConversationCaptureReopensByExactScopeWithoutNewObject() async throws {
+        let config=try config(),db=try database(),root=try directory()
+        let repository=try repository(db,root,config),id=UUID()
+        let source=root.appendingPathComponent("incoming"),bytes=Data("retained incoming fixture".utf8)
+        try bytes.write(to:source)
+        let capture=try ArchiveFileCapture(file:source,byteCount:Int64(bytes.count))
+        let original=try await repository.captureConversationFile(capture,identity:identity,attachment:attachment,defaultEnabled:true,reservedID:id)
+        XCTAssertEqual(original?.id,id)
+        let reopened=try self.repository(db,root,config)
+        let recovered=try await reopened.recoverConversationCapture(id:id,identity:identity,attachmentID:attachment.id)
+        XCTAssertEqual(recovered,original)
+        do{let other=try await reopened.recoverConversationCapture(id:id,identity:identity,attachmentID:"other");XCTAssertNil(other,"A reservation cannot be rebound")}catch{}
+        try await reopened.setConversationFileSavingEnabled(identity:identity,enabled:false)
+        let existing=try await reopened.recoverConversationCapture(id:id,identity:identity,attachmentID:attachment.id)
+        XCTAssertEqual(existing,original)
+        let forbidden=try await reopened.captureConversationFile(capture,identity:identity,attachment:attachment,defaultEnabled:true,reservedID:UUID())
+        XCTAssertNil(forbidden)
+    }
+
     func testReadOnlyMutationAdmissionRefusesBeforeKeyAccessOrSpoolCreation() async throws {
         let config = try config(), db = try database(), root = try directory(), key = key
         _ = try MessageArchiveStore(connectionString: db.connectionString,schema: db.schema) { _,_ in key }

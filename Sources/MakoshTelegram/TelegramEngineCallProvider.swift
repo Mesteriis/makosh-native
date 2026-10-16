@@ -4,12 +4,12 @@ import SwiftSignalKit
 
 @MainActor final class TelegramEngineCallProvider: TelegramCallProvider {
     private let engine: any TelegramCallEngine
-    private let proxy: @MainActor () throws -> TelegramProxyServer?
+    private let proxy: @MainActor () async throws -> TelegramProxyServer?
     private let audioSelection: @MainActor () throws -> TelegramCallAudioSelection
     private let media: any TelegramCallMediaFactory
     private var declining: [UUID: TelegramCallSignalRequest] = [:]
     var accountID: Int64 { engine.accountID }
-    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () throws -> TelegramProxyServer?, media: any TelegramCallMediaFactory,
+    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () async throws -> TelegramProxyServer?, media: any TelegramCallMediaFactory,
         audioSelection: @escaping @MainActor () throws -> TelegramCallAudioSelection = { .init() }) {
         self.audioSelection = audioSelection
         self.engine = engine; self.proxy = proxy; self.media = media
@@ -49,7 +49,7 @@ import SwiftSignalKit
 }
 @MainActor private final class EngineCallLease: TelegramCallLease {
     private let engine: any TelegramCallEngine
-    private let proxy: @MainActor () throws -> TelegramProxyServer?
+    private let proxy: @MainActor () async throws -> TelegramProxyServer?
     private let audioSelection: @MainActor () throws -> TelegramCallAudioSelection
     private let factory: any TelegramCallMediaFactory
     private let callID: UUID, outgoing: Bool, initialVideo: Bool
@@ -57,6 +57,10 @@ import SwiftSignalKit
     private let reads = TelegramCallSignalRequest(), observations = DisposableSet()
     private var signaling: (any TelegramCallRequest)?
     private var launch: Task<Void, Never>?, proxyWatch: Task<Void, Never>?
+    private var activation: Task<Void, Never>?
+    private var proxyRead: (id: UUID, task: Task<TelegramProxyServer?, Error>)?
+    private var observationRevision = UUID()
+    private var pendingSession: CallSession?
     private var proxyBasis: TelegramProxyServer?, configuration: TelegramCallMediaConfiguration?
     private var audioBasis = TelegramCallAudioSelection()
     private var media: TelegramCallMediaSession?
@@ -66,13 +70,13 @@ import SwiftSignalKit
     private var reason = DropCallReason.hangUp
     private var completions: [@MainActor () -> Void] = []
     private var retirement: EngineCallLease?
-    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () throws -> TelegramProxyServer?, audioSelection: @escaping @MainActor () throws -> TelegramCallAudioSelection, factory: any TelegramCallMediaFactory,
+    init(engine: any TelegramCallEngine, proxy: @escaping @MainActor () async throws -> TelegramProxyServer?, audioSelection: @escaping @MainActor () throws -> TelegramCallAudioSelection, factory: any TelegramCallMediaFactory,
          callID: UUID, outgoing: Bool, video: Bool, receive: @escaping @MainActor (TelegramCallEvent) -> Bool) {
         self.engine = engine; self.proxy = proxy; self.audioSelection = audioSelection; self.factory = factory; self.callID = callID
         self.outgoing = outgoing; self.initialVideo = video; self.videoDesired = video; self.receive = receive
     }
     isolated deinit {
-        launch?.cancel(); proxyWatch?.cancel(); reads.cancel(); observations.dispose(); signaling?.cancel()
+        launch?.cancel(); proxyWatch?.cancel(); activation?.cancel(); proxyRead?.task.cancel(); reads.cancel(); observations.dispose(); signaling?.cancel()
         if committed && !stopped { engine.drop(callID: callID, reason: .hangUp) }
         media?.stop(completed: {})
     }
@@ -83,12 +87,21 @@ import SwiftSignalKit
             self.reads.once(self.engine.peer(basis.peerID)) { [weak self] result in
                 guard let self, !self.stopped else { return }
                 guard case let .success(fresh) = result, fresh == basis else { self.fail(.changed); return }
-                guard self.captureProxyBasis(), self.emit(.committing) else { return }
-                self.committed = true; self.watchProxy()
-                self.reads.once(self.engine.request(peer: fresh, video: self.initialVideo, callID: self.callID)) { [weak self] result in
-                    guard let self, !self.stopped else { return }
-                    guard case let .success(id) = result, id == self.callID else { self.fail(.changed); return }
-                    self.installObservers()
+                self.launch = Task { [weak self] in
+                    guard let self, await self.captureProxyBasis(), !self.stopped, !Task.isCancelled else { return }
+                    // Keychain may have suspended long enough for peer policy to
+                    // change. Revalidate before committing the remote request.
+                    self.reads.once(self.engine.peer(basis.peerID)) { [weak self] result in
+                        guard let self, !self.stopped else { return }
+                        guard case let .success(current) = result, current == basis else { self.fail(.changed); return }
+                        guard self.emit(.committing) else { return }
+                        self.committed = true; self.watchProxy()
+                        self.reads.once(self.engine.request(peer: current, video: self.initialVideo, callID: self.callID)) { [weak self] result in
+                            guard let self, !self.stopped else { return }
+                            guard case let .success(id) = result, id == self.callID else { self.fail(.changed); return }
+                            self.installObservers()
+                        }
+                    }
                 }
             }
         }
@@ -100,20 +113,36 @@ import SwiftSignalKit
             self.reads.once(self.engine.incoming()) { [weak self] result in
                 guard let self, !self.stopped else { return }
                 guard case let .success(values) = result, values.count <= 32, values.contains(incoming) else { self.fail(.changed); return }
-                guard self.captureProxyBasis(), self.emit(.committing) else { return }
-                self.committed = true; self.watchProxy(); self.installObservers()
-                if !self.stopped { self.engine.accept(callID: self.callID) }
+                self.launch = Task { [weak self] in
+                    guard let self, await self.captureProxyBasis(), !self.stopped, !Task.isCancelled else { return }
+                    self.reads.once(self.engine.incoming()) { [weak self] result in
+                        guard let self, !self.stopped else { return }
+                        guard case let .success(current) = result, current.count <= 32, current.contains(incoming) else { self.fail(.changed); return }
+                        guard self.emit(.committing) else { return }
+                        self.committed = true; self.watchProxy(); self.installObservers()
+                        if !self.stopped { self.engine.accept(callID: self.callID) }
+                    }
+                }
             }
         }
     }
-    private func captureProxyBasis() -> Bool {
+    private func readProxy() async throws -> TelegramProxyServer? {
+        if let proxyRead { return try await proxyRead.task.value }
+        let token = UUID(), read = Task { try await proxy() }
+        proxyRead = (token, read)
+        defer { if proxyRead?.id == token { proxyRead = nil } }
+        return try await read.value
+    }
+    private func captureProxyBasis() async -> Bool {
         do {
-            audioBasis = try audioSelection()
-            guard audioBasis.isValid else { fail(.unavailable); return false }
-            proxyBasis = try proxy()
-            if let proxyBasis { guard proxyBasis.isValid, case .socks5 = proxyBasis.connection else { fail(.unsupported); return false } }
+            let audio = try audioSelection()
+            guard audio.isValid else { fail(.unavailable); return false }
+            let value = try await readProxy()
+            guard !stopped, !Task.isCancelled else { return false }
+            if let value { guard value.isValid, case .socks5 = value.connection else { fail(.unsupported); return false } }
+            audioBasis = audio; proxyBasis = value
             return true
-        } catch { fail(.unavailable); return false }
+        } catch { if !stopped, !Task.isCancelled { fail(.unavailable) }; return false }
     }
     private func installObservers() {
         signaling = engine.receiveSignaling(callID: callID) { [weak self] result in self?.receiveSignaling(result) }
@@ -125,31 +154,56 @@ import SwiftSignalKit
     private func observe(_ session: CallSession) {
         guard !stopped else { return }
         guard session.id == callID, session.isOutgoing == outgoing else { fail(.changed); return }
+        observationRevision = UUID(); pendingSession = nil
         switch session.state {
         case .ringing, .accepting: if outgoing { fail(.changed) }
         case let .requesting(ringing): if outgoing { _ = emit(.requesting(ringing: ringing)) } else { fail(.changed) }
         case .active:
-            do { guard try proxy() == proxyBasis else { fail(.changed); return } } catch { fail(.changed); return }
-            guard var value = TelegramCallMediaConfiguration(session: session, internalID: callID, outgoing: outgoing, video: initialVideo, proxy: proxyBasis) else { fail(.unsupported); return }
-            value.audioDevices = audioBasis
-            videoPossible = session.isVideoPossible
-            guard emit(.videoAvailability(videoPossible)) else { return }
-            if !videoPossible && videoDesired { fail(.unsupported); return }
-            if let configuration { guard configuration == value else { fail(.changed); return }; return }
-            configuration = value
-            guard emit(.connecting(fingerprint: value.fingerprint)) else { return }
-            pendingMediaStart = true
-            let created = factory.make(configuration: value) { [weak self] event in self?.mediaEvent(event) ?? false }
-            pendingMediaStart = false
-            if stopped { created.stop { [weak self] in self?.finishRelease() }; return }
-            media = created
-            let packets = pending; pending = []; pendingBytes = 0
-            for packet in packets { guard !stopped, created.receive(packet) else { fail(.failed); return } }
+            pendingSession = session
+            activateWhenProxyConfirmed()
         case let .dropping(termination), let .terminated(_, termination, _):
             _ = emit(.ended(telegramCallEndExplanation(termination))); stop(completed: {})
         case .switchedToConference:
             _ = emit(.ended("Собеседник перешёл в групповой звонок.")); stop(completed: {})
         }
+    }
+    private func activateWhenProxyConfirmed() {
+        guard activation == nil else { return }
+        activation = Task { [weak self] in
+            guard let self else { return }
+            defer { self.activation = nil }
+            while !self.stopped, !Task.isCancelled, let session = self.pendingSession {
+                let revision = self.observationRevision; self.pendingSession = nil
+                do {
+                    let fresh = try await self.readProxy()
+                    guard !self.stopped, !Task.isCancelled else { return }
+                    guard self.observationRevision == revision else { continue }
+                    guard fresh == self.proxyBasis else { self.fail(.changed); return }
+                    self.activate(session)
+                } catch {
+                    guard !self.stopped, !Task.isCancelled else { return }
+                    guard self.observationRevision == revision else { continue }
+                    self.fail(.changed); return
+                }
+            }
+        }
+    }
+    private func activate(_ session: CallSession) {
+        guard var value = TelegramCallMediaConfiguration(session: session, internalID: callID, outgoing: outgoing, video: initialVideo, proxy: proxyBasis) else { fail(.unsupported); return }
+        value.audioDevices = audioBasis
+        videoPossible = session.isVideoPossible
+        guard emit(.videoAvailability(videoPossible)) else { return }
+        if !videoPossible && videoDesired { fail(.unsupported); return }
+        if let configuration { guard configuration == value else { fail(.changed); return }; return }
+        configuration = value
+        guard emit(.connecting(fingerprint: value.fingerprint)) else { return }
+        pendingMediaStart = true
+        let created = factory.make(configuration: value) { [weak self] event in self?.mediaEvent(event) ?? false }
+        pendingMediaStart = false
+        if stopped { created.stop { [weak self] in self?.finishRelease() }; return }
+        media = created
+        let packets = pending; pending = []; pendingBytes = 0
+        for packet in packets { guard !stopped, created.receive(packet) else { fail(.failed); return } }
     }
     private func receiveSignaling(_ result: Result<Data, TelegramCallError>) {
         guard !stopped else { return }
@@ -183,7 +237,8 @@ import SwiftSignalKit
     func stop(completed: @escaping @MainActor () -> Void) {
         if released { completed(); return }; completions.append(completed)
         guard !stopped else { return }
-        stopped = true; retirement = self; launch?.cancel(); proxyWatch?.cancel()
+        stopped = true; retirement = self; launch?.cancel(); proxyWatch?.cancel(); activation?.cancel(); proxyRead?.task.cancel()
+        observationRevision = UUID(); pendingSession = nil
         reads.cancel(); observations.dispose(); signaling?.cancel(); signaling = nil; pending = []; pendingBytes = 0
         if committed { engine.drop(callID: callID, reason: reason) }
         if let media { media.stop { [weak self] in self?.finishRelease() } }
@@ -204,8 +259,11 @@ import SwiftSignalKit
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 guard let self, !self.stopped else { return }
-                do { if try self.proxy() != self.proxyBasis { self.fail(.changed); return } }
-                catch { self.fail(.changed); return }
+                do {
+                    let fresh = try await self.readProxy()
+                    guard !self.stopped, !Task.isCancelled else { return }
+                    if fresh != self.proxyBasis { self.fail(.changed); return }
+                } catch { if !self.stopped, !Task.isCancelled { self.fail(.changed) }; return }
             }
         }
     }

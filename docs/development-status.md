@@ -1,4 +1,987 @@
-# Development status — 2026-10-14
+# Development status — 2026-10-16
+
+## WhatsApp open questions — implementation and post-review integration complete
+
+The user approved the specification and ten-task native inline plan on 2026-10-16.
+Tasks 1–10 implementation and permitted isolated QA are complete. One fresh
+inherited-model independent reviewer found 0 Critical, 6 Important and 2 Minor
+findings. All six Important findings were reproduced RED→GREEN and fixed in one
+pass, followed by the current full suite. No second review or Git publication;
+the pre-existing dirty baseline, branch/index and all QA evidence are preserved.
+Raw exits/source checkpoints remain in ignored .local/whatsapp-open-questions/
+and the plan's execution ledger.
+
+The seven requested items implement bounded contact/poll/status presentation,
+scoped avatars, ordered ten-file batches (100 MiB each), native Zen photo editing,
+and SDK group audio/video with up to 32 participants/nine visible video streams.
+Synthetic QA uses fake keys/provider/media and separate loopback PostgreSQL/S3
+schemas; it does not prove delivery, authorization or a real call.
+
+Post-review fixes prevent Return from admitting a partially prepared selection,
+Cancel from later admitting an in-flight photo export, and late restoration from
+rebinding another chat's actions/history state. Stale group page intent survives
+roster departures/PID changes while frames still require roster authority.
+Group terminal/accept callbacks cannot own a newer same-ID invitation without
+the SDK generation/epoch witness. Release launch policy rejects WhatsApp QA
+flags/markers before ordinary workspace construction; an actual release launch
+remains unrun. The SDK witness is forwarded through the reviewed preparation
+patch with updated exact hashes, never through hand-edited generated sources;
+package versions, features and Cargo.lock are unchanged.
+
+Final post-review canonical gates all exit 0: local PostgreSQL/S3 up; full
+scripts/test.sh 415.095s — Rust 58, Swift 2864 (WhatsApp 142, Telemost 74,
+Telegram 2307, Teams 108, Mail 100, Core 133), Python 153 across 34 runs,
+zero failures. One existing TelegramVoiceCaptureTests
+.testStartRefusesWithoutPriorMicrophoneAuthorization skip remains because of
+its microphone-permission precondition; no hardware was used. SQLt19 diagnostics
+1238 vs baseline 1240 and the existing Contacts-XPC4097 family remain recorded
+separately from passes; no Contacts API/data used. Strict all-target native Clippy
+10.195s exit 0. Canonical build with .references absent 102.791s exit 0; the
+research directory was restored in finally.
+
+Ordinary and fresh QA005 bundles pass strict signatures: six ARM64 binaries/four
+bundled libraries each, identical executable text and current corresponding-source
+archive, no Swift-to-Rust link. A fresh source extraction/target standalone offline
+build passed in 148.622s with all 30 current crate/pin/preparation inputs verified;
+only independently reviewed public Cargo/static Opus inputs were reused.
+All 561 retained license files and the package graph are unchanged.
+
+Native QA001–004 inspected contact/raw fallback/poll/avatar views, status-row
+absence, ten-file preparation/reorder/restart, eleven-file refusal, editor
+rotate/undo/caption/HD/cancel recovery, explicit group selection, paged/pinned
+nine-tile grid and personal call preview. QA004 verifies separate batch unknown
+buttons, local notSent resolution and a new prepared copy preserving the original.
+Clipped group controls and native List action grouping were corrected and checked.
+Fresh post-review QA005 pixels/AX verify the enlarged workspace and photo
+rotate/Cancel/reopen retaining recipe/caption. Current group 32-member/nine-tile
+controls and Leave→workspace are verified by AX. Two compound CUA captures failed
+with ScreenCaptureKit3811 after their actions succeeded; separate settled AX reads
+confirmed the result, without an alternative backend. No refreshed group pixels
+are claimed; QA004 pixel proof covers the unchanged layout. All prior artifacts
+and schemas remain; only the exact owned QA004 process was stopped for QA005.
+
+Two Minor findings are deferred: photoDrafts decrypts account recipe metadata
+before filtering by chat; a shared avatar request can continue after its last
+view cancels and temporarily occupy one of two worker slots. Stale publication
+remains fenced; these are recorded limitations, not silently accepted checks.
+Crop/mark dragging remains UNVERIFIED after CUA noWindowsAvailable; renderer and
+recipe tests do not prove gestures. WA-OQ-04 dossier visual acceptance stays
+separate. Live account/provider/Keychain/TCC/ordinary notifications/physical
+microphone/camera checks remain paused. Release/clean-machine/minimum-OS/
+notarization/distribution acceptance remains unrun.
+
+Final XERJ v24 refresh exits 0 (94.212s): 1520 indexed files,1195/1195 code,
+zero junk. Both project and pinned Zen SHA/content checks are fresh; actual
+ringing_generation and PhotoEditor/crop passages were confirmed against source.
+The prior v23 refusal of the new adapted-file JSON field is retained as an actual
+exit1, with old index state preserved; see docs/xerj.md. No stale index or rg
+substitution is claimed as XERJ evidence.
+
+## Telemost — first stage implemented; real and full visual acceptance pending
+
+The user approved the specification and seven-task native inline plan on2026-10-16.
+Tasks1–7 implementation and one independent review/fix pass are complete. Post-fix
+canonical tests, ordinary build and absent-reference build passed (exit0).
+Native accounts/PKCE/confirmed principal, known-meeting catalogue, official
+create/read/waiting-room/cohost commands, encrypted permanent versions/operations,
+local edits/search/export and idempotent source-note dossier navigation are wired.
+No native media/chat/calendar/files/recording administration is claimed.
+
+Final post-review checkpoint: dev-db up, scripts/test.sh and scripts/build-app.sh
+exit0. Rust35; Swift2776 (WhatsApp54, Telemost74, Telegram2307 with one existing
+microphone-precondition skip, Teams108, Mail100, Core133); Python150 across33 runs.
+Absent-.references build exit0; original research directory restored. Ordinary and
+QA003 bundles each contain six ARM64 binaries, including four bundled libraries;
+strict signatures/provenance pass and executable text SHA256 matches. The catalogue
+split-width correction is included; visual width acceptance remains unverified.
+
+Native QA001 uses two fresh qa_telemost_ schemas, loopback PostgreSQL, fake keys/
+HTTP/vault/opener and no other service hosts. Initial CUA AX shows the common
+sidebar, local-link catalogue and synthetic evidence labels. On selecting the
+local row CUA returned “Sky Computer Use native pipe closed before response”.
+QA001 process28472 was stopped after final gates; its data/manifest are retained.
+The final QA003 bundle is launched with fresh isolated schemas and fake boundaries.
+Account/create/update/unknown/
+cohost/history/search/export/dossier/restart/large-text visual acceptance remains
+UNVERIFIED. Initial AX width199.5 exposed the missing split modifier; source now
+matches other service column sizing. No alternative UI backend or live account used.
+
+One inherited-model read-only reviewer verified78 hashes before/after and found
+0Critical,6Important,0Minor. All six were reproduced (8 tests/29 assertions RED)
+and fixed in one pass: durable401/credential-epoch gate across restart; exact GET
+for unknown PATCH; search selection revokes dossier navigation; hidden recovery;
+scoped PATCH result/editor retention; partial/missing refresh publication. Additional
+stale-epoch/GET401/new-grant failure regressions pass. Focused Telemost74, Core
+source-note4, Teams10 and Telegram5 exit0 (review-fixes-suite2). The old storage
+hide expectation was updated to the explicit hidden-inclusive paging contract.
+No deferred Minor findings, second reviewer or Git publication. Raw check exits,
+test counts, artifact/process inventory and the frozen review packet are retained
+in ignored .local/telemost-migration/. Final XERJ freshness is recorded below.
+
+Final XERJ project-v23 refresh exit0:1466 indexed files,1143/1143 classified code
+files. Project and pinned yandex-messenger-native fingerprint/SHA checks are fresh
+(exit0). Actual credential-gate and reference join_url queries returned passages
+confirmed against current source. Frozen review78 hashes remain unchanged; final
+HEAD/branch are unchanged and the current Git index has no staged changes. Diff
+whitespace and corrected canonical Telemost provenance verifier pass (exit0).
+
+Core dossier note references use existing unencrypted contact storage; Telemost
+catalogue, projection jobs and permanent versions use independent encryption.
+Real Telemost eligibility/OAuth/Keychain/provider/browser, minimum OS/clean-machine/
+distribution acceptance remain unrun. All live checks remain paused.
+See [operations](telemost-migration.md) and the approved spec/plan in docs/superpowers/.
+
+## Teams — implemented; real acceptance remains pending
+
+The approved nine-task Swift plan is executed inline in the existing dirty checkout.
+All nine approved tasks are complete, including one fresh review and its fix pass. `MakoshTeams` ports
+MIT teams-cli9c8a72c32369f9d9bd15b793099522a80070a063 Graph/OAuth contracts into Swift
+actors. No Rust/TUI shell, reference client ID, desktop token or private store used.
+Independent pin/notices and [Teams operations](teams-migration.md) describe current
+behavior: multiple work/school accounts, scoped chat/channel/thread paging, signed
+OIDC/PKCE/device/token lifecycle, encrypted journal/permanent Core versions, durable
+unknown-no-replay outbox, bounded files/ACL review/S3/local spool, notification rules
+and source-scoped dossier. Initial-history and muted events never replay.
+
+Actual integration checks2026-10-16: scripts/dev-db.sh up and scripts/test.sh exit0.
+Rust35; WhatsApp54; Telegram2307 with one microphone-precondition skip; Teams108;
+Mail100; Core129. Python145 across31 runs; zero failures. Existing framework/build
+warnings and test-host contacts-XPC4097 diagnostics remain (also baseline); no
+Contacts API/data was used. Ordinary scripts/build-app.sh exit0, four bundled
+ARM64 libraries/strict signature; absent-research-clone build/verifier also passed exit0; clones restored. Both ordinary
+and final QA003 artifacts contain six ARM64 Mach-O binaries and identical executable text.
+
+Native QA002 uses fresh qa_teams_ application/archive schemas, fake keys/vault/
+Graph/notifications, loopback PostgreSQL/S3 and an owned fixture root. It verifies
+both accounts, chat/channel/thread/back, safe HTML/plain history, history65 across
+polling, search65, permanent archive/export65records, Quick Look/save of a synthetic
+file, two-file preparation/ownDrive folder+reader review without file dispatch,
+unknown→userNotSent without replay, text admission/fresh second-account draft,
+personal S3/sound OFF persistence and exact-chat common settings,1200×800 and zoom
+windows. Executable __text matches its ordinary built source artifact. Actual QA
+state explicitly says Microsoft is not connected; other service hosts never start.
+CUA native pipe closed again on the QA002 dossier transition while the app remained alive.
+Owned QA002 was later stopped to stage QA003; its data and evidence were preserved.
+Dossier PG/provenance/selection tests pass; final visual read remains unverified.
+
+Real Microsoft/Entra registration/tenant consent/Conditional Access, authorization,
+provider history/delivery/files/ACLs, ordinary OS banners/Keychain/TCC and release/
+clean-machine/minimum-OS acceptance remain unrun. Telegram/mail/WhatsApp/calls live
+checks remain paused; no Teams real account selected. One fresh read-only reviewer verified94 hashes before/after and found0Critical,
+8Important,0Minor. All8 fixed in one pass with targeted regressions;108 Teams tests
+then passed. Post-review full scripts/test.sh/build-app.sh and artifact checks
+also pass exit0. Final QA003 rechecks both accounts, text admission/clear, explicit
+synthetic accepted/unknown/prepared outbox labels, search65, channel/thread/back,
+channel S3OFF/settings and1200×800/zoom windows on matching final executable text.
+Previous97-test/QA002 full-flow evidence remains a separate pre-fix checkpoint.
+No deferred Minor findings, second reviewer or Git publication.
+Raw baseline/task checks/screenshots are retained in ignored .local/teams-migration/.
+
+## WhatsApp block 2 — implemented; acceptance limits remain
+
+The full approved implementation is present in the existing native workspace:
+durable sending/unknown-no-replay, text/reply/edit/revoke/react/forward and monotonic
+receipts/NACK rejection; bounded media/voice/WebP/location/contact/polls; permanent
+rich versions/statuses/search/star/pin/archive/JSONL; chat/group/profile/privacy,
+per-account/chat notifications and S3, dossier linking; personal audio/video calls
+with owned PCM/H264/media generation/termination and pre-call device selection.
+S3 OFF prohibits new copies and never promotes an old local preparation. MainActor
+conducts typed UI results; protocol/SQL/keys/files/media/JSON preparation stay on
+service/private executors. No real account was linked or queried.
+
+Current final gates (2026-10-15), all actual exit0:
+
+- scripts/dev-db.sh up: local PostgreSQL and S3 healthy.
+- scripts/test.sh: Rust35, WhatsApp54, Telegram2307 with one microphone precondition
+  skip, Mail100, Core128; Python136 across29 unittest runs; zero failures.
+- scripts/build-app.sh and native clippy --all-targets -- -D warnings.
+- Ordinary and isolated QA bundles: strict signatures, six ARM64 binaries each,
+  four bundled libraries, bundled/system links, matching executable text, no
+  Swift-to-Rust link. QA requires explicit synthetic configuration. Bundled helper
+  open/snapshot/chats/journal/close works offline with only system PATH and fake keys.
+- Current worker corresponding source:277 target crate sources, all eight adapted
+  SDK outputs and519 notices. Independent fresh-target offline build completed in
+  2m20s from the extraction, including native Opus1.6.1. After the final UI-only
+  correction, all14011 current source-archive file hashes match that built extraction.
+  No research/legacy checkout or account store is used.
+
+One fresh reviewer verified110 snapshot files and found nine Important issues.
+All were reproduced and fixed in one pass: terminal acceptance/setup and late
+Accept fencing; notification callback/add-completion policy; archive resource and
+rich metadata; early receipts; negative server ACKs; settings-before-load; reconnect
+archive ownership; indexed/paged outbox and exact completion; initial call hosting.
+Final native UI additionally reproduced inaccessible default icon menus; explicit
+native style/labels now expose and open composer/chat actions. No second reviewer.
+The final full suite ran again after that last presentation correction.
+
+Actual isolated native UI uses two synthetic accounts,65 messages plus retained
+remote-deletion/status observations and encrypted S3 files. Inspected2400×1600 and
+zoomed6016×3190 pixel windows, offline rich cards, current/history file QuickLook,
+message versions, search beyond the first page, personal S3/sound OFF persistence,
+independent group defaults, account preferences, status/permanent archive, prepared
+outbox, rich location/contact queue admission and poll validation, account switching,
+call preview/End. These are synthetic outcomes, not delivery or real call quality.
+
+Remaining acceptance: no selected real WhatsApp account; real QR/link/history,
+provider sending/download/status/PN-LID correspondence, OS banners, Keychain/TCC and
+hardware audio/video are unrun. Telegram/mail/call/Keychain live checks stay paused.
+Opening the linked dossier repeatedly closes CUA's native pipe: the app remains
+alive/idle and renders DossierView; the persisted synthetic contact is visible after
+restart and PG dossier tests pass, but the dossier's final visual read is unverified.
+No alternate UI/permission bypass was used. Small deferred presentation differences
+are raw vCard/duplicated poll question and the technical status row in the chat list.
+One file/100MiB, initials/QuickLook/no artistic editor, personal-only calls are recorded
+reference boundaries; active-call device switching and app passcode/autolock remain
+excluded. audiopus_sys unmaintained advisory remains explicit, not an audit PASS.
+
+Open questions (user decision2026-10-15): WA-OQ-01–08 are now tracked in the
+[WhatsApp migration document](whatsapp-migration.md#open-questions--user-decision-2026-10-15):
+readable contact cards, duplicated poll question, technical status chat row,
+dossier visual acceptance, profile photos, multiple attachments/transfer limits,
+media editor and group calls. These remain open separately from real-account
+acceptance. Active-call device switching, app passcode and autolock stay excluded.
+
+Evidence: .local/whatsapp-block2/final-tests-menu.raw.log,
+qa-menu-build.raw.log, final-artifacts-menu.raw.log, final-standalone-source.raw.log,
+qa-final-{archive-file,poll,outbox,call,zoom}.jpg; resumable ledger under
+.superpowers/sdd/2026-10-15-whatsapp-block2/. Build: .build/Makosh.app;
+isolated QA: .local/whatsapp-block2/MakoshWhatsAppBlock2QA.app. Work remains local
+on feature/telegram-first-login-storage; previous dirty changes are preserved.
+
+## WhatsApp block 1 — historical implementation evidence; live acceptance pending
+
+User approved the core/connection block and a separate AGPLv3 Rust process after
+31 Signal source headers contradicted Cargo MIT metadata. Zen revision
+790066aa411d395562a572101a74057147af67db and whatsapp-rust0.7.0 stay selected.
+An independent pin reviews190 target dependencies, public archive/source hashes,
+licenses/notices/build scripts and a minimal SDK durability patch. Swift links no
+Rust code. Worker licenses and complete corresponding source ship separately;
+main application licensing is unchanged. No release/legal-compliance claim.
+
+Implemented explicit companion QR connection, protected encrypted sessions,
+multiple accounts, common workspace/sidebar, chat search/filters and paged retained
+offline history. MainActor only conducts presentation; protocol/SQL/crypto/keys/
+files/IPC live on service executors. No reference or legacy directory is needed.
+The extracted corresponding-source archive independently compiles offline using
+public Cargo caches, without a research checkout or account store (exit0).
+
+SQLCipher journal commits before chat-message acknowledgement; history commit
+atomically includes messages, chat metadata and names before HistorySync receipt.
+Awaited newsletter/PDO fallback and outer PDO-envelope retention close detached
+callback gaps. PG archive, current message and minimal discoverable chat commit
+before journal ack. Source timestamps/rank retain newer historical edits/deletions
+without old replay replacing current content. Raw resource changes remain distinct
+versions even when captions match. Protocol-only envelopes remain retained without
+phantom chats. Live unread increments once; names do not rewrite source identity.
+A disjoint newest page restarts its range so burst history stays fully reachable.
+Status broadcast pre-ack/expiry semantics remain block2; total storage outage and
+actual server redelivery are not covered by an unconditional recovery guarantee.
+
+One fresh read-only reviewer verified36 snapshot hashes and reported4 Important,
+0 Critical/Minor. All four received a single RED→GREEN fix pass; native/PG/model
+regressions reproduce prior failures. Actual history-chunk rollback/reopen, raw
+resource versions and protocol-only projection regressions also pass. Review did
+not independently execute live/runtime/UI checks; root verified those locally.
+
+Final dev-db up, scripts/test.sh and scripts/build-app.sh exit0. Native Rust7,
+WhatsApp Swift9, Telegram2307 (one microphone-precondition skip), Mail100, Core126
+report zero failures; Python134 tests in28 suites pass, including6 real Mach-O
+packaging checks and2 SDK adaptation boundaries. Clippy -D warnings and fmt pass.
+Earlier hypothesis runs/tooling failures remain in ignored task evidence and are
+not presented as successful checks. Full final test took about229s in Telegram;
+no performance-improvement claim is made from the differing run times.
+
+Final and isolated QA bundles pass strict signatures/ARM64 checks for all6 Mach-O
+binaries, with bundled/system library links; Swift and helper executable text
+hashes match between bundles. The actual packaged helper opens/closes offline with
+system PATH only. Source archive contains the facade, patch/prepared SDK, all190
+target source packages, notices and standalone build instructions. Developer ID,
+notarization and a clean-Mac installation remain outside this local acceptance.
+CI now explicitly installs/selects reviewed Rust1.97.0; YAML parsing passes.
+Remote CI was not run in this task.
+
+Final org.makosh.whatsapp.qa uses explicit qa_whatsapp_ schemas and fixed test
+keys, never personal Keychain/network. Native UI verifies both accounts and empty
+second account, search/all/unread/groups/archive, older50+14 messages, retained
+deleted test-3, synthetic QR/cancel, compact reference bubbles and normal/zoom
+windows2400×1600 and6016×3190. Screenshots: qa-final-history.jpg,
+qa-final-retained.jpg, qa-final-pairing.jpg, qa-final-zoom.jpg under
+.local/whatsapp-block1/. A first final-QA launch passed a relative config path and
+failed closed; corrected absolute-path launch succeeds without resetting data.
+One stale AX selection was rejected; refreshed selection/search then succeeded.
+
+Project XERJ v18 refresh records exit0,1208 indexed files,960/960 classified code;
+final freshness/query and reference fingerprints are verified at closure. Failed
+v16/v17 frozen-schema attempts and changed-during-index result remain recorded.
+Real Telegram/mail/call/Keychain checks stay paused; real WhatsApp QR/link/history/
+network acceptance remains pending a selected test account and user instruction.
+Sending/media/statuses/receipts/notifications/settings/S3 controls/dossier UI are
+block2. No commit/push/publication. Evidence: .local/whatsapp-block1/ and the task
+ledger; implementation scope/reference differences: docs/whatsapp-migration.md.
+
+
+## Mail inserted-row height fix — 2026-10-15 (current)
+
+The user's screenshot shows new mail rows clipped to sender/date and a partial
+avatar. Native isolated QA reproduces the same failure for UID15 and a second
+live insert UID16; rows loaded at startup retain their full height. Letter data,
+subject and snippet remain present in AX and storage. The observed failure is consistent with a one-line native List measurement
+for newly inserted rows instead of their complete intrinsic vertical content.
+
+A single focused MailViews presentation change makes row content use its natural
+vertical size at the available width. No fixed row-height constant, list identity
+reset, storage or transport change is introduced. A reverse-patch fingerprint
+matches the preceding accepted MailViews source; every other production/test/
+manifest/build file remains unchanged. Current pinned Aether MessageRow and
+MessageListView were read completely, after actual XERJ source retrieval. The
+initial Aether query used a wrong prefix and found no matches; the corrected
+mk-ui-aether query retrieves both definitions and is confirmed against source.
+
+Before/after native regression: UID15/16 are clipped before the fix; three live
+inserts UID17/18/19 display full avatars, subjects and two preview lines after it,
+without restarting between inserts. Selection highlight spans the full row.
+Unread ON/OFF produces14 then15 messages without collapsed rows; second-account
+empty INBOX and return to the first retains the correct layout. Native zoom and
+return render correctly at captured2400x2294 and6016x3190 pixels. Screenshot bytes
+are retained as JPEG without conversion. Arbitrary drag-resize is not asserted.
+Only signed synthetic mail QA with qa_mail_ schemas is used; real accounts,
+ordinary-bundle banners, calls and Keychain acceptance remain paused.
+
+Fresh dev-db.sh up, scripts/test.sh and final scripts/build-app.sh all exit0;
+the earlier hypothesis build also exits0. Full suite:2307 Telegram tests with
+one microphone-precondition skip,100 Mail and126 Core, zero failures.131 Python
+tests in27 suites pass. The broad run took longer than the preceding baseline;
+no performance-improvement claim is made. Production/test/manifest fingerprints
+remain unchanged during these final gates.
+
+Strict signatures,5 ARM64 binaries per bundle and bundled/system dependency paths
+pass for final and QA apps. Their __TEXT.__text hashes match, so the inspected
+running QA already carries the final presentation code without another restart.
+Selecting newly inserted UID19 highlights the complete row and opens UID19 in
+the reader. Final project/reference fingerprints, actual XERJ source query and
+git diff --check pass. Developer ID/notarization and clean-Mac proof are outside
+this local check. Evidence, focused patch and screenshots are in ignored
+.local/mail-list-layout/; selected-new-row.jpg is the accepted image. No commit
+or publication.
+
+## Mail notification native acceptance — earlier baseline 2026-10-15
+
+The user resumed only isolated synthetic mail notification QA and granted
+notification permission for the exact bundle org.makosh.mail.qa (display name
+Макош · Почта QA). Real mail/Telegram accounts, ordinary-bundle banners, calls
+and Keychain checks remain paused. Both QA PostgreSQL schemas retain qa_mail_
+prefixes; no protocol connection is fabricated by synthetic notification events.
+
+Current MMail/Aether pins and content fingerprints pass. Actual XERJ reference
+and project queries were confirmed against Notifier.swift, mergeRealFolder and
+Makosh notification sources. The first query attempt failed because the owned
+loopback node was unavailable; the later queries exit0 after its startup. The
+failed attempt is retained, not counted as passing research. No external embedder
+or private account data is used.
+
+This continuation adds only privacy-safe MailNotifications OSLog diagnostics to
+MailSystemNotifications: authorization outcome, policy suppression and system API
+acceptance/error. No sender, subject, account identifier, message identity,
+credential or private error text is logged. Notification behavior remains the
+existing encrypted checkpoint/preferences, shared delegate and opaque routes.
+
+Fresh dev-db.sh up, test.sh and build-app.sh all exit0 after the source change.
+2307 Telegram tests (one microphone-precondition skip),100 Mail,126 Core and
+131 Python tests in27 suites report zero failures. A separate focused33 mail
+notification tests passed before the logging-only change. Strict signatures
+and all5 ARM64 binaries pass for ordinary and QA bundles; executable __TEXT.__text
+hashes match. git diff --check and final project/MMail/Aether freshness checks
+pass. Developer ID/notarization and a clean-Mac test are not implied.
+
+Native synthetic QA verifies global show/preview/sound/foreground settings ON;
+a previously muted sender suppressed UID9 and its separate rule was reset.
+UID10 initiated the permission request. The old process continued to report
+permission disabled even after the user granted it; app-specific System Settings
+showed notifications and sound enabled. A fresh owned QA process reports
+UNAuthorizationStatus.authorized (2), also visible as Разрешены in mail settings.
+The cause of the old-process discrepancy is not established; no session/key reset
+or system notification database modification was performed.
+
+New synthetic UID11 and UID12 each reached macOS add completion successfully.
+Their effective rules intentionally had silent sound (folder override) and
+hidden previews (account override), inherited from prior QA. Native controls
+identified both restrictions and their individual overrides were reset. The
+second-account show rule was saved OFF and verified after reopening; UID12 from
+the first account was still admitted. That temporary override was then reset.
+No notification behavior defect was inferred from these fixture restrictions.
+
+UID13 was admitted with sound and previews ON. The user confirmed an actual
+banner, sound and opening a letter from the new notification. Read-only inspection
+of the encrypted synthetic state confirms UID13's unique action receipt consumed
+with sound/previews true; UID10–12 receipts remain unconsumed. Later native AX
+showed UID9 selected, so that immediate selection was not counted as exact
+UI-target proof. The user did not recall the earlier letter number. A controlled
+follow-up created UID15 while UID14 remained selected, without selecting the new
+row in the app. After the user's notification click, native AX shows both the
+selected row and reading title as UID15; the user independently confirms UID15.
+Its encrypted unique action receipt is consumed. Screenshot and before/after AX
+are retained. This closes exact click-to-open acceptance for the isolated QA.
+The first capture after creation failed with ScreenCaptureKit error -3811;
+telemetry and a fresh AX read confirmed creation, so the button was not retried.
+
+A native sender show rule was then saved OFF. New UID14 remained visible in mail
+without another macOS API submission. The saved mute survived an owned-QA restart;
+no additional API submission occurred on restart or after resetting the sender
+rule. Encrypted state has no pending event or UID14 route. Earlier letters,
+immutable versions and drafts remain retained. Native settings inspection briefly
+returned noWindowsAvailable; the subsequent state/screenshot confirmed the sheet.
+
+Per-sender/account isolation, privacy/read/foreground races and Open/Archive/Trash
+routing have passing synthetic coverage. Real provider MOVE, ordinary-bundle
+notification acceptance and real accounts remain paused. The QA grant and actual
+QA banner do not establish ordinary-bundle or provider acceptance.
+
+Raw evidence, authorization AX snapshots, scope isolation and artifact hashes:
+ignored .local/mail-notification-acceptance/. The QA app remains available with
+synthetic mail only. Source remains local/uncommitted; no publication.
+
+## Mail visual reference acceptance — earlier baseline 2026-10-15
+
+Visual/reference continuation only; Calendar/OAuth remain excluded and live
+accounts, OS banners, calls and Keychain permission checks remain paused.
+Current Aether/MMail pins and content fingerprints were checked; actual XERJ
+queries and source reads covered AccountsSidebarView, MessageRow, RootView and
+ReadingPaneView. The historical screenshot was also inspected. Token/layout
+mapping and intentional shared-workspace differences are in reference-interface.
+
+Changed presentation: collapsible account groups and account-scoped folder AX
+identifiers;34pt sender avatars, compact localized dates with exact-date help,
+attachment/flag indicators and denser rows; reference column widths and1220pt
+mail minimum; one12pt/14pt paper treatment for both plain and inert HTML.
+Attachment cards are above either body mode, fixing their disappearance in HTML.
+Native content-minimum window resizing is explicit. No transport, encryption,
+S3 policy, credential or authorization behavior changes.
+
+The shared workspace retains the dossier inspector within reading at250/290/380pt.
+An attempted Aether-style root inspector clipped the shared service sidebar at
+ordinary width; it was rejected. Final nested layout shows all four regions.
+The dossier button is disabled while its model is busy; successful contact
+selection closes the inspector before changing the workspace destination.
+
+Fresh dev-db.sh up, test.sh and build-app.sh exit0. Full suite:2307 Telegram
+(one microphone-precondition skip),100 Mail,126 Core; zero failures.131 Python
+tests in27 suites pass. Final presentation refinements follow that broad run;
+the final build and a fresh100 Mail tests pass after them. Strict ad-hoc bundle
+verification and all5 ARM64 runtime binaries pass; dependency loads are bundled
+or system paths. Developer ID/notarization and a clean Mac are not implied.
+
+Signed isolated native QA verifies two synthetic accounts, collapse/reopen,
+independent second INBOX empty state and return to the first account, plain/HTML
+paper and attachment visibility, sender selection with account-specific signature,
+Cc/Bcc fields, saved second-account draft and exact restoration after restart.
+Signature/template/rule settings render without clipped segment labels. Normal
+→zoomed→normal rendering is verified on the final code. An attempted corner drag
+did not change the captured size; arbitrary drag-resize acceptance is not claimed.
+The attachment is an explicitly synthetic metadata card; no real download is
+implied. Earlier immutable encrypted fixture versions were retained.
+
+Open Dossier still closes the CUA native pipe with both AX and coordinate input,
+including a fully visible button at zoomed size. The owned application remains
+alive; a process sample shows its main thread predominantly waiting in the native
+event loop, not an observed app crash or deadlock. Root-inspector restructuring
+did not resolve the tool boundary and was not retained. The actual transition
+remains unverified; no claim of full native acceptance or pixel equality is made.
+Owned-QA restart recovers automation. No personal account/session was opened.
+
+Raw evidence and screenshots: ignored .local/mail-visual-review/. Final main
+image is mail-accepted.png; compose, settings, inspector and restored-draft
+evidence are separate. Final/QA executable text hashes match. XERJ project
+refresh exits0 with1038 files/939 classified code; project/MMail/Aether freshness
+checks and git diff --check pass. Source remains local/uncommitted; no publication.
+
+## Mail completion — earlier baseline 2026-10-15
+
+This continuation supersedes the earlier mail baselines below. Calendar and
+provider OAuth are explicitly excluded by the user. Live real-account/ordinary
+banner/call checks remain paused; no personal mailbox, macOS Contacts or normal
+Makosh session was used. Earlier dirty Telegram/mail work is preserved, with no
+commit, push, merge or publication.
+
+Implemented locally: account signatures, confirmed reply templates, incoming
+from/subject rules and local labels, scheduled send/cancel/edit, separate IDLE
+watchers with polling fallback, immutable full version browsing, complete inert
+HTML and paged long text, and encrypted notification route recovery across
+process restart. Binary/raw files remain encrypted S3 with account/folder OFF
+forbidding every new copy. Full text/HTML versions remain append-only encrypted
+PostgreSQL. MainActor coordinates UI only.
+
+Final fresh same-model static review inspected an immutable58-file packet. It
+reported2 Critical and5 Important issues: source identity replacement, live SMTP/
+schedule resolution, SMTP cancellation during AUTH, rule preparation starvation,
+more-than50 arrival loss, IDLE teardown, and repeated packaging. Root reproduced
+the principal interleavings with failing synthetic tests and repaired them in
+one review repair pass. No second review seat is used. Dedicated PostgreSQL
+advisory-lock sessions own active SMTP/rule/schedule attempts; state-checked
+settlement rejects late completion. Source transport changes require a new ID.
+Ascending bounded UID drain preserves every arrival cursor. Failed preparation
+is recorded and isolated; IDLE teardown closes command and non-INBOX monitors.
+
+Portable packaging uses pinned-source libpq18.6 without GSSAPI/LDAP/server,
+version/license-checked OpenSSL3.6.4, system SecTrust and a relocated ARM64 dylib
+closure. A fresh staging app is signed/strictly verified before replacement;
+publication failure restores the prior app. Actual toy Mach-O tests run without
+original dependency paths, including consecutive builds and rollback. TLS BIO
+checks reject environment-injected self-signed trust while accepting an explicit
+synthetic CA and rejecting a hostname mismatch. All runtime notices are retained.
+
+GateC completes dev-db.sh up → test.sh → build-app.sh → repeated build-app.sh,
+all exits0 with frozen source unchanged.2533 XCTest (2307 Telegram,100 Mail,
+126 Core), one microphone-precondition skip, zero failures;131 Python tests in
+27 suites pass. This includes5 actual Mach-O/publication and3 TLS trust tests.
+GateA failed before XCTest at a Swift Sendable capture diagnostic; immutable
+APPEND flags fix it. GateB's runner was stopped withSIGTERM after root found
+cross-path schedule/SMTP and restored-card privacy gaps.3 tests/4 failures
+reproduce those gaps;100 Mail tests pass after repair. GateA/B raw evidence is
+preserved and neither is final passing integration.
+
+Native QA then exposed clipped settings tab labels. The only change after
+GateC is MailAutomationSettingsView presentation: explicit native segmented
+labels replace the strip.100 Mail tests and two additional builds pass. No
+protocol/storage/TLS change follows GateC. Final artifact verification passes
+strict ad-hoc signature,5 ARM64 binaries (main+4 dylibs), no external non-system
+dependency paths, exact retained notices/runtime hashes and equal QA/final app
+__TEXT.__text. Developer ID/notarization is not implied.
+
+Signed isolated native QA verifies menu actions, read-only prior version
+selection, persisted signature/template/rule after restart, signature once,
+confirmed template insertion retaining recipients/signature, scheduling and
+exact scheduled draft return to the editor. An owned synthetic encrypted PG
+fixture retains earlier versions and provides168k plain text/600k HTML.
+Page1→11 reaches the end beyond128000; actual WKWebView renders the end beyond
+512000, preserves the script-blocked marker, and an owned loopback HTTP probe
+receives0 requests. Normal→zoomed→normal layouts render; a corner drag produced
+no change and is not counted as resize proof. Inspector opens the correct
+synthetic sender/account link. Open Dossier again closes the CUA pipe while
+the owned process remains alive, so the transition remains unverified. A
+restart/kernel reset recovers automation. Native AX capture sometimes fails
+immediately after a section switch; screenshot and a fresh capture verify the
+successful visible transition. Final segmented labels, restored template body,
+rule and signature are verified, and synthetic mail is left open. The probe is
+stopped. No real account/OS permission was selected or accepted by the agent.
+
+Final XERJ v16 refresh exits0:1037 files,938/938 classified code. Project and
+MMail/Aether content freshness checks all pass; the current operation-lease
+query is confirmed against source. The earlier v15 schema refusal and unfinished
+v16 refresh are retained as historical failure evidence, not reused as freshness.
+Git diff --check passes. Source remains local/uncommitted; no publication.
+
+
+Review boundary rulings: bounded100 persisted notification routes intentionally
+have no invented age TTL and always revalidate current identity/generation/
+privacy. Live provider, banner/sound and calls remain paused. Local ad-hoc signing
+is not Developer ID/notarization or independent clean-Mac acceptance; no configured
+Developer ID/notary identity or separate clean Mac is available. Corresponding
+source/build delivery obligations remain a release boundary; no binary release
+is published. The controlled hostile-HTML fixture is verified as described above; it is not
+an exhaustive WebKit security matrix. Exact full-reference pixel parity and the
+blocked Open Dossier transition remain separate acceptance boundaries.
+
+## Mail notifications — earlier baseline 2026-10-15
+
+Implemented locally on the existing dirty feature checkout; no publication or
+real-account QA. MMail Notifier/AppModel/SettingsView behavior is retained:
+new unread INBOX events, initial/UIDVALIDITY baseline without historical flood,
+maximum five new cards per page. Encrypted PostgreSQL persists checkpoints,
+preferences and bounded event admission with letters. Atomic consumption returns
+the current presentation snapshot, including an event outside the global cache
+page. Window reloads coalesce; committed events are not discarded by a later UI
+reload. File archival remains encrypted S3 with the existing account/folder OFF
+semantics, independent of notification settings.
+
+One application macOS delegate serves mail and Telegram, unions categories and
+retains Telegram's Dock badge source. Opaque mail routes support Open/Archive/
+Trash once per admitted card. Foreground suppression affects presentation, not
+already displayed card actions. Busy workspaces queue undispatched user actions
+and revalidate on idle. MOVE retains the body first; cancellation is linearized
+with final NIO command write, without pending command leakage or automatic replay.
+Global/account/folder/account-scoped sender show/preview/sound restrictions compose;
+foreground defaults ON as in MMail. Permission is requested once across channels;
+denial/error require explicit retry, including after the requesting window closes.
+
+Final focused gate:43 mail notification/protocol +15 Telegram notification
+boundary tests pass with zero failures. The native-discovered folder-order
+regression is verified RED then GREEN in10 store tests; savePage updates a folder
+in place. Final gate D exits0:2505 XCTest (2307 Telegram,72 Mail,126 Core), one
+microphone-precondition skip, zero failures;123 Python tests in25 suites pass.
+The required dev-db.sh up → test.sh → build-app.sh sequence completes. Strict
+signature and ARM64 checks pass; all13 Mail notices match the bundle. libpq and
+OpenSSL3 are linked. All846 source/test/manifest fingerprints remain unchanged
+through final checks. Final XERJ source refresh exits0:1018 files,922/922 classified
+code; content freshness passes. This is an ad-hoc local build, not notarization or
+clean-machine acceptance.
+
+Fresh static review found no Critical and four Important interleavings. All four
+are reproduced by5 tests/6 assertion failures, then repaired at root with GREEN:
+foreground action, overlapping destructive drains/stale snapshot, busy action,
+and cancellation during held SELECT (wire MOVE count changes from1 to0). No
+second review seat was used or claimed. GateA passed2497 provisional XCTest before
+these review repairs; exact baseline counts remain in local evidence. GateB is
+explicitly interrupted exit143 after native QA exposed the folder-order issue;
+GateC is interrupted exit143 for a final cancelled-command resource-admission
+check. Neither is final evidence. Final gateD uses the frozen source described above.
+
+Native Computer Use recovered in this continuation. The signed isolated
+org.makosh.mail.qa uses explicit qa_mail_ application/archive schemas and synthetic
+example.invalid letters, without protocol connections or real account keys.
+Observed: compose/save/reopen preserves recipient, subject and body; notification
+forms render and global toggles persist on reopening; folder/account scopes expose
+independent controls and parent restrictions. A muted test incoming appears in
+INBOX while system permission stays notDetermined. Mail→synthetic Telegram→Mail
+retains the selected letter. After the final verified bundle is separately signed
+and launched as QA, its code section matches the final main bundle. Actual final
+native checks verify sender context-menu editing, saved team sender OFF versus
+another sender ON, global settings across restart, and the earlier draft's exact
+recipient/subject/body after restart. Reader icon-menu AX activation did not work;
+the native letter context menu provides the same sender workflow. Dossier inspector
+confirms an existing sender link; Open Dossier closes the native UI pipe again,
+while the owned app stays alive. One rebind fails; owned QA restart plus one kernel
+reset recovers the bridge. Dossier-open result and resize remain unverified.
+No UI bypass or app-crash claim. No OS permission is accepted by the agent, and
+ordinary/live banners remain pending. Only synthetic QA is left open.
+
+Remaining: ordinary-bundle mail banner/sound/actions, real provider/Keychain
+acceptance (still paused), cold-start activation of previous-process notification
+cards (old cards are cleared, only registered current routes are accepted), exact
+full-reference parity and the prior OAuth/IDLE/rules/templates/signatures/scheduling/
+calendar/clean-machine gaps. This notification slice does not close them.
+
+
+## Mail MMail / Aether migration — core baseline 2026-10-15
+
+The notification continuation above supersedes this earlier baseline where noted.
+
+The documented mail migration row is implemented locally in `MakoshMail` and the
+common native workspace. Live checks remain paused; no real mailbox, personal
+system Contacts or communication account was selected or used. No commit,
+publication or merge was performed. Earlier dirty Telegram work is preserved.
+
+MMail IMAP/SMTP/MIME and rich editor are adapted under MIT from
+`69bf8c9b2436d7d000652f41362f8fdebf406599`. Aether Aurora/sidebar/list/reader are
+adapted under MIT from `8ab37e1da22363744be5d7b019f4300d8238d625`; source layouts
+and historical screenshot were inspected. The current warm paper reader follows
+actual ReadingPaneView source. The existing service sidebar and dossier remain
+shared; no second app shell or EmailKit/AI/backend substitution is introduced.
+Exact package pins and retained notice hashes are verified by build/test. The
+unused upstream CLI's NIOSSL/BoringSSL products are excluded from linkage; the
+own NIO adapter uses existing OpenSSL 3, mandatory trust/hostname validation and
+TLS 1.2+. Clean-machine CA/runtime packaging is a separate acceptance boundary.
+
+Implemented: manual TLS/STARTTLS accounts, Keychain credentials, per-account
+service actors, finite command deadlines/response bounds, reconnect for reads,
+60-second background refresh, server search/paging, flags/MOVE (including Trash),
+plain/HTML MIME, files, reply/forward, local and remote Drafts, SMTP/Sent and
+source-scoped dossier links. Mailbox wire names are distinct from display titles;
+identities include account/folder/UIDVALIDITY/UID. Bounded encrypted PG previews
+support folder paging beyond the global snapshot. Full encrypted mail versions
+refuse UPDATE/DELETE/TRUNCATE; old generations/source removals stay retained.
+Raw RFC822/files use encrypted S3. Per-account/folder policy defaults ON; OFF
+forbids every new S3 copy and uses encrypted local draft preparation. No file
+payload is stored in PostgreSQL. Uncertain SMTP/APPEND results survive restart;
+unique attempt CAS rejects late completions and no automatic write replay occurs.
+Unchanged remote HTML and complete To/Cc/Bcc/duplicate filenames are preserved.
+Remote deletion never purges the retained copies; historical body-version browsing
+is not yet exposed as a separate UI. Content not fetched before deletion remains
+unavailable, as for Telegram.
+
+Targeted synthetic acceptance: 40 mail XCTest pass with zero failures, including
+scripted loopback IMAP/SMTP, trusted/untrusted TLS and STARTTLS, CRLF DATA bytes,
+localized/ampersand wire mailboxes, unknown submission/APPEND, cancelled save,
+stale-attempt CAS, PG concurrent writes/reopen/current-generation paging,
+append-only history, S3 export/dedup, OFF/local recovery, full draft recipients,
+duplicate filenames/HTML and archive account context. Ten Contacts worker tests
+also pass, including service-specific QA schema admission. Independent static
+review accepted the repaired Important findings, with no unresolved
+Critical/Important in that examined scope; it did not run tests or accept live UI.
+
+Native QA used signed `org.makosh.mail.qa` and a separate `qa_mail_` application
+and archive schema with synthetic example.invalid messages, no real mail network.
+Actual screenshot and AX state verify the common Aurora/sidebar/list/paper reader,
+details, HTML text and sender dossier inspector. Clicking Create Dossier then
+closed the native Computer Use pipe; the owned app remained running. Two retries
+and a kernel reset could not recover that tool. The link result, compose/save/
+reopen, service-switch/resize and final revised Drafts UI remain unverified in
+native UI. No alternate UI automation or protected-dialog bypass was attempted.
+The existing mail model/storage tests do not replace this native acceptance.
+
+The earlier full gate A exits1 on the remote-draft duplicate-filename regression
+against an earlier binary while its fixture was being updated. It is not final
+frozen-source evidence. Full gate B exits1: Telegram2307 (one microphone-precondition
+skip) and Core126 pass, while one Mail fixture result read races an empty file.
+The fixture now publishes port/result atomically with os.replace. An additional
+connected-export cache-loss regression is verified RED on the former cache-only
+path and GREEN in the 40-mail-test gate. Archive selection also invalidates its
+previous asynchronous context. Final frozen-source full gate C and the later
+signed/native-artifact results: full gate C exits0 with2473XCTest
+(2307Telegram,40Mail,126Core), one microphone-precondition skip and zero failures;
+123Python tests across25suites pass. The37 recorded source fingerprints are
+unchanged through the final build. `scripts/build-app.sh` exits0; strict signature
+and ARM64 checks pass, OpenSSL3 is linked, MailAccountWorker is present, NIOSSL/
+CNIOBoringSSL symbols are absent, and all13 retained mail licence files match the
+packaged resources. This is an ad-hoc signed local build, not notarization or
+clean-machine proof. The isolated QA bundle is updated with the same code section
+and its own verified signature; its native interaction acceptance remains pending.
+The initial artifact guard used an unmangled Swift class-name substring; actual
+Swift demangling confirmed the worker and the corrected check passed. A QA whole-
+binary equality guard likewise rejected the expected changed code signature;
+matching __TEXT/__text and strict independent QA signing then passed.
+Development PostgreSQL/S3 are healthy; versioning/deletion/lifecycle/anonymous
+access restrictions are checked by dev-db.sh. Final XERJ v15 refresh exits0 with
+1010 files,915/915 classified code; v13 AGENTS-family and v14 Mail lock frozen-schema
+refusals remain recorded. Reference freshness and current project check follow
+content fingerprints; no lock/source exclusion hides the failures.
+
+Remaining acceptance/features: real mail/provider behavior and real Keychain,
+final native interactions (UI bridge unavailable), reader presentation beyond
+128000 text /512000 HTML characters (full payload remains stored), ordinary-bundle mail macOS
+notification acceptance, provider OAuth, IDLE, scheduling/rules/templates/signatures,
+calendar actions, exact full-reference visual parity and clean-machine delivery.
+These are visible gaps; this local core port does not mean every MMail feature or
+real-mail delivery is accepted. Existing Telegram banner/call and explicit
+passcode/device-switch scope decisions remain unchanged.
+
+
+## Embedded application API and notification repair — 2026-10-15
+
+Implemented locally. The user has now stopped live checks; ordinary Makosh and
+the isolated notifications QA processes are stopped with their data retained.
+No real-account checks may resume without the user's instruction. Final synthetic
+full gate C passes; actual ordinary-bundle incoming banner acceptance is pending,
+not a pass.
+
+The existing own application API pair is migrated once to a private ignored build
+input, then compiled from a separate private Swift target. The application no
+longer reads runtime API JSON or shows API ID/hash fields. Normal product builds
+fail closed when the pair is absent/invalid; explicit source/CI test builds can
+omit account connectivity. Environment input cannot partially fall back to disk.
+Rejected input invalidates earlier generated credentials. No reference embedded
+credentials are copied, no values are printed, and publishable files contain no
+own API hash. The pair remains extractable from a distributed client binary.
+Session keys, personal login and2FA remain separate.
+
+Seven actual-generator tests pass, including a compiled synthetic probe run after
+both its input and generated source are removed; four legacy-import tests pass.
+Eleven model/configuration/session tests pass. A signed ordinary build contains
+the own hash and no legacy API JSON path. Its actual login screen has one Connect
+button and no API fields/saved-file action. With the old runtime JSON temporarily
+renamed and preserved, the existing session restores and the selected test dialog
+retains its original marker/file. The old file is then restored unchanged.
+
+The ordinary bundle's notification permission is actually notDetermined; its
+previous QA grant belonged to a different bundle. The sink previously submitted
+without checking/requesting consent. Meaningful RED reproduces missing initial
+request and submission despite denial; further REDs expose repeated automatic
+prompts after automatic and manual-first errors. The repaired sink checks OS
+status, requests initial consent once, bounds/deduplicates pending cards, and
+revalidates account/route/privacy after suspension. Errors/denial do not prompt
+again on every message; explicit manual retry remains available. Per-chat rules
+stay account-scoped and subordinate to global/server restrictions.
+
+Two real generic incoming strings are received, but the first minimized test
+has no banner/request. Source inspection confirms another reference mismatch:
+`NSApp.isActive` alone treats a minimized active app as an active window, while
+TelegramSwift checks its own key window. Separate REDs prove minimized/no-window/
+keyless/hidden suppression and stale window state after consent. The final sink
+requires its own key, visible, nonminimized window plus application activity;
+scoped observers and callback-time state reads reject stale projections.
+Thirty-six focused notification tests pass. Independent read-only review approves
+both the API and final notification scopes after resolving its manual-first retry
+finding and exception-label ambiguity. It does not accept runtime banners.
+
+Signed isolated synthetic UI validates the new all-loaded-chats chooser, separate
+chat rules, persistence on editor reopening and no card for a muted chat. Changing
+the first chat does not change the second. Restoring the first rule permits a card;
+the bundle's own opaque-token probe confirms matching delivered macOS content.
+This proves that synthetic system card, not real Telegram delivery. UI bridge
+errors include a transient native pipe closure and unavailable physical scrolling
+for a minimized window; they do not establish an application crash.
+
+For the ordinary bundle, active-window suppression is explicitly disabled during
+the controlled test and the native macOS permission is manually requested and
+granted; ordinary UI confirms authorization. The updated final build subsequently
+waits in `TelegramSessionWorker.prepare` → `SecItemCopyMatching` for existing
+session-key access. A2second owned-process sample confirms this background wait;
+no reset/key replacement is attempted. Computer Use explicitly blocks
+`com.apple.SecurityAgent`, so a user handoff is requested. The user then stops
+live checks before that access is confirmed. Both owned app processes are terminated;
+no logout, session deletion, resend or Telegram server/account-management mutation occurs.
+
+Dev services, build and strict signed/native-artifact gates exit0. Full gates A
+and B respectively pass2429/2430XCTest plus123Python tests across25suites, with
+one microphone-precondition skip and zero failures. These precede the final
+window fix and are not its final full-suite evidence. Final full gate C exits0:2432XCTest(2307Telegram+125Core),one microphone-precondition skip,zero failures;123Python tests across25suites pass. The signed/native-artifact build is from this final frozen source.
+Canonical final XERJ refresh/freshness exit0:969files,887code. Reference historical
+partial coverage and prepared-engine limitations remain as documented. Engine
+pin/recipe, indefinite archive retention and per-chat S3 prohibition are unchanged.
+Hosted CI, physical notification sound/banner behavior and real ordinary incoming
+notification after the last window fix remain unverified.
+
+## Real-account QA in progress — 2026-10-14
+
+The user selected a test peer in the current ordinary Makosh session and
+explicitly authorized text/file exchange and audio/video calls with microphone
+and camera. Other chats/accounts and account-management changes are outside this
+run. Actual first text submission exposes a native Postbox fatal at
+AccountStateManagementUtils.swift:533; the crash UUID matches that signed app.
+After the startup fix the existing session restores, the original marker is
+found in the selected dialog and Telegram reports it read. It is not resent.
+
+Makosh omitted Account.resetStateManagement when observing an authorized account.
+TelegramSwift SharedAccountContext.swift:444 calls it on insertion. The initial
+native cursor is legitimately nil after login; update groups must wait behind
+the initial getState/getDifference. One ordinary RED expectation proves premature
+native operations, and a separate encrypted synthetic native RED reproduces the
+same nil-unwrapping crash with a closed loopback proxy. Makosh now requests the
+native reset before provider binding;30startup/callback/projection tests pass.
+No native source/recipe change, fabricated cursor, cache reset or disabled actor
+check is used. Static category diagnostics
+confirm the profile's blocked-list failure is a non-user peer rejection.
+The paginated read now retains groups/channels separately, explicitly read-only,
+without conflating their IDs with users. Temporary diagnostics are removed;
+engine/private payload logging stays disabled.
+
+The peer's new greeting is observed in the selected dialog. An owned86byte test
+document is submitted, shown read, downloaded and exported to a new local file;
+its SHA256 and byte count match the original. This proves that particular round
+trip, not S3 archival. The selected private chat's S3 flag is visibly enabled.
+Incoming test attachments are visible; the user identifies an unsupported
+placeholder as geolocation. Received maps now have a coordinate/venue card and
+retain original metadata in the encrypted archive, without file/S3 lookups.
+Interactive/live map parity remains open. Queue observation exposes
+admission/progress only and must not be relabelled as delivery evidence.
+
+Two initial RED cases fail six assertions before location/mixed-peer changes;
+66focused tests then pass. Review finds and repairs fake archive-file status and
+silent venue truncation: UI labels now have independent UTF8 byte bounds while
+archive descriptors retain original strings. The extended encrypted native
+Postbox/deletion/PostgreSQL-failure/retry/reopen test initially loses media because
+its naked Postbox fixture omitted native decoder registration. It now matches
+ordinary startup with initializeAccountManagement;36focused tests pass, retaining
+both40→41coordinate versions after actual synthetic removal and independent DB
+reopen. Independent source reviews approve startup/blocked and location scopes.
+No real geolocation or peer identity is written to tracked evidence.
+
+Real audio/video calls are exercised after user-entered OS permission approval.
+The user reports delayed audio and clipped phrase starts after pauses on the
+first audio call. The subsequent video call has a visible connection timer and
+local-video element, and the user confirms both picture and uninterrupted audio.
+Audio quality is not accepted yet; no speculative DSP/network change is made.
+The UI bridge subsequently times out twice on closing the completed call.
+A3second sample of the exact owned process shows the main thread predominantly
+waiting in its ordinary event loop, not blocked in native teardown. These bridge
+failures do not establish an application deadlock. The ordinary app is restarted
+with its session preserved for further diagnostics; no automatic resend occurs.
+
+Final dev-db, full test, build, strict codesign/native-artifact and ordinary
+launch gates exit0. The suite is2426XCTest(2301Telegram+125Core),one microphone
+precondition skip,zero failures;116Python tests across24suites pass, together
+with the native encrypted loopback fixtures. Canonical XERJ refresh/freshness
+exit0,967files/885code. Reference/engine coverage limits remain as documented.
+The final signed ordinary app restores the same session with no new crash report.
+Its selected test dialog retains the outgoing marker/file and shows the received
+location card. The profile now loads the mixed blocked list without an error and
+enables its user block control; no real mutation is performed. Makosh is left
+running on that test dialog.
+
+Remaining real acceptance: the first audio symptom needs a controlled repeat
+after permissions are already granted; incoming video/physical frame quality is
+not independently measured. The owned PNG is selected in NSOpenPanel, but Open
+remains disabled in the UI bridge and later Cancel times out; it is not submitted
+and no photo-delivery claim is made. Actual message/file exchange above is proven;
+real S3 export and peer-side deletion retention remain unverified. Synthetic
+Postbox/PostgreSQL retention tests do not replace those real-account observations.
+Location imagery/live interaction/outbound location and non-user blocked-peer
+names/mutations remain the explicit reference gaps. The frozen source reviews
+approve their implementation scopes, not these unperformed UI scenarios.
+
+## Completed locally: MainActor/service boundaries — 2026-10-14
+
+MainActor coordinates presentation, approvals, commands and service-state
+aggregation. Contacts and Telegram own their processing executors; future mail
+and other adapters must follow the same boundary. See
+[main-thread-boundaries.md](main-thread-boundaries.md) and architecture ADR004.
+
+The risk-focused source audit covers289 Telegram and122 App/Core/C bridge
+sources, plus the changed startup and worker increments. Contacts configuration,
+SQL/imports/duplicates, session/proxy Keychain work, native callback construction,
+chat/history projection, upload hashing/validation/recovery, image/avatar/
+wallpaper preparation, native call commands and frame conversion have explicit
+worker boundaries. Native actor checks stay enabled. The review does not claim
+proof of every third-party runtime path or a measured maximum latency.
+
+Independent native and UI/Core reviews approve their scopes. Two important
+review findings have real regression evidence: candidate-cover ownership now
+survives account replacement/deinit through durable acknowledgement and retains
+failed detached retries against the original store; frame publication accepts
+completed work while coalescing waiting input, preventing overload starvation.
+PostgreSQL atomicity, indefinite message retention and the per-chat ban on every
+new S3 copy are preserved. Active-call device switching and local passcode/
+autolock remain excluded.
+
+Final `scripts/dev-db.sh up`, `scripts/test.sh`, `scripts/build-app.sh` and strict
+signed/native-artifact verification exit0. The full suite is2418XCTest
+(2293Telegram+125Core),one microphone-precondition skip,zero failures;
+116Python tests across24suites and both native encrypted loopback media fixtures
+pass. Focused checks include130 integrated worker tests,71 upload/cover cases
+and28 startup/callback/projection cases; these overlap the full suite and are
+not additive. No real Telegram account, send, call or physical capture is used.
+
+Actual signed QA uses a new explicit isolated PostgreSQL schema and synthetic
+common workspace. The common sidebar, ready empty Contacts screen, enabled
+contact editor and filled synthetic fields are observed. Save is attempted;
+a read-only query against only that schema confirms one committed contact.
+The UI provider then reports “Sky Computer Use native pipe closed before
+response”. Rebinding and a fresh REPL session do not recover it. The QA process
+stays alive with no new crash report. Post-save presentation, notes and the
+remaining image/editor UI flows are therefore **not accepted by this run**;
+compilation, persisted data and source review do not replace those observations.
+The owned QA process is stopped after recording evidence. `scripts/run.sh` rebuilds and launches the updated ordinary bundle (exit0).
+Its process remains alive without a new crash report; personal UI fields are
+not read. Final canonical XERJ refresh and freshness check exit0,966files/884code.
+Prepared engine freshness is confirmed (727files/692code; saved index exit0).
+Reference freshness is confirmed; its saved index remains partial exit3
+(3017files/2412code), not a newly successful full index. Final scoped queries
+are confirmed against source, and diff whitespace validation passes.
+
+Failed/interrupted attempts remain private raw evidence: the193-test selection
+has one unloaded-history fixture timeout (its corrected two-test projection
+passes); renderer and real cover-lifetime RED assertions reproduce both review
+findings; full gate b has one fast native-fixture teardown failure. Both account
+fixtures now await a nonisolated Postbox transaction barrier and new MediaBox
+initialization before return. The exact Cocoa513/POSIX1 removal cause remains an
+OS-level inference; final full gate c passes. Earlier stopped full/index runs
+retain actual SIGTERM exits (-15), never PASS. QR/2FA gates below describe older
+snapshots. Stable real authorized startup still requires user-entered acceptance
+on the updated normal bundle; personal contents and credentials are not read.
+
+## Authorized startup queue repair — 2026-10-14
+
+The user's next normal-bundle report reaches authorized startup and traps in
+TelegramAccountCallEngine.incoming's actor-inherited map closure, emitted by
+CallSessionManager's background queue. A real encrypted native synthetic account
+reproduces that exact actor-assert stack without credentials or a call. Native
+call peer/incoming/signaling transformations now live in nonisolated helpers;
+the existing provider retains main-actor delivery for presentation. A full
+native model-startup regression then reveals the same defect in unread-counter
+mapping. That controller now receives counters on the main queue before mapping.
+
+Ten native startup/lifecycle regressions pass, including both actor boundaries,
+a missing call peer, state-kind transition, cache-view startup and disconnect.
+The related calls/notifications focused set is93tests,zero failures. Intermediate
+test compilation, incoming fatal RED and subsequent full-startup notification
+fatal RED remain private failed evidence. No actor/runtime checks are disabled.
+The synthetic cache's server-history hole is observed without requiring network
+synchronization through its deliberately closed loopback proxy.
+
+Normal rebuild/relaunch and the final full gate are in progress. The earlier
+2327-test QR/2FA verification below describes that prior local snapshot; the
+normal process subsequently crashed and does not prove current real acceptance.
+Real stable authorized startup still needs verification on the updated bundle.
+Personal dialogs, passwords and physical capture devices are not inspected.
 
 ## Completed locally: QR/2FA login repairs — 2026-10-14
 

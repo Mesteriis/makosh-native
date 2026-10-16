@@ -30,7 +30,7 @@ extension TelegramMessage {
     }
 }
 
-@MainActor func telegramMessagePreview(_ message: Message?) -> String {
+nonisolated func telegramMessagePreview(_ message: Message?) -> String {
     guard let message else { return "" }
     let entities = message.attributes.compactMap { $0 as? TextEntitiesMessageAttribute }.flatMap(\.entities)
     guard let value = try? telegramFormattedText(text: message.text, entities: entities) else {

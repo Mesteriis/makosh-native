@@ -70,14 +70,8 @@ private func secretCreation(account: Account, peerID: Int64) -> Signal<TelegramS
             guard case let .success(fresh) = result else { _ = receive(.failed(.failed)); return }
             guard fresh == basis, fresh.canCreate else { _ = receive(.failed(.changed)); return }
             guard receive(.committing), !request.stopped else { request.cancel(); return }
-            let creation = TelegramEngine(account: account).peers.createSecretChat(peerId: PeerId(basis.peerID))
-                |> mapError { error -> TelegramSecretChatError in
-                    switch error { case .generic: return .uncertain; case .limitExceeded: return .limitExceeded; case .premiumRequired: return .premiumRequired }
-                } |> mapToSignal { id -> Signal<TelegramSecretSessionSnapshot, TelegramSecretChatError> in
-                    secretUnwrap(account.postbox.transaction {
-                        telegramSecretSessionSnapshot(transaction: $0, accountID: account.peerId.toInt64(), chatID: id.toInt64())
-                    })
-                }
+            let creation = telegramCreatedSecretSession(account: account,
+                creation: TelegramEngine(account: account).peers.createSecretChat(peerId: PeerId(basis.peerID)))
             request.start(creation) { result in
                 switch result { case let .success(value): _ = receive(.created(value)); case let .failure(error): _ = receive(.failed(error)) }
             }
@@ -88,9 +82,7 @@ private func secretCreation(account: Account, peerID: Int64) -> Signal<TelegramS
         let request = SecretNativeRequest()
         guard let id = telegramSecretPeerID(chatID) else { receive(.failure(.unavailable)); return request }
         let account = account
-        let signal = account.postbox.combinedView(keys: [.basicPeer(id), .peerChatState(peerId: id), .peer(peerId: id, components: [])])
-            |> mapToSignal { _ in account.postbox.transaction { telegramSecretSessionSnapshot(transaction: $0, accountID: account.peerId.toInt64(), chatID: chatID) } }
-            |> distinctUntilChanged |> deliverOnMainQueue
+        let signal = telegramObserveNativeSecretSession(account: account, chatID: chatID, id: id) |> deliverOnMainQueue
         request.disposable.add(signal.start(next: { [weak request] value in
             MainActor.assumeIsolated {
                 guard request?.stopped == false else { return }
@@ -101,24 +93,13 @@ private func secretCreation(account: Account, peerID: Int64) -> Signal<TelegramS
     }
     func setTTL(basis: TelegramSecretSessionSnapshot, timeout: Int32?, receive: @escaping @MainActor (TelegramSecretTTLEvent) -> Bool) -> any TelegramSecretChatRequest {
         let request = SecretNativeRequest(), account = account
-        guard basis.isValid, basis.canSetTTL, basis.accountID == accountID, let id = telegramSecretPeerID(basis.chatID),
+        guard basis.isValid, basis.canSetTTL, basis.accountID == accountID, telegramSecretPeerID(basis.chatID) != nil,
               timeout.map({ $0 > 0 }) ?? true, timeout != basis.ttl else { _ = receive(.failed(.unavailable)); return request }
-        request.start(secretUnwrap(account.postbox.transaction {
-            telegramSecretSessionSnapshot(transaction: $0, accountID: basis.accountID, chatID: basis.chatID)
-        })) { [weak request] result in
+        request.start(secretUnwrap(telegramNativeSecretSession(account: account, chatID: basis.chatID))) { [weak request] result in
             guard let request, !request.stopped else { return }
             guard case let .success(fresh) = result, fresh == basis else { _ = receive(.failed(.changed)); return }
             guard receive(.committing), !request.stopped else { request.cancel(); return }
-            let admitted = request.admitted
-            let queued = account.postbox.transaction { transaction -> TelegramSecretTTLReceipt? in
-                guard let timestamp = Int32(exactly: Int64(Date().timeIntervalSince1970.rounded(.down))),
-                      let message = makoshEnqueueSecretTTL(transaction: transaction, accountPeerId: account.peerId, peerId: id,
-                        timeout: timeout, timestamp: timestamp, isSupportUser: false, admission: { transaction in
-                            admitted.with { $0 } && telegramSecretSessionSnapshot(transaction: transaction, accountID: basis.accountID, chatID: basis.chatID) == basis
-                        }) else { return nil }
-                return .init(accountID: basis.accountID, chatID: basis.chatID, previousTTL: basis.ttl, timeout: timeout,
-                    sessionRevision: basis.revision, namespace: message.namespace, messageID: message.id)
-            }
+            let queued = telegramEnqueueNativeSecretTTL(account: account, basis: basis, timeout: timeout, admitted: request.admitted)
             request.start(secretUnwrap(queued)) { result in
                 switch result { case let .success(receipt): _ = receive(.queued(receipt)); case .failure: _ = receive(.failed(.uncertain)) }
             }
@@ -142,4 +123,41 @@ private func secretCreation(account: Account, peerID: Int64) -> Signal<TelegramS
     }
     func cancel() { stopped = true; _ = admitted.swap(false); disposable.dispose() }
     isolated deinit { _ = admitted.swap(false); disposable.dispose() }
+}
+
+nonisolated func telegramCreatedSecretSession(account: Account, creation: Signal<PeerId, CreateSecretChatError>) -> Signal<TelegramSecretSessionSnapshot, TelegramSecretChatError> {
+    return creation
+        |> mapError { error -> TelegramSecretChatError in
+            switch error { case .generic: return .uncertain; case .limitExceeded: return .limitExceeded; case .premiumRequired: return .premiumRequired }
+        } |> mapToSignal { id -> Signal<TelegramSecretSessionSnapshot, TelegramSecretChatError> in
+            secretUnwrap(account.postbox.transaction {
+                telegramSecretSessionSnapshot(transaction: $0, accountID: account.peerId.toInt64(), chatID: id.toInt64())
+            })
+        }
+}
+
+nonisolated func telegramNativeSecretSession(account: Account, chatID: Int64) -> Signal<TelegramSecretSessionSnapshot?, NoError> {
+    account.postbox.transaction {
+        telegramSecretSessionSnapshot(transaction: $0, accountID: account.peerId.toInt64(), chatID: chatID)
+    }
+}
+
+nonisolated func telegramObserveNativeSecretSession(account: Account, chatID: Int64, id: PeerId) -> Signal<TelegramSecretSessionSnapshot?, NoError> {
+    account.postbox.combinedView(keys: [.basicPeer(id), .peerChatState(peerId: id), .peer(peerId: id, components: [])])
+        |> mapToSignal { _ in telegramNativeSecretSession(account: account, chatID: chatID) }
+        |> distinctUntilChanged
+}
+
+nonisolated func telegramEnqueueNativeSecretTTL(account: Account, basis: TelegramSecretSessionSnapshot,
+    timeout: Int32?, admitted: Atomic<Bool>) -> Signal<TelegramSecretTTLReceipt?, NoError> {
+    guard let id = telegramSecretPeerID(basis.chatID) else { return .single(nil) }
+    return account.postbox.transaction { transaction -> TelegramSecretTTLReceipt? in
+        guard let timestamp = Int32(exactly: Int64(Date().timeIntervalSince1970.rounded(.down))),
+              let message = makoshEnqueueSecretTTL(transaction: transaction, accountPeerId: account.peerId, peerId: id,
+                timeout: timeout, timestamp: timestamp, isSupportUser: false, admission: { transaction in
+                    admitted.with { $0 } && telegramSecretSessionSnapshot(transaction: transaction, accountID: basis.accountID, chatID: basis.chatID) == basis
+                }) else { return nil }
+        return .init(accountID: basis.accountID, chatID: basis.chatID, previousTTL: basis.ttl, timeout: timeout,
+            sessionRevision: basis.revision, namespace: message.namespace, messageID: message.id)
+    }
 }

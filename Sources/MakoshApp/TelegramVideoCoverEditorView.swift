@@ -25,7 +25,10 @@ import MakoshTelegram
         crop = try TelegramUploadVideoCoverCrop(imageSize: CGSize(width: selection.preview.image.width, height: selection.preview.image.height),
             videoSize: CGSize(width: Int(video.width), height: Int(video.height)))
     }
-    isolated deinit { try? TelegramUploadVideoCoverIO.discardSelection(selection) }
+    isolated deinit {
+        let selection = selection
+        Task { try? await TelegramUploadVideoCoverIO.discardSelectionInBackground(selection) }
+    }
 }
 
 struct TelegramVideoCoverEditorView: View {
@@ -38,6 +41,7 @@ struct TelegramVideoCoverEditorView: View {
     @State private var canvasSize = CGSize.zero
     @State private var importing = false
     @State private var importTask: Task<Void, Never>?
+    @State private var copyTask: Task<Void, Never>?
     @State private var drawingEditor = false
     @State private var applying = false
     @State private var error: String?
@@ -106,7 +110,7 @@ struct TelegramVideoCoverEditorView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("telegram.upload.videoCoverEditor")
         .interactiveDismissDisabled(applying || importing)
-        .onDisappear { applyTask?.cancel(); importTask?.cancel() }
+        .onDisappear { applyTask?.cancel(); importTask?.cancel(); copyTask?.cancel() }
         .sheet(isPresented: $drawingEditor) {
             TelegramVideoCoverPaintingView(preview: presentation.selection.preview, transform: crop.transform,
                 painting: painting, save: { painting = $0 }, close: { drawingEditor = false })
@@ -121,8 +125,14 @@ struct TelegramVideoCoverEditorView: View {
     private func pasteImages() { startImport { try TelegramVideoCoverImageInput.pasteboard() } }
     private func copyImage() {
         guard let item = images.items.first(where: { $0.id == images.selectedID }) else { return }
-        do { try TelegramVideoCoverImageInput.copy(item) }
-        catch { self.error = "Не удалось скопировать вставку." }
+        copyTask?.cancel()
+        copyTask = Task { @MainActor in
+            do { try await TelegramVideoCoverImageInput.copy(item, isCurrent: {
+                upload.videoCoverEditingID == presentation.id && images.items.contains(where: { $0.id == item.id })
+            }) }
+            catch is CancellationError { }
+            catch { self.error = "Не удалось скопировать вставку." }
+        }
     }
     private func startImport(_ read: @escaping @MainActor () async throws -> TelegramVideoCoverImageInput.Input?) {
         guard !applying, !importing, !drawingEditor, canvasSize.width >= 1, canvasSize.height >= 1 else { return }
@@ -153,7 +163,7 @@ struct TelegramVideoCoverEditorView: View {
             do {
                 let cover = try await TelegramUploadVideoCoverIO.stage(selection, crop: rect, transform: transform, painting: painting, images: images)
                 guard !Task.isCancelled else { try? TelegramUploadVideoCoverIO.discardCover(cover); return }
-                if upload.commitVideoCover(cover, editID: id) { close() }
+                if await upload.commitVideoCover(cover, editID: id) { close() }
                 else {
                     try? TelegramUploadVideoCoverIO.discardCover(cover)
                     error = "Подготовка видео изменилась. Откройте выбор обложки заново."

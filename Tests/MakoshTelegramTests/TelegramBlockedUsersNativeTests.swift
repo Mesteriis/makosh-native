@@ -6,6 +6,21 @@ import SwiftSignalKit
 @testable import MakoshTelegram
 
 final class TelegramBlockedUsersNativeTests: XCTestCase {
+    func testNonUserBlockedPeersDoNotInvalidateUserMembershipOrRawPagination() {
+        var offsets: [Int32] = [], values: [TelegramBlockedUsersSnapshot] = [], errors: [TelegramPrivacyError] = []
+        let d = telegramLoadBlockedUsers(accountID: 1) { offset in
+            offsets.append(offset)
+            let peers: [Api.Peer] = offset == 0 ? [.peerUser(userId: 7), .peerChannel(channelId: 7)] : [.peerChat(chatId: 7)]
+            return .single(.blockedSlice(count: 3, blocked: peers.map { .peerBlocked(peerId: $0, date: 1) }, chats: [], users: []))
+        }.start(next: { values.append($0) }, error: { errors.append($0) })
+        defer { d.dispose() }
+        XCTAssertEqual(offsets, [0, 2])
+        XCTAssertEqual(values.first?.users.map(\.id), [7])
+        XCTAssertEqual(values.first?.otherPeers.map(\.id), ["channel:7", "group:7"])
+        XCTAssertTrue(values.first?.isValid == true)
+        XCTAssertTrue(errors.isEmpty)
+    }
+
     static func user(_ id: Int64, min: Bool = false, hash: Int64? = 70) -> Api.User {
         .user(flags: (hash == nil ? 6 : 7) | (min ? 1 << 20 : 0), flags2: 0, id: id, accessHash: hash, firstName: "Synthetic", lastName: "Alice",
             username: nil, phone: nil, photo: nil, status: nil, botInfoVersion: nil, restrictionReason: nil,
@@ -38,7 +53,16 @@ final class TelegramBlockedUsersNativeTests: XCTestCase {
         XCTAssertNil(telegramBlockedPage(Self.page([0]), offset: 0))
         XCTAssertNil(telegramBlockedPage(Self.page([], total: 3), offset: 0))
         XCTAssertNil(telegramBlockedPage(Self.page([7], total: 10_001), offset: 0))
-        XCTAssertNil(telegramBlockedPage(.blocked(blocked: [.peerBlocked(peerId: .peerChat(chatId: 7), date: 1)], chats: [], users: []), offset: 0))
+        XCTAssertEqual(telegramBlockedPage(.blocked(blocked: [.peerBlocked(peerId: .peerChat(chatId: 7), date: 1)], chats: [], users: []), offset: 0)?.otherPeers.map(\.id), ["group:7"])
+    }
+    func testNonUserPeersStillRejectInvalidIDsAndRepeatedPages() {
+        XCTAssertNil(telegramBlockedPage(.blocked(blocked: [.peerBlocked(peerId: .peerChannel(channelId: 0), date: 1)], chats: [], users: []), offset: 0))
+        var errors: [TelegramPrivacyError] = [], values: [TelegramBlockedUsersSnapshot] = []
+        let d = telegramLoadBlockedUsers(accountID: 1) { _ in
+            .single(.blockedSlice(count: 2, blocked: [.peerBlocked(peerId: .peerChannel(channelId: 7), date: 1)], chats: [], users: []))
+        }.start(next: { values.append($0) }, error: { errors.append($0) })
+        defer { d.dispose() }
+        XCTAssertTrue(values.isEmpty); XCTAssertEqual(errors, [.failed])
     }
     func testCompletePaginationUsesRawOffsetsAndRefusesRepeatedOrMovingPages() {
         for mode in 0...2 {

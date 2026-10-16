@@ -41,7 +41,7 @@ public struct TelegramMessagePresentationKey: Equatable, Sendable {
         return raw.count > 15 ? String(raw.prefix(15)) + "…" : raw
     }
 
-    public static func plainText(_ value: TelegramFormattedText, revealingSpoilers: Bool = false) -> String {
+    nonisolated public static func plainText(_ value: TelegramFormattedText, revealingSpoilers: Bool = false) -> String {
         let hidden = revealingSpoilers ? [] : mergedSpoilers(value.entities)
         var units = Array(value.text.utf16)
         for range in hidden {
@@ -113,7 +113,7 @@ public struct TelegramMessagePresentationKey: Equatable, Sendable {
         return NSAttributedString(attributedString: result)
     }
 
-    private static func mergedSpoilers(_ entities: [TelegramTextEntity]) -> [NSRange] {
+    nonisolated private static func mergedSpoilers(_ entities: [TelegramTextEntity]) -> [NSRange] {
         let ranges = entities.compactMap { entity -> NSRange? in
             guard case .spoiler = entity.kind else { return nil }
             return NSRange(location: entity.offset, length: entity.length)

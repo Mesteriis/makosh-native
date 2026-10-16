@@ -244,8 +244,9 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
             let controller = TelegramUploadController()
             controller.bind(provider: SourceFactsPickerProvider(), recoveryStore: store, requiresRecovery: true)
             defer { controller.clear() }
-            XCTAssertTrue(controller.restore(draft: frozen, items: restored, target: fixture.target,
-                restorationEpoch: controller.recoveryRestoreEpoch))
+            let restoredUpload1 = await controller.restore(draft: frozen, items: restored, target: fixture.target,
+                restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertTrue(restoredUpload1)
             XCTAssertEqual(controller.presentation, .media); XCTAssertTrue(controller.canSwitchPresentation)
             XCTAssertTrue(controller.canGroupItems); XCTAssertTrue(controller.isGrouped)
             XCTAssertFalse(controller.canUseMediaOptions); XCTAssertFalse(controller.isVisualMedia)
@@ -335,8 +336,9 @@ private nonisolated func sourceFactsNativeEnqueue(_ box: Postbox, receipt: Teleg
         let restored = try await store.restoreItems(draft: removed), controller = TelegramUploadController()
         controller.bind(provider: SourceFactsPickerProvider(), recoveryStore: store, requiresRecovery: true)
         defer { controller.clear() }
-        XCTAssertTrue(controller.restore(draft: removed, items: restored, target: fixture.target,
-            restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload2 = await controller.restore(draft: removed, items: restored, target: fixture.target,
+            restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload2)
         XCTAssertEqual(controller.presentation, .file); XCTAssertFalse(controller.canSwitchPresentation)
         XCTAssertEqual(try fixture.localRecords().count, 2)
     }

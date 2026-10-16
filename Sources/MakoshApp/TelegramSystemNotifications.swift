@@ -16,6 +16,21 @@ func telegramNotificationIDsToClear(_ observed: [String], keeping current: Set<S
     observed.filter { $0.hasPrefix("makosh.telegram.") && !current.contains($0) }
 }
 
+struct ApplicationNotificationWindowState: Sendable {
+    var applicationActive: Bool
+    var hasWindow: Bool
+    var key: Bool
+    var visible: Bool
+    var miniaturized: Bool
+}
+
+func applicationNotificationWindowIsActive(_ state: ApplicationNotificationWindowState) -> Bool {
+    state.applicationActive && state.hasWindow && state.key && state.visible && !state.miniaturized
+}
+
+typealias TelegramNotificationWindowState = ApplicationNotificationWindowState
+func telegramNotificationWindowIsActive(_ state:TelegramNotificationWindowState) -> Bool { applicationNotificationWindowIsActive(state) }
+
 @MainActor final class TelegramSystemNotifications: NSObject, ObservableObject {
     @Published private(set) var authorization = UNAuthorizationStatus.notDetermined
     @Published private(set) var status: String?
@@ -38,16 +53,29 @@ func telegramNotificationIDsToClear(_ observed: [String], keeping current: Set<S
     private let controller: TelegramNotificationController
     private weak var router: TelegramSystemNotificationRouter?
     private var registration: UUID?
-    weak var window: NSWindow?
-    private let center = UNUserNotificationCenter.current()
+    weak var window: NSWindow? {
+        didSet {
+            guard oldValue !== window else { return }
+            observeWindow(); updateEnvironment()
+        }
+    }
+    private let center: any TelegramSystemNotificationCenter
+    private let windowState: (@MainActor () -> TelegramNotificationWindowState)?
     private var subscriptions = Set<AnyCancellable>()
     private var observers: [NSObjectProtocol] = []
+    private var windowObservers: [NSObjectProtocol] = []
     private var screenLocked = false
     private var revision = UUID(), authorizationRevision = UUID()
     private var submitted = Set<String>(), submittedOrder: [String] = []
+    private var pendingDeliveries: [TelegramNotificationDelivery] = []
+    private var checkingAuthorization = false
+    private var attemptedAuthorization = false
     private static let prefix = "makosh.telegram."
-    init(controller: TelegramNotificationController) {
+    init(controller: TelegramNotificationController, center: any TelegramSystemNotificationCenter = UNUserNotificationCenter.current(),
+         windowState: (@MainActor () -> TelegramNotificationWindowState)? = nil) {
         self.controller = controller
+        self.center = center
+        self.windowState = windowState
         super.init()
         let notifications = NotificationCenter.default
         for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
@@ -64,6 +92,7 @@ func telegramNotificationIDsToClear(_ observed: [String], keeping current: Set<S
         updateEnvironment(); refreshAuthorization()
     }
     isolated deinit {
+        for observer in windowObservers { NotificationCenter.default.removeObserver(observer) }
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
             DistributedNotificationCenter.default().removeObserver(observer)
@@ -73,21 +102,40 @@ func telegramNotificationIDsToClear(_ observed: [String], keeping current: Set<S
         center.removeDeliveredNotifications(withIdentifiers: Array(submitted))
     }
     func attach(_ router: TelegramSystemNotificationRouter) {
+        updateEnvironment()
         guard registration == nil else { return }
         self.router = router
         registration = router.registry.register(controller) { [weak self] in
             NSApp.activate(ignoringOtherApps: true); self?.window?.makeKeyAndOrderFront(nil)
         }
+        router.$authorizationRequesting.dropFirst().sink { [weak self] inProgress in
+            if !inProgress { self?.checkPendingAuthorization() }
+        }.store(in: &subscriptions)
         controller.$clearRequest.sink { [weak self] _ in self?.clear() }.store(in: &subscriptions)
         controller.$delivery.compactMap { $0 }.sink { [weak self] in self?.deliver($0) }.store(in: &subscriptions)
     }
     private func updateEnvironment() {
-        controller.setPresentationEnvironment(active: NSApp.isActive, locked: screenLocked)
+        let state = windowState?() ?? .init(applicationActive: NSApp?.isActive ?? false, hasWindow: window != nil,
+            key: window?.isKeyWindow ?? false, visible: window?.isVisible ?? false, miniaturized: window?.isMiniaturized ?? false)
+        controller.setPresentationEnvironment(active: telegramNotificationWindowIsActive(state), locked: screenLocked)
+    }
+    private func observeWindow() {
+        let notifications = NotificationCenter.default
+        for observer in windowObservers { notifications.removeObserver(observer) }
+        windowObservers = []
+        guard let window else { return }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+                     NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
+                     NSWindow.didChangeOcclusionStateNotification, NSWindow.didUpdateNotification] {
+            windowObservers.append(notifications.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateEnvironment() }
+            })
+        }
     }
     func refreshAuthorization() {
         let token = UUID(); authorizationRevision = token
-        center.getNotificationSettings { [weak self] settings in
-            let raw = settings.authorizationStatus.rawValue
+        center.getAuthorizationStatus { [weak self] status in
+            let raw = status.rawValue
             Task { @MainActor in
                 guard let self, self.authorizationRevision == token, let value = UNAuthorizationStatus(rawValue: raw) else { return }
                 self.authorization = value
@@ -96,14 +144,21 @@ func telegramNotificationIDsToClear(_ observed: [String], keeping current: Set<S
     }
     func requestAuthorization() {
         guard !requesting else { return }
+        guard router?.beginAuthorizationRequest() != false else { return }
+        attemptedAuthorization = true
+        router?.authorizationAttempted = true
         requesting = true; status = nil
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+        authorizationRevision = UUID()
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self, weak router = router] granted, error in
             let failed = error != nil
             Task { @MainActor in
+                router?.finishAuthorizationRequest()
                 guard let self else { return }
                 self.requesting = false
                 self.status = failed ? "macOS не завершила запрос разрешения." : granted ? "Системные уведомления разрешены." : "Уведомления выключены в настройках macOS."
+                if failed || !granted { self.pendingDeliveries = [] }
                 self.refreshAuthorization()
+                if !failed && granted { self.checkPendingAuthorization() }
             }
         }
     }
@@ -111,8 +166,47 @@ func telegramNotificationIDsToClear(_ observed: [String], keeping current: Set<S
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) }
     }
     private func deliver(_ delivery: TelegramNotificationDelivery) {
+        updateEnvironment()
         guard controller.canPresent(identifier: delivery.id), let sourceKey = delivery.sourceKey,
               router?.registry.admitDelivery(controller: controller, identity: sourceKey) == true else { return }
+        pendingDeliveries.append(delivery)
+        if pendingDeliveries.count > 100 { pendingDeliveries.removeFirst() }
+        checkPendingAuthorization()
+    }
+    private func checkPendingAuthorization() {
+        guard !pendingDeliveries.isEmpty, !checkingAuthorization, !requesting else { return }
+        checkingAuthorization = true
+        let token = revision
+        center.getAuthorizationStatus { [weak self] authorization in
+            Task { @MainActor in
+                guard let self, self.revision == token else { return }
+                self.checkingAuthorization = false
+                self.authorization = authorization
+                // Account, privacy and presentation state may change while macOS is responding.
+                self.updateEnvironment()
+                self.pendingDeliveries.removeAll { !self.controller.canPresent(identifier: $0.id) }
+                guard !self.pendingDeliveries.isEmpty else { return }
+                switch authorization {
+                case .authorized, .provisional:
+                    let deliveries = self.pendingDeliveries; self.pendingDeliveries = []
+                    for delivery in deliveries { self.submit(delivery) }
+                case .notDetermined:
+                    if self.router?.authorizationRequesting == true { break }
+                    else if self.attemptedAuthorization || self.router?.authorizationAttempted == true {
+                        self.pendingDeliveries = []
+                    } else {
+                        self.requestAuthorization()
+                    }
+                default:
+                    self.pendingDeliveries = []
+                    self.status = "Уведомления выключены в настройках macOS."
+                }
+            }
+        }
+    }
+    private func submit(_ delivery: TelegramNotificationDelivery) {
+        updateEnvironment()
+        guard controller.canPresent(identifier: delivery.id) else { return }
         let identifier = Self.prefix + delivery.id, token = revision
         submitted.insert(identifier); submittedOrder.append(identifier)
         if submittedOrder.count > 100 {
@@ -125,17 +219,19 @@ func telegramNotificationIDsToClear(_ observed: [String], keeping current: Set<S
             let failed = error != nil
             Task { @MainActor in
                 guard let self else { return }
+                self.updateEnvironment()
                 guard self.revision == token, self.controller.canPresent(identifier: delivery.id) else {
                     self.center.removePendingNotificationRequests(withIdentifiers: [identifier])
                     self.center.removeDeliveredNotifications(withIdentifiers: [identifier]); return
                 }
                 if failed { self.status = "macOS не приняла уведомление. Проверьте системные разрешения." }
-                else if delivery.bounce && !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+                else if delivery.bounce && NSApp?.isActive == false { NSApp?.requestUserAttention(.informationalRequest) }
             }
         }
     }
     private func clear() {
         revision = UUID()
+        pendingDeliveries = []; checkingAuthorization = false
         let old = Array(submitted); submitted = []; submittedOrder = []
         center.removePendingNotificationRequests(withIdentifiers: old)
         center.removeDeliveredNotifications(withIdentifiers: old)

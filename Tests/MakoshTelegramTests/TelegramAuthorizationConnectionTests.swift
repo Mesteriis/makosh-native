@@ -1,5 +1,5 @@
 import XCTest
-import TelegramCore
+@testable import TelegramCore
 import Postbox
 import SwiftSignalKit
 import OpenSSLEncryption
@@ -19,7 +19,7 @@ import OpenSSLEncryption
 
     func testOpeningLoginResumesTheNativeUnauthorizedConnection() async throws {
         let account = try await fixture().account
-        let model = try modelFixture()
+        let model = try await modelFixture()
         defer { model.disconnect() }
         model.observeUnauthorized(account, token: UUID())
         let active = try await keepsConnection(account)
@@ -28,7 +28,7 @@ import OpenSSLEncryption
 
     func testDisconnectStopsTheNativeUnauthorizedConnection() async throws {
         let account = try await fixture().account
-        let model = try modelFixture()
+        let model = try await modelFixture()
         model.observeUnauthorized(account, token: UUID())
         let active = try await keepsConnection(account)
         XCTAssertTrue(active)
@@ -39,7 +39,7 @@ import OpenSSLEncryption
 
     func testReplacingLoginStopsOldNetworkAndResumesNewNetwork() async throws {
         let old = try await fixture().account, next = try await fixture().account
-        let model = try modelFixture()
+        let model = try await modelFixture()
         defer { model.disconnect() }
         model.observeUnauthorized(old, token: UUID())
         let oldActive = try await keepsConnection(old)
@@ -55,7 +55,7 @@ import OpenSSLEncryption
 
     func testModelReleaseStopsTheNativeUnauthorizedConnection() async throws {
         let account = try await fixture().account
-        var model: TelegramModel? = try modelFixture()
+        var model: TelegramModel? = try await modelFixture()
         model?.observeUnauthorized(account, token: UUID())
         let active = try await keepsConnection(account)
         XCTAssertTrue(active)
@@ -72,6 +72,170 @@ import OpenSSLEncryption
     }
 
     func testAuthorizationTransitionReopensOnlyAfterTheStateTransactionCommits() async throws {
+        let account = try await authorizedFixture()
+        XCTAssertEqual(account.peerId.toInt64(), 123)
+        let persisted = try await telegramDataValue(account.postbox.stateView(), test: self)
+        XCTAssertTrue(persisted.state is AuthorizedAccountState)
+    }
+
+    func testAuthorizedStartupOrdersNativeStateOperationsAfterInitialSync() async throws {
+        let account = try await authorizedFixture(), model = try await modelFixture()
+        defer { model.disconnect() }
+        model.observeAuthorized(account, token: model.generation)
+        let premature = expectation(description: "State operation must wait for initial server cursor")
+        premature.isInverted = true
+        let operation = (Self.nativeStateBarrier(account) |> deliverOnMainQueue).start(next: { _ in premature.fulfill() })
+        defer { operation.dispose() }
+        await fulfillment(of: [premature], timeout: 0.5)
+        let stored = try await telegramDataValue(account.postbox.stateView(), test: self)
+        XCTAssertNil((stored.state as? AuthorizedAccountState)?.state)
+        XCTAssertEqual(model.phase, .ready)
+    }
+
+    func testAuthorizedStartupQueuesUpdateGroupsBeforeInitialCursor() async throws {
+        let account = try await authorizedFixture(), model = try await modelFixture()
+        defer { model.disconnect() }
+        model.observeAuthorized(account, token: model.generation)
+        Self.injectInitialUpdateGroup(account)
+        let premature = expectation(description: "Queued updates must wait for initial server cursor")
+        premature.isInverted = true
+        let operation = (Self.nativeStateBarrier(account) |> deliverOnMainQueue).start(next: { _ in premature.fulfill() })
+        defer { operation.dispose() }
+        await fulfillment(of: [premature], timeout: 0.5)
+        let stored = try await telegramDataValue(account.postbox.stateView(), test: self)
+        XCTAssertNil((stored.state as? AuthorizedAccountState)?.state)
+    }
+
+    nonisolated private static func nativeStateBarrier(_ account: Account) -> Signal<Bool, NoError> {
+        account.stateManager.addCustomOperation(.single(true))
+    }
+
+    nonisolated private static func injectInitialUpdateGroup(_ account: Account) {
+        account.stateManager.addUpdateGroups([.reset])
+    }
+
+    func testNativeIncomingCallObservationAcceptsTheBackgroundInitialSnapshot() async throws {
+        let account = try await authorizedFixture()
+        let engine = TelegramAccountCallEngine(account: account)
+        let received = expectation(description: "Native empty incoming-call snapshot")
+        let subscription = (engine.incoming() |> take(1) |> deliverOnMainQueue).start(next: { calls in
+            XCTAssertTrue(calls.isEmpty); received.fulfill()
+        }, error: { _ in XCTFail("Native empty incoming-call observation failed"); received.fulfill() })
+        defer { subscription.dispose() }
+        await fulfillment(of: [received], timeout: 10)
+    }
+
+    func testNativeMissingCallPeerFailsWithoutActorViolationOrNetworkRequest() async throws {
+        let account = try await authorizedFixture()
+        let engine = TelegramAccountCallEngine(account: account)
+        let refused = expectation(description: "Missing synthetic call peer")
+        let subscription = (engine.peer(777) |> deliverOnMainQueue).start(next: { _ in
+            XCTFail("Missing peer unexpectedly admitted"); refused.fulfill()
+        }, error: { error in XCTAssertEqual(error, .unavailable); refused.fulfill() })
+        defer { subscription.dispose() }
+        await fulfillment(of: [refused], timeout: 10)
+    }
+
+    func testNativeNotificationBindingReceivesBackgroundUnreadCounters() async throws {
+        let account = try await authorizedFixture()
+        let name = "makosh-native-notifications-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let controller = TelegramNotificationController(defaults: defaults)
+        controller.bind(account: account)
+        defer { controller.bind(account: nil) }
+        let received = expectation(description: "Native initial unread counters")
+        let observation = controller.$badgeCount.dropFirst().prefix(1).sink { count in
+            XCTAssertEqual(count, 0); received.fulfill()
+        }
+        defer { observation.cancel() }
+        await fulfillment(of: [received], timeout: 10)
+        XCTAssertNil(controller.delivery)
+        XCTAssertEqual(controller.accountID, 123)
+    }
+
+    func testNativeMediaBoxFetchFallsBackToTheLocalResourceFetcher() async throws {
+        let account = try await authorizedFixture()
+        setupAccount(account)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-native-fetch-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("synthetic.bin")
+        let bytes = Data("Synthetic native resource fallback".utf8)
+        try bytes.write(to: file)
+        let resource = LocalFileReferenceMediaResource(localFilePath: file.path, randomId: 777, size: Int64(bytes.count))
+        let subscription = (account.postbox.mediaBox.fetchedResource(resource, parameters: nil, implNext: true)
+            |> deliverOnMainQueue).start(error: { _ in XCTFail("Native local fetch failed") })
+        defer { subscription.dispose() }
+        let cached = try await telegramDataValue(account.postbox.mediaBox.resourceData(resource,
+            pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
+            |> deliverOnMainQueue |> filter { $0.complete }, test: self)
+        XCTAssertTrue(cached.complete)
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: cached.path)), bytes)
+        XCTAssertEqual(try Data(contentsOf: file), bytes)
+    }
+
+    func testOtherNativeAuxiliaryCallbacksRunOnTheEngineQueue() async throws {
+        let account = try await authorizedFixture()
+        let returned = expectation(description: "Native auxiliary callbacks")
+        returned.expectedFulfillmentCount = 3
+        Self.probeAuxiliary(account: account, returned: returned)
+        await fulfillment(of: [returned], timeout: 10)
+    }
+
+    func testNetworkVerificationAndForcedNoticeCallbacksRunOffMain() async throws {
+        let config = try TelegramAPIConfiguration(id: "1", hash: String(repeating: "0", count: 32))
+        let arguments = TelegramRuntime.networkArguments(configuration: config, proxySettings: .single(.defaultSettings))
+        let returned = expectation(description: "Native verification callbacks")
+        returned.expectedFulfillmentCount = 2
+        Self.probeVerification(arguments: arguments, returned: returned)
+        await fulfillment(of: [returned], timeout: 10)
+    }
+
+    nonisolated private static func probeAuxiliary(account: Account, returned: XCTestExpectation) {
+        Queue.concurrentDefaultQueue().async {
+            let methods = account.auxiliaryMethods
+            XCTAssertNil(methods.prepareSecretThumbnailData(MediaResourceData(path: "/synthetic-unused", offset: 0, size: 0, complete: false)))
+            returned.fulfill()
+            _ = methods.fetchResourceMediaReferenceHash(EmptyMediaResource()).start(next: { hash in
+                XCTAssertNil(hash); returned.fulfill()
+            })
+            _ = methods.backgroundUpload(account.postbox, account.network, EmptyMediaResource()).start(next: { value in
+                XCTAssertNil(value); returned.fulfill()
+            })
+        }
+    }
+
+    nonisolated private static func probeVerification(arguments: NetworkInitializationArguments, returned: XCTestExpectation) {
+        Queue.concurrentDefaultQueue().async {
+            XCTAssertNil(TelegramRuntime.forcedPasswordSetupNotice(7)); returned.fulfill()
+            _ = arguments.externalRecaptchaRequestVerification("synthetic", "synthetic").start(next: { _ in
+                XCTFail("Unsupported verification unexpectedly produced a token")
+            }, completed: { returned.fulfill() })
+        }
+    }
+
+    func testNativeAuthorizedModelStartupObservesEmptyCacheAndDisconnects() async throws {
+        let account = try await authorizedFixture()
+        let model = try await modelFixture()
+        defer { model.disconnect() }
+        model.observeAuthorized(account, token: model.generation)
+        XCTAssertEqual(model.phase, .ready)
+        // The empty native cache still contains a server-history hole. Wait
+        // for its first view; completing remote synchronization is unrelated
+        // to startup and deliberately unavailable through the closed proxy.
+        let loaded = expectation(description: "Native synthetic chat cache view")
+        let observation = model.$chatPage.dropFirst().prefix(1).sink { _ in loaded.fulfill() }
+        defer { observation.cancel() }
+        await fulfillment(of: [loaded], timeout: 10)
+        XCTAssertTrue(model.chats.isEmpty)
+        model.disconnect()
+        XCTAssertEqual(model.phase, .configuration)
+        let active = try await telegramDataValue(account.network.shouldKeepConnection.get(), test: self)
+        XCTAssertFalse(active)
+    }
+
+    private func authorizedFixture() async throws -> Account {
         let fixture = try await fixture()
         let opened = expectation(description: "Synthetic unauthorized account")
         let transitioned = expectation(description: "Synthetic authorized account")
@@ -94,9 +258,14 @@ import OpenSSLEncryption
         await fulfillment(of: [transitioned], timeout: 10)
         let account = try XCTUnwrap(authorized)
         XCTAssertEqual(account.id, fixture.account.id)
-        XCTAssertEqual(account.peerId.toInt64(), 123)
-        let persisted = try await telegramDataValue(account.postbox.stateView(), test: self)
-        XCTAssertTrue(persisted.state is AuthorizedAccountState)
+        // Authorization opens a new Postbox/MediaBox. Account.init queues the
+        // notification-key file write before exposing the account. Finish that
+        // transaction and lazy storage initialization before fast tests can
+        // remove their fixture directory.
+        _ = try await telegramDataValue(telegramCallbackInitializationBarrier(account.postbox), test: self)
+        _ = try await telegramDataValue(account.postbox.mediaBox.storageBox.all(), test: self)
+        _ = try await telegramDataValue(account.postbox.mediaBox.cacheStorageBox.all(), test: self)
+        return account
     }
 
     nonisolated private static func authorizeFixture(_ transaction: Transaction) {
@@ -110,14 +279,14 @@ import OpenSSLEncryption
         let current: Signal<AccountResult?, NoError>
     }
 
-    private func modelFixture() throws -> TelegramModel {
+    private func modelFixture() async throws -> TelegramModel {
         let store = TelegramProxyTestStore()
         let proxy = TelegramProxyController(vault: store.vault())
         let name = "makosh-auth-network-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         addTeardownBlock { defaults.removePersistentDomain(forName: name) }
         let model = TelegramModel(proxy: proxy, autoDownloadDefaults: defaults)
-        _ = try proxy.settingsForConnection(clientID: model.proxyClientID)
+        _ = try await proxy.settingsForConnection(clientID: model.proxyClientID)
         return model
     }
 
@@ -143,9 +312,7 @@ import OpenSSLEncryption
             externalRecaptchaRequestVerification: { _, _ in .complete() }, autolockDeadine: .single(nil),
             encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: "Synthetic Mac",
             useBetaFeatures: false, isICloudEnabled: false, makoshProxySettings: .single(proxy))
-        let auxiliary = AccountAuxiliaryMethods(fetchResource: { _, _, _, _ in nil },
-            fetchResourceMediaReferenceHash: { _ in .single(nil) }, prepareSecretThumbnailData: { _ in nil },
-            backgroundUpload: { _, _, _ in .single(nil) })
+        let auxiliary = TelegramRuntime.accountAuxiliaryMethods()
         let key = try XCTUnwrap(ValueBoxEncryptionParameters.Key(data: Data(repeating: 61, count: 32)))
         let salt = try XCTUnwrap(ValueBoxEncryptionParameters.Salt(data: Data(repeating: 62, count: 16)))
         let encryption = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: key, salt: salt)

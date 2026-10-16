@@ -64,7 +64,13 @@ enum TelegramCallMediaEvent {
     }
     private func fail() { guard !stopping else { return }; _ = receive(.failed(.failed)); stop(completed: {}) }
     private func consume(_ value: TelegramCallMediaDelivery) {
-        if case .released = value { nativeReleased = true; core = nil; completeIfReleased(); return }
+        if case .released = value {
+            nativeReleased = true; core = nil
+            // An asynchronous startup failure/early native release must also
+            // terminate the presentation, even if release coalesced its error.
+            if !stopping { fail() }
+            completeIfReleased(); return
+        }
         guard !stopping else { return }
         let event: TelegramCallMediaEvent
         switch value {

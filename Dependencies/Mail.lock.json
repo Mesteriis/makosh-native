@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "url": "https://github.com/moerdowo/MMail",
+    "revision": "69bf8c9b2436d7d000652f41362f8fdebf406599",
+    "license": "MIT"
+  },
+  "packages": [
+    {
+      "identity": "swift-atomics",
+      "url": "https://github.com/apple/swift-atomics.git",
+      "revision": "b601256eab081c0f92f059e12818ac1d4f178ff7",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "identity": "swift-collections",
+      "url": "https://github.com/apple/swift-collections.git",
+      "revision": "fea17c02d767f46b23070fdfdacc28a03a39232a",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "identity": "swift-nio",
+      "url": "https://github.com/apple/swift-nio",
+      "revision": "57c0a08a331aaea9f5d7a932ad94ef43be942a95",
+      "licenses": [
+        {
+          "path": "NOTICE.txt",
+          "sha256": "d25ed2452b3476c342082d11e4e8bf5459174d2836124f842b499850bcebc50e"
+        },
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "Sources/CNIOLLHTTP/LICENSE",
+          "sha256": "ebca854e0134cd256d673627c20499f42577eb74bacf08b9f25b626a73c91277"
+        }
+      ]
+    },
+    {
+      "identity": "swift-nio-imap",
+      "url": "https://github.com/apple/swift-nio-imap",
+      "revision": "01de1f9a29df31f77e87c2d9248940de7233ee1e",
+      "licenses": [
+        {
+          "path": "NOTICE.txt",
+          "sha256": "6f29dd1a27852835fdd71498cae17ce808ea5cf607e14d022943c718ad6db8d4"
+        },
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "identity": "swift-nio-ssl",
+      "url": "https://github.com/apple/swift-nio-ssl",
+      "revision": "3f337058ccd7243c4cac7911477d8ad4c598d4da",
+      "licenses": [
+        {
+          "path": "NOTICE.txt",
+          "sha256": "03e8ca5c65a3df21fe1ab48eef91bca7d370db56c290d8ef16eaaa09ba322abe"
+        },
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "identity": "swift-se0270-range-set",
+      "url": "https://github.com/apple/swift-se0270-range-set.git",
+      "revision": "7d6d7531d40e95f4e1e26f6565265be6df228911",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "identity": "swift-system",
+      "url": "https://github.com/apple/swift-system.git",
+      "revision": "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3"
+        }
+      ]
+    }
+  ],
+  "notices": [
+    {
+      "path": "Dependencies/Mail/MMail.MIT.notice",
+      "sha256": "811678f4d5cbadf9e67ffc723639fc5e36a77128368ebfca4b224c07c4ecaa42"
+    },
+    {
+      "path": "Dependencies/Mail/Aether-Courier.MIT.notice",
+      "sha256": "75386033fe89a8a1b8794573e0f13273459ebcf319024c08373aaff33def9aa3"
+    }
+  ],
+  "excludedProducts": [
+    "NIOSSL",
+    "CNIOBoringSSL"
+  ],
+  "tls": "Own NIO event-loop adapter over existing Apache-2.0 OpenSSL 3; peer certificate and hostname required.",
+  "portedFiles": [
+    {
+      "path": "Mail/IMAPService.swift",
+      "sha256": "079a7b8ea410633c103c3732d89740aa59bc88d1125785ab18482df983c84a7f"
+    },
+    {
+      "path": "Mail/SMTPService.swift",
+      "sha256": "79fcdaa501bc82de3751daac6a08d69ed24e53bd1b385735f319fac3c1c006c3"
+    },
+    {
+      "path": "Mail/MIME.swift",
+      "sha256": "9e6e7698eed5dc581de75dfc10c57b64242228bef785eaa29170e5ec9317ca7d"
+    },
+    {
+      "path": "Views/RichTextEditor.swift",
+      "sha256": "068829dcdd2fca934e7ef508395df8d3928d364c86b5b60cc64cd47a258d8b8f"
+    }
+  ],
+  "visualSource": {
+    "url": "https://github.com/ic3y808/aether-courier",
+    "revision": "8ab37e1da22363744be5d7b019f4300d8238d625",
+    "file": "Aether-Courier/Features/Reading/EmailBackdrop.swift",
+    "sha256": "d938064295408541bafa75cf3173661120f45a8fa0777057d40e9ea32d6c6acf"
+  }
+}

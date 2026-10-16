@@ -377,7 +377,7 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
             let recovered = try await store.restoreItems(draft: prepared)
             controller = TelegramUploadController()
             controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-            guard controller.restore(draft: prepared, items: recovered, target: target,
+            guard await controller.restore(draft: prepared, items: recovered, target: target,
                 restorationEpoch: controller.recoveryRestoreEpoch) else {
                 for item in recovered { try? item.discard() }
                 return XCTFail("Controller refused schema13 recovery")
@@ -434,7 +434,8 @@ private func roundQueueEnqueue(_ box: Postbox, receipt: TelegramUploadBatchEnque
         defer { for item in restored { try? item.discard() } }
         let controller = TelegramUploadController(), provider = RoundLocalQueueProvider(box, accountID: accountID)
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-        XCTAssertFalse(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload1 = await controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertFalse(restoredUpload1)
         controller.send(); XCTAssertEqual(provider.submissions, 0)
         let record = frozen.items[0].file
         let remote = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)

@@ -29,7 +29,7 @@ public struct TelegramAutoDownloadPreferences: Codable, Equatable, Sendable {
         switch attachment.kind {
         case .photo: kind = .photos
         case .file: kind = attachment.playback == .video || attachment.playback == .roundVideo ? .videos : .files
-        case .unsupported: return false
+        case .location, .unsupported: return false
         }
         return self[kind].peers.contains(peer) && size <= self[kind].limit
     }

@@ -103,12 +103,13 @@ import ImageIO
         let dropped = TelegramUploadController(), store = Store(), provider = Provider()
         dropped.discard = { _ in }
         dropped.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-        let restoredWithoutCover = dropped.restore(draft: draft, file: original, target: target, restorationEpoch: dropped.recoveryRestoreEpoch)
+        let restoredWithoutCover = await dropped.restore(draft: draft, file: original, target: target, restorationEpoch: dropped.recoveryRestoreEpoch)
         XCTAssertFalse(restoredWithoutCover, "Recovery must never drop the saved cover")
         let controller = TelegramUploadController()
         controller.discard = { _ in }
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload1 = await controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload1)
         let preview = try await TelegramUploadFileIO.preview(file)
         XCTAssertEqual(preview.image.width, 40); XCTAssertEqual(preview.image.height, 80)
         XCTAssertEqual(preview.originalSHA256, cover.sha256)
@@ -139,8 +140,10 @@ import ImageIO
             let wrong = TelegramUploadFile(id: file.id, name: file.name, size: file.size, mode: .video,
                 pixelWidth: file.pixelWidth, pixelHeight: file.pixelHeight, url: file.url, directory: file.directory,
                 video: .init(width: video.width, height: video.height, duration: video.duration, hasAudio: video.hasAudio, inCollage: false))
-            XCTAssertFalse(controller.restore(draft: draft, file: wrong, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
-            XCTAssertTrue(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            let restoredUpload2 = await controller.restore(draft: draft, file: wrong, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertFalse(restoredUpload2)
+            let restoredUpload3 = await controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertTrue(restoredUpload3)
             XCTAssertEqual(controller.file?.video, file.video)
             XCTAssertEqual(controller.captionInput, draft.captionInput)
             XCTAssertTrue(controller.captionAboveMedia); XCTAssertTrue(controller.mediaSpoiler)
@@ -266,7 +269,8 @@ import ImageIO
             }
             let controller = TelegramUploadController(), provider = Provider(), store = Store()
             controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-            XCTAssertTrue(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            let restoredUpload4 = await controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertTrue(restoredUpload4)
             XCTAssertTrue(controller.mediaSpoiler); XCTAssertTrue(controller.captionAboveMedia)
             XCTAssertEqual(controller.captionInput, draft.captionInput)
             XCTAssertEqual(controller.phase, unknown ? .uncertain : .ready)
@@ -462,7 +466,8 @@ import ImageIO
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         let file = TelegramUploadFile(id: id, name: draft.file.attachment.name, size: draft.file.plaintextByteCount,
             mode: .file, pixelWidth: nil, pixelHeight: nil, url: url, directory: directory)
-        XCTAssertTrue(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload5 = await controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload5)
         XCTAssertEqual(controller.phase, .uncertain); controller.send(); await drain()
         XCTAssertEqual(provider.calls, 0)
         controller.clear(); await drain()
@@ -480,10 +485,75 @@ import ImageIO
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         let file = TelegramUploadFile(id: id, name: draft.file.attachment.name, size: draft.file.plaintextByteCount,
             mode: .file, pixelWidth: nil, pixelHeight: nil, url: url, directory: directory)
-        XCTAssertFalse(controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload6 = await controller.restore(draft: draft, file: file, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertFalse(restoredUpload6)
         XCTAssertFalse(controller.canSend)
         controller.send(); await drain()
         XCTAssertEqual(provider.calls, 0)
         XCTAssertTrue(store.saves.isEmpty)
     }
+
+    // Catches accepting a cancelled recovery operation and taking its exported stage.
+    func testCancelledRestoreDoesNotPublishOrTakeStageOwnership() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("synthetic.txt")
+        try Data("synthetic recovery".utf8).write(to: source)
+        let file = try await TelegramUploadFileIO.stage(source, mode: .file)
+        defer { try? TelegramUploadFileIO.discard(file) }
+        let draft = try pendingUploadMutating(pendingUploadFixture()) {
+            var record = $0["file"] as! [String: Any], attachment = record["attachment"] as! [String: Any]
+            attachment["name"] = file.name; attachment["size"] = file.size
+            record["attachment"] = attachment; record["plaintextByteCount"] = file.size; $0["file"] = record
+        }
+        let controller = TelegramUploadController(), provider = Provider(), store = Store()
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        defer { controller.clear() }
+        let epoch = controller.recoveryRestoreEpoch
+        let operation = Task { await controller.restore(draft: draft, file: file, target: target, restorationEpoch: epoch) }
+        operation.cancel()
+        let restored = await operation.value
+        XCTAssertFalse(restored)
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertNil(controller.file)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path))
+        XCTAssertEqual(provider.calls, 0)
+    }
+
+
+    // Catches dropping the caller admission when the bundle forwards to a legacy file restore.
+    func testLegacyBundleRestoreRechecksAdmissionAfterDelayedValidation() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("synthetic.txt")
+        try Data("synthetic recovery".utf8).write(to: source)
+        let file = try await TelegramUploadFileIO.stage(source, mode: .file)
+        defer { try? TelegramUploadFileIO.discard(file) }
+        let draft = try pendingUploadMutating(pendingUploadFixture()) {
+            var record = $0["file"] as! [String: Any], attachment = record["attachment"] as! [String: Any]
+            attachment["name"] = file.name; attachment["size"] = file.size
+            record["attachment"] = attachment; record["plaintextByteCount"] = file.size; $0["file"] = record
+        }
+        let controller = TelegramUploadController(), provider = Provider(), store = Store(), gate = UploadValidationGate()
+        controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
+        defer { gate.release(); controller.clear() }
+        controller.willValidateUpload = { try gate.hold() }
+        var admitted = true
+        let epoch = controller.recoveryRestoreEpoch
+        let operation = Task {
+            await controller.restore(draft: draft, bundle: .init(items: [.init(id: draft.items[0].id, file: file)], archive: nil),
+                target: target, restorationEpoch: epoch, admission: { admitted })
+        }
+        let deadline = ContinuousClock.now + .seconds(3)
+        while !gate.started, ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertTrue(gate.started); XCTAssertFalse(gate.ranOnMain)
+        admitted = false; gate.release()
+        let restored = await operation.value
+        XCTAssertFalse(restored)
+        XCTAssertEqual(controller.phase, .idle); XCTAssertNil(controller.file)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path)); XCTAssertEqual(provider.calls, 0)
+    }
+
 }

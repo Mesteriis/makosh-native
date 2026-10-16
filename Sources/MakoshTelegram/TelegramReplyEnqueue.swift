@@ -45,7 +45,13 @@ nonisolated func telegramPrepareReplyMessage(postbox: Postbox, accountID: Int64,
     onApproved: @escaping @MainActor () -> Void = {}) -> Signal<[MessageId?]?, NoError> {
     telegramApprovedEnqueue(account: account, approval: approval,
         context: .init(accountID: account.peerId.toInt64(), chatID: source.chatID, threadID: source.threadID,
-            submissionRevision: UUID(), messageCount: 1), messages: [message], onApproved: onApproved, specificAdmission: {
-            telegramReplyEnqueueMessage(transaction: $0, accountID: account.peerId.toInt64(), source: source, formatted: formatted) != nil
-        })
+            submissionRevision: UUID(), messageCount: 1), messages: [message], onApproved: onApproved, specificAdmission:
+            telegramReplyAdmission(accountID: account.peerId.toInt64(), source: source, formatted: formatted))
+}
+
+nonisolated func telegramReplyAdmission(accountID: Int64, source: TelegramMessageActionSource,
+    formatted: TelegramFormattedText) -> (Transaction) -> Bool {
+    { transaction in
+        telegramReplyEnqueueMessage(transaction: transaction, accountID: accountID, source: source, formatted: formatted) != nil
+    }
 }

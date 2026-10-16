@@ -3,6 +3,7 @@ import AppKit
 import ImageIO
 import UniformTypeIdentifiers
 import MakoshTelegram
+import MakoshCore
 
 struct TelegramWallpaperBackground: View {
     let wallpaper: TelegramLocalWallpaper
@@ -18,7 +19,7 @@ struct TelegramWallpaperBackground: View {
             }.task(id:renderID) {
                 image = nil
                 let wallpaper = wallpaper, mask = preparedPattern
-                let loaded = await Task.detached(priority:.utility) { () -> CGImage? in
+                let loaded = try? await BackgroundWork.run { () -> CGImage? in
                     switch wallpaper {
                     case .automatic: return nil
                     case let .solid(color): return try? TelegramWallpaperRenderer.render(colors:.init(colors:[color]))
@@ -36,7 +37,7 @@ struct TelegramWallpaperBackground: View {
                               (1...2560).contains(width),(1...2560).contains(height) else { return nil }
                         return CGImageSourceCreateImageAtIndex(source,0,nil)
                     }
-                }.value
+                }
                 guard !Task.isCancelled else { return }; image = loaded
             }
         }.accessibilityHidden(true)
@@ -64,6 +65,7 @@ struct TelegramWallpaperEditor: View {
     @State private var error: String?
     @State private var busy = false
     @State private var preparationID = UUID()
+    @State private var saveTask: Task<Void, Never>?
     var body: some View {
         VStack(spacing:0) {
             HStack { Button("Отмена") { dismiss() }; Spacer(); Text("Фон чата").font(.headline); Spacer()
@@ -116,7 +118,7 @@ struct TelegramWallpaperEditor: View {
                 }
                 if appearanceRaw != expectedRaw { Text("Оформление изменено в другом окне. Закройте редактор и откройте его заново.").foregroundStyle(.red) }
                 if let error { Text(error).foregroundStyle(.red) }
-            }.formStyle(.grouped)
+            }.formStyle(.grouped).disabled(busy)
         }.frame(width:520,height:680)
             .onAppear {
                 guard let preferences = try? TelegramAppearancePreferences.decode(expectedRaw) else { error = "Настройки оформления повреждены."; return }
@@ -128,7 +130,7 @@ struct TelegramWallpaperEditor: View {
                 case let .pattern(value): mode = "colors"; colors = value.colors; patternName = value.name; intensity = Double(abs(value.intensity))
                 case let .image(name): mode = "image"; originalName = name
                 }
-            }.onDisappear { preparationID = UUID() }
+            }.onDisappear { preparationID = UUID(); saveTask?.cancel() }
     }
     private var draft: TelegramLocalWallpaper {
         switch mode {
@@ -184,12 +186,27 @@ struct TelegramWallpaperEditor: View {
     }
     private func save() {
         guard appearanceRaw == expectedRaw,!busy,!invalidColors else { error = "Проверьте HEX цветов и текущее оформление."; return }
-        do {
-            var preferences = try TelegramAppearancePreferences.decode(expectedRaw)
-            if mode == "image",let selectedData { preferences.wallpaper = .image(try TelegramWallpaperFiles.install(selectedData)) }
-            else if mode == "colors",let selectedPattern,patternName != nil { preferences.wallpaper = .pattern(.init(name:try TelegramWallpaperFiles.installPattern(selectedPattern),colors:colors,intensity:Int(intensity))) }
-            else { preferences.wallpaper = draft }
-            appearanceRaw = try preferences.encoded(); dismiss()
-        } catch { self.error = "Не удалось сохранить фон. Проверьте выбранное изображение и локальную папку приложения." }
+        let bytes = mode == "image" ? selectedData : mode == "colors" && patternName != nil ? selectedPattern : nil
+        let pattern = mode == "colors", colors = colors, strength = Int(intensity), fallback = draft
+        busy = true
+        saveTask = Task { @MainActor in
+            defer { busy = false; saveTask = nil }
+            var installed: String?
+            do {
+                var preferences = try TelegramAppearancePreferences.decode(expectedRaw)
+                if let bytes {
+                    let name = try await TelegramWallpaperFiles.installInBackground(bytes, pattern: pattern)
+                    installed = name
+                    preferences.wallpaper = pattern ? .pattern(.init(name: name, colors: colors, intensity: strength)) : .image(name)
+                } else { preferences.wallpaper = fallback }
+                guard !Task.isCancelled, appearanceRaw == expectedRaw else {
+                    if let installed { try? await TelegramWallpaperFiles.discardInstalled(installed) }; return
+                }
+                appearanceRaw = try preferences.encoded(); dismiss()
+            } catch {
+                if let installed { try? await TelegramWallpaperFiles.discardInstalled(installed) }
+                if !Task.isCancelled { self.error = "Не удалось сохранить фон. Проверьте выбранное изображение и локальную папку приложения." }
+            }
+        }
     }
 }

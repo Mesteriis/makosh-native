@@ -7,9 +7,10 @@ struct MergeReviewView: View {
     @State private var selectedCandidate: DuplicateCandidate?
     @State private var survivor: UUID?
     @State private var error: String?
+    @State private var submitting = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack { VStack(alignment: .leading, spacing: 5) { Text("Объединения").font(.title2.bold()); Text("Совпадение — повод проверить, решение принимаете вы.").foregroundStyle(.secondary) }; Spacer(); Button("Готово") { dismiss() } }
+            HStack { VStack(alignment: .leading, spacing: 5) { Text("Объединения").font(.title2.bold()); Text("Совпадение — повод проверить, решение принимаете вы.").foregroundStyle(.secondary) }; Spacer(); Button("Готово") { dismiss() }.disabled(submitting) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Возможные дубликаты · \(model.duplicates.count)").font(.headline)
@@ -19,7 +20,7 @@ struct MergeReviewView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("\(model.name(candidate.firstID))  ↔  \(model.name(candidate.secondID))").font(.headline)
                                 ForEach(candidate.reasons, id: \.self) { reason in Text(reason).font(.callout).foregroundStyle(.secondary) }
-                                Button("Проверить и объединить") { error = nil; survivor = nil; selectedCandidate = candidate }.accessibilityIdentifier("merge.review.\(candidate.id)")
+                                Button("Проверить и объединить") { error = nil; survivor = nil; selectedCandidate = candidate }.disabled(!model.canWrite || submitting).accessibilityIdentifier("merge.review.\(candidate.id)")
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                         }
                     }
@@ -30,13 +31,21 @@ struct MergeReviewView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 5) { Text("\(record.removedBefore.displayName) → \(record.survivorBefore.displayName)"); Text(record.mergedAt.formatted()).font(.caption).foregroundStyle(.secondary) }
                             Spacer()
-                            if record.undoneAt == nil { Button("Отменить объединение") { model.undo(record); if let message = model.error { error = message; model.error = nil } }.accessibilityIdentifier("merge.undo.\(record.id)") }
+                            if record.undoneAt == nil { Button("Отменить объединение") {
+                                guard model.canWrite, !submitting else { return }
+                                submitting = true
+                                Task {
+                                    defer { submitting = false }
+                                    _ = await model.undo(record)
+                                    if let message = model.error { error = message; model.error = nil }
+                                }
+                            }.disabled(!model.canWrite || submitting).accessibilityIdentifier("merge.undo.\(record.id)") }
                             else { Text("Отменено").font(.caption).foregroundStyle(.secondary) }
                         }.padding(.vertical, 6)
                     }
                 }.padding(4)
             }
-        }.padding(26).frame(width: 690, height: 560)
+        }.padding(26).frame(width: 690, height: 560).interactiveDismissDisabled(submitting)
         .sheet(item: $selectedCandidate) { candidate in
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Какую карточку сохранить?").font(.title2.bold())
@@ -52,9 +61,17 @@ struct MergeReviewView: View {
                         Text(model.name(candidate.firstID)).tag(Optional(candidate.firstID))
                         Text(model.name(candidate.secondID)).tag(Optional(candidate.secondID))
                     }.pickerStyle(.radioGroup).accessibilityIdentifier("merge.survivor")
-                    HStack { Button("Отмена") { selectedCandidate = nil }; Spacer(); Button("Подтвердить объединение") { if let survivor, model.merge(candidate, survivor: survivor) { selectedCandidate = nil } else { error = model.error; model.error = nil } }.buttonStyle(.borderedProminent).disabled(survivor == nil).accessibilityIdentifier("merge.confirm") }
+                    HStack { Button("Отмена") { selectedCandidate = nil }.disabled(submitting); Spacer(); Button("Подтвердить объединение") {
+                        guard let survivor, model.canWrite, !submitting else { return }
+                        submitting = true
+                        Task {
+                            defer { submitting = false }
+                            if await model.merge(candidate, survivor: survivor) { selectedCandidate = nil }
+                            else { error = model.error; model.error = nil }
+                        }
+                    }.buttonStyle(.borderedProminent).disabled(survivor == nil || !model.canWrite || submitting).accessibilityIdentifier("merge.confirm") }
                     if let error { Text(error).foregroundStyle(.red) }
-                }.padding(28).frame(width: 720)
+                }.padding(28).frame(width: 720).interactiveDismissDisabled(submitting)
         }
         .alert("Макош", isPresented: Binding(get: { error != nil && selectedCandidate == nil }, set: { if !$0 { error = nil } })) { Button("Понятно") { error = nil } } message: { Text(error ?? "") }
     }

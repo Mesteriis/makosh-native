@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Copy only Telegram API settings from a user-selected dotenv file, without eval."""
 import argparse
-import json
 import os
 from pathlib import Path
 import re
@@ -39,8 +38,11 @@ def install(configuration, destination):
         pending = Path(temporary.name)
         try:
             os.fchmod(temporary.fileno(), 0o600)
-            json.dump(configuration, temporary)
-            temporary.write("\n")
+            identifier, digest = configuration["apiID"], configuration["apiHash"]
+            if (not re.fullmatch(r"[0-9]{1,10}", identifier) or not 0 < int(identifier) <= 2147483647
+                    or not re.fullmatch(r"[0-9a-fA-F]{32}", digest)):
+                raise ValueError("Invalid Telegram API settings")
+            temporary.write(f"MAKOSH_TELEGRAM_API_ID={identifier}\nMAKOSH_TELEGRAM_API_HASH={digest}\n")
             temporary.flush()
             os.fsync(temporary.fileno())
             # Hard-link publication refuses an existing destination atomically.
@@ -52,13 +54,14 @@ def install(configuration, destination):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--from-env", type=Path, required=True)
-    parser.add_argument("--output", type=Path, default=Path.home() / "Library/Application Support/Makosh/telegram-api.json")
+    parser.add_argument("--output", type=Path,
+                        default=Path(__file__).resolve().parent.parent / ".local/telegram-build.env")
     args = parser.parse_args()
     try:
         install(read_api(args.from_env), args.output)
     except (OSError, UnicodeError, ValueError):
         raise SystemExit("Telegram API import failed. Check the selected settings and preserve any existing destination; no values were displayed.") from None
-    print("Telegram API settings installed with mode 0600. No account session was imported or opened.")
+    print("Telegram API build input installed with mode 0600. Rebuild the app; no account session was imported or opened.")
 
 
 if __name__ == "__main__":

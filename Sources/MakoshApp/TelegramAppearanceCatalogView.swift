@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
 import MakoshTelegram
+import MakoshCore
+import ImageIO
 
 struct TelegramAppearanceCatalogView: View {
     @ObservedObject var controller: TelegramAppearanceCatalogController
@@ -59,13 +61,15 @@ private struct TelegramCloudAppearancePreview: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var error: String?
+    @State private var applying = false
+    @State private var applyTask: Task<Void, Never>?
     private var palette: TelegramCloudPalette? { if case let .theme(value) = prepared.kind { return value }; return nil }
     private var previewScheme: ColorScheme { palette.map { $0.isDark ? .dark : .light } ?? colorScheme }
     private var current: Bool { controller.contextID == prepared.contextID && controller.prepared?.id == prepared.id && appearanceRaw == expectedRaw }
     var body: some View {
         VStack(spacing:16) {
             HStack { Button("Отмена") { dismiss() }; Spacer(); Text("Предпросмотр").font(.headline); Spacer()
-                Button("Применить",action:apply).disabled(!current).accessibilityIdentifier("telegram.catalog.apply")
+                Button("Применить",action:apply).disabled(!current || applying).accessibilityIdentifier("telegram.catalog.apply")
             }
             Text(prepared.choice.title).font(.title3)
             VStack(alignment:.leading,spacing:18) {
@@ -79,7 +83,7 @@ private struct TelegramCloudAppearancePreview: View {
         }.padding().frame(width:520,height:460)
             .tint(palette.map { telegramPaletteColor($0,"accent",$0.accent) } ?? .accentColor)
             .preferredColorScheme(palette.map { $0.isDark ? .dark : .light })
-            .onDisappear { if controller.prepared?.id == prepared.id { controller.cancelSelection() } }
+            .onDisappear { applyTask?.cancel(); if controller.prepared?.id == prepared.id { controller.cancelSelection() } }
     }
     private var outgoingStyle: AnyShapeStyle {
         guard let palette,!palette.outgoing.isEmpty else { return AnyShapeStyle(telegramDefaultBubbleColor(outgoing:true,scheme:previewScheme)) }
@@ -90,22 +94,57 @@ private struct TelegramCloudAppearancePreview: View {
         case let .theme(value): value.background.map { telegramPaletteColor(value,"background",$0) } ?? Color(nsColor:.windowBackgroundColor)
         case let .wallpaper(value): TelegramWallpaperBackground(wallpaper:value,fallback:Color(nsColor:.windowBackgroundColor))
         case let .pattern(value): TelegramWallpaperBackground(wallpaper:.pattern(.init(name:prepared.id.uuidString.lowercased()+".png",colors:value.colors,intensity:value.intensity)),fallback:Color(nsColor:.windowBackgroundColor),preparedPattern:value.data)
-        case let .image(data): if let image = NSImage(data:data) { Image(nsImage:image).resizable().scaledToFill() }
+        case let .image(data): TelegramPreparedWallpaperImage(data: data, id: prepared.id)
         default: Color(nsColor:.windowBackgroundColor)
         }
     }
     private func apply() {
-        guard current else { error = "Оформление изменилось. Откройте предпросмотр заново."; return }
-        do {
-            var preferences = try TelegramAppearancePreferences.decode(expectedRaw)
-            switch prepared.kind {
-            case let .theme(value): preferences.cloudPalette = value; preferences.wallpaper = .automatic
-            case let .wallpaper(value): preferences.wallpaper = value
-            case let .image(data): preferences.wallpaper = .image(try TelegramWallpaperFiles.install(data))
-            case let .pattern(value): preferences.wallpaper = .pattern(.init(name:try TelegramWallpaperFiles.installPattern(value.data),colors:value.colors,intensity:value.intensity))
-            default: throw TelegramAppearanceError.invalid
+        guard current, !applying else { error = "Оформление изменилось. Откройте предпросмотр заново."; return }
+        applying = true
+        applyTask = Task { @MainActor in
+            defer { applying = false; applyTask = nil }
+            var installed: String?
+            do {
+                var preferences = try TelegramAppearancePreferences.decode(expectedRaw)
+                switch prepared.kind {
+                case let .theme(value): preferences.cloudPalette = value; preferences.wallpaper = .automatic
+                case let .wallpaper(value): preferences.wallpaper = value
+                case let .image(data):
+                    let name = try await TelegramWallpaperFiles.installInBackground(data); installed = name
+                    preferences.wallpaper = .image(name)
+                case let .pattern(value):
+                    let name = try await TelegramWallpaperFiles.installInBackground(value.data, pattern: true); installed = name
+                    preferences.wallpaper = .pattern(.init(name: name, colors: value.colors, intensity: value.intensity))
+                default: throw TelegramAppearanceError.invalid
+                }
+                guard !Task.isCancelled, current else {
+                    if let installed { try? await TelegramWallpaperFiles.discardInstalled(installed) }; return
+                }
+                appearanceRaw = try preferences.encoded(); dismiss()
+            } catch {
+                if let installed { try? await TelegramWallpaperFiles.discardInstalled(installed) }
+                if !Task.isCancelled { self.error = "Не удалось сохранить оформление. Обновите каталог и повторите выбор." }
             }
-            appearanceRaw = try preferences.encoded(); dismiss()
-        } catch { self.error = "Не удалось сохранить оформление. Обновите каталог и повторите выбор." }
+        }
+    }
+}
+
+private struct TelegramPreparedWallpaperImage: View {
+    let data: Data
+    let id: UUID
+    @State private var image: CGImage?
+    var body: some View {
+        Group {
+            if let image { Image(decorative: image, scale: 1).resizable().scaledToFill() }
+            else { Color(nsColor: .windowBackgroundColor) }
+        }.task(id: id) {
+            image = nil
+            let value = try? await BackgroundWork.run {
+                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw TelegramAppearanceError.image }
+                return image
+            }
+            guard !Task.isCancelled else { return }; image = value
+        }
     }
 }

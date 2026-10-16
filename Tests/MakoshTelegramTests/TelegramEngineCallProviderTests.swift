@@ -40,7 +40,10 @@ import CoreVideo
         await fulfillment(of: [engine.requested], timeout: 2)
         return controller
     }
-    private func drain() async { await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } } }
+    private func drain() async {
+        for _ in 0..<20 { await Task.yield() }
+        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+    }
     func testAuthenticatedSessionOnlyStartsMediaAndTransportOnlyConnectsUI() async throws {
         let engine = CallEngineFixture(), factory = CallMediaFactoryFixture(), controller = try await start(engine, factory)
         XCTAssertEqual(controller.call?.phase, .requesting); XCTAssertTrue(factory.cores.isEmpty)
@@ -125,6 +128,67 @@ import CoreVideo
         XCTAssertEqual(factory.cores[0].stops, 1)
         factory.cores[0].inbox?.release(); await drain(); XCTAssertFalse(controller.isReleasingMedia)
     }
+    func testLateProxyLookupAfterAccountReplacementCannotCommitOrMutateNewCall() async throws {
+        let old = CallEngineFixture(), replacement = CallEngineFixture(), factory = CallMediaFactoryFixture()
+        let gate = CallProxyGate(blockOn: 1)
+        let controller = TelegramCallController(permissions: EngineCallPermissions())
+        controller.bind(TelegramEngineCallProvider(engine: old, proxy: { try await gate.read() }, media: factory))
+        controller.selectPeer(42)
+        XCTAssertTrue(controller.startOutgoing(basis: old.peerValue, video: false, contextID: controller.peerContextID))
+        await fulfillment(of: [gate.started], timeout: 2)
+        controller.bind(TelegramEngineCallProvider(engine: replacement, proxy: { nil }, media: factory))
+        controller.selectPeer(42)
+        XCTAssertTrue(controller.startOutgoing(basis: replacement.peerValue, video: false, contextID: controller.peerContextID))
+        await fulfillment(of: [replacement.requested], timeout: 2)
+        gate.release(throwing: TelegramProxyError.unavailable); await drain()
+        XCTAssertTrue(old.requests.isEmpty); XCTAssertTrue(old.dropped.isEmpty)
+        XCTAssertEqual(controller.call?.id, replacement.id); XCTAssertEqual(controller.call?.phase, .requesting)
+        XCTAssertTrue(factory.cores.isEmpty)
+        controller.end(callID: replacement.id)
+    }
+    func testTerminationDuringDelayedActiveProxyCheckRejectsLateMediaStart() async throws {
+        let engine = CallEngineFixture(), factory = CallMediaFactoryFixture(), gate = CallProxyGate(blockOn: 2)
+        let controller = TelegramCallController(permissions: EngineCallPermissions())
+        controller.bind(TelegramEngineCallProvider(engine: engine, proxy: { try await gate.read() }, media: factory))
+        controller.selectPeer(42)
+        XCTAssertTrue(controller.startOutgoing(basis: engine.peerValue, video: false, contextID: controller.peerContextID))
+        await fulfillment(of: [engine.requested], timeout: 2)
+        engine.emit(engine.active()); await fulfillment(of: [gate.started], timeout: 2)
+        engine.emit(.init(id: engine.id, stableId: nil, isOutgoing: true, type: .audio,
+            state: .dropping(reason: .ended(.hungUp)), isVideoPossible: true))
+        await drain(); gate.release(); await drain()
+        XCTAssertTrue(factory.cores.isEmpty); XCTAssertEqual(controller.call?.phase, .ended)
+        XCTAssertEqual(engine.dropped.count, 1)
+    }
+    func testActiveUpdatesAndWatchShareOneDelayedProxyLookup() async throws {
+        let engine = CallEngineFixture(), factory = CallMediaFactoryFixture(), gate = CallProxyGate(blockOn: 2)
+        let controller = TelegramCallController(permissions: EngineCallPermissions())
+        controller.bind(TelegramEngineCallProvider(engine: engine, proxy: { try await gate.read() }, media: factory))
+        controller.selectPeer(42)
+        XCTAssertTrue(controller.startOutgoing(basis: engine.peerValue, video: false, contextID: controller.peerContextID))
+        await fulfillment(of: [engine.requested], timeout: 2)
+        engine.emit(engine.active()); await fulfillment(of: [gate.started], timeout: 2)
+        for _ in 0..<20 { engine.emit(engine.active()) }
+        try await Task.sleep(for: .milliseconds(1100))
+        XCTAssertEqual(gate.reads, 2); XCTAssertTrue(factory.cores.isEmpty)
+        gate.release(); await drain()
+        XCTAssertEqual(factory.cores.count, 1); XCTAssertEqual(controller.call?.phase, .connecting)
+        controller.end(callID: engine.id); factory.cores.first?.inbox?.release(); await drain()
+    }
+
+    func testPeerPolicyChangedDuringProxyLookupIsRevalidatedBeforeRemoteCommit() async throws {
+        let engine = CallEngineFixture(), factory = CallMediaFactoryFixture(), gate = CallProxyGate(blockOn: 1)
+        let controller = TelegramCallController(permissions: EngineCallPermissions())
+        controller.bind(TelegramEngineCallProvider(engine: engine, proxy: { try await gate.read() }, media: factory))
+        controller.selectPeer(42)
+        XCTAssertTrue(controller.startOutgoing(basis: engine.peerValue, video: false, contextID: controller.peerContextID))
+        await fulfillment(of: [gate.started], timeout: 2)
+        engine.peerValue = .init(accountID: 101, peerID: 42, title: "Changed synthetic user", canVoice: false, canVideo: false, revision: String(repeating: "c", count: 64))
+        gate.release(); await drain()
+        XCTAssertTrue(engine.requests.isEmpty); XCTAssertTrue(factory.cores.isEmpty)
+        XCTAssertEqual(controller.call?.phase, .failed); XCTAssertTrue(engine.dropped.isEmpty)
+    }
+
 }
 @MainActor private final class EngineCallPermissions: TelegramCallPermissions {
     var requests = 0
@@ -185,4 +249,23 @@ import CoreVideo
 @MainActor private final class EngineMediaCamera: TelegramCallCameraSource {
     func start(output: @escaping @Sendable (CVPixelBuffer) -> Void, failure: @escaping @MainActor () -> Void) async -> Bool { true }
     func stop(completed: @escaping @MainActor () -> Void) { completed() }
+}
+
+@MainActor private final class CallProxyGate {
+    let started = XCTestExpectation(description: "Call proxy lookup suspended")
+    private let blockOn: Int
+    private var continuation: CheckedContinuation<TelegramProxyServer?, Error>?
+    private(set) var reads = 0
+    init(blockOn: Int) { self.blockOn = blockOn }
+    func read() async throws -> TelegramProxyServer? {
+        reads += 1
+        guard reads == blockOn else { return nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation; started.fulfill()
+        }
+    }
+    func release(throwing error: Error? = nil) {
+        let pending = continuation; continuation = nil
+        if let error { pending?.resume(throwing: error) } else { pending?.resume(returning: nil) }
+    }
 }

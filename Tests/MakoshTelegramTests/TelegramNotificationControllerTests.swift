@@ -102,4 +102,31 @@ import Combine
         XCTAssertFalse(second.preferences.previews); XCTAssertTrue(third.preferences.previews)
         XCTAssertTrue(first.reset(contextID: first.contextID)); XCTAssertTrue(second.preferences.previews)
     }
+    func testPeerMuteAndPreviewRulesPersistOnReopenAndDoNotAffectOtherPeersOrAccounts() throws {
+        let suite = "org.makosh.notification-peer-persistence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let first = TelegramNotificationController(defaults: defaults); first.bind(accountID: 1)
+        var p = first.preferences
+        p.peers[42] = .init(enabled: false)
+        p.peers[43] = .init(previews: false, sound: TelegramNotificationSound.none)
+        XCTAssertTrue(first.update(p, contextID: first.contextID))
+        let reopened = TelegramNotificationController(defaults: defaults); reopened.bind(accountID: 1)
+        reopened.environment = { .init(now: Date(timeIntervalSince1970: 2_000)) }
+        reopened.receive(event(), contextID: reopened.contextID)
+        XCTAssertNil(reopened.delivery)
+        func otherPeer(_ id: Int64, account: Int64 = 1) -> TelegramNotificationEvent {
+            .init(accountID: account, peerID: id, namespace: 0, messageID: 9, threadID: nil, timestamp: 1_999,
+                category: .personal, title: "Synthetic", text: try? .init(text: "Private synthetic content"),
+                fallback: "Вложение", incoming: true, serverNotify: true, serverPreviews: true,
+                serverSilent: false, secret: false, protected: false, serviceCodes: false)
+        }
+        reopened.receive(otherPeer(43), contextID: reopened.contextID)
+        XCTAssertEqual(reopened.delivery?.body, "Новое сообщение"); XCTAssertEqual(reopened.delivery?.sound, false)
+        reopened.receive(otherPeer(44), contextID: reopened.contextID)
+        XCTAssertEqual(reopened.delivery?.body, "Private synthetic content"); XCTAssertEqual(reopened.delivery?.sound, true)
+        reopened.bind(accountID: 2)
+        reopened.receive(otherPeer(42, account: 2), contextID: reopened.contextID)
+        XCTAssertEqual(reopened.delivery?.body, "Private synthetic content"); XCTAssertTrue(reopened.preferences.peers.isEmpty)
+    }
 }

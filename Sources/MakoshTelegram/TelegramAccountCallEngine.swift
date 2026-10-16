@@ -46,17 +46,24 @@ private func callUnwrap<T>(_ signal: Signal<T?, NoError>) -> Signal<T, TelegramC
     var accountID: Int64 { account.peerId.toInt64() }
     init(account: Account) { self.account = account }
     func peer(_ id: Int64) -> Signal<TelegramCallPeer, TelegramCallError> {
-        let account = account, accountID = accountID
-        return callUnwrap(account.postbox.transaction { telegramCallUserInput(transaction: $0, accountID: accountID, peerID: id) })
+        Self.peer(account: account, accountID: accountID, peerID: id)
+    }
+    // Native signal and Postbox callbacks run on their owning queues. Keep
+    // their data transformations outside actor isolation; the provider delivers
+    // completed snapshots to MainActor before touching presentation state.
+    nonisolated private static func peer(account: Account, accountID: Int64, peerID: Int64) -> Signal<TelegramCallPeer, TelegramCallError> {
+        return callUnwrap(account.postbox.transaction { telegramCallUserInput(transaction: $0, accountID: accountID, peerID: peerID) })
             |> mapToSignal { input in
                 account.network.request(Api.functions.users.getFullUser(id: input), automaticFloodWait: false)
                     |> mapError { _ in TelegramCallError.failed } |> mapToSignal { result in
-                        callUnwrap(account.postbox.transaction { telegramCommitCallPeer(transaction: $0, result: result, accountID: accountID, peerID: id) })
+                        callUnwrap(account.postbox.transaction { telegramCommitCallPeer(transaction: $0, result: result, accountID: accountID, peerID: peerID) })
                     }
             }
     }
     func incoming() -> Signal<[TelegramIncomingCall], TelegramCallError> {
-        let account = account, accountID = accountID
+        Self.incoming(account: account, accountID: accountID)
+    }
+    nonisolated private static func incoming(account: Account, accountID: Int64) -> Signal<[TelegramIncomingCall], TelegramCallError> {
         return account.callSessionManager.ringingStates() |> castError(TelegramCallError.self) |> mapToSignal { rows in
             callUnwrap(account.postbox.transaction { transaction in
                 var peers: [PeerId: Peer] = [:]
@@ -76,11 +83,14 @@ private func callUnwrap<T>(_ signal: Signal<T?, NoError>) -> Signal<T, TelegramC
                 switch value { case let .signaling(data): receive(.success(data)); case .failed: receive(.failure(.failed)); default: break }
             }
         }
-        let disposable = account.callSessionManager.beginReceivingCallSignalingData(internalId: callID) { packets in
+        let disposable = Self.receiveSignaling(account: account, callID: callID, inbox: inbox)
+        return CallSignalingRequest(inbox: inbox, disposable: disposable)
+    }
+    nonisolated private static func receiveSignaling(account: Account, callID: UUID, inbox: TelegramCallMediaInbox) -> Disposable {
+        account.callSessionManager.beginReceivingCallSignalingData(internalId: callID) { packets in
             guard packets.count <= 256 else { _ = inbox.enqueue(.signaling(Data())); return }
             for packet in packets { if !inbox.enqueue(.signaling(Data(packet))) { break } }
         }
-        return CallSignalingRequest(inbox: inbox, disposable: disposable)
     }
     func accept(callID: UUID) { account.callSessionManager.accept(internalId: callID) }
     func drop(callID: UUID, reason: DropCallReason) { account.callSessionManager.drop(internalId: callID, reason: reason, debugLog: .single(nil)) }

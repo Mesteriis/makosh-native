@@ -58,7 +58,7 @@ import SwiftSignalKit
         controller.bind(provider: nil)
         controller.bind(provider: TelegramSyntheticUploadProvider(postbox: box), recoveryStore: store, requiresRecovery: true)
         let saved = try await sourceFactsLoad(store), bundle = try await store.restoreBundle(draft: saved)
-        guard controller.restore(draft: saved, bundle: bundle, target: fixture.target, restorationEpoch: controller.recoveryRestoreEpoch) else {
+        guard await controller.restore(draft: saved, bundle: bundle, target: fixture.target, restorationEpoch: controller.recoveryRestoreEpoch) else {
             try bundle.discard(); return XCTFail("Edited ordinary pointer must restore without its old ZIP")
         }
         XCTAssertTrue(controller.updatePresentation(.archive, contextID: id, revision: controller.itemsRevision))

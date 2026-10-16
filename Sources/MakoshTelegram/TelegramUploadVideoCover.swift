@@ -25,7 +25,7 @@ public struct TelegramUploadVideoCoverSelection: Identifiable, Sendable {
 }
 
 public enum TelegramUploadVideoCoverIO {
-    public static func openSelection(_ source: URL) async throws -> TelegramUploadVideoCoverSelection {
+    @concurrent public static func openSelection(_ source: URL) async throws -> TelegramUploadVideoCoverSelection {
         let file = try await TelegramUploadFileIO.stageImageSource(source)
         do {
             try TelegramUploadFileIO.validateOwnedStage(file)
@@ -41,10 +41,14 @@ public enum TelegramUploadVideoCoverIO {
     public static func discardSelection(_ selection: TelegramUploadVideoCoverSelection) throws {
         try TelegramUploadFileIO.discard(selection.file)
     }
+    @concurrent public static func discardSelectionInBackground(_ selection: TelegramUploadVideoCoverSelection) async throws {
+        // Owned temporary-file cleanup must finish even after editor cancellation.
+        try discardSelection(selection)
+    }
     public static func discardCover(_ cover: TelegramUploadVideoCover) throws {
         try TelegramUploadFileIO.discard(cover.imageFile)
     }
-    public static func stage(_ selection: TelegramUploadVideoCoverSelection, crop: CGRect,
+    @concurrent public static func stage(_ selection: TelegramUploadVideoCoverSelection, crop: CGRect,
                              transform: TelegramUploadVideoCoverTransform = .init(),
                              painting: TelegramUploadVideoCoverPainting = .init(),
                              images: TelegramUploadVideoCoverImages = .init()) async throws -> TelegramUploadVideoCover {
@@ -52,7 +56,7 @@ public enum TelegramUploadVideoCoverIO {
         guard let digest = selection.preview.originalSHA256 else { throw TelegramUploadFileError.unavailable }
         return try await stagedCover(selection.file.url, crop: crop, expectedSHA256: digest, transform: transform, painting: painting, images: images)
     }
-    public static func stage(_ source: URL, crop: CGRect) async throws -> TelegramUploadVideoCover {
+    @concurrent public static func stage(_ source: URL, crop: CGRect) async throws -> TelegramUploadVideoCover {
         try await stagedCover(source, crop: crop, expectedSHA256: nil)
     }
     private static func stagedCover(_ source: URL, crop: CGRect, expectedSHA256: String?,

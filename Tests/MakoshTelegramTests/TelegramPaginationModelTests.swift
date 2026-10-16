@@ -85,7 +85,7 @@ final class TelegramPaginationModelTests: XCTestCase {
         XCTAssertFalse(model.sendMessage(model.draft))
         XCTAssertEqual(model.draft, "Не отправлять")
         model.disconnect()
-        model.connectUsingSavedAPIConfiguration()
+        model.connect()
         model.connect(apiID: "1", apiHash: String(repeating: "a", count: 32))
         XCTAssertEqual(model.phase, .configuration)
         XCTAssertTrue(model.isSyntheticPreview)

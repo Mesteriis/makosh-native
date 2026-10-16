@@ -232,6 +232,7 @@ private struct TelegramDossierLinkView: View {
     // A known committed write must never leave a repeatable create/link action
     // behind when refreshing the workspace fails after COMMIT.
     @State private var committedID: UUID?
+    @State private var submitting = false
 
     private var owners: [Contact] { workspace.contacts.filter { $0.identities.contains(profile.dossierIdentity) } }
     private var candidates: [Contact] {
@@ -239,7 +240,7 @@ private struct TelegramDossierLinkView: View {
             || $0.organization.localizedCaseInsensitiveContains(query) }
     }
     private var canLink: Bool {
-        workspace.ready && telegram.isCurrentContactProfile(profile, contextID: contextID)
+        workspace.canWrite && !submitting && telegram.isCurrentContactProfile(profile, contextID: contextID)
             && profile.isPerson && !profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (!existing || workspace.contacts.contains { $0.id == targetID })
     }
@@ -293,7 +294,11 @@ private struct TelegramDossierLinkView: View {
     }
     private func link(to id: UUID?) {
         guard canLink else { return }
-        committedID = workspace.linkTelegramProfile(profile, telegram: telegram, contextID: contextID, contactID: id)
+        submitting = true
+        Task {
+            defer { submitting = false }
+            committedID = await workspace.linkTelegramProfile(profile, telegram: telegram, contextID: contextID, contactID: id)
+        }
     }
 }
 

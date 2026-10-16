@@ -155,26 +155,7 @@ private func reconcileEditedMessage(account: Account, id: MessageId, content: Te
             receive(.rejected); return lease
         }
         let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
-        let validation: Signal<(valid: Bool, editContent: TelegramMessageEditContent?, replyMessage: EnqueueMessage?), NoError>
-        switch action {
-        case .reply, .replyFormatted:
-            let formatted: TelegramFormattedText?
-            switch action {
-            case let .reply(text): formatted = try? TelegramFormattedText(text: text)
-            case let .replyFormatted(value): formatted = value
-            default: formatted = nil
-            }
-            if let formatted {
-                validation = telegramPrepareReplyMessage(postbox: account.postbox, accountID: accountID, source: source, formatted: formatted)
-                    |> map { (valid: $0 != nil, editContent: nil, replyMessage: $0) }
-            } else { validation = .single((valid: false, editContent: nil, replyMessage: nil)) }
-        case .edit, .editFormatted:
-            validation = validatedTelegramEditContent(postbox: account.postbox, accountID: accountID, action: action, source: source)
-                |> map { (valid: $0 != nil, editContent: $0, replyMessage: nil) }
-        default:
-            validation = validateTelegramMessageAction(postbox: account.postbox, accountID: accountID, action: action, source: source)
-                |> map { (valid: $0, editContent: nil, replyMessage: nil) }
-        }
+        let validation = telegramValidateNativeMessageAction(account: account, action: action, source: source)
         lease.validation.set((validation |> deliverOnMainQueue).start(next: { [weak lease, account, approval] result in
             guard let lease, !lease.stopped else { return }
             guard result.valid else { lease.emit(.rejected); return }
@@ -206,23 +187,13 @@ private func reconcileEditedMessage(account: Account, id: MessageId, content: Te
                 lease.operation.set((telegramApprovedEnqueue(account: account, approval: approval, context: context,
                     messages: [.forward(source: id, threadId: nil, grouping: .none, attributes: [], correlationId: nil)],
                     onApproved: { [weak lease] in guard let lease, !lease.stopped else { return }; lease.receive(.committing) },
-                    specificAdmission: { transaction in
-                        guard let current = transaction.getMessage(id) else { return false }
-                        let fresh = telegramMessageActionSource(current, accountID: account.peerId.toInt64(), chatID: source.chatID)
-                        return fresh.fingerprint == source.fingerprint && fresh.canForward
-                    }) |> deliverOnMainQueue).start(next: { [weak lease] ids in
+                    specificAdmission: telegramForwardAdmission(accountID: account.peerId.toInt64(), source: source)) |> deliverOnMainQueue).start(next: { [weak lease] ids in
                         lease?.emit(ids == nil ? .uncertain : ids?.count == 1 && ids?.first.flatMap({ $0 }) != nil ? .queued : .rejected)
                     }))
             case .edit, .editFormatted:
                 guard let content = result.editContent else { lease.emit(.rejected); return }
                 // Empty plain messages are invalid; an empty supported media caption is allowed.
-                let edit = (telegramPrepareNativeEdit(account: account, source: source, content: content)
-                    |> castError(RequestEditMessageError.self)) |> mapToSignal { files -> Signal<RequestEditMessageResult, RequestEditMessageError> in
-                        guard let files else { return .fail(.restricted) }
-                        return TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: content.formatted.text,
-                            media: .keep, entities: TextEntitiesMessageAttribute(entities: content.formatted.engineEntities()),
-                            inlineStickers: files, invertMediaAttribute: content.invertMediaAttribute)
-                    }
+                let edit = telegramRequestNativeMessageEdit(account: account, source: source, content: content)
                 lease.operation.set((edit |> deliverOnMainQueue).start(next: { [weak lease] result in
                         if case let .done(changed) = result {
                             guard let lease, !lease.stopped else { return }
@@ -259,4 +230,52 @@ private func reconcileEditedMessage(account: Account, id: MessageId, content: Te
     func emit(_ event: TelegramMessageActionEvent) { guard !stopped else { return }; receive(event); cancel() }
     func cancel() { guard !stopped else { return }; stopped = true; validation.dispose(); operation.dispose(); reconciliation.dispose() }
     isolated deinit { validation.dispose(); operation.dispose(); reconciliation.dispose() }
+}
+
+typealias TelegramNativeMessageActionValidation = (valid: Bool, editContent: TelegramMessageEditContent?, replyMessage: EnqueueMessage?)
+
+nonisolated func telegramValidateNativeMessageAction(account: Account, action: TelegramMessageAction,
+    source: TelegramMessageActionSource) -> Signal<TelegramNativeMessageActionValidation, NoError> {
+    let validation: Signal<TelegramNativeMessageActionValidation, NoError>
+    switch action {
+    case .reply, .replyFormatted:
+        let formatted: TelegramFormattedText?
+        switch action {
+        case let .reply(text): formatted = try? TelegramFormattedText(text: text)
+        case let .replyFormatted(value): formatted = value
+        default: formatted = nil
+        }
+        if let formatted {
+            validation = telegramPrepareReplyMessage(postbox: account.postbox, accountID: account.peerId.toInt64(), source: source, formatted: formatted)
+                |> map { (valid: $0 != nil, editContent: nil, replyMessage: $0) }
+        } else { validation = .single((valid: false, editContent: nil, replyMessage: nil)) }
+    case .edit, .editFormatted:
+        validation = validatedTelegramEditContent(postbox: account.postbox, accountID: account.peerId.toInt64(), action: action, source: source)
+            |> map { (valid: $0 != nil, editContent: $0, replyMessage: nil) }
+    default:
+        validation = validateTelegramMessageAction(postbox: account.postbox, accountID: account.peerId.toInt64(), action: action, source: source)
+            |> map { (valid: $0, editContent: nil, replyMessage: nil) }
+    }
+    return validation
+}
+
+nonisolated func telegramForwardAdmission(accountID: Int64, source: TelegramMessageActionSource) -> (Transaction) -> Bool {
+    let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
+    return { transaction in
+        guard let current = transaction.getMessage(id) else { return false }
+        let fresh = telegramMessageActionSource(current, accountID: accountID, chatID: source.chatID)
+        return fresh.fingerprint == source.fingerprint && fresh.canForward
+    }
+}
+
+nonisolated func telegramRequestNativeMessageEdit(account: Account, source: TelegramMessageActionSource,
+    content: TelegramMessageEditContent) -> Signal<RequestEditMessageResult, RequestEditMessageError> {
+    let id = MessageId(peerId: PeerId(source.peerID), namespace: source.namespace, id: source.messageID)
+    return (telegramPrepareNativeEdit(account: account, source: source, content: content)
+        |> castError(RequestEditMessageError.self)) |> mapToSignal { files -> Signal<RequestEditMessageResult, RequestEditMessageError> in
+            guard let files else { return .fail(.restricted) }
+            return TelegramEngine(account: account).messages.requestEditMessage(messageId: id, text: content.formatted.text,
+                media: .keep, entities: TextEntitiesMessageAttribute(entities: content.formatted.engineEntities()),
+                inlineStickers: files, invertMediaAttribute: content.invertMediaAttribute)
+        }
 }

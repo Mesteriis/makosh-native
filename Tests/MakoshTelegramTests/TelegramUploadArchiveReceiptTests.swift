@@ -18,7 +18,7 @@ import SwiftSignalKit
             let controller = TelegramUploadController()
             controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box), recoveryStore: store, requiresRecovery: true)
             defer { controller.clear() }
-            guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+            guard await controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
                                      restorationEpoch: controller.recoveryRestoreEpoch) else { return XCTFail("ZIP must restore") }
             controller.send()
             await archiveEventually { controller.phase == .uncertain || controller.phase == .queued(nil) }
@@ -47,7 +47,7 @@ import SwiftSignalKit
             let controller = TelegramUploadController(), store = setup.fixture.session(setup.box)
             controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box), recoveryStore: store, requiresRecovery: true)
             defer { controller.clear() }
-            guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+            guard await controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
                                      restorationEpoch: controller.recoveryRestoreEpoch) else {
                 XCTFail("Controller must adopt the ZIP and canonical resources together"); continue
             }
@@ -86,7 +86,7 @@ import SwiftSignalKit
         defer { try? setup.bundle.discard() }
         let controller = TelegramUploadController(), store = setup.fixture.session(setup.box)
         controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box), recoveryStore: store, requiresRecovery: true)
-        guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+        guard await controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
                                  restorationEpoch: controller.recoveryRestoreEpoch) else {
             return XCTFail("Started ZIP must restore as uncertain")
         }
@@ -111,7 +111,7 @@ import SwiftSignalKit
             let controller = TelegramUploadController()
             controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box),
                 recoveryStore: setup.fixture.session(setup.box), requiresRecovery: true)
-            guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+            guard await controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
                                      restorationEpoch: controller.recoveryRestoreEpoch) else {
                 return XCTFail("Prepared archive must transfer its whole lifetime")
             }
@@ -130,7 +130,7 @@ import SwiftSignalKit
         let archive = try XCTUnwrap(setup.bundle.archive), controller = TelegramUploadController()
         controller.bind(provider: TelegramSyntheticUploadProvider(postbox: setup.box),
             recoveryStore: setup.fixture.session(setup.box), requiresRecovery: true)
-        guard controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
+        guard await controller.restore(draft: setup.draft, bundle: setup.bundle, target: setup.fixture.target,
                                  restorationEpoch: controller.recoveryRestoreEpoch) else {
             return XCTFail("Archive must restore before its cleanup can be exercised")
         }
@@ -167,8 +167,8 @@ import SwiftSignalKit
             if mutation == "members" { bundle = .init(items: bundle.items, archive: .init(file: archive.file, members: archive.members.reversed())) }
             if mutation == "epoch" { epoch = UUID() }
             let restored = mutation == "array"
-                ? controller.restore(draft: setup.draft, items: bundle.items, target: setup.fixture.target, restorationEpoch: epoch)
-                : controller.restore(draft: setup.draft, bundle: bundle, target: setup.fixture.target, restorationEpoch: epoch)
+                ? await controller.restore(draft: setup.draft, items: bundle.items, target: setup.fixture.target, restorationEpoch: epoch)
+                : await controller.restore(draft: setup.draft, bundle: bundle, target: setup.fixture.target, restorationEpoch: epoch)
             XCTAssertFalse(restored, mutation); XCTAssertEqual(controller.phase, .idle)
             XCTAssertEqual(try Data(contentsOf: archive.file.url), setup.zipBytes)
         }

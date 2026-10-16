@@ -9,7 +9,7 @@ struct TelegramBlockedUsersView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Заблокированные пользователи").font(.headline)
+                Text("Заблокированные").font(.headline)
                 Spacer()
                 Button("Готово", action: close).accessibilityIdentifier("telegram.blocked.close")
             }.padding(16)
@@ -21,7 +21,7 @@ struct TelegramBlockedUsersView: View {
                     .accessibilityIdentifier("telegram.blocked.refresh")
             }.padding(16)
             if let snapshot = controller.snapshot {
-                if snapshot.users.isEmpty { ContentUnavailableView("Нет заблокированных пользователей", systemImage: "hand.raised.slash") }
+                if snapshot.users.isEmpty && snapshot.otherPeers.isEmpty { ContentUnavailableView("Нет заблокированных", systemImage: "hand.raised.slash") }
                 else {
                     ScrollView {
                         LazyVStack(spacing: 0) {
@@ -34,6 +34,14 @@ struct TelegramBlockedUsersView: View {
                                         .accessibilityIdentifier("telegram.blocked.unblock.\(user.id)")
                                 }.frame(minHeight: 46).padding(.horizontal, 16)
                                     .accessibilityElement(children: .contain)
+                                Divider()
+                            }
+                            ForEach(snapshot.otherPeers) { peer in
+                                HStack {
+                                    Text(peer.title)
+                                    Spacer()
+                                    Text("Только просмотр").font(.caption).foregroundStyle(.secondary)
+                                }.frame(minHeight: 46).padding(.horizontal, 16)
                                 Divider()
                             }
                         }
@@ -98,7 +106,9 @@ struct TelegramProfileBlockAction: View {
     }
     switch controller.status {
     case .loading: return "Загружаем список…"
-    case .ready: return "Пользователей: \(controller.snapshot?.users.count ?? 0)"
+    case .ready:
+        let users = controller.snapshot?.users.count ?? 0, other = controller.snapshot?.otherPeers.count ?? 0
+        return other == 0 ? "Пользователей: \(users)" : "Пользователей: \(users) · других чатов: \(other)"
     case .timedOut: return "Время ожидания истекло. Обновите список."
     case .failed: return "Не удалось загрузить полный список."
     default: return ""

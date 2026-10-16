@@ -220,9 +220,9 @@ func telegramNativeGroupPage(account: Account, basis: TelegramNativeGroupBasis, 
         receive: @escaping @MainActor (Result<TelegramGroupMembershipPage, TelegramGroupMembershipError>) -> Void) -> any TelegramGroupMembershipRequest {
         let request = TelegramNativeGroupRequest(), account = account
         guard historyFilter.isValid, page == .history || historyFilter == .all else { receive(.failure(.unavailable)); return request }
-        request.start(telegramNativeGroupBasis(account: account, peerID: peerID) |> mapToSignal { basis in
-            telegramNativeGroupPage(account: account, basis: basis, page: page, ownerID: ownerID, query: query, cursor: cursor, historyFilter: historyFilter)
-        }, receive: receive)
+        request.start(telegramNativeGroupPageSignal(account: account,
+            basis: telegramNativeGroupBasis(account: account, peerID: peerID), page: page, ownerID: ownerID,
+            query: query, cursor: cursor, historyFilter: historyFilter), receive: receive)
         return request
     }
     func apply(basis: TelegramGroupMembershipSnapshot, change: TelegramGroupMembershipChange,
@@ -260,4 +260,13 @@ func telegramNativeGroupPage(account: Account, basis: TelegramNativeGroupBasis, 
     }
     func cancel() { stopped = true; disposable.dispose() }
     isolated deinit { disposable.dispose() }
+}
+
+nonisolated func telegramNativeGroupPageSignal(account: Account,
+    basis: Signal<TelegramNativeGroupBasis, TelegramGroupMembershipError>, page: TelegramGroupMembershipSection,
+    ownerID: Int64?, query: String, cursor: TelegramGroupMembershipCursor?, historyFilter: TelegramAdminHistoryFilter) -> Signal<TelegramGroupMembershipPage, TelegramGroupMembershipError> {
+    basis |> mapToSignal { basis in
+        telegramNativeGroupPage(account: account, basis: basis, page: page, ownerID: ownerID,
+            query: query, cursor: cursor, historyFilter: historyFilter)
+    }
 }

@@ -19,7 +19,7 @@ func telegramArchiveItem(_ entry: MakoshMessageJournalEntry, accountID: Int64) -
     let editedAt = entry.attributes.compactMap { ($0 as? EditedMessageAttribute)?.date }.max()
     let attachments = telegramAttachments(message).map { source in
         let a = source.attachment
-        return MessageArchiveAttachment(id: a.id, kind: a.kind == .photo ? "photo" : a.kind == .file ? "file" : "unsupported",
+        return MessageArchiveAttachment(id: a.id, kind: a.kind == .photo ? "photo" : a.kind == .file ? "file" : a.kind == .location ? "location" : "unsupported",
                                         name: a.name, size: a.byteCount)
     }
     let content = MessageArchiveContent(date: Date(timeIntervalSince1970: TimeInterval(entry.timestamp)),

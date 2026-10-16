@@ -1,4 +1,287 @@
+## WhatsApp open questions — Tasks7–9, 2026-10-16
+
+Zen Calls.swift/Video.swift public workflows were queried with fresh XERJ and
+confirmed against the pinned790066aa source. Makosh retains the common workspace
+and floating native call panel, pre-call devices, permission flow and microphone/
+video controls. Its new group picker uses the verified group metadata/member/me
+contract, explicit remote selection, separate local preview, nine pageable/pinnable
+participant tiles with scoped avatars, invite/ring and “Покинуть звонок”. Group
+roster/media support comes from the independently pinned SDK public interfaces;
+Zen's singleton sinks are not copied. Final native visual acceptance and actual
+provider/microphone/camera remain separately unverified/paused. Earlier block2
+limits below describe that historical checkpoint, not the current implementation.
+
+## WhatsApp group signaling, Task7, 2026-10-16
+
+Zen's call controls remain the visual basis for Task9. Its current wrapper rejects
+group calls; Makosh extends its independently pinned SDK0.7.0 public group APIs.
+Group-bound and ad-hoc real offers retain registry generation; OfferNotice alone
+cannot be accepted. Current epoch/transaction, own PN/LID/device aliases,2..31
+selected targets, reserved termination and unknown-no-replay contracts are enforced.
+Only sanitized roster JID/state/device/pid/limit/revision and optional local-role
+marker enter Swift. Private authenticated PN aliases, relay credentials, capabilities
+and key material stay inside the native protocol worker. A roster awaiting SDK
+admission contains no fabricated members. Group media and UI remain Tasks8–9.
+
+## WhatsApp photo editor and compose recovery, Task6, 2026-10-16
+
+The common workspace now opens the native Zen PhotoSendSheet layout:660×440
+canvas,692-wide sheet, normalized crop with apply/cancel/corner handles, rotate,
+pen/arrow/rectangle, six-color palette, full-operation undo/reset,52-pixel strip,
+caption, HD, cancel/send. Only one full preview and bounded thumbnails are decoded;
+ImageIO decode and all source/render/file/SQL work remain off MainActor.
+
+One ordered compose list includes both original files and editable photos, with
+move/remove controls and10×100MiB bounds. File mode preserves original bytes.
+Caption/reply/selection order/HD and recipe references use encrypted scoped CAS
+metadata. Context switch/window teardown flush owned saves; conflicts keep local
+edits visible. An explicit reload is generation/revision fenced. Unobserved saved
+drafts cannot be rebound by early Send. Admitted drafts reopen the existing queue;
+unchanged uncertain retries retain their original intent, while a newly typed
+identical message receives a new revision. Native visual inspection is Task10;
+compilation/model tests do not establish visual or provider acceptance.
+
+## WhatsApp photo worker, Task5, 2026-10-16
+
+Zen PhotoEditor.swift at pinned790066aa411d395562a572101a74057147af67db supplies
+top-left normalized coordinates, ordered baking/crop/rotation and pen/arrow/rect
+geometry. Images.swift supplies1600/4096 long-edge modes and JPEG0.82. Makosh
+adds40MP/256 operations/32768 points admission, finite geometry validation,
+fail-closed rendering, metadata removal, encrypted local immutable originals and
+scoped PostgreSQL recipe CAS/export receipts. Existing local derivatives never
+promote after S3 ON; old recipe exports are rejected by compose admission in the
+same SQL transaction. Editor UI and actual native comparison remain Tasks6/10.
+
 # Интерфейс из выбранных референсов
+
+## Teams — 2026-10-16
+
+teams-cli9c8a72c32369f9d9bd15b793099522a80070a063: XERJ/source-confirmed
+auth/graph/TUI. Retained chat/team/channel/message hierarchy and explicit OAuth
+workflows in the existing service sidebar; native composer, outbox, archive,
+notification/S3 preferences and dossier are Makosh integrations. The upstream
+TUI loader currently fills team names with empty messages: its demo does not
+prove working protocol history and its terminal shell is not the product UI.
+
+Actual isolated QA002: both accounts, channel expand/thread/back, plain/HTML-safe
+text, history65 and search beyond50, archive JSONL65, current-file Quick Look/save,
+two-file preparation and folder/audience review, synthetic text/outbox and manual
+unknown resolution, exact-chat/common preferences,1200×800 and zoom windows.
+QA002 is the pre-review full-flow checkpoint. Post-fix QA003 rechecks both accounts,
+text/clear, typed outbox states, search65, channel/thread, S3OFF/settings and ordinary/
+zoom windows. Final QA003 text exactly matches the ordinary final built executable.
+Screenshots are retained in ignored .local/teams-migration/native-ui-20261016-003/.
+
+Differences/limits: native initials/cards/Quick Look, global-cloud work/school only,
+no calls/screen sharing/chat creation/edit-delete-reactions; strict folder ACL
+proof may reject provider folders. No file dispatch/provider/OS banner acceptance.
+Nested buttons in native List may require a pointer click because CUA row AX
+click selects the row; ordinary pointer actions were verified. Dossier transition
+again closes CUA native pipe while process stays alive; its final visual read
+remains unverified. Service/dossier PostgreSQL checks are separate evidence.
+
+## WhatsApp — пакеты вложений, Tasks3–4, 2026-10-16
+
+Zen MainView's multiple picker and Store.attach/send first-caption queue were
+source-confirmed after fresh XERJ. Makosh now keeps ordered durable children before
+network admission and shows the exact state for each file. The common composer
+has multi-selection, reorder/remove, preparation cancellation and visible10 files/
+100MiB each/1000MiB total limits. A single file retains its earlier route. Image,
+video, audio and WebP-sticker modes remain; the photo editor follows in Tasks5–6.
+
+Explicit continuation sends only remaining prepared IDs/attempts, with an explicit
+choice to skip previously known rejected/notSent files. Unknown must be resolved
+first; a new rejection stops subsequent admissions. No package-wide delivery claim
+or automatic restart/send is added. Native inspection is pending Task10; focused
+source/model/storage evidence is Swift92 passing tests, with fake provider/media
+and isolated real PG/local encrypted spool. Live checks remain paused.
+
+## WhatsApp — открытые вопросы, Tasks1–2, 2026-10-16
+
+Source comparison: Zen790066aa411d395562a572101a74057147af67db More.swift PollView
+and Images.swift avatar workflow, after actual fresh XERJ queries. The common
+message row now displays structured vCard fields with explicit bounded source
+expansion/copy; the source itself stays unchanged. Poll questions render once and
+options use source-index IDs, including duplicate labels. Exact status@broadcast
+is omitted from the ordinary list/count/recipient path; dedicated statuses and
+permanent archive remain available.
+
+List/header/chat profile now share a scoped photograph view with initials as
+fallback and manual context-menu refresh. Image/HTTP/crypto/cache work stays with
+the service; only bounded immutable previews reach UI. Zen's account-scoped and
+negative-photo cache workflow is retained; Makosh uses HTTPS host restrictions,
+no redirects/cookies/credentials, encrypted local64MiB/account storage and a strict
+8MiB decoded cache per window. The SDK PictureUpdate path invalidates the exact
+source scope; an overflowing bounded revision map changes the account epoch.
+
+Current checks: Swift69 WhatsApp tests and Rust37 tests pass. This confirms code,
+presentation models, real isolated PG storage and synthetic HTTP/image boundaries;
+actual native visual parity is pending Task10. Provider/account/OS/media acceptance
+stays paused. The earlier block descriptions below are dated historical evidence;
+WA-OQ-04 dossier visual acceptance remains separate.
+
+## WhatsApp — блок 2, 2026-10-15
+
+Zen790066aa411d395562a572101a74057147af67db: текущие MainView/MessageViews/
+Attachments/Calls/Video/Settings/More и Rust commands/call/media сверены по исходникам
+после XERJ. Использованы нижний composer с reply/file/voice/send, контекстные действия,
+панели статусов/избранного/общих медиа, profile/group/privacy и боковое меню настроек.
+В Макоше эти формы встроены в существующее workspace; общие настройки используют
+тот же service worker. Call panel плавающий, с локальным/удалённым видео и кнопками
+микрофона/видео/завершения; устройства выбираются до следующего звонка.
+
+Адаптации: удалённый текст/файл остаётся доступен; статус24h скрывается только из
+текущего списка; destructive Clear/EXPUNGE/TTL/app-lock не переносились. Настройки S3
+и уведомлений дополнительно разделены по аккаунту/чату. Неизвестная отправка явно
+показана в очереди и запрещает автоматический повтор. Архив/экспорт содержат все
+версии. Медиа открываются native Quick Look, стикеры — WebP; один файл на сообщение,
+ограничение100MiB. Фото профилей сейчас обозначаются инициалами, художественный
+редактор медиа и полное пиксельное совпадение Zen не заявляются; они не входят в
+функциональный результат утверждённого block2 spec. Group calls отсутствуют в выбранной
+базе; переключение устройств в активном звонке исключено пользователем.
+
+UI проверен в изолированной QA-сборке (2400×1600 и zoom6016×3190 пикселей):
+история/QuickLook текущего и архивного файла, версии, поиск за первой страницей,
+персональный S3/sound OFF с сохранением после restart и независимый групповой
+default OFF, правила аккаунта, статусы/постоянный архив, синтетическая очередь без
+отправки, формы геопозиции/контакта/опроса, два аккаунта и call preview/End.
+Первое пустое окно звонка воспроизведено; исправленный хост проверен нативно.
+Default icon Menu оказался недоступен/не раскрывался: явный native menu style и
+accessibility labels теперь открывают composer и chat actions (actual UI RED→GREEN).
+Итоговая QA-копия имеет тот же executable text, что .build/Makosh.app.
+
+Досье: созданный синтетический контакт сохраняется и виден после restart; переход
+к DossierView закрывает pipe инструмента CUA, при этом приложение живо. Финальная
+визуальная сверка самого досье не подтверждена, альтернативный доступ не применялся.
+Точный статус/gates — development-status. Отложенная косметика: сырой vCard,
+повтор вопроса опроса, техническая status@broadcast строка в обычном списке.
+
+По решению пользователя от2026-10-15 эти различия, визуальная проверка досье,
+фото профилей, несколько вложений/лимиты файлов, медиаредактор и групповые звонки
+зафиксированы как [открытые вопросы WA-OQ-01–08](whatsapp-migration.md#open-questions--user-decision-2026-10-15).
+Они не считаются устранёнными при завершении двух функциональных блоков.
+Исключённые переключение устройств во время звонка, код-пароль и автоблокировка
+в этот список не входят; живые проверки учитываются отдельно.
+
+## WhatsApp — блок 1, 2026-10-15
+
+Основа — WhatsApp Zen 790066aa411d395562a572101a74057147af67db. Actual XERJ
+выдача подтверждена в Components.swift PairingView, MainView.swift Sidebar/ChatRow,
+MessageViews.swift MessageRow/CappedWidth/BubbleStack и Prefs.swift default palette.
+Перенесены три шага привязки, QR250×250 со светлой подложкой, аккаунтный selector,
+поиск/фильтры, строки с avatar44/именем/временем/preview/unread/pin, сохранённая
+переписка и страницы старой истории. Из Zen адаптированы intrinsic capped bubble
+layout, радиусы18/5, padding11/7 и стандартные исходящие цвета1A9F5A/1B8A50.
+Общий service sidebar/досье остаётся Макоша; узкая detail-column складывает pairing
+вертикально. Удалённое сообщение продолжает показывать сохранённый текст согласно
+решению пользователя, вместо скрытия содержимого как в референсе.
+
+Native QA — отдельный org.makosh.whatsapp.qa с qa_whatsapp_ схемами. Проверены
+два аккаунта и пустая история второго, выбор личного диалога, загрузка14 старых
+сообщений к первой странице50 и сохранённый текст удалённого test-3; QR показывает
+явный синтетический текст, отмена убирает код. Снимки и AX evidence лежат в ignored
+.local/whatsapp-block1/. Последняя проверка финального артефакта фиксируется в
+current development-status, не выводится из одной только сборки. Финальный
+подписанный QA повторно проверяет эти сценарии после fixes, поиск и все фильтры;
+снимки qa-final-* подтверждают intrinsic bubble layout, QR/cancel и размеры
+2400×1600 /6016×3190. Нативный zoom и возврат выполнены; произвольное drag-resize
+не утверждается. QR строго синтетический, связь с телефоном не устанавливалась.
+
+Различия блока1: без скачанных avatar/media, отправки/recording, receipts, reactions,
+status viewer, Favorites, серверного управления чатами, тем/шрифтов, группировки
+sender runs/day dividers и dossier controls. Они относятся к следующему блоку,
+не маскируются активными placeholder-кнопками. Реальный QR/link/network/history
+не проверялись; синтетический QR не является рабочим кодом WhatsApp.
+
+
+## Почта и общий вид — перенос 2026-10-15
+
+Функциональный источник — MMail `69bf8c9b2436d7d000652f41362f8fdebf406599`:
+IMAPSession/IMAPService/SMTPService/MIME и RichTextEditor. Визуальный источник —
+Aether Courier `8ab37e1da22363744be5d7b019f4300d8238d625`: RootView,
+AccountsSidebarView, MessageListView, ReadingPaneView, EmailBackdrop. Проверены
+актуальные исходники и исторический docs/screenshot.png; изображение не заменяет
+текущий исходник. AuroraBackdrop перенесён под MIT с notice.
+
+Общий workspace сохраняет боковую панель сервисов и досье. В почте рядом с
+папками расположены список с фиолетовым выделением и отдельное чтение: крупная
+тема, компактный отправитель/получатель, раскрываемые детали, ответ/пересылка,
+вложения и редактор. Общая панель получила фон Aurora и violet accent; Telegram
+продолжает применять собственные настройки темы. Вместо Copilot — досье Макоша.
+Нового корневого shell и функционального слоя Aether не добавлено.
+
+Визуальная сверка2026-10-15 использует текущие исходники закреплённого Aether,
+а не только историческую картинку. Применяемые ограничения:
+
+| Поверхность | Источник | Перенос в Макош |
+| --- | --- | --- |
+| Колонки | `RootView` | Почтовые папки250/290/360pt, список340/390/560pt, минимум почтового окна1220pt |
+| Аккаунты | `AccountsSidebarView` | Раскрываемая группа каждого ящика, аватар20pt, адрес и отдельное меню; выбор папки учитывает аккаунт |
+| Строка письма | `MessageRow` | Аватар34pt, отступ10pt, sender subheadline, subject callout в одну строку, snippet caption в две строки, компактная дата и индикаторы |
+| Чтение | `ReadingPaneView` | Тема title2 semibold, аватар38pt, header20pt, вложения над телом в обоих режимах |
+| Лист | `ReadingPaneView.paperSheet` | RGB.678/.639/.533, radius12pt, внешние поля14pt, обводка black.14/0.5pt, тень black.30/radius16/y6; одинаково для plain/HTML |
+| Фон | `EmailBackdrop` | Aurora.55 для sidebar, .6 для списка, .4 для чтения; violet accent |
+
+Исправление высоты строк2026-10-15: нативная вставка нового письма могла
+оставлять высоту одной строки, обрезая аватар, тему и snippet. Контент строки
+теперь сохраняет естественную высоту (`fixedSize(horizontal:false, vertical:true)`)
+при доступной ширине. Фиксированная высота и пересоздание всего списка не нужны;
+токены `MessageRow` выше сохранены. Native QA воспроизводит ошибку до правки и
+проверяет три live-вставки подряд, unread-фильтр, переход между ящиками и два
+размера окна после неё. Скриншоты находятся в ignored `.local/mail-list-layout/`.
+
+Принятые отличия: боковая панель сервисов занимает место отдельной66pt rail
+Aether; папки показаны по аккаунтам без дополнительного Aether All Inboxes scope.
+Досье заменяет Copilot и находится внутри области чтения с шириной250/290/380pt:
+корневой inspector Aether260/330/460pt вытеснял общую панель сервисов на обычной
+ширине. Богатый редактор MMail с Cc/Bcc, форматированием,
+шаблонами и расписанием сохраняется вместо простого Aether TextEditor. Ручная
+TLS-форма, постоянная история и S3-политики — функции Макоша. Эти отличия
+зафиксированы явно; полное совпадение пикселей не является утверждаемым результатом.
+Фактическая native-приёмка и оставшиеся ограничения записаны в development-status.
+
+Текущий `ReadingPaneView.paperSheet` Aether использует RGB .678/.639/.533 и
+тёмный текст .11/.11/.12; воспроизведён этот вариант, хотя исторический screenshot
+показывает более светлый лист. HTML переключается отдельно и всегда блокирует
+JavaScript/удалённые ресурсы. Подключение — ручная IMAP/SMTP-форма MMail с TLS,
+а не провайдеры EmailKit из Aether. Досье, локальный постоянный архив, S3-политика
+папки и явное разрешение неизвестной операции — принятые адаптации Макоша.
+
+Дополнение2026-10-15: перенесены MMail подписи по аккаунтам, reply templates,
+from/subject rules и local labels, scheduling и IDLE. Настройки остаются в общем
+workspace; шаблон заменяет тело только после подтверждения, сохраняя адреса,
+файлы и подпись. Расписание поясняет необходимость открытого приложения и
+подключённого аккаунта. Постоянная история версий и исходящие с явным разрешением
+неизвестного исхода — принятые адаптации Макоша. OAuth/календарь исключены
+пользователем, не являются недоделками текущего объёма.
+
+Mail-уведомления следуют MMail Notifier/AppModel: новые unread INBOX без
+исторического потока, Open/Archive/Trash. Global toggle следует SettingsView
+Keyboard & alerts; account/folder/sender scopes, inherited ограничения,
+восстановление маршрутов и общий delegate — адаптации для нескольких сервисов.
+Реальный OS-баннер, звук и точный Open подтверждены отдельно для изолированного
+почтового QA bundle. Проверки обычного bundle и реального провайдера остаются
+на паузе; разрешение QA не распространяется на обычный Макош.
+
+Native QA в отдельном подписанном bundle подтвердила редактирование и сохранение
+подписи/шаблона/правила, вставку подписи один раз, подтверждение применения шаблона,
+сохранение расписания и возврат точного письма в редактор. Reader получил явно
+подписанное меню «Действия» и доступ истории из контекстного меню письма.
+Досье сохраняет общий workspace вместо Copilot. Нативная проверка обнаружила обрезание названий в стандартном TabView настроек;
+разделы заменены на явный нативный сегментированный выбор «Подпись / Шаблоны / Правила».
+Фактические итоговые native результаты и ограничения CUA записаны в development-status; полное пиксельное
+совпадение и недоступные автоматизации не объявляются проверенными.
+
+
+Изменение2026-10-15: стартовая форма Telegram больше не содержит API ID/hash,
+ссылки получения API или кнопки чтения JSON. В закреплённом референсе
+`packages/ApiCredentials/Sources/ApiCredentials/Config.swift:4,7` API-пара
+предоставляется приложению через код. Макош использует собственную пару из
+закрытого входа сборки; значения референса не копируются. В общем окне остаётся
+одна кнопка «Подключить Telegram», далее прежние телефон/QR/код/2FA. Явная
+сборка без API показывает статическое пояснение и недоступную кнопку; это
+адаптация для открытой исходной/CI-сборки. Проверки текущего UI и оставшиеся
+различия записываются в development-status.md.
 
 Проверка первого входа 2026-10-14: экран подключения, ввод телефона/кода/пароля
 и общая боковая панель остаются прежними. В TelegramSwift проверены создание
@@ -40,8 +323,19 @@ adapter использует современный API macOS. GPLv2-only UI, з
 Серверные mute/previews/sound/read/topic ограничения повторно разрешаются native
 Postbox перед показом; локальное разрешение не отменяет серверный запрет.
 Сброс касается только локальных настроек выбранного аккаунта, с подтверждением;
-это отличие от полного server reset референса. Запрос разрешения macOS выполняется
-только по кнопке. Звук пока системный/без звука; каталоги облачных/встроенных
+это отличие от полного server reset референса. Исправление2026-10-15 сверено с
+`SharedNotificationManager.swift:679–689` и `UNUserNotifications.swift:340–347`:
+первое подходящее входящее событие проверяет состояние macOS и при необходимости
+один раз запрашивает первоначальное разрешение. После ошибки повтор выполняется
+по кнопке; отказ ведёт в системные настройки. Перед отправкой повторно проверяются
+аккаунт, чат, предпросмотр, активность окна и блокировка. В общих настройках есть
+«Отдельные чаты» для загруженного списка и состояние локальных исключений;
+редактор также доступен из карточки чата. По умолчанию подавление при активном
+окне сохраняется, его можно отключить отдельным переключателем. По
+`SharedNotificationManager.swift:697–718` активность относится к своему ключевому,
+видимому, несвёрнутому окну; одного `NSApp.isActive` недостаточно. Оконные
+изменения и поздние ответы macOS повторно проверяют текущее состояние окна.
+Звук пока системный/без звука; каталоги облачных/встроенных
 Telegram-звуков, joined-contact toggle, реакции, истории, scheduled reminders,
 ответ/прочтение из баннера и полное визуальное совпадение остаются открытыми.
 Счётчик берётся из полного filtered native root unread state, не из страницы
@@ -1738,3 +2032,86 @@ copies the outer reference UI; the existing common sidebar and QR layout stay.
 The QR image now exposes its descriptive accessibility label instead of being
 decorative. A synthetic image-decoding check supplements controller URL tests;
 actual real-login results are recorded separately in development-status.md.
+## Main-thread/service boundaries — 2026-10-14
+
+The concurrency audit preserves the common sidebar and selected reference
+layouts. Contacts creation/editing, notes, duplicate review and dossier linking
+now await their persistence worker; existing controls disable during a pending
+command. Avatar/crop/cover/wallpaper preparation has explicit busy and cancellation
+state in the existing editors. No replacement navigation or service-specific
+application shell is introduced. TelegramSwift auxiliary-callback and ongoing-call
+queue contracts were source-confirmed; the outer GPLv2 UI was not copied.
+Actual signed UI acceptance for this local snapshot is recorded in development
+status after the complete build; source comparison alone is not runtime proof.
+
+Signed synthetic QA observes the common sidebar, Contacts readiness, the existing
+contact form and its enabled Save control. The isolated database confirms one
+saved test contact. The native UI transport closes at Save and stays unavailable
+after rebinding/session reset, so this run cannot accept post-save presentation,
+notes or image/cover/wallpaper editor interactions. These remain explicit UI
+regression gaps; worker/native/source tests do not imply visual acceptance.
+
+## Real-account follow-up: locations and mixed blocked peers
+
+TelegramSwift `ChatMapContentView.swift` and `ChatMapRowItem.swift` were read at
+the locked reference revision. Their map/pin, optional venue title/address and
+explicit interaction guide the received-location card. Makosh now projects
+finite, bounded coordinates, venue labels and a live-location snapshot. Opening
+the coordinates in Maps is an explicit user action; rendering the card fetches
+no map tiles and requests no device location. The original received metadata is
+retained in the encrypted archive descriptor independently of byte-bounded UI
+labels. Archived locations have no file/S3 lookup or missing-file status.
+Map imagery, the in-app interactive map, live countdown/proximity UI and sending
+locations remain **open parity gaps**. Outer GPLv2 UI code/assets were not copied.
+
+The selected native `BlockedPeersContext.swift` accepts users, groups and
+channels. Real QA exposes Makosh's user-only parser rejecting such a mixed list.
+The complete paginated read now retains non-user peers separately by namespace,
+with explicit read-only group/channel rows; user membership, fresh personal
+identity and confirmation remain required for user mutations. Non-user rows use
+generic labels; their names and block/unblock controls remain a documented
+reference difference. Same-count concurrent server-page changes cannot be
+detected from this API's count alone. Real visual rechecks are recorded separately
+in development status; source review and compilation are not UI acceptance.
+
+## Телемост — первый нативный этап
+
+Основание: Bezooom/yandex-messenger-native
+f0a237c6016088a8e3816dde2e56c06e4a47c5eb, исследовательский join_url и явный
+переход к встрече. GTK/GStreamer, messenger endpoints и их экран звонка не
+портированы. Утверждён собственный нативный интерфейс встреч внутри существующих
+трёх колонок: сервисы → аккаунт/поиск/каталог → сведения/заметки/досье.
+TelemostCatalogueView, DetailView, ConnectionView, MeetingEditor, HistoryView
+и OperationsView сохраняют общий backdrop и боковую панель. Скрытие доступно
+через Show hidden; неизвестный результат имеет отдельное явное решение.
+Источник заметки содержит аккаунт/ID/время наблюдения и проверенную ссылку.
+Участие передаётся официальному клиенту/браузеру; нет локального таймера,
+камеры, микрофона или выдуманного состояния соединения. Native-media остаётся
+отдельным этапом. Фактические визуальные проверки перечислены в development-status.
+
+## WhatsApp open-questions native QA — 2026-10-16
+
+The isolated synthetic bundle verifies the common sidebar/two accounts, structured
+contact/raw fallback, distinct duplicate poll options and scoped avatars. Zen's
+photo layout supplies crop/rotate/pen/arrow/rectangle/color/undo/reset/caption/HD
+controls and the thumbnail strip; rotate/undo/caption/HD/cancel recovery were
+inspected. Coordinate crop/mark dragging remains unverified after CUA
+noWindowsAvailable; worker recipe/render regression tests are separate proof.
+Ten ordered attachments/reorder/restart and eleven-file refusal were inspected.
+Group selection starts empty and excludes the SDK-marked local member. Nine-tile
+paging/pin/scroll/leave and the legacy personal preview were inspected. A native
+680×620 clipping regression now uses a scrollable grid with fixed controls.
+Selectionless outbox/batch rows use ScrollView/LazyVStack with native contained
+buttons after List merged those actions in AX; QA004 verifies both unknown-resolution actions separately, notSent resolution
+and a new prepared copy while preserving the old child. It also verifies the
+current group grid/pin/page/leave and large-text workspace. Enlarged workspace/large-text mode were inspected. Provider/device,
+dossier WA-OQ-04 and full photo drag acceptance remain separate.
+
+Post-review QA005 uses the current signed ordinary executable/source archive in a
+fresh isolated bundle. Enlarged workspace/contact/poll/avatar pixels and photo
+rotate/Cancel/reopen with retained recipe/caption are verified. Current group
+32-member/nine-tile controls and Leave→workspace are verified by AX; two CUA
+ScreenCaptureKit3811 errors prevented claiming refreshed group pixels. Separate
+settled AX reads confirmed the actions; no alternate UI backend was used.
+QA004 group pixel evidence concerns the unchanged layout. Crop/mark dragging and
+WA-OQ-04 remain unverified; real provider/device/OS checks remain paused.

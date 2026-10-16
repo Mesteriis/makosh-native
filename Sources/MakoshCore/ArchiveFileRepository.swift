@@ -148,6 +148,16 @@ public actor ArchiveFileRepository {
         return record
     }
 
+    /// Immutable editor sources always stay local, regardless of conversation policy.
+    public func captureLocalPreparation(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity,
+        attachment: MessageArchiveAttachment, reservedID: UUID) async throws -> ArchiveFileRecord {
+        guard let record = try await self.capture(capture,identity: identity,attachment: attachment,
+            purpose: .outgoing(defaultEnabled: false),local: true,reservedID: reservedID) else {
+            throw MessageArchiveError.integrity
+        }
+        return record
+    }
+
     private func capture(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity,
                          attachment: MessageArchiveAttachment, purpose: ArchiveFilePurpose,local: Bool = false,
                          reservedID: UUID? = nil) async throws -> ArchiveFileRecord? {
@@ -203,10 +213,10 @@ public actor ArchiveFileRepository {
         catch { store = nil; throw error }
     }
     public func captureConversationFile(_ capture: ArchiveFileCapture, identity: MessageArchiveIdentity,
-                                        attachment: MessageArchiveAttachment, defaultEnabled: Bool) async throws -> ArchiveFileRecord? {
+                                        attachment: MessageArchiveAttachment, defaultEnabled: Bool, reservedID: UUID? = nil) async throws -> ArchiveFileRecord? {
         try requireWritable()
         guard try conversationFileSavingEnabled(identity: identity,defaultEnabled: defaultEnabled) else { return nil }
-        return try await self.capture(capture,identity: identity,attachment: attachment,purpose: .conversation(defaultEnabled: defaultEnabled))
+        return try await self.capture(capture,identity: identity,attachment: attachment,purpose: .conversation(defaultEnabled: defaultEnabled),reservedID:reservedID)
     }
 
     @discardableResult public func resume(legacyConversationDefault: (@Sendable (MessageArchiveIdentity) -> Bool?)? = nil) async throws -> Int {
@@ -236,12 +246,22 @@ public actor ArchiveFileRepository {
 
     /// Resolve one pre-reserved outgoing capture. Local records retain their
     /// original policy; a missing/corrupt receipt never authorizes recapture.
-    public func recoverOutgoingCapture(id: UUID, identity: MessageArchiveIdentity, attachmentID: String) async throws -> ArchiveFileRecord? {
+    public func recoverConversationCapture(id: UUID, identity: MessageArchiveIdentity, attachmentID: String) async throws -> ArchiveFileRecord? {
+        try await recoverCapture(id:id,identity:identity,attachmentID:attachmentID,outgoing:false,uploadPending:true)
+    }
+    public func recoverOutgoingCapture(id: UUID, identity: MessageArchiveIdentity, attachmentID: String,uploadPending:Bool=true) async throws -> ArchiveFileRecord? {
+        try await recoverCapture(id:id,identity:identity,attachmentID:attachmentID,outgoing:true,uploadPending:uploadPending)
+    }
+    private func recoverCapture(id: UUID, identity: MessageArchiveIdentity, attachmentID: String,outgoing:Bool,uploadPending:Bool) async throws -> ArchiveFileRecord? {
         try requireWritable()
         try prepareSpool()
         let vault = try keys()
         func matches(_ record: ArchiveFileRecord) -> Bool {
-            guard case .some(.outgoing) = record.purpose else { return false }
+            switch record.purpose {
+            case .some(.outgoing) where outgoing:break
+            case .some(.conversation) where !outgoing:break
+            default:return false
+            }
             return record.id == id && record.identity == identity && record.attachment.id.utf8.elementsEqual(attachmentID.utf8)
         }
         if FileManager.default.fileExists(atPath: manifest(id,local: true).path) {
@@ -260,7 +280,8 @@ public actor ArchiveFileRepository {
             return stored
         }
         if let pending {
-            guard let stored = try await upload(pending) else { throw MessageArchiveError.integrity }
+            if outgoing && !uploadPending{return pending}
+            guard let stored = try await upload(pending) else { if !outgoing{return nil};throw MessageArchiveError.integrity }
             return stored
         }
         guard records.isEmpty, !FileManager.default.fileExists(atPath: envelope(id).path) else { throw MessageArchiveError.integrity }
@@ -272,6 +293,9 @@ public actor ArchiveFileRepository {
         if record.state == .local {
             try prepareSpool()
             guard try load(record.id,vault: vault,local: true) == record else { throw MessageArchiveError.integrity }
+        } else if record.state == .pending {
+            try prepareSpool()
+            guard case .some(.outgoing)=record.purpose,try load(record.id,vault:vault)==record else{throw MessageArchiveError.integrity}
         } else {
             guard record.state == .stored else { throw MessageArchiveError.integrity }
             if record.storageID != storageID {
@@ -284,7 +308,7 @@ public actor ArchiveFileRepository {
         try FileManager.default.createDirectory(at: temporary,withIntermediateDirectories: false,attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: temporary) }
         let encrypted = temporary.appendingPathComponent("encrypted")
-        if record.state == .local {
+        if record.state == .local || record.state == .pending {
             try await S3LocalFile.export(envelope(record.id),destination: encrypted,hash: record.sha256,count: record.byteCount)
         } else {
             try await storage.download(key: record.objectKey,to: encrypted,sha256: record.sha256,byteCount: record.byteCount)

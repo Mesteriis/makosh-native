@@ -3,7 +3,7 @@ import Postbox
 import TelegramCore
 import SwiftSignalKit
 
-enum TelegramSelectedCopyMedia: Sendable { case photo, file(String), voice, video, roundVideo, sticker, music, animation, other }
+enum TelegramSelectedCopyMedia: Sendable { case photo, file(String), location(String), voice, video, roundVideo, sticker, music, animation, other }
 
 struct TelegramSelectedCopyItem: Sendable {
     let author: String
@@ -34,6 +34,7 @@ struct TelegramSelectedCopyItem: Sendable {
             switch attachment.kind {
             case .photo: return .photo
             case .file: return .file(attachment.name)
+            case .location: return .location(attachment.name)
             case .unsupported: return .other
             }
         }
@@ -41,6 +42,7 @@ struct TelegramSelectedCopyItem: Sendable {
             switch media {
             case .photo: text = text.isEmpty ? "Фото" : "🖼 " + text
             case let .file(name): text = text.isEmpty ? (name.isEmpty ? "Файл" : name) : "📎 " + text
+            case let .location(description): text = text.isEmpty ? description : text + "\n" + description
             case .voice: text = text.isEmpty ? "Голосовое сообщение" : "🎤 " + text
             case .video: text = text.isEmpty ? "Видео" : "📹 " + text
             case .roundVideo: text = "Видеосообщение"

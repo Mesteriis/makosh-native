@@ -1,0 +1,39 @@
+[package]
+name = "makosh-whatsapp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+name = "MakoshWhatsApp"
+crate-type = ["rlib"]
+
+[dependencies]
+whatsapp-rust = { version = "=0.7.0", default-features = false, features = ["sqlite-storage", "tokio-transport", "tokio-runtime", "tokio-native", "ureq-client", "voip-mlow", "voip-libopus"] }
+whatsapp-rust-sqlite-storage = { version = "=0.7.0", default-features = false }
+libsqlite3-sys = { version = "=0.37.0", default-features = false, features = ["bundled-sqlcipher"] }
+diesel = { version = "=2.3.13", default-features = false, features = ["sqlite"] }
+tokio = { version = "=1.53.2", features = ["rt-multi-thread", "time", "sync", "macros"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+zeroize = "=1.9.1"
+libc = "=0.2.190"
+sha2 = "=0.10.9"
+anyhow = "=1.0.104"
+async-trait = "=0.1.92"
+async-channel = "=2.5.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+panic = "unwind"
+strip = "none" # macOS 27 rejects stripped proc-macro dylibs (mis-aligned LINKEDIT)
+
+[[bin]]
+name = "MakoshWhatsAppWorker"
+path = "src/main.rs"
+
+[patch.crates-io]
+whatsapp-rust = { path = "../../.local/whatsapp-engine" }

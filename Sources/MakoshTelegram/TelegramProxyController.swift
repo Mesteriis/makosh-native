@@ -36,7 +36,11 @@ public struct TelegramProxyConfirmation: Identifiable {
     private let vault: TelegramProxyVault
     private var record: TelegramProxyRecord?
     private let source = ValuePromise<ProxySettings>(ProxySettings(enabled: false, servers: [], activeServer: nil, useForCalls: false), ignoreRepeated: true)
-    private var opening = Set<UUID>()
+    private var opening: [UUID: UUID] = [:]
+    private var admitted = Set<UUID>()
+    private var refreshToken: UUID?, persisting: UUID?
+    private var revision = UUID()
+    private var refreshTask: Task<Void, Never>?, persistenceTask: Task<Void, Never>?
     private var targets: [UUID: any TelegramProxyTarget] = [:]
     private var requests: [UUID: any TelegramProxyRequest] = [:]
     private var pending: [UUID: UUID] = [:]
@@ -44,33 +48,52 @@ public struct TelegramProxyConfirmation: Identifiable {
     private var deadline: Task<Void, Never>?
     public convenience init() { self.init(vault: TelegramProxyVault()) }
     init(vault: TelegramProxyVault) { self.vault = vault }
-    isolated deinit { deadline?.cancel(); for request in requests.values { request.cancel() } }
+    isolated deinit { refreshTask?.cancel(); persistenceTask?.cancel(); deadline?.cancel(); for request in requests.values { request.cancel() } }
     public func open() {
         contextID = UUID()
         guard phase != .applying, opening.isEmpty else { return }
-        do {
-            let fresh = try vault.read()
-            if let record, record != fresh, targets.values.contains(where: \.isAvailable) {
-                becomeUncertain(); self.record = fresh; publish(fresh); return
+        refreshTask?.cancel()
+        let token = UUID(); refreshToken = token; updateOpening()
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let fresh = try await self.vault.read()
+                guard self.refreshToken == token, !Task.isCancelled else { return }
+                let native = try fresh.configuration.native()
+                if let record = self.record, record != fresh, self.targets.values.contains(where: \.isAvailable) {
+                    self.becomeUncertain(); self.record = fresh; self.publish(fresh); return
+                }
+                self.record = fresh; self.revision = UUID(); self.publish(fresh); self.error = nil
+                if self.phase != .uncertain { self.source.set(native) }
+                self.refreshToken = nil; self.refreshTask = nil; self.updateOpening()
+            } catch {
+                guard self.refreshToken == token, !Task.isCancelled else { return }
+                self.becomeUncertain()
             }
-            record = fresh; publish(fresh); error = nil
-            if phase != .uncertain { source.set(try fresh.configuration.native()) }
-        } catch { becomeUncertain() }
+        }
     }
-    func currentCallProxy() throws -> TelegramProxyServer? {
-        guard phase == .idle, opening.isEmpty, let record else { throw TelegramProxyError.unavailable }
+    func openAndWait() async { open(); await refreshTask?.value }
+    func currentCallProxy() async throws -> TelegramProxyServer? {
+        guard phase == .idle, !isOpening, let record else { throw TelegramProxyError.unavailable }
+        let basis = revision
         do {
-            let fresh = try vault.read()
+            let fresh = try await vault.read()
+            guard revision == basis, phase == .idle, !isOpening, !Task.isCancelled else { throw TelegramProxyError.unavailable }
             guard fresh == record, fresh.configuration.isValid else { throw TelegramProxyError.changed }
             guard fresh.configuration.enabled else { return nil }
             guard let server = fresh.configuration.servers.first(where: { $0.id == fresh.configuration.selected }) else { throw TelegramProxyError.invalid }
             return server
-        } catch { becomeUncertain(); throw TelegramProxyError.unavailable }
+        } catch {
+            if revision == basis, phase == .idle, !isOpening, !Task.isCancelled { becomeUncertain() }
+            throw TelegramProxyError.unavailable
+        }
     }
-    public func close() { contextID = UUID() }
+    public func close() {
+        contextID = UUID(); refreshToken = nil; refreshTask?.cancel(); refreshTask = nil; updateOpening()
+    }
     public func draft(for id: UUID) -> TelegramProxyDraft? { record?.configuration.servers.first { $0.id == id }?.draft }
     public func prepare(_ change: TelegramProxyChange, contextID: UUID) -> TelegramProxyConfirmation? {
-        guard self.contextID == contextID, phase == .idle, opening.isEmpty, let record else { return nil }
+        guard self.contextID == contextID, phase == .idle, !isOpening, let record else { return nil }
         var next = record.configuration
         do {
             switch change {
@@ -96,57 +119,81 @@ public struct TelegramProxyConfirmation: Identifiable {
         } catch { self.error = "Проверьте адрес, порт, учётные данные и выбранный сервер."; return nil }
     }
     public func prepareRetry(contextID: UUID) -> TelegramProxyConfirmation? {
-        guard self.contextID == contextID, phase == .uncertain, opening.isEmpty, let record else { return nil }
+        guard self.contextID == contextID, phase == .uncertain, !isOpening, let record else { return nil }
         return .init(context: contextID, expected: record, configuration: record.configuration, retry: true,
             summary: "Повторно проверить сохранённые настройки и применить их к соединениям Telegram?")
     }
     public func confirm(_ value: TelegramProxyConfirmation) {
-        guard value.context == contextID, opening.isEmpty, record == value.expected,
+        guard value.context == contextID, !isOpening, record == value.expected,
               phase == (value.retry ? .uncertain : .idle) else { return }
-        do {
-            let saved: TelegramProxyRecord
-            if value.retry {
-                saved = try vault.read(); guard saved == value.expected else { throw TelegramProxyError.changed }
-            } else { saved = try vault.save(value.configuration, expected: value.expected) }
-            record = saved; publish(saved); source.set(try saved.configuration.native())
-            contextID = UUID(); error = nil; status = nil; phase = .applying
-            let token = UUID(); operation = token
-            pending = Dictionary(uniqueKeysWithValues: targets.filter { $0.value.isAvailable }.keys.map { ($0, UUID()) })
-            deadline?.cancel()
-            deadline = Task { [weak self] in
-                do { try await Task.sleep(for: .seconds(30)) } catch { return }
-                guard let self, self.operation == token else { return }; self.becomeUncertain()
+        // Reserve before scheduling the worker: duplicate confirmations and new
+        // connections cannot pass while Keychain is still saving/confirming.
+        let token = UUID(); operation = token; persisting = token; phase = .applying
+        contextID = UUID(); revision = UUID(); error = nil; status = nil
+        deadline?.cancel()
+        deadline = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            guard let self, self.operation == token else { return }; self.becomeUncertain()
+        }
+        persistenceTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let saved: TelegramProxyRecord
+                if value.retry {
+                    saved = try await self.vault.read()
+                    guard saved == value.expected else { throw TelegramProxyError.changed }
+                } else { saved = try await self.vault.save(value.configuration, expected: value.expected) }
+                guard self.operation == token, self.persisting == token, !Task.isCancelled else { return }
+                let native = try saved.configuration.native()
+                self.record = saved; self.revision = UUID(); self.publish(saved); self.source.set(native)
+                self.persisting = nil; self.persistenceTask = nil
+                self.pending = Dictionary(uniqueKeysWithValues: self.targets.filter { $0.value.isAvailable }.keys.map { ($0, UUID()) })
+                for id in Array(self.pending.keys) { self.apply(clientID: id, operation: token) }
+                self.completeIfAcknowledged()
+            } catch {
+                guard self.operation == token, self.persisting == token else { return }
+                self.becomeUncertain()
             }
-            for id in Array(pending.keys) { apply(clientID: id, operation: token) }
-            completeIfAcknowledged()
-        } catch { becomeUncertain() }
+        }
     }
-    func settingsForConnection(clientID: UUID) throws -> Signal<ProxySettings, NoError> {
-        guard opening.isEmpty, phase != .applying, !targets.values.contains(where: \.isAvailable) || phase != .uncertain else { throw TelegramProxyError.unavailable }
+    func confirmAndWait(_ value: TelegramProxyConfirmation) async { confirm(value); await persistenceTask?.value }
+    func settingsForConnection(clientID: UUID) async throws -> Signal<ProxySettings, NoError> {
+        guard !isOpening, phase != .applying,
+              !targets.values.contains(where: \.isAvailable) || phase != .uncertain else { throw TelegramProxyError.unavailable }
+        let token = UUID(); opening[clientID] = token; updateOpening()
         do {
-            let fresh = try vault.read()
+            let fresh = try await vault.read()
+            guard opening[clientID] == token, !Task.isCancelled else { throw TelegramProxyError.unavailable }
             if let record, record != fresh, targets.values.contains(where: \.isAvailable) { throw TelegramProxyError.changed }
-            record = fresh; publish(fresh); source.set(try fresh.configuration.native())
-            phase = .idle; error = nil; opening.insert(clientID); isOpening = true
+            let native = try fresh.configuration.native()
+            record = fresh; revision = UUID(); publish(fresh); source.set(native)
+            phase = .idle; error = nil; admitted.insert(clientID)
             return source.get()
-        } catch { becomeUncertain(); throw TelegramProxyError.unavailable }
+        } catch {
+            if opening[clientID] == token {
+                opening.removeValue(forKey: clientID); admitted.remove(clientID); updateOpening()
+                if !Task.isCancelled { becomeUncertain() }
+            }
+            throw TelegramProxyError.unavailable
+        }
     }
     func register(_ target: any TelegramProxyTarget, clientID: UUID) {
-        guard opening.contains(clientID) || targets[clientID] != nil else { target.failClosed(); return }
-        targets[clientID] = target; opening.remove(clientID); isOpening = !opening.isEmpty
+        guard admitted.contains(clientID) || targets[clientID] != nil else { target.failClosed(); return }
+        targets[clientID] = target; opening.removeValue(forKey: clientID); admitted.remove(clientID); updateOpening()
         if phase == .uncertain { target.failClosed() }
-        else if let operation { pending[clientID] = UUID(); apply(clientID: clientID, operation: operation) }
+        else if let operation, persisting == nil { pending[clientID] = UUID(); apply(clientID: clientID, operation: operation) }
     }
     func unregister(clientID: UUID) {
-        targets.removeValue(forKey: clientID); opening.remove(clientID); isOpening = !opening.isEmpty
+        targets.removeValue(forKey: clientID); opening.removeValue(forKey: clientID); admitted.remove(clientID); updateOpening()
         pending.removeValue(forKey: clientID); requests.removeValue(forKey: clientID)?.cancel(); completeIfAcknowledged()
     }
+    private func updateOpening() { isOpening = refreshToken != nil || !opening.isEmpty }
     private func publish(_ record: TelegramProxyRecord) {
         enabled = record.configuration.enabled; selected = record.configuration.selected
         servers = record.configuration.servers.map { .init(id: $0.id, host: $0.host, port: $0.port, kind: $0.kind) }
     }
     private func apply(clientID: UUID, operation: UUID) {
-        guard let target = targets[clientID], let attempt = pending[clientID], let record else { return }
+        guard persisting == nil, let target = targets[clientID], let attempt = pending[clientID], let record else { return }
         requests.removeValue(forKey: clientID)?.cancel()
         let request = target.apply(record.configuration) { [weak self] success in
             guard let self, self.operation == operation, self.pending[clientID] == attempt else { return }
@@ -157,12 +204,15 @@ public struct TelegramProxyConfirmation: Identifiable {
         if self.operation == operation, pending[clientID] == attempt { requests[clientID] = request } else { request.cancel() }
     }
     private func completeIfAcknowledged() {
-        guard operation != nil, pending.isEmpty else { return }
+        guard operation != nil, persisting == nil, pending.isEmpty else { return }
         operation = nil; deadline?.cancel(); deadline = nil; phase = .idle
         status = "Настройки сохранены и применены. Доступность прокси определяется при соединении."
     }
     private func becomeUncertain() {
-        operation = nil; pending = [:]; deadline?.cancel(); deadline = nil
+        operation = nil; persisting = nil; revision = UUID(); pending = [:]; deadline?.cancel(); deadline = nil
+        refreshToken = nil; refreshTask?.cancel(); refreshTask = nil
+        persistenceTask?.cancel(); persistenceTask = nil
+        opening = [:]; admitted = []; updateOpening()
         let old = requests; requests = [:]; for request in old.values { request.cancel() }
         phase = .uncertain; contextID = UUID(); status = nil
         error = "Не удалось подтвердить настройки прокси. Соединения Макоша остановлены. Обновите настройки и подтвердите повторное применение."

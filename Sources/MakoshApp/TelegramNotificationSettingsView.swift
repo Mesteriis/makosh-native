@@ -72,14 +72,30 @@ struct TelegramNotificationSettingsView: View {
                         HStack { Text(item.title); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
                     }.buttonStyle(.plain).accessibilityIdentifier("telegram.notifications.category.\(item.rawValue)")
                 }
-                Text("Настройки показа действуют на этом Mac. Ограничения, заданные в Telegram, сохраняются. Исключения для отдельных чатов доступны в их карточках.")
+                Text("Настройки показа действуют на этом Mac. Ограничения, заданные в Telegram, сохраняются.")
                     .font(.caption).foregroundStyle(.secondary)
             }.disabled(controller.error != nil)
+            Section("Отдельные чаты") {
+                Menu("Настроить чат…") {
+                    ForEach(chats) { chat in
+                        Button(chat.title) { peer = .init(id: chat.id, title: chat.title, context: context) }
+                    }
+                }.disabled(chats.isEmpty).accessibilityIdentifier("telegram.notifications.chooseChat")
+                Text("Выберите чат из загруженного списка или откройте «Уведомления» в его карточке. Для каждого чата можно настроить показ, предпросмотр и звук.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.disabled(controller.error != nil || controller.accountID == nil)
             if !controller.preferences.peers.isEmpty {
                 Section("Исключения") {
                     ForEach(controller.preferences.peers.keys.sorted(), id: \.self) { id in
                         let title = chats.first { $0.id == id }?.title ?? "Чат \(id)"
-                        Button(title) { peer = .init(id: id, title: title, context: context) }
+                        Button { peer = .init(id: id, title: title, context: context) } label: {
+                            HStack {
+                                Text(title).lineLimit(1)
+                                Spacer()
+                                Text("Уведомления: " + (controller.preferences.peers[id]?.enabled.map { $0 ? "Включены" : "Выключены" } ?? "По общим настройкам"))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }.buttonStyle(.plain)
                     }
                 }
             }

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import MakoshTelegram
+import MakoshCore
 
 struct TelegramAvatarEditingView: View {
     @ObservedObject var controller: TelegramAvatarEditingController
@@ -100,9 +101,9 @@ struct TelegramAvatarEditingView: View {
                   controller.contextID == context else { return }
             do {
                 let raw = try await TelegramUploadVideoCoverIO.openSelection(url)
-                guard !Task.isCancelled, controller.contextID == context else { try? TelegramUploadVideoCoverIO.discardSelection(raw); return }
+                guard !Task.isCancelled, controller.contextID == context else { try? await TelegramUploadVideoCoverIO.discardSelectionInBackground(raw); return }
                 do { selection = try AvatarCropPresentation(selection: raw, contextID: context) }
-                catch { try? TelegramUploadVideoCoverIO.discardSelection(raw); throw error }
+                catch { try? await TelegramUploadVideoCoverIO.discardSelectionInBackground(raw); throw error }
             } catch { if !Task.isCancelled { self.error = "Не удалось открыть изображение. Допустим файл до20МБ и40млн пикселей." } }
         }
     }
@@ -113,7 +114,10 @@ struct TelegramAvatarEditingView: View {
         self.selection = selection; self.contextID = contextID
         crop = try .init(imageSize: CGSize(width: selection.preview.image.width, height: selection.preview.image.height), videoSize: CGSize(width: 1, height: 1))
     }
-    isolated deinit { try? TelegramUploadVideoCoverIO.discardSelection(selection) }
+    isolated deinit {
+        let selection = selection
+        Task { try? await TelegramUploadVideoCoverIO.discardSelectionInBackground(selection) }
+    }
 }
 private struct AvatarCropView: View {
     let presentation: AvatarCropPresentation
@@ -122,26 +126,37 @@ private struct AvatarCropView: View {
     @State private var images = TelegramUploadVideoCoverImages()
     @State private var canvas = CGSize.zero
     @State private var error: String?
+    @State private var preparing = false
+    @State private var prepareTask: Task<Void, Never>?
     init(presentation: AvatarCropPresentation, save: @escaping (TelegramAvatarPhoto) -> Void, close: @escaping () -> Void) {
         self.presentation = presentation; self.save = save; self.close = close; _crop = State(initialValue: presentation.crop)
     }
     var body: some View {
         VStack(spacing: 14) {
             Text("Выберите область фотографии").font(.headline)
-            TelegramVideoCoverCropCanvas(preview: presentation.selection.preview, painting: .init(), crop: $crop, images: $images, canvasSize: $canvas, error: $error, circularPreview: true).frame(height: 360)
+            TelegramVideoCoverCropCanvas(preview: presentation.selection.preview, painting: .init(), crop: $crop, images: $images, canvasSize: $canvas, error: $error, circularPreview: true).frame(height: 360).disabled(preparing)
             if let error { Text(error).foregroundStyle(.red).font(.caption) }
             HStack {
                 Button("Отмена", action: close).keyboardShortcut(.cancelAction).accessibilityIdentifier("telegram.avatar.crop.cancel")
                 Spacer()
-                Button { crop.rotate() } label: { Image(systemName: "rotate.left") }.accessibilityLabel("Повернуть фотографию").accessibilityIdentifier("telegram.avatar.crop.rotate")
-                Button { crop.flipHorizontally() } label: { Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right") }.accessibilityLabel("Отразить фотографию").accessibilityIdentifier("telegram.avatar.crop.flip")
+                Button { crop.rotate() } label: { Image(systemName: "rotate.left") }.disabled(preparing).accessibilityLabel("Повернуть фотографию").accessibilityIdentifier("telegram.avatar.crop.rotate")
+                Button { crop.flipHorizontally() } label: { Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right") }.disabled(preparing).accessibilityLabel("Отразить фотографию").accessibilityIdentifier("telegram.avatar.crop.flip")
                 Spacer()
                 Button("Готово") {
-                    do { save(try TelegramAvatarPhoto.prepare(preview: presentation.selection.preview, crop: crop.rect, transform: crop.transform)) }
-                    catch { self.error = "Не удалось подготовить квадратную фотографию. Увеличьте область обрезки." }
-                }.keyboardShortcut(.defaultAction).accessibilityIdentifier("telegram.avatar.crop.done")
+                    guard !preparing else { return }
+                    preparing = true
+                    let preview = presentation.selection.preview, rect = crop.rect, transform = crop.transform
+                    prepareTask = Task { @MainActor in
+                        defer { preparing = false; prepareTask = nil }
+                        do {
+                            let photo = try await BackgroundWork.run { try TelegramAvatarPhoto.prepare(preview: preview, crop: rect, transform: transform) }
+                            try Task.checkCancellation(); save(photo)
+                        } catch is CancellationError { }
+                        catch { self.error = "Не удалось подготовить квадратную фотографию. Увеличьте область обрезки." }
+                    }
+                }.disabled(preparing).keyboardShortcut(.defaultAction).accessibilityIdentifier("telegram.avatar.crop.done")
             }
-        }.padding(20).frame(width: 560)
+        }.padding(20).frame(width: 560).onDisappear { prepareTask?.cancel() }
     }
 }
 

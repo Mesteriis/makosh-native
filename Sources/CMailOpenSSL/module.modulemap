@@ -1,0 +1,6 @@
+module CMailOpenSSL [system] {
+    header "shim.h"
+    link "ssl"
+    link "crypto"
+    export *
+}

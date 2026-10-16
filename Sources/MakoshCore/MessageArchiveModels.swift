@@ -66,9 +66,12 @@ public struct MessageArchiveObservation: Codable, Equatable, Sendable, Identifia
     public let observedAt: Date
     public let source: MessageArchiveSource
     public let event: MessageArchiveEvent
+    /// Optional service-owned version metadata, encrypted with this observation.
+    /// Contains protocol metadata only; attachment payload bytes stay in S3.
+    public let sourcePayload: Data?
     public init(id: UUID = UUID(), identity: MessageArchiveIdentity, observedAt: Date = Date(),
-                source: MessageArchiveSource, event: MessageArchiveEvent) {
-        self.id = id; self.identity = identity; self.observedAt = observedAt; self.source = source; self.event = event
+                source: MessageArchiveSource, event: MessageArchiveEvent, sourcePayload: Data? = nil) {
+        self.id = id; self.identity = identity; self.observedAt = observedAt; self.source = source; self.event = event; self.sourcePayload = sourcePayload
     }
 }
 

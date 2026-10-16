@@ -4,7 +4,7 @@ import Postbox
 import TelegramCore
 
 public enum TelegramAttachmentKind: Sendable, Equatable {
-    case photo, file, unsupported
+    case photo, file, location, unsupported
 }
 
 public enum TelegramPlaybackKind: Sendable, Equatable {
@@ -33,6 +33,7 @@ public struct TelegramAttachment: Identifiable, Sendable, Equatable {
     public let dimensions: TelegramMediaDimensions?
     public let isSpoiler: Bool
     public var paidMedia: TelegramPaidMediaState? = nil
+    public var location: TelegramLocationAttachment? = nil
 
     public init(id: String, kind: TelegramAttachmentKind, name: String, byteCount: Int64?,
                 mimeType: String?, hasPreview: Bool, canDownload: Bool,
@@ -137,6 +138,12 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
                 default: return nil
                 }
             }.first
+        } else if let map = media as? TelegramMediaMap, let location = TelegramLocationAttachment(map) {
+            kind = .location
+            playback = nil
+            name = location.archiveDescription
+            fullResource = nil; previewResource = nil; size = nil; mimeType = nil
+            contentType = .other; dimensions = nil
         } else {
             // Paid/locked and unknown media are intentionally not recursively expanded.
             kind = .unsupported
@@ -167,6 +174,7 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
             hasPreview: preview != nil, canDownload: full != nil, playback: playback, dimensions: dimensions,
             isSpoiler: message.attributes.contains { $0 is MediaSpoilerMessageAttribute })
         attachment.paidMedia = (media as? TelegramMediaPaidContent).flatMap(telegramPaidMediaState)
+        attachment.location = (media as? TelegramMediaMap).flatMap(TelegramLocationAttachment.init)
         return TelegramAttachmentSource(attachment: attachment, messageID: message.id, full: full, preview: preview,
             location: .peer(message.id.peerId), contentType: contentType)
     }

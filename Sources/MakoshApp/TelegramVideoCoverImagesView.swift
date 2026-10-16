@@ -9,6 +9,7 @@ struct TelegramVideoCoverImagesView: View {
     let canvasSize: CGSize
     @Binding var error: String?
     @State private var dragStart: TelegramUploadVideoCoverImages?
+    @State private var copyTask: Task<Void, Never>?
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(images.items) { item in
@@ -53,7 +54,7 @@ struct TelegramVideoCoverImagesView: View {
                     }
                 }
             }
-        }.coordinateSpace(name: "telegram.coverImages")
+        }.coordinateSpace(name: "telegram.coverImages").onDisappear { copyTask?.cancel() }
     }
     private func edit(action: (inout TelegramUploadVideoCoverImages) throws -> Void) {
         if dragStart == nil { dragStart = images }
@@ -63,8 +64,14 @@ struct TelegramVideoCoverImagesView: View {
     }
     private func index(_ id: UUID) -> Int { images.items.firstIndex(where: { $0.id == id }) ?? 0 }
     private func copy(_ item: TelegramUploadVideoCoverImages.Item) {
-        do { try TelegramVideoCoverImageInput.copy(item) }
-        catch { self.error = "Не удалось скопировать вставку." }
+        copyTask?.cancel()
+        copyTask = Task { @MainActor in
+            do { try await TelegramVideoCoverImageInput.copy(item, isCurrent: {
+                images.items.contains(where: { $0.id == item.id })
+            }) }
+            catch is CancellationError { }
+            catch { if !Task.isCancelled { self.error = "Не удалось скопировать вставку." } }
+        }
     }
     static func contains(_ point: CGPoint, images: TelegramUploadVideoCoverImages) -> Bool {
         images.items.contains { item in

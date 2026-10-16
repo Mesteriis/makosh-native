@@ -1,0 +1,62 @@
+{
+  "originHash" : "fcaa9f8741829b6f492bb2e2ef04683cee394241b2bb77d77aa5c5f593f2b3b6",
+  "pins" : [
+    {
+      "identity" : "swift-atomics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-atomics.git",
+      "state" : {
+        "revision" : "b601256eab081c0f92f059e12818ac1d4f178ff7"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections.git",
+      "state" : {
+        "revision" : "fea17c02d767f46b23070fdfdacc28a03a39232a"
+      }
+    },
+    {
+      "identity" : "swift-nio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-nio",
+      "state" : {
+        "revision" : "57c0a08a331aaea9f5d7a932ad94ef43be942a95"
+      }
+    },
+    {
+      "identity" : "swift-nio-imap",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-nio-imap",
+      "state" : {
+        "revision" : "01de1f9a29df31f77e87c2d9248940de7233ee1e"
+      }
+    },
+    {
+      "identity" : "swift-nio-ssl",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-nio-ssl",
+      "state" : {
+        "revision" : "3f337058ccd7243c4cac7911477d8ad4c598d4da"
+      }
+    },
+    {
+      "identity" : "swift-se0270-range-set",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-se0270-range-set.git",
+      "state" : {
+        "revision" : "7d6d7531d40e95f4e1e26f6565265be6df228911"
+      }
+    },
+    {
+      "identity" : "swift-system",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-system.git",
+      "state" : {
+        "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df"
+      }
+    }
+  ],
+  "version" : 3
+}

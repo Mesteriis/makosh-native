@@ -179,12 +179,7 @@ public final class TelegramSearchModel: ObservableObject {
             guard let self, self.dateRequestID == token else { return }
             self.dateRequestID = nil; self.dateRequest.set(nil); self.dateStatus = .timedOut
         }
-        let engine = TelegramEngine(account: account)
-        dateRequest.set((engine.messages.searchMessageIdByTimestamp(peerId: PeerId(chatID), threadId: thread, timestamp: timestamp)
-            |> take(1) |> mapToSignal { id -> Signal<Message?, NoError> in
-                guard let id else { return .single(nil) }
-                return engine.messages.downloadMessage(messageId: id) |> take(1)
-            } |> deliverOnMainQueue).start(next: { [weak self] message in
+        dateRequest.set((telegramSearchDateMessage(account: account, chatID: chatID, threadID: thread, timestamp: timestamp) |> deliverOnMainQueue).start(next: { [weak self] message in
                 guard let self, self.dateRequestID == token, self.resultContextID == context else { return }
                 guard let message, thread == nil || message.threadId == thread else {
                     self.dateDeadline?.cancel(); self.dateDeadline = nil; self.dateStatus = .failed; return
@@ -272,25 +267,7 @@ public final class TelegramSearchModel: ObservableObject {
                 self.chatDeadline = nil; self.chatStatus = self.chatTracker.status
             }
             let group: PeerGroupId = self.folder == .inbox ? .root : Namespaces.PeerGroup.archive
-            let signal = account.postbox.searchPeers(query: query)
-                |> mapToSignal { peers in
-                    account.postbox.transaction { transaction -> [TelegramSearchChatPresenceSource] in
-                        peers.compactMap { rendered in
-                            guard let peer = rendered.peer,
-                                  transaction.getPeerChatListIndex(peer.id)?.0 == group else { return nil }
-                            let preview = transaction.getTopPeerMessageIndex(peerId: peer.id).flatMap { transaction.getMessage($0.id) }?.text ?? ""
-                            let unread = transaction.getCombinedPeerReadState(peer.id)?.count ?? 0
-                            let presencePeerID = peer.associatedPeerOverridesIdentity ? (peer.associatedPeerId ?? peer.id) : peer.id
-                            return TelegramSearchChatPresenceSource(
-                                chat: TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: preview, unreadCount: Int(unread)),
-                                presencePeerID: presencePeerID)
-                        }
-                    }
-                }
-                |> mapToSignal { sources in
-                    telegramSearchChatPresenceSignal(postbox: account.postbox, sources: sources,
-                        accountID: account.peerId.toInt64(), serverTimeOffset: { account.network.globalTimeDifference })
-                }
+            let signal = telegramSearchLocalChats(account: account, query: query, group: group)
             self.chatRequest.set((signal |> deliverOnMainQueue).start(next: { [weak self] chats in
                 self?.receiveChats(chats, requestID: token)
             }))
@@ -407,4 +384,37 @@ public final class TelegramSearchModel: ObservableObject {
         failNextPreviewMessageRequest = true
     }
     #endif
+}
+
+/// Native callbacks are constructed outside the model's actor. Delivery to the
+/// model stays on the main queue at the subscription boundary.
+nonisolated func telegramSearchDateMessage(account: Account, chatID: Int64, threadID: Int64?, timestamp: Int32) -> Signal<Message?, NoError> {
+    let engine = TelegramEngine(account: account)
+    return engine.messages.searchMessageIdByTimestamp(peerId: PeerId(chatID), threadId: threadID, timestamp: timestamp)
+        |> take(1) |> mapToSignal { id -> Signal<Message?, NoError> in
+            guard let id else { return .single(nil) }
+            return engine.messages.downloadMessage(messageId: id) |> take(1)
+        }
+}
+
+nonisolated func telegramSearchLocalChats(account: Account, query: String, group: PeerGroupId) -> Signal<[TelegramChat], NoError> {
+    return account.postbox.searchPeers(query: query)
+        |> mapToSignal { peers in
+            account.postbox.transaction { transaction -> [TelegramSearchChatPresenceSource] in
+                peers.compactMap { rendered in
+                    guard let peer = rendered.peer,
+                          transaction.getPeerChatListIndex(peer.id)?.0 == group else { return nil }
+                    let preview = transaction.getTopPeerMessageIndex(peerId: peer.id).flatMap { transaction.getMessage($0.id) }?.text ?? ""
+                    let unread = transaction.getCombinedPeerReadState(peer.id)?.count ?? 0
+                    let presencePeerID = peer.associatedPeerOverridesIdentity ? (peer.associatedPeerId ?? peer.id) : peer.id
+                    return TelegramSearchChatPresenceSource(
+                        chat: TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: preview, unreadCount: Int(unread)),
+                        presencePeerID: presencePeerID)
+                }
+            }
+        }
+        |> mapToSignal { sources in
+            telegramSearchChatPresenceSignal(postbox: account.postbox, sources: sources,
+                accountID: account.peerId.toInt64(), serverTimeOffset: { account.network.globalTimeDifference })
+        }
 }

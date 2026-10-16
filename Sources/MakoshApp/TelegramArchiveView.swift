@@ -181,6 +181,11 @@ private struct TelegramArchivedAttachment: View {
     @State private var error: String?
     var body: some View {
         VStack(alignment: .leading,spacing: 4) {
+            if attachment.kind == "location" {
+                Label(attachment.name, systemImage: "mappin.and.ellipse")
+                    .font(.caption).textSelection(.enabled)
+                    .accessibilityIdentifier("telegram.archive.location." + attachment.id)
+            } else {
             HStack {
                 Label(attachment.name,systemImage: "paperclip")
                 if let record {
@@ -195,11 +200,12 @@ private struct TelegramArchivedAttachment: View {
             }.font(.caption)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             if let error = actions.error { Text(error).font(.caption).foregroundStyle(.red) }
+            }
         }.sheet(item: $actions.archivedPreview) { preview in
             TelegramArchivedFilePreviewView(preview: preview)
         }.onDisappear(perform: actions.cancel)
         .task(id: files.revision) {
-            guard !synthetic else { return }
+            guard !synthetic, attachment.kind != "location" else { return }
             do { record = try await files.file(identity: identity,attachmentID: attachment.id); checked = true; error = nil }
             catch { checked = true; self.error = "Не удалось проверить копию файла в архиве." }
         }

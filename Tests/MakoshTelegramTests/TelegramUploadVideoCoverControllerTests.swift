@@ -71,14 +71,17 @@ import XCTest
         let controller = TelegramUploadController(), store = Store(), provider = Provider()
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
         defer { controller.clear() }
-        XCTAssertTrue(controller.restore(draft: draft, file: file, target: .init(accountID: 1, chatID: 42, title: "Synthetic"), restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload1 = await controller.restore(draft: draft, file: file, target: .init(accountID: 1, chatID: 42, title: "Synthetic"), restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload1)
         XCTAssertTrue(controller.canEditVideoCover)
         let add = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: draft.id, revision: controller.videoCoverRevision))
-        XCTAssertTrue(controller.commitVideoCover(cover, editID: add))
+        let committedCover2 = await controller.commitVideoCover(cover, editID: add)
+        XCTAssertTrue(committedCover2)
         await eventually { controller.canSend }
         XCTAssertEqual(controller.file?.videoCover, cover)
         let remove = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: draft.id, revision: controller.videoCoverRevision))
-        XCTAssertTrue(controller.commitVideoCover(nil, editID: remove))
+        let committedCover3 = await controller.commitVideoCover(nil, editID: remove)
+        XCTAssertTrue(committedCover3)
         await eventually { controller.canSend }
         XCTAssertNil(controller.file?.videoCover)
     }
@@ -96,7 +99,8 @@ import XCTest
         defer { try? TelegramUploadFileIO.discard(cover.imageFile) }
         let context = try XCTUnwrap(controller.preparationContextID)
         let edit = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
-        XCTAssertTrue(controller.commitVideoCover(cover, editID: edit))
+        let committedCover4 = await controller.commitVideoCover(cover, editID: edit)
+        XCTAssertTrue(committedCover4)
         await eventually { !controller.isRecoveryBusy }
         XCTAssertTrue(controller.canRetryRecovery)
         XCTAssertFalse(controller.canSend)
@@ -120,12 +124,15 @@ import XCTest
         let edit = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
         XCTAssertFalse(controller.canSend)
         controller.send(contextID: context); XCTAssertTrue(provider.files.isEmpty)
-        XCTAssertTrue(controller.commitVideoCover(first, editID: edit))
+        let committedCover5 = await controller.commitVideoCover(first, editID: edit)
+        XCTAssertTrue(committedCover5)
         await eventually { !controller.isRecoveryBusy && controller.canSend }
         XCTAssertEqual(controller.file?.videoCover, first); XCTAssertEqual(controller.caption, "Caption 😀")
-        XCTAssertFalse(controller.commitVideoCover(nil, editID: edit), "Stale editor cannot remove the committed cover")
+        let committedCover6 = await controller.commitVideoCover(nil, editID: edit)
+        XCTAssertFalse(committedCover6, "Stale editor cannot remove the committed cover")
         let remove = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
-        XCTAssertTrue(controller.commitVideoCover(nil, editID: remove))
+        let committedCover7 = await controller.commitVideoCover(nil, editID: remove)
+        XCTAssertTrue(committedCover7)
         await eventually { !controller.isRecoveryBusy && controller.canSend }
         XCTAssertNil(controller.file?.videoCover); XCTAssertEqual(controller.file?.id, original.id)
         XCTAssertTrue(FileManager.default.fileExists(atPath: original.url.path))
@@ -133,7 +140,8 @@ import XCTest
         let cancelled = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
         controller.cancelVideoCoverEdit(cancelled)
         XCTAssertTrue(controller.canSend)
-        XCTAssertFalse(controller.commitVideoCover(first, editID: cancelled))
+        let committedCover8 = await controller.commitVideoCover(first, editID: cancelled)
+        XCTAssertFalse(committedCover8)
     }
 
     // Catches publishing a sendable preparation after a failed/unknown cover
@@ -146,7 +154,8 @@ import XCTest
         defer { try? TelegramUploadFileIO.discard(cover.imageFile) }
         let context = try XCTUnwrap(controller.preparationContextID)
         let edit = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
-        XCTAssertTrue(controller.commitVideoCover(cover, editID: edit))
+        let committedCover9 = await controller.commitVideoCover(cover, editID: edit)
+        XCTAssertTrue(committedCover9)
         await eventually { controller.canRetryRecovery }
         XCTAssertFalse(controller.canSend); XCTAssertFalse(controller.canEditVideoCover)
         XCTAssertEqual(controller.file?.videoCover, cover)
@@ -169,14 +178,102 @@ import XCTest
         defer { try? TelegramUploadFileIO.discard(cover.imageFile) }
         let context = try XCTUnwrap(controller.preparationContextID)
         let edit = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
-        XCTAssertTrue(controller.commitVideoCover(cover, editID: edit))
+        let committedCover10 = await controller.commitVideoCover(cover, editID: edit)
+        XCTAssertTrue(committedCover10)
         await eventually { store.gate != nil }
         controller.bind(provider: Provider(2))
         store.gate?.resume(); store.gate = nil
         for _ in 0..<100 { await Task.yield() }
         XCTAssertEqual(controller.phase, .idle); XCTAssertNil(controller.file)
         XCTAssertNil(controller.videoCoverEditingID); XCTAssertFalse(controller.canSend)
-        XCTAssertFalse(controller.commitVideoCover(cover, editID: edit))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: cover.url.path))
+        let committedCover11 = await controller.commitVideoCover(cover, editID: edit)
+        XCTAssertFalse(committedCover11)
+        await eventually { !FileManager.default.fileExists(atPath: cover.url.path) }
+    }
+
+    // Catches transferring the candidate cover after cancellation revoked publication.
+    func testCancelledCoverValidationKeepsEditorAndCallerOwnedCover() async throws {
+        let (controller, _, _, source) = try await fixture()
+        defer { controller.clear() }
+        let cover = try await TelegramUploadVideoCoverIO.stage(source, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
+        defer { try? TelegramUploadFileIO.discard(cover.imageFile) }
+        let original = try XCTUnwrap(controller.file)
+        let context = try XCTUnwrap(controller.preparationContextID)
+        let edit = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
+        let operation = Task { await controller.commitVideoCover(cover, editID: edit) }
+        operation.cancel()
+        let committed = await operation.value
+        XCTAssertFalse(committed)
+        XCTAssertEqual(controller.videoCoverEditingID, edit)
+        XCTAssertEqual(controller.file, original)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cover.url.path))
+        XCTAssertFalse(controller.canSend)
+    }
+
+
+    // Catches publishing a delayed validation into a replaced editor/account, or after cancellation.
+    func testDelayedValidationRejectsEditorReplacementRebindAndCancellation() async throws {
+        for mutation in ["editor", "rebind", "cancel", "corrupt"] {
+            let (controller, _, _, source) = try await fixture()
+            defer { controller.clear() }
+            let cover = try await TelegramUploadVideoCoverIO.stage(source, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
+            defer { try? TelegramUploadFileIO.discard(cover.imageFile) }
+            let original = try XCTUnwrap(controller.file), context = try XCTUnwrap(controller.preparationContextID)
+            let edit = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
+            let gate = UploadValidationGate()
+            defer { gate.release() }
+            controller.willValidateUpload = { try gate.hold() }
+            let operation = Task { await controller.commitVideoCover(cover, editID: edit) }
+            await eventually { gate.started }
+            XCTAssertFalse(gate.ranOnMain, mutation)
+            XCTAssertFalse(controller.canSend)
+            var replacement: UUID?
+            switch mutation {
+            case "editor":
+                controller.cancelVideoCoverEdit(edit)
+                replacement = try XCTUnwrap(controller.beginVideoCoverEdit(contextID: context, revision: controller.videoCoverRevision))
+            case "rebind": controller.bind(provider: Provider(2))
+            case "cancel": operation.cancel()
+            default: try Data(repeating: 0, count: Int(cover.size)).write(to: cover.url)
+            }
+            gate.release()
+            let committed = await operation.value
+            XCTAssertFalse(committed, mutation)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: cover.url.path), "False keeps caller ownership")
+            if mutation == "rebind" { XCTAssertEqual(controller.phase, .idle); XCTAssertNil(controller.file) }
+            else {
+                XCTAssertEqual(controller.file, original)
+                XCTAssertEqual(controller.videoCoverEditingID, replacement ?? edit)
+            }
+            if mutation == "corrupt" { XCTAssertNotNil(controller.error) }
+            else { XCTAssertNil(controller.error, "Stale/cancelled work must not publish an error") }
+        }
+    }
+
+}
+
+
+/// Holds the real validation on its worker without blocking the MainActor test driver.
+final class UploadValidationGate: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var didStart = false, released = false, main = false
+    var started: Bool { condition.lock(); defer { condition.unlock() }; return didStart }
+    var ranOnMain: Bool { condition.lock(); defer { condition.unlock() }; return main }
+    func hold() throws {
+        condition.lock()
+        didStart = true; main = Thread.isMainThread
+        // A wrong executor must fail assertions, not deadlock the test's main thread.
+        if main { condition.unlock(); return }
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while !released {
+            if !condition.wait(until: deadline) {
+                condition.unlock(); throw TelegramUploadFileError.unavailable
+            }
+        }
+        condition.unlock()
+        try Task.checkCancellation()
+    }
+    func release() {
+        condition.lock(); released = true; condition.broadcast(); condition.unlock()
     }
 }

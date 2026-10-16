@@ -12,9 +12,22 @@ public struct TelegramBlockedUser: Equatable, Identifiable, Sendable {
     public let id: Int64
     public let title: String
 }
+/// Keep non-user peers in the complete read without treating their IDs as users.
+/// Mutations remain scoped to cloud users; other entries are explicitly read-only.
+public struct TelegramBlockedOtherPeer: Equatable, Identifiable, Sendable {
+    public enum Kind: String, Sendable { case group, channel }
+    public let kind: Kind
+    public let rawID: Int64
+    public var id: String { "\(kind.rawValue):\(rawID)" }
+    public var title: String { kind == .group ? "Заблокированная группа" : "Заблокированный канал" }
+}
 public struct TelegramBlockedUsersSnapshot: Equatable, Sendable {
     public let accountID: Int64
     public let users: [TelegramBlockedUser]
+    public let otherPeers: [TelegramBlockedOtherPeer]
+    init(accountID: Int64, users: [TelegramBlockedUser], otherPeers: [TelegramBlockedOtherPeer] = []) {
+        self.accountID = accountID; self.users = users; self.otherPeers = otherPeers
+    }
 }
 public struct TelegramBlockedUserChange: Equatable, Sendable {
     public let accountID: Int64
@@ -25,8 +38,10 @@ public struct TelegramBlockedUserChange: Equatable, Sendable {
 }
 extension TelegramBlockedUsersSnapshot {
     var isValid: Bool {
-        accountID != 0 && users.count <= 10_000 && Set(users.map(\.id)).count == users.count
+        accountID != 0 && users.count + otherPeers.count <= 10_000 && Set(users.map(\.id)).count == users.count
             && users.allSatisfy { telegramBlockedNativeID($0.id) != nil && !$0.title.isEmpty && $0.title.count <= 512 }
+            && Set(otherPeers.map(\.id)).count == otherPeers.count
+            && otherPeers.allSatisfy { telegramBlockedNativeID($0.rawID) != nil }
     }
 }
 @MainActor protocol TelegramBlockedUsersProvider: AnyObject {

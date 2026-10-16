@@ -323,8 +323,9 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
                 let recovered = try await store.restoreItems(draft: prepared)
                 controller = TelegramUploadController()
                 controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-                XCTAssertTrue(controller.restore(draft: prepared, items: recovered, target: target,
-                    restorationEpoch: controller.recoveryRestoreEpoch))
+                let restoredUpload1 = await controller.restore(draft: prepared, items: recovered, target: target,
+                    restorationEpoch: controller.recoveryRestoreEpoch)
+                XCTAssertTrue(restoredUpload1)
                 XCTAssertEqual(controller.phase, .ready); XCTAssertTrue(controller.isOneTimeVoice)
                 XCTAssertEqual(provider.submissions, 0)
             }
@@ -379,7 +380,8 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
         defer { for item in restored { try? item.discard() } }
         let controller = TelegramUploadController(), provider = RecordedVoiceLocalQueueProvider(postbox: box, accountID: accountID)
         controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-        XCTAssertFalse(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+        let restoredUpload2 = await controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+        XCTAssertFalse(restoredUpload2)
         controller.send(); XCTAssertEqual(provider.submissions, 0)
         let record = frozen.items[0].file
         let remote = try await S3ObjectStore(configuration: configuration).head(key: record.objectKey)
@@ -477,7 +479,8 @@ private func voiceEligibilitySnapshots(_ box: Postbox) -> Signal<[TelegramVoiceE
             let controller = TelegramUploadController(), provider = RecordedVoiceLocalQueueProvider(postbox: box)
             controller.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
             defer { controller.bind(provider: nil) }
-            XCTAssertTrue(controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            let restoredUpload3 = await controller.restore(draft: frozen, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertTrue(restoredUpload3)
             XCTAssertEqual(controller.phase, .uncertain)
             XCTAssertEqual(controller.file?.metadata?.voice?.isOneTime, isOneTime)
             XCTAssertEqual(controller.isOneTimeVoice, isOneTime)

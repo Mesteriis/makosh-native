@@ -178,7 +178,8 @@ final class TelegramUploadExtendedCaptionTests: XCTestCase {
             let controller = TelegramUploadController()
             controller.bind(provider: ExtendedCaptionProvider(), recoveryStore: store, requiresRecovery: true)
             defer { controller.clear() }
-            XCTAssertTrue(controller.restore(draft: installed, bundle: bundle, target: fixture.target, restorationEpoch: controller.recoveryRestoreEpoch))
+            let restoredUpload1 = await controller.restore(draft: installed, bundle: bundle, target: fixture.target, restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertTrue(restoredUpload1)
             XCTAssertTrue(controller.canSend); XCTAssertEqual(controller.captionMaximumUTF16Count, 2048)
             for record in installed.items.map(\.file) + [try XCTUnwrap(installed.archive?.file)] {
                 let object = try await S3ObjectStore(configuration: fixture.configuration).head(key: record.objectKey)

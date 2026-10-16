@@ -1,11 +1,11 @@
 import Foundation
+import MakoshBuildConfiguration
 import Combine
 import MakoshCore
 import Security
 import TelegramCore
 import Postbox
 import SwiftSignalKit
-import OpenSSLEncryption
 import AVFoundation
 
 public enum TelegramPhase: Equatable {
@@ -41,7 +41,7 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     }
 }
 
-public struct TelegramAPIConfiguration: Equatable {
+public struct TelegramAPIConfiguration: Equatable, Sendable {
     public let id: Int32
     public let hash: String
     public init(id: String, hash: String) throws {
@@ -266,7 +266,7 @@ public final class TelegramModel: ObservableObject {
         !archive.isArchiving && !archive.files.isBusy && archive.files.error == nil && media.inFlightCount == 0
     }
     public let proxy: TelegramProxyController
-    let proxyClientID = UUID()
+    private(set) var proxyClientID = UUID()
     private lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
     private var automaticArchiveObservation: AnyCancellable?
     @Published public private(set) var automaticDownloadsPaused = false
@@ -632,7 +632,7 @@ public final class TelegramModel: ObservableObject {
     private var unauthorized: UnauthorizedAccount?
     private var challenge: TelegramAuthorizationChallenge = .phoneCode
     private var account: Account?
-    private var generation = UUID()
+    private(set) var generation = UUID()
     private var accountGeneration = UUID()
     private var conversationGeneration = UUID()
     private var authorizationGeneration = UUID()
@@ -687,6 +687,8 @@ public final class TelegramModel: ObservableObject {
     private var historyMediaSources: [TelegramAttachmentSource] = []
     private var chatPages = TelegramPageTracker<ChatListIndex>()
     private var historyPages = TelegramPageTracker<MessageIndex>()
+    private let sessionWorker = TelegramSessionWorker()
+    private var sessionOpeningTask: Task<Void, Never>?
     private var openingTimeout: Task<Void, Never>?
     private var chatPageTimeout: Task<Void, Never>?
     private var historyPageTimeout: Task<Void, Never>?
@@ -1093,11 +1095,16 @@ public final class TelegramModel: ObservableObject {
                     if source == nil, draft.disposition == .prepared { throw TelegramUploadFileError.unavailable }
                 }
                 let bundle = try await store.restoreBundle(draft: draft)
-                guard current() else { try? bundle.discard(); return }
+                guard current() else { try? await bundle.discardInBackground(); return }
                 let target = TelegramUploadTarget(accountID: accountID, chatID: chatID, title: draft.title, replySource: source, selectedThreadID: draft.threadID)
-                guard self.upload.restore(draft: draft, bundle: bundle, target: target, restorationEpoch: restorationEpoch) else {
-                    try? bundle.discard(); throw TelegramUploadFileError.unavailable
+                guard await self.upload.restore(draft: draft, bundle: bundle, target: target,
+                    restorationEpoch: restorationEpoch, admission: current) else {
+                    try? await bundle.discardInBackground()
+                    if current() { throw TelegramUploadFileError.unavailable }; return
                 }
+                // Ownership is now in the controller. A later context change
+                // may already have cancelled it; this caller must not discard it.
+                guard current() else { return }
             } catch {
                 if current() { self.pendingUploadRecoveryError = "Не удалось восстановить подготовленное вложение. Черновик сохранён. Повторите восстановление." }
             }
@@ -1898,16 +1905,18 @@ public final class TelegramModel: ObservableObject {
         acknowledgeComposerDraft(formatted: submitted.draft.input.formattedText, submitted: submitted.draft)
     }
 
-    public func connectUsingSavedAPIConfiguration() {
-        guard !isSyntheticPreview else { return }
-        guard !isBusy, phase == .configuration else { return }
-        do {
-            let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-            let configuration = try TelegramAPIFile.load(from: support.appendingPathComponent("Makosh/telegram-api.json"))
-            connect(apiID: String(configuration.id), apiHash: configuration.hash)
-        } catch {
-            self.error = "Не удалось открыть локальные API-данные. Проверьте файл telegram-api.json и права 0600 или введите API ID и API hash вручную."
+    public var hasEmbeddedAPIConfiguration: Bool {
+        MakoshBuildConfiguration.telegramAPIID != nil && MakoshBuildConfiguration.telegramAPIHash != nil
+    }
+
+    public func connect() {
+        guard !isSyntheticPreview, !isBusy, phase == .configuration else { return }
+        guard let id = MakoshBuildConfiguration.telegramAPIID,
+              let hash = MakoshBuildConfiguration.telegramAPIHash else {
+            error = "Telegram не настроен в этой сборке."
+            return
         }
+        connect(apiID: String(id), apiHash: hash)
     }
 
     isolated deinit {
@@ -1919,6 +1928,7 @@ public final class TelegramModel: ObservableObject {
         selectionRangeDeadline?.cancel()
         selectionRangeDisposable.dispose()
         playback.stop()
+        sessionOpeningTask?.cancel()
         openingTimeout?.cancel()
         chatPageTimeout?.cancel()
         historyPageTimeout?.cancel()
@@ -1932,63 +1942,67 @@ public final class TelegramModel: ObservableObject {
     }
 
     public func connect(apiID: String, apiHash: String) {
-        guard !isSyntheticPreview else { return }
-        guard !isBusy, phase == .configuration else { return }
-        do {
-            let configuration = try TelegramAPIConfiguration(id: apiID, hash: apiHash)
-            let proxySettings = try proxy.settingsForConnection(clientID: proxyClientID)
-            let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            let directory = support.appendingPathComponent("Makosh/Telegram", isDirectory: true)
-            let encryption = try TelegramSessionKey.open(directory: directory)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            TelegramRuntime.configureLogging(directory: directory)
-            initializeAccountManagement()
-            self.configuration = configuration
-            self.phase = .connecting
-            self.isBusy = true
-            self.error = nil
-            self.connectionDescription = "Открытие отдельного сеанса"
-            let token = generation
-            openingTimeout = Task { [weak self] in
-                do { try await Task.sleep(for: .seconds(45)) } catch { return }
-                guard let self, self.generation == token, self.phase == .connecting else { return }
-                self.disconnect()
-                self.phase = .unsupported("Локальный сеанс не открылся за 45 секунд. Соединение остановлено; локальные данные сохранены. Проверьте кэш перед новой попыткой.")
-            }
-            let arguments = NetworkInitializationArguments(apiId: configuration.id, apiHash: configuration.hash,
-                languagesCategory: "macos", appVersion: "Makosh 0.2", voipMaxLayer: 92, voipVersions: [
-                    .init(version: "2.7.7", supportsVideo: true), .init(version: "5.0.0", supportsVideo: true)],
-                appData: .single(nil), externalRequestVerificationStream: .single([:]),
-                externalRecaptchaRequestVerification: { _, _ in .complete() }, autolockDeadine: .single(nil),
-                encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: "Mac", useBetaFeatures: false, isICloudEnabled: false, makoshProxySettings: proxySettings)
-            let auxiliary = AccountAuxiliaryMethods(fetchResource: { _, _, _, _ in nil },
-                fetchResourceMediaReferenceHash: { _ in .single(nil) }, prepareSecretThumbnailData: { _ in nil }, backgroundUpload: { _, _, _ in .single(nil) })
-            session.set((AccountManager<TelegramAccountManagerTypes>.makoshOpen(basePath: directory.appendingPathComponent("accounts-metadata").path)
-                |> deliverOnMainQueue
-                |> mapToSignal { [weak self] manager -> Signal<AccountResult?, NoError> in
-                    guard let self, self.generation == token, let manager else { return .single(nil) }
-                    self.manager = manager
-                    return currentAccount(allocateIfNotExists: true, networkArguments: arguments, supplementary: false,
-                        manager: manager, rootPath: directory.path, auxiliaryMethods: auxiliary, encryptionParameters: encryption)
-                }
-                |> deliverOnMainQueue).start(next: { [weak self] result in
-                    guard let self, self.generation == token else { return }
-                    switch result {
-                    case .unauthorized(let account): self.observeUnauthorized(account, token: token)
-                    case .authorized(let account): self.observeAuthorized(account, token: token)
-                    case .upgrading: self.connectionDescription = "Открытие или обновление локального кэша"
-                    case nil:
-                        self.disconnect()
-                        self.phase = .unsupported("Не удалось получить состояние отдельного сеанса. Соединение остановлено; локальные данные сохранены.")
-                    }
-                }))
-        } catch {
-            proxy.unregister(clientID: proxyClientID)
-            self.error = error is TelegramProxyError ? "Не удалось проверить сохранённый прокси. Откройте «Данные и память» и проверьте настройки." :
-                (error as? TelegramSetupError)?.localizedDescription ?? TelegramSetupError.filesystem.localizedDescription
-            self.isBusy = false
-            self.phase = .configuration
+        guard !isSyntheticPreview, !isBusy, phase == .configuration else { return }
+        do { beginConnection(try TelegramAPIConfiguration(id: apiID, hash: apiHash)) }
+        catch { self.error = TelegramSetupError.invalidAPI.localizedDescription }
+    }
+
+    private func beginConnection(_ configuration: TelegramAPIConfiguration) {
+        self.configuration = configuration
+        phase = .connecting; isBusy = true; error = nil
+        connectionDescription = "Открытие отдельного сеанса"
+        let token = generation, clientID = proxyClientID, proxy = proxy, worker = sessionWorker
+        openingTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(45)) } catch { return }
+            guard let self, self.generation == token, self.phase == .connecting else { return }
+            self.disconnect()
+            self.phase = .unsupported("Локальный сеанс не открылся за 45 секунд. Соединение остановлено; локальные данные сохранены. Проверьте кэш перед новой попыткой.")
         }
+        sessionOpeningTask = Task { [weak self] in
+            do {
+                let proxySettings = try await proxy.settingsForConnection(clientID: clientID)
+                let prepared = try await worker.prepare()
+                try Task.checkCancellation()
+                guard let self, self.generation == token, self.phase == .connecting else {
+                    proxy.unregister(clientID: clientID); return
+                }
+                self.startNativeConnection(configuration: configuration, proxySettings: proxySettings,
+                    directory: prepared.directory, encryption: try prepared.encryption, token: token)
+            } catch {
+                proxy.unregister(clientID: clientID)
+                guard let self, self.generation == token, !Task.isCancelled else { return }
+                self.openingTimeout?.cancel(); self.openingTimeout = nil
+                self.error = error is TelegramProxyError ? "Не удалось проверить сохранённый прокси. Откройте «Данные и память» и проверьте настройки." :
+                    (error as? TelegramSetupError)?.localizedDescription ?? TelegramSetupError.filesystem.localizedDescription
+                self.isBusy = false; self.phase = .configuration
+            }
+        }
+    }
+    private func startNativeConnection(configuration: TelegramAPIConfiguration, proxySettings: Signal<ProxySettings, NoError>,
+                                       directory: URL, encryption: ValueBoxEncryptionParameters, token: UUID) {
+        TelegramRuntime.configureLogging(directory: directory)
+        initializeAccountManagement()
+        let arguments = TelegramRuntime.networkArguments(configuration: configuration, proxySettings: proxySettings)
+        let auxiliary = TelegramRuntime.accountAuxiliaryMethods()
+        session.set((AccountManager<TelegramAccountManagerTypes>.makoshOpen(basePath: directory.appendingPathComponent("accounts-metadata").path)
+            |> deliverOnMainQueue
+            |> mapToSignal { [weak self] manager -> Signal<AccountResult?, NoError> in
+                guard let self, self.generation == token, let manager else { return .single(nil) }
+                self.manager = manager
+                return currentAccount(allocateIfNotExists: true, networkArguments: arguments, supplementary: false,
+                    manager: manager, rootPath: directory.path, auxiliaryMethods: auxiliary, encryptionParameters: encryption)
+            }
+            |> deliverOnMainQueue).start(next: { [weak self] result in
+                guard let self, self.generation == token else { return }
+                switch result {
+                case .unauthorized(let account): self.observeUnauthorized(account, token: token)
+                case .authorized(let account): self.observeAuthorized(account, token: token)
+                case .upgrading: self.connectionDescription = "Открытие или обновление локального кэша"
+                case nil:
+                    self.disconnect()
+                    self.phase = .unsupported("Не удалось получить состояние отдельного сеанса. Соединение остановлено; локальные данные сохранены.")
+                }
+            }))
     }
 
     public func beginQRLogin() {
@@ -2013,7 +2027,7 @@ public final class TelegramModel: ObservableObject {
         let authToken = authorizationGeneration
         action.set((sendAuthorizationCode(accountManager: manager, account: unauthorized, phoneNumber: number,
             apiId: configuration.id, apiHash: configuration.hash, pushNotificationConfiguration: nil,
-            firebaseSecretStream: .single([:]), syncContacts: false, disableAuthTokens: true, forcedPasswordSetupNotice: { _ in nil })
+            firebaseSecretStream: .single([:]), syncContacts: false, disableAuthTokens: true, forcedPasswordSetupNotice: TelegramRuntime.forcedPasswordSetupNotice)
             |> timeout(30, queue: .mainQueue(), alternate: .fail(.timeout))
             |> deliverOnMainQueue).start(next: { [weak self] result in
                 guard let self, self.generation == token, self.authorizationGeneration == authToken else { return }
@@ -2028,7 +2042,7 @@ public final class TelegramModel: ObservableObject {
                 case .phoneBanned: self.error = "Этот номер заблокирован Telegram."
                 case .timeout: self.error = "Нет ответа Telegram. Код мог быть запрошен; не повторяйте запрос сразу."
                 case .appOutdated: self.error = "Telegram требует обновлённый способ входа. Эта версия ядра его не поддерживает."
-                case .generic: self.error = "Telegram не завершил запрос кода. Проверьте сеть и собственные API-данные."
+                case .generic: self.error = "Telegram не завершил запрос кода. Проверьте соединение. Если ошибка повторяется, сообщите о проблеме этой сборки."
                 }
             }))
     }
@@ -2039,7 +2053,7 @@ public final class TelegramModel: ObservableObject {
         isBusy = true; error = nil
         let token = generation
         let authToken = authorizationGeneration
-        action.set((authorizeWithCode(accountManager: manager, account: unauthorized, code: authorizationCode, termsOfService: nil, forcedPasswordSetupNotice: { _ in nil })
+        action.set((authorizeWithCode(accountManager: manager, account: unauthorized, code: authorizationCode, termsOfService: nil, forcedPasswordSetupNotice: TelegramRuntime.forcedPasswordSetupNotice)
             |> timeout(30, queue: .mainQueue(), alternate: .fail(.generic))
             |> deliverOnMainQueue).start(next: { [weak self] result in
                 guard let self, self.generation == token, self.authorizationGeneration == authToken else { return }
@@ -2069,6 +2083,8 @@ public final class TelegramModel: ObservableObject {
     public func disconnect() {
         unauthorized?.shouldBeServiceTaskMaster.set(.single(.never))
         proxy.unregister(clientID: proxyClientID)
+        proxyClientID = UUID()
+        sessionOpeningTask?.cancel(); sessionOpeningTask = nil
         #if DEBUG
         preview = nil
         #endif
@@ -2176,7 +2192,7 @@ public final class TelegramModel: ObservableObject {
         }
     }
 
-    private func observeAuthorized(_ account: Account, token: UUID) {
+    func observeAuthorized(_ account: Account, token: UUID) {
         openingTimeout?.cancel(); openingTimeout = nil
         guard self.account !== account else { return }
         stopAuthorizedAccount()
@@ -2186,6 +2202,9 @@ public final class TelegramModel: ObservableObject {
         qrLogin.bind(nil)
         self.unauthorized = nil; self.account = account
         registerProxy(network: account.network)
+        // Queue TelegramCore's initial getState/getDifference before providers
+        // can submit update groups. A newly authorized cache has no cursor yet.
+        account.resetStateManagement()
         sendApproval.bind(account: account)
         customEmojiPlaybackContext = TelegramCustomEmojiPlaybackContext(account: account)
         customEmojiCatalog.bind(account: account)
@@ -2216,7 +2235,7 @@ public final class TelegramModel: ObservableObject {
         groupMembership.bind(TelegramEngineGroupMembershipProvider(account: account))
         secretChats.bind(TelegramEngineSecretChatProvider(account: account))
         let callProxy = proxy
-        calls.bind(TelegramEngineCallProvider(engine: TelegramAccountCallEngine(account: account), proxy: { try callProxy.currentCallProxy() }, media: TelegramNativeCallMediaFactory(), audioSelection: { try .decode(UserDefaults.standard.string(forKey: TelegramCallAudioSelection.preferenceKey) ?? "") }))
+        calls.bind(TelegramEngineCallProvider(engine: TelegramAccountCallEngine(account: account), proxy: { try await callProxy.currentCallProxy() }, media: TelegramNativeCallMediaFactory(), audioSelection: { try .decode(UserDefaults.standard.string(forKey: TelegramCallAudioSelection.preferenceKey) ?? "") }))
         callSelectionAccount = nil; callSelectionPeer = nil; refreshCallSelection()
         groupMemberSearch.bind(TelegramEngineRemotePeerProvider(account: account))
         peerManagement.bind(TelegramEnginePeerManagementProvider(account: account))
@@ -2432,7 +2451,7 @@ public final class TelegramModel: ObservableObject {
                 let id = source.messageID, a = source.attachment
                 return (a.id,(MessageArchiveIdentity(service: "telegram",accountID: String(accountID),
                     conversationID: String(id.peerId.toInt64()),messageID: "\(id.namespace):\(id.id)"),
-                    MessageArchiveAttachment(id: a.id,kind: a.kind == .photo ? "photo" : a.kind == .file ? "file" : "unsupported",name: a.name,size: a.byteCount)))
+                    MessageArchiveAttachment(id: a.id,kind: a.kind == .photo ? "photo" : a.kind == .file ? "file" : a.kind == .location ? "location" : "unsupported",name: a.name,size: a.byteCount)))
             },uniquingKeysWith: { _, last in last })
             media.completedFullFile = { [files = archive.files] id,url,size in
                 guard let (identity,attachment) = archivedSources[id] else { return }
@@ -2472,19 +2491,11 @@ public final class TelegramModel: ObservableObject {
         let signal: Signal<(ChatListView, ViewUpdateType), NoError>
         if let anchor { signal = account.viewTracker.aroundChatListView(groupId: group, index: anchor, count: 50) }
         else { signal = account.viewTracker.tailChatListView(groupId: group, count: 50) }
-        chatList.set((signal |> deliverOnMainQueue).start(next: { [weak self] value in
+        chatList.set((telegramProjectChatPage(account: account, signal: signal) |> deliverOnMainQueue).start(next: { [weak self] page in
             guard let self, self.generation == token, self.accountGeneration == accountToken,
                   self.chatFolder == folder else { return }
-            let view = value.0
-            let hasHole = view.entries.contains { if case .HoleEntry = $0 { return true }; return false }
-            let chats = view.entries.reversed().compactMap { entry -> TelegramChat? in
-                guard case let .MessageEntry(data) = entry, let peer = data.renderedPeer.peer else { return nil }
-                return TelegramChat(id: peer.id.toInt64(), title: telegramPeerTitle(peer), preview: telegramMessagePreview(data.messages.last), unreadCount: Int(data.readState?.state.count ?? 0),
-                    presence: telegramChatPresence(presence: data.presence, accountID: account.peerId.toInt64(),
-                        peerID: peer.id.toInt64(), serverTimeOffset: account.network.globalTimeDifference))
-            }
-            self.receiveChats(chats, requestID: requestID, previous: view.earlierIndex,
-                next: view.laterIndex, isLoading: hasHole)
+            self.receiveChats(page.chats, requestID: requestID, previous: page.previous,
+                next: page.next, isLoading: page.isLoading)
         }))
     }
 
@@ -2516,21 +2527,16 @@ public final class TelegramModel: ObservableObject {
         historyPage = historyPages.navigation
         updateHistoryDeadline(requestID: requestID)
         let index: MessageHistoryAnchorIndex = anchor.map { .message($0) } ?? .upperBound
-        history.set((account.viewTracker.aroundMessageHistoryViewForLocation(.peer(peerId: PeerId(chat), threadId: threadID),
-                index: index, anchorIndex: index, count: 50, fixedCombinedReadStates: nil)
-            |> deliverOnMainQueue).start(next: { [weak self] value in
+        history.set((telegramProjectHistoryPage(account: account, chatID: chat, threadID: threadID, index: index)
+            |> deliverOnMainQueue).start(next: { [weak self] page in
                 guard let self, self.generation == token, self.accountGeneration == accountToken,
                       self.selectedChatID == chat, self.selectedThreadID == threadID, self.historyPages.requestID == requestID else { return }
-                let view = value.0
-                let waiting = view.isLoading || view.isLoadingEarlier ||
-                    (view.earlierId == nil && view.holeEarlier) || (view.laterId == nil && view.holeLater)
-                let messages = view.entries.map { TelegramMessage($0, accountID: account.peerId.toInt64()) }
-                if !messages.isEmpty || !waiting {
-                    self.historyMediaSources = view.entries.flatMap { telegramAttachments($0.message) }
-                    self.prepareHistoryReadIndexes(view.entries)
+                if !page.messages.isEmpty || !page.isLoading {
+                    self.historyMediaSources = page.sources
+                    self.historyReadIndexes = page.readIndexes
                 }
-                self.receiveMessages(messages, requestID: requestID, previous: view.earlierId,
-                    next: view.laterId, isLoading: waiting, hasPreviousGap: view.holeEarlier, hasNextGap: view.holeLater)
+                self.receiveMessages(page.messages, requestID: requestID, previous: page.previous,
+                    next: page.next, isLoading: page.isLoading, hasPreviousGap: page.holeEarlier, hasNextGap: page.holeLater)
             }))
     }
 
@@ -2742,35 +2748,6 @@ public final class TelegramModel: ObservableObject {
 
 }
 
-private enum TelegramSessionKey {
-    static func open(directory: URL) throws -> ValueBoxEncryptionParameters {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "org.makosh.telegram", kSecAttrAccount as String: "session-encryption-v1"]
-        var lookup = query
-        lookup[kSecReturnData as String] = true
-        lookup[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(lookup as CFDictionary, &result)
-        let bytes: Data
-        if status == errSecSuccess {
-            guard let data = result as? Data, data.count == 48 else { throw TelegramSetupError.keychain }
-            bytes = data
-        } else if status == errSecItemNotFound {
-            if FileManager.default.fileExists(atPath: directory.path),
-               !(try FileManager.default.contentsOfDirectory(atPath: directory.path)).isEmpty { throw TelegramSetupError.missingSessionKey }
-            var generated = Data(count: 48)
-            guard generated.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 48, $0.baseAddress!) }) == errSecSuccess else { throw TelegramSetupError.keychain }
-            var item = query
-            item[kSecValueData as String] = generated
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw TelegramSetupError.keychain }
-            bytes = generated
-        } else { throw TelegramSetupError.keychain }
-        guard let key = ValueBoxEncryptionParameters.Key(data: bytes.prefix(32)),
-              let salt = ValueBoxEncryptionParameters.Salt(data: bytes.suffix(16)) else { throw TelegramSetupError.keychain }
-        return ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: key, salt: salt)
-    }
-}
 
 #if DEBUG
 /// The preview only renders confirmation. It cannot create paid consent or an Account.

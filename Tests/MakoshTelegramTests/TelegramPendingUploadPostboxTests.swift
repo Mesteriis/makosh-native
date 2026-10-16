@@ -171,7 +171,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             XCTAssertEqual(try Data(contentsOf: restored[0].file.url), mp4)
             let controller = TelegramUploadController(); defer { controller.clear() }
             controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
-            guard controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch) else {
+            guard await controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch) else {
                 return XCTFail("GIF pair must restore through native batch route")
             }
             let seeded = expectation(description: "GIF synthetic peers")
@@ -314,7 +314,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             let controller = TelegramUploadController()
             controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
             defer { controller.clear() }
-            guard controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch) else {
+            guard await controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch) else {
                 return XCTFail("Typed audio must restore through the same native batch route")
             }
             let seeded = expectation(description: "Audio synthetic peers")
@@ -591,7 +591,8 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         let loaded = try await store.load(chatID: 42), previous = try XCTUnwrap(loaded)
         let editor = TelegramUploadController()
         editor.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(editor.restore(draft: previous, items: [item], target: target, restorationEpoch: editor.recoveryRestoreEpoch))
+        let restoredUpload1 = await editor.restore(draft: previous, items: [item], target: target, restorationEpoch: editor.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload1)
         XCTAssertFalse(editor.updatePresentation(.file, contextID: previous.id, revision: UUID()), "A stale menu cannot switch a new revision")
         XCTAssertEqual(editor.presentation, .media)
         XCTAssertTrue(editor.updatePresentation(.file, contextID: previous.id, revision: editor.itemsRevision))
@@ -606,7 +607,7 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         defer { for item in restored { try? item.discard() } }
         let resumed = TelegramUploadController()
         resumed.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
-        guard resumed.restore(draft: draft, items: restored, target: target, restorationEpoch: resumed.recoveryRestoreEpoch) else {
+        guard await resumed.restore(draft: draft, items: restored, target: target, restorationEpoch: resumed.recoveryRestoreEpoch) else {
             return XCTFail("A durable file presentation must restore before native submission")
         }
         XCTAssertEqual(resumed.file?.mode, .file); XCTAssertEqual(resumed.file?.name, "original.png")
@@ -722,8 +723,9 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         XCTAssertEqual(try restored.map { try Data(contentsOf: XCTUnwrap($0.originalFile).url) }, [otherBytes, originalBytes])
         let resumed = TelegramUploadController()
         resumed.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(resumed.restore(draft: reordered, items: restored,
-            target: .init(accountID: 1, chatID: 42, title: "Synthetic originals"), restorationEpoch: resumed.recoveryRestoreEpoch))
+        let restoredUpload2 = await resumed.restore(draft: reordered, items: restored,
+            target: .init(accountID: 1, chatID: 42, title: "Synthetic originals"), restorationEpoch: resumed.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload2)
         let seeded = expectation(description: "Synthetic photo peers")
         let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })
         defer { seed.dispose() }
@@ -792,7 +794,8 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         defer { for item in restored { try? TelegramUploadFileIO.discard(item.file) } }
         let resumed = TelegramUploadController()
         resumed.bind(provider: provider, recoveryStore: store, requiresRecovery: true)
-        XCTAssertTrue(resumed.restore(draft: draft, items: restored, target: target, restorationEpoch: resumed.recoveryRestoreEpoch))
+        let restoredUpload3 = await resumed.restore(draft: draft, items: restored, target: target, restorationEpoch: resumed.recoveryRestoreEpoch)
+        XCTAssertTrue(restoredUpload3)
         XCTAssertEqual(resumed.items.map { $0.file.name }, ["c.txt", "a.txt"])
         XCTAssertTrue(resumed.selectItem(id: initial[0].id, contextID: context))
         XCTAssertEqual(resumed.file?.name, "a.txt")
@@ -835,7 +838,8 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
         XCTAssertFalse(controller.moveItem(id: ids[1], to: 0, contextID: context, revision: controller.itemsRevision))
         let cover = try await TelegramUploadVideoCoverIO.stage(image, crop: CGRect(x: 0, y: 0, width: 1, height: 1))
         defer { try? TelegramUploadFileIO.discard(cover.imageFile) }
-        XCTAssertTrue(controller.commitVideoCover(cover, editID: edit))
+        let committedCover4 = await controller.commitVideoCover(cover, editID: edit)
+        XCTAssertTrue(committedCover4)
         for _ in 0..<1000 where controller.isRecoveryBusy { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(controller.canSend, "Cover persistence must operate on the selected batch ID")
         let loaded = try await store.load(chatID: 42), saved = try XCTUnwrap(loaded)
@@ -1248,7 +1252,8 @@ private func pendingControllerMessage(_ box: Postbox, id: MessageId) -> Signal<M
             defer { for item in restored { try? item.discard() } }
             let controller = TelegramUploadController(); defer { controller.clear() }
             controller.bind(provider: PendingControllerBatchProvider(box), recoveryStore: store, requiresRecovery: true)
-            XCTAssertTrue(controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch))
+            let restoredUpload5 = await controller.restore(draft: draft, items: restored, target: target, restorationEpoch: controller.recoveryRestoreEpoch)
+            XCTAssertTrue(restoredUpload5)
             XCTAssertEqual(controller.captionInput, raw); XCTAssertTrue(controller.canSend)
             let seeded = expectation(description: "Caption synthetic peers")
             let seed = (pendingControllerPeers(box) |> deliverOnMainQueue).start(next: { _ in seeded.fulfill() })

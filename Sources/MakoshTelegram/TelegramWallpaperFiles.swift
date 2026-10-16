@@ -3,6 +3,18 @@ import Darwin
 
 /// Private, independently named local appearance assets. Never conversation files or S3.
 public enum TelegramWallpaperFiles {
+    /// Returns ownership of a newly installed asset, even if cancellation races
+    /// the return. The editor discards it if its presentation is no longer current.
+    @concurrent public static func installInBackground(_ prepared: Data, pattern: Bool = false, directory: URL? = nil) async throws -> String {
+        try Task.checkCancellation()
+        return try pattern ? installPattern(prepared, directory: directory) : install(prepared, directory: directory)
+    }
+    /// Cleanup must also execute when its calling presentation task was cancelled.
+    @concurrent public static func discardInstalled(_ name: String, directory: URL? = nil) async throws {
+        guard TelegramLocalWallpaper.image(name).isValid || TelegramWallpaperPattern.validName(name) else { throw TelegramAppearanceError.invalid }
+        let root = try rootFD(directory, create: false); defer { close(root) }
+        guard unlinkat(root, name, 0) == 0 || errno == ENOENT else { throw TelegramAppearanceError.image }
+    }
     public static func readSelection(_ url: URL) throws -> Data {
         guard url.isFileURL else { throw TelegramAppearanceError.image }
         let fd = open(url.path,O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
@@ -26,12 +38,15 @@ public enum TelegramWallpaperFiles {
             try prepared.withUnsafeBytes { bytes in
                 var offset = 0
                 while offset < bytes.count {
+                    try Task.checkCancellation()
                     let written = Darwin.write(fd,bytes.baseAddress!.advanced(by:offset),bytes.count-offset)
                     if written < 0 && errno == EINTR { continue }
                     guard written > 0 else { throw TelegramAppearanceError.image }; offset += written
                 }
             }
+            try Task.checkCancellation()
             guard fsync(fd) == 0, fsync(root) == 0 else { throw TelegramAppearanceError.image }
+            try Task.checkCancellation()
             close(fd); return name
         } catch { close(fd); unlinkat(root,name,0); throw error }
     }

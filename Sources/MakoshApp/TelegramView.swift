@@ -45,8 +45,6 @@ struct TelegramDetailView: View {
         self.forumTopics = model.forumTopics; self.sendApproval = model.sendApproval
         self.dossier = dossier; self.openDossier = openDossier
     }
-    @State private var apiID = ""
-    @State private var apiHash = ""
     @State private var phone = ""
     @State private var code = ""
     @State private var password = ""
@@ -169,19 +167,15 @@ struct TelegramDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
             Label("Telegram в Макош", systemImage: "paperplane").font(.largeTitle.weight(.semibold))
             Text("Неофициальный клиент на основе TelegramCore").font(.title3)
-            Text("Используйте собственные API ID и API hash. Макош создаёт отдельный локальный сеанс и не читает данные установленного Telegram. Подключение начнётся только после нажатия кнопки.").foregroundStyle(.secondary)
-            Button("Подключить с локальными API-данными") { model.connectUsingSavedAPIConfiguration() }
-                .buttonStyle(.borderedProminent).disabled(model.isBusy).accessibilityIdentifier("telegram.connect.saved")
-            Text("Использует сохранённый локальный файл telegram-api.json. Значения не отображаются.").font(.caption).foregroundStyle(.secondary)
-            Divider()
-            Link("Получить API ID и API hash", destination: URL(string: "https://my.telegram.org/apps")!)
-            TextField("API ID", text: $apiID).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.apiID")
-            SecureField("API hash", text: $apiHash).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.apiHash")
-            Button("Подключить Telegram") {
-                model.connect(apiID: apiID, apiHash: apiHash)
-                apiHash = ""
-            }.buttonStyle(.borderedProminent).disabled(model.isBusy || apiID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || apiHash.isEmpty).accessibilityIdentifier("telegram.connect")
-            Text("Можно использовать локальные API-данные или вводить их вручную. Остановка подключения сохраняет локальный кэш и не выполняет удалённый выход из аккаунта.").font(.caption).foregroundStyle(.secondary)
+            Text("Макош создаёт отдельный локальный сеанс Telegram. Подключение начнётся после нажатия кнопки.").foregroundStyle(.secondary)
+            Button("Подключить Telegram", action: model.connect)
+                .buttonStyle(.borderedProminent).disabled(model.isBusy || !model.hasEmbeddedAPIConfiguration)
+                .accessibilityIdentifier("telegram.connect")
+            if !model.hasEmbeddedAPIConfiguration {
+                Text("Telegram не настроен в этой сборке.").foregroundStyle(.secondary)
+                    .accessibilityIdentifier("telegram.buildConfiguration.missing")
+            }
+            Text("Остановка подключения сохраняет локальный кэш и не выполняет удалённый выход из аккаунта.").font(.caption).foregroundStyle(.secondary)
             Spacer()
         }.padding(32).frame(maxWidth: 650, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

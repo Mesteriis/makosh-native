@@ -1,0 +1,249 @@
+--- a/src/client/node_io.rs
++++ b/src/client/node_io.rs
+@@ -623,8 +623,8 @@
+         }
+         match tag {
+             "receipt" | "notification" | "call" => true,
+-            "message" => from_jid_matches(node, |j| j.is_newsletter() || j.is_status_broadcast()),
+-            "status" => is_status_broadcast_stanza(node),
++            "message" => from_jid_matches(node, |j| crate::inbound_early_ack_allowed(self.inbound_durability_hook().is_some(),j.is_newsletter(),j.is_status_broadcast())),
++            "status" => is_status_broadcast_stanza(node) && crate::inbound_early_ack_allowed(self.inbound_durability_hook().is_some(),false,true),
+             _ => false,
+         }
+     }
+--- a/src/history_sync.rs
++++ b/src/history_sync.rs
+@@ -288,11 +288,11 @@
+             notification.sync_type
+         );
+ 
+-        self.send_protocol_receipt(
+-            message_id.clone(),
+-            crate::types::presence::ReceiptType::HistorySync,
+-        )
+-        .await;
++        // Makosh: the consumer's durable commit gates the receipt below.
++        // Preserve the upstream eager receipt only without a durability hook.
++        if self.inbound_durability_hook().is_none() {
++            self.send_protocol_receipt(message_id.clone(), crate::types::presence::ReceiptType::HistorySync).await;
++        }
+ 
+         if self.is_shutting_down() {
+             log::debug!(
+@@ -471,6 +471,13 @@
+                     .with_peer_data_request_session_id(
+                         notification.peer_data_request_session_id.take(),
+                     );
++                    if let Some(hook) = self.inbound_durability_hook() {
++                        if self.is_shutting_down() || hook.on_history(self.clone(), &lazy_hs).await.is_err() {
++                            return; // no receipt or detached event on failure
++                        }
++                        if self.is_shutting_down() { return; }
++                        self.send_protocol_receipt(message_id.clone(), crate::types::presence::ReceiptType::HistorySync).await;
++                    }
+                     self.core
+                         .event_bus
+                         .dispatch(Event::HistorySync(Box::new(lazy_hs)));
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -275,3 +275,10 @@
+ 
+ #[cfg(test)]
+ mod reexports_test;
++
++/// Gate used by the transport before message dispatch. With a consumer hook,
++/// content-bearing newsletter/status acknowledgements belong after its commit.
++#[doc(hidden)]
++pub fn inbound_early_ack_allowed(has_hook:bool,newsletter:bool,status:bool)->bool {
++    !has_hook && (newsletter || status)
++}
+--- a/src/message/dispatch.rs
++++ b/src/message/dispatch.rs
+@@ -57,13 +57,18 @@
+         // reach here without the processing permit, so enqueueing could
+         // straddle the drain→live transition.
+         if info.source.chat.is_newsletter() {
++            let message = wacore::types::events::InboundMessage::builder().message(dispatch_msg).info(info.clone()).build();
++            let committed = if let Some(hook) = self.inbound_durability_hook() {
++                if hook.on_messages(self.clone(), std::slice::from_ref(&message)).await.is_err() {
++                    return InboundCommitState::Failed;
++                }
++                self.spawn_message_ack(&info);
++                true
++            } else { false };
+             self.core.event_bus.dispatch(Event::Messages(
+                 wacore::types::events::MessageBatch::builder()
+-                    .messages(Arc::from([wacore::types::events::InboundMessage::builder(
+-                    )
+-                    .message(dispatch_msg)
+-                    .info(info)
+-                    .build()]))
++                    .messages(Arc::from([message]))
++                    .hook_committed(committed)
+                     .origin(wacore::types::events::BatchOrigin::Live)
+                     .build(),
+             ));
+@@ -104,7 +109,7 @@
+         }
+         if Self::should_send_delivery_receipt(info) {
+             self.spawn_delivery_receipt(info);
+-        } else if !info.source.chat.is_status_broadcast() {
++        } else {
+             self.spawn_message_ack(info);
+         }
+     }
+--- a/src/message/receive.rs
++++ b/src/message/receive.rs
+@@ -219,7 +219,6 @@
+             .await;
+             let client = Arc::clone(self);
+             let info2 = Arc::clone(&info);
+-            let skip_ack = info.source.chat.is_status_broadcast();
+             self.outbound_flush.spawn(&*self.runtime, async move {
+                 // Unrecoverable fanouts have no content the phone will resend, so
+                 // ack directly. Otherwise PDO is the only recovery (no retry
+@@ -230,7 +229,7 @@
+                 } else {
+                     client.run_pdo_request(&info2).await
+                 };
+-                if !skip_ack && should_ack {
++                if should_ack {
+                     client.send_transport_ack(&info2).await;
+                 }
+             });
+@@ -358,9 +357,7 @@
+                 "[msg:{}] All enc payloads unrecognized; transport-acking to drop from offline queue",
+                 info.id
+             );
+-            if !info.source.chat.is_status_broadcast() {
+-                self.spawn_node_transport_ack(nr).await;
+-            }
++            self.spawn_node_transport_ack(nr).await;
+             return None;
+         }
+ 
+@@ -573,7 +570,7 @@
+         } else if session_had_duplicates
+             && !session_decrypted_successfully
+             && !session_dispatched_undecryptable
+-            && !info.source.chat.is_status_broadcast()
++
+         {
+             // Duplicate (already-processed) with no group content: ack it so the
+             // server drops it from the offline queue (whatsmeow/WA Web treat
+@@ -1303,9 +1300,7 @@
+                     // offline queue. status is already acked by the should_ack gate,
+                     // so skip it to avoid a redundant receipt. With a durability hook,
+                     // a buffered copy means the original commit never acked: replay it.
+-                    if !info.source.chat.is_status_broadcast() {
+-                        self.ack_or_replay_to_hook(info).await;
+-                    }
++                    self.ack_or_replay_to_hook(info).await;
+                 }
+                 Err(SignalProtocolError::NoSenderKeyState(msg)) => {
+                     if info.is_expired_status() {
+--- a/src/pdo.rs
++++ b/src/pdo.rs
+@@ -416,17 +416,18 @@
+             request_id
+         );
+ 
+-        // PDO recovery is event-only (its ack runs on the PDO path, not the
+-        // message pipeline), so this bypasses the commit batcher on purpose.
++        // Makosh: retain recovered plaintext before dispatching a detached event.
++        let message = wacore::types::events::InboundMessage::builder().message(Arc::from(message)).info(message_info).build();
++        let committed = if let Some(hook) = self.inbound_durability_hook() {
++            if hook.on_messages(self.clone(), std::slice::from_ref(&message)).await.is_err() { return; }
++            true
++        } else { false };
+         self.core
+             .event_bus
+             .dispatch(wacore::types::events::Event::Messages(
+                 wacore::types::events::MessageBatch::builder()
+-                    .messages(Arc::from([wacore::types::events::InboundMessage::builder(
+-                    )
+-                    .message(Arc::from(message))
+-                    .info(message_info)
+-                    .build()]))
++                    .messages(Arc::from([message]))
++                    .hook_committed(committed)
+                     .origin(wacore::types::events::BatchOrigin::Live)
+                     .build(),
+             ));
+--- a/src/types/durability_hook.rs
++++ b/src/types/durability_hook.rs
+@@ -65,4 +65,7 @@
+     /// carries the exact same items: what this method committed is what event
+     /// consumers observe.
+     async fn on_messages(&self, client: Arc<Client>, batch: &[InboundMessage]) -> Result<()>;
++
++    /// Makosh adaptation: commit a complete received chunk before its receipt.
++    async fn on_history(&self, _client: Arc<Client>, _history: &crate::types::events::LazyHistorySync) -> Result<()> { Ok(()) }
+ }
+--- a/src/voip/facade.rs
++++ b/src/voip/facade.rs
+@@ -1572,6 +1572,21 @@
+     Ok(())
+ }
+ 
++// Makosh's offer-write owner. The existing AnswerTeardown field removes only
++// this registry generation and sends a terminal stanza after ambiguous writes.
++struct MakoshOutgoingSetup<'a> {
++    client: &'a Client, call_id: String, generation: u64, ack_id: String,
++    armed: bool, teardown: AnswerTeardown,
++}
++impl Drop for MakoshOutgoingSetup<'_> {
++    fn drop(&mut self) {
++        if self.armed {
++            take_pending_if_current(&self.client.pending_outgoing_calls, &self.call_id, self.generation);
++            self.client.response_waiters_guard().remove(&self.ack_id);
++        }
++    }
++}
++
+ /// Drain every dormant outgoing call (relay never arrived) and notify each one's `ended` so any
+ /// parked `wait_ended()` resolves. The relay socket and signaling are connection-scoped, so a dormant
+ /// outgoing call can't survive a disconnect; the registry's `abort_all` already covers attached calls,
+@@ -1812,6 +1827,17 @@
+             },
+         );
+ 
++    // Makosh: cancellation during the offer write is delivery-ambiguous. The
++    // guard owns pending material/ack waiter and the existing guarded terminate.
++    let mut setup = MakoshOutgoingSetup {
++        client, call_id: call_id.clone(), generation, ack_id: offer_stanza_id.clone(), armed: true,
++        teardown: AnswerTeardown {
++            client: client_weak(client), registry: registry.clone(),
++            call_id: call_id.clone(), peer_jid: peer.clone(), call_creator: call_creator.clone(),
++            generation, armed: true, claimed: false, transition: None,
++        },
++    };
++
+     // If the send fails, undo the registration: drop the (generation-guarded) pending entry, reap our
+     // registry generation, drop the dangling ack-waiter, and wake any wait_ended() waiter, then
+     // propagate. Guarded so a same-call-id replacement that already superseded us isn't evicted.
+@@ -1833,6 +1859,8 @@
+     // real server). Wait on the ack-waiter with a bounded timeout; attach the engine when the relay
+     // lands, else fail the call so a parked wait_ended() resolves.
+     spawn_outgoing_relay_waiter(client, call_id.clone(), generation, offer_stanza_id, ack_rx);
++    setup.armed = false;
++    setup.teardown.disarm();
+ 
+     Ok(CallHandle {
+         call_id,
+--- a/src/handlers/call.rs
++++ b/src/handlers/call.rs
+@@ -121,6 +121,13 @@
+                 #[cfg(feature = "voip-runtime")]
+                 let group_transition_generation =
+                     group_transition.as_ref().map(|(generation, _)| *generation);
++                // Makosh: retain registry ownership before asynchronous event callbacks.
++                // This private metadata is never serialized or inferred from call ID alone.
++                #[cfg(feature = "voip-runtime")]
++                if is_terminate && let Some(generation) = group_transition_generation {
++                    call.set_ringing_generation(generation);
++                }
++
+                 #[cfg(feature = "voip-runtime")]
+                 let _group_transition_guard = if let Some((_, lock)) = group_transition.as_ref() {
+                     Some(lock.lock().await)

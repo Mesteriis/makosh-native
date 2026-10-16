@@ -4,43 +4,51 @@ import TelegramCore
 @testable import MakoshTelegram
 
 @MainActor final class TelegramCallCBridgeTests: XCTestCase {
-    func testExplicitAudioUIDsAreCopiedIntoVersionedCConfiguration() throws {
+    func testExplicitAudioUIDsAreCopiedIntoVersionedCConfiguration() async throws {
         let fixture = CallCFixture()
         var config = try configuration(); config.audioDevices = .init(inputUID: "qa-input", outputUID: "qa-output")
         let bridge = try XCTUnwrap(TelegramCallCBridge(configuration: config, inbox: TelegramCallMediaInbox(deliver: { _ in }), functions: fixture.functions))
+        await fulfillment(of: [fixture.created], timeout: 2)
         XCTAssertEqual(fixture.audioUIDs, ["qa-input", "qa-output"])
         XCTAssertEqual(fixture.abiVersion, 2)
-        bridge.stop(); fixture.release()
+        bridge.stop(); await fulfillment(of: [fixture.stopped], timeout: 2)
+        fixture.release(); await fulfillment(of: [fixture.destroyedEvent], timeout: 2)
     }
-    func testCABIReceivesCompleteNativeKeyVersionAndBothRelayAddresses() throws {
+    func testCABIReceivesCompleteNativeKeyVersionAndBothRelayAddresses() async throws {
         let fixture = CallCFixture(), output = CallCOutput()
         let inbox = TelegramCallMediaInbox(deliver: output.append)
         let bridge = try XCTUnwrap(TelegramCallCBridge(configuration: configuration(), inbox: inbox, functions: fixture.functions))
+        await fulfillment(of: [fixture.created], timeout: 2)
         XCTAssertEqual(fixture.version, "5.0.0"); XCTAssertEqual(fixture.key, Data(repeating: 7, count: 256))
         XCTAssertEqual(fixture.hosts, ["203.0.113.17", "2001:db8::17"])
         XCTAssertEqual(fixture.outgoing, 1); XCTAssertEqual(fixture.p2p, 1)
-        XCTAssertTrue(bridge.setMuted(true)); XCTAssertEqual(fixture.mutes, [1])
-        XCTAssertTrue(bridge.receive(Data([1, 2, 3]))); XCTAssertEqual(fixture.signals, [Data([1, 2, 3])])
-        bridge.stop(); fixture.release()
+        XCTAssertTrue(bridge.setMuted(true)); await fulfillment(of: [fixture.muted], timeout: 2); XCTAssertEqual(fixture.mutes, [1])
+        XCTAssertTrue(bridge.receive(Data([1, 2, 3]))); await fulfillment(of: [fixture.signaled], timeout: 2); XCTAssertEqual(fixture.signals, [Data([1, 2, 3])])
+        bridge.stop(); await fulfillment(of: [fixture.stopped], timeout: 2)
+        fixture.release(); await fulfillment(of: [fixture.destroyedEvent, output.releasedEvent], timeout: 2)
     }
     func testStopRevokesControlsAndNativeReleaseDestroysHandleOnce() async throws {
         let fixture = CallCFixture(), output = CallCOutput()
         let inbox = TelegramCallMediaInbox(deliver: output.append)
         let bridge = try XCTUnwrap(TelegramCallCBridge(configuration: configuration(), inbox: inbox, functions: fixture.functions))
+        await fulfillment(of: [fixture.created], timeout: 2)
         bridge.stop(); bridge.stop()
+        await fulfillment(of: [fixture.stopped], timeout: 2)
         XCTAssertEqual(fixture.stops, 1); XCTAssertEqual(fixture.destroyed, 0)
         XCTAssertFalse(bridge.setMuted(false)); XCTAssertFalse(bridge.setVideo(true)); XCTAssertFalse(bridge.receive(Data([1])))
         fixture.release()
-        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+        await fulfillment(of: [fixture.destroyedEvent, output.releasedEvent], timeout: 2)
         XCTAssertEqual(fixture.destroyed, 1); XCTAssertEqual(output.released, 1)
     }
     func testNativeCallbackCopiesBorrowedSignalingBeforeReturning() async throws {
         let fixture = CallCFixture(), output = CallCOutput()
         let bridge = try XCTUnwrap(TelegramCallCBridge(configuration: configuration(), inbox: TelegramCallMediaInbox(deliver: output.append), functions: fixture.functions))
+        await fulfillment(of: [fixture.created], timeout: 2)
         fixture.emitSignaling()
-        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+        await fulfillment(of: [output.signaled], timeout: 2)
         XCTAssertEqual(output.signals, [Data([17, 23, 41])])
-        bridge.stop(); fixture.release()
+        bridge.stop(); await fulfillment(of: [fixture.stopped], timeout: 2)
+        fixture.release(); await fulfillment(of: [fixture.destroyedEvent, output.releasedEvent], timeout: 2)
     }
     private func configuration() throws -> TelegramCallMediaConfiguration {
         let id = UUID()
@@ -52,15 +60,23 @@ import TelegramCore
     }
 }
 private final class CallCOutput: @unchecked Sendable {
+    let signaled = XCTestExpectation(description: "borrowed signaling delivered")
+    let releasedEvent = XCTestExpectation(description: "native release delivered")
     private let lock = NSLock()
     private var packets: [Data] = [], releases = 0
     var signals: [Data] { lock.withLock { packets } }
     var released: Int { lock.withLock { releases } }
     func append(_ value: TelegramCallMediaDelivery) {
         lock.withLock { switch value { case let .signaling(data): packets.append(data); case .released: releases += 1; default: break } }
+        switch value { case .signaling: signaled.fulfill(); case .released: releasedEvent.fulfill(); default: break }
     }
 }
 private final class CallCFixture: @unchecked Sendable {
+    let created = XCTestExpectation(description: "native created")
+    let muted = XCTestExpectation(description: "native muted")
+    let signaled = XCTestExpectation(description: "native signaling received")
+    let stopped = XCTestExpectation(description: "native stopped")
+    let destroyedEvent = XCTestExpectation(description: "native destroyed")
     private let lock = NSLock()
     private var callbacks: MKCallCallbacks?
     private var savedAudioUIDs: [String] = [], savedABIVersion: UInt32 = 0
@@ -90,10 +106,11 @@ private final class CallCFixture: @unchecked Sendable {
                     savedHosts.append(withUnsafeBytes(of: config.pointee.servers[index].host) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) })
                 }
             }
-            return OpaquePointer(bitPattern: 0x1234)
-        }, signal: { [self] _, data, size in lock.withLock { savedSignals.append(Data(bytes: data!, count: size)) }; return 1 },
-        mute: { [self] _, value in lock.withLock { savedMutes.append(value) }; return 1 }, video: { _, _ in 1 }, push: { _, _ in 1 },
-        stop: { [self] _ in lock.withLock { stopCount += 1 } }, destroy: { [self] _ in lock.withLock { destroyCount += 1 } })
+            created.fulfill(); return OpaquePointer(bitPattern: 0x1234)
+        }, signal: { [self] _, data, size in lock.withLock { savedSignals.append(Data(bytes: data!, count: size)) }; signaled.fulfill(); return 1 },
+        mute: { [self] _, value in lock.withLock { savedMutes.append(value) }; muted.fulfill(); return 1 }, video: { _, _ in 1 }, push: { _, _ in 1 },
+        stop: { [self] _ in lock.withLock { stopCount += 1 }; stopped.fulfill() },
+        destroy: { [self] _ in lock.withLock { destroyCount += 1 }; destroyedEvent.fulfill() })
     }
     func release() { let value = lock.withLock { callbacks }; value?.released?(value?.context) }
     func emitSignaling() {

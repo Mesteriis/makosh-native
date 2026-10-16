@@ -17,7 +17,7 @@ python3 scripts/xerj-index.py MMail --check
 xerj search --url http://127.0.0.1:19320 --prefix mk-com-mail 'IMAPSession connectAndLogin' -k 3
 python3 scripts/xerj-index.py project
 python3 scripts/xerj-index.py project --check
-xerj search --url http://127.0.0.1:19320 --prefix mk-own-v13 'undoMerge expectedRevision' -k 3
+xerj search --url http://127.0.0.1:19320 --prefix mk-own-v18 'undoMerge expectedRevision' -k 3
 ```
 
 Reference preparation is optional research work. Application build/run/test uses
@@ -104,3 +104,55 @@ refresh actually exits1 with frozen-dataset schema evolution refusal. The
 current project uses separate `mk-own-v13`/`project-v13`; prior states are
 retained. No lock fields or source files are excluded to disguise this failure.
 Reference/engine and bounded debug-snapshot scopes remain unchanged.
+
+Mail migration: v13 actually rejects the changed AGENTS.md family (yaml to
+text prose). The first v14 run completes indexing but changes during that run
+prevent a freshness record. A subsequent v14 refresh actually exits1: the new
+`Dependencies/Mail.lock.json` fields cannot enter its frozen dataset. Raw logs
+remain in ignored `.local/mail-migration/`; no dependency fields are excluded.
+The new scope is `mk-own-v15` / `project-v15`; only a successful final content
+fingerprint may be reused. Native UI automation failure is separate from XERJ.
+
+Mail completion adds the independent MacRuntime source/license pin. The v15
+refresh actually refuses its new JSON field family (exit1). The current scope
+is `mk-own-v16` / `project-v16`; the refusal is preserved in local completion
+logs. No dependency or source path is excluded to hide this schema change.
+
+WhatsApp block1 introduces its independent source/license lock: v16 refuses new
+JSON fields; v17 initially completes but source edits prevent a freshness record.
+The later reviewed SDK adaptation adds engineAdaptation_patchSHA256, which v17
+also actually refuses (frozen schema, exit1). Current project scope is
+mk-own-v18/project-v18. Both failed runs and the changed-during-index result stay
+in ignored task evidence. No source/lock field is excluded to hide the failure.
+
+WhatsApp block2 status adaptation adds the src/lib.rs output fingerprint. The
+actual v18 refresh failed with frozen dataset schema (engineAdaptation_files_src/lib.rs
+absent); this is not fresh evidence. The project now uses mk-own-v19/project-v19,
+following that schema restriction. New-scope coverage/fingerprints are recorded
+in the current development ledger after verification.
+
+WhatsApp block2 native Opus pin adds nativeOpus_sha256. The actual v19
+refresh refused that frozen JSON field (exit1); current scope is
+mk-own-v20/project-v20. No lock fields are excluded.
+
+The owned outgoing-call cleanup adaptation adds the src/voip/facade.rs output
+fingerprint. v20 actually refused that frozen field (exit1); current project
+scope is mk-own-v21/project-v21. Prior evidence is retained, no exclusion.
+
+Teams provenance lock introduced new nested JSON fields. The mk-own-v21 refresh
+failed with exit1 (unsupported frozen schema evolution); preserved raw failure
+in .local/teams-migration/. Current project scope uses mk-own-v22/project-v22.
+
+Telemost independent provenance introduces new JSON fields. The actual v22
+refresh exits1 with frozen-schema refusal (raw diagnostic retained in
+.local/telemost-migration/). Current project scope is mk-own-v23/project-v23;
+no source/lock field is excluded to disguise the failed refresh.
+
+WhatsApp group terminal ownership adds the reviewed SDK call-handler checksum.
+The actual v23 refresh refused engineAdaptation_files_src/handlers/call.rs in its
+frozen dependencies-whatsapp-lock dataset (exit 1). The failure is retained in
+.local/whatsapp-open-questions/review-final-index-v23-project-refresh.log.
+Current project scope uses mk-own-v24/project-v24; prior index states remain.
+The installed CLI observed during this run is 1.0.0-rc.95; earlier version and
+coverage notes above are historical. No tool update, external embeddings or
+reranking is performed. Only a successful fresh fingerprint may be reused.

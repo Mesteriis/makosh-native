@@ -5,6 +5,23 @@ import TelegramCore
 @testable import MakoshTelegram
 
 final class TelegramArchiveMappingTests: XCTestCase {
+    func testLocationSnapshotRetainsCoordinatesBeforeRemovalWithoutAnyFileResource() throws {
+        let map = TelegramMediaMap(latitude: 40.4168, longitude: -3.7038, heading: 90,
+            accuracyRadius: 15, venue: MapVenue(title: "Synthetic place", address: "Synthetic address",
+                provider: nil, id: nil, type: nil), liveBroadcastingTimeout: 300)
+        let value = telegramArchiveItem(entry(removed: true, media: [map]), accountID: 9)
+        let roundTrip = try JSONDecoder().decode([MessageArchiveObservation].self,
+            from: JSONEncoder().encode(value.observations))
+        XCTAssertEqual(roundTrip, value.observations)
+        guard case let .message(content) = roundTrip[0].event else { return XCTFail("Location snapshot must precede removal") }
+        let location = try XCTUnwrap(content.attachments.first)
+        XCTAssertEqual(location.kind, "location"); XCTAssertNil(location.size)
+        for field in ["40.4168", "-3.7038", "Synthetic place", "Synthetic address", "90", "15.0", "300"] {
+            XCTAssertTrue(location.name.contains(field))
+        }
+        XCTAssertEqual(roundTrip[1].event, .removedFromSource)
+    }
+
     private func entry(removed: Bool = false, media: [Media] = [], attributes: [MessageAttribute] = []) -> MakoshMessageJournalEntry {
         MakoshMessageJournalEntry(sequence: 4, eventID: UUID(uuidString: "acda936c-b876-44a5-bef4-30e33ebfd45b")!,
             capturedAt: 12345.125, id: MessageId(peerId: PeerId(namespace: Namespaces.Peer.CloudGroup, id: ._internalFromInt64Value(42)), namespace: 0, id: 17),

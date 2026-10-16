@@ -5,6 +5,11 @@ struct TelegramRecoveredUploadBundle: Sendable {
     let items: [TelegramUploadBatchItem]
     let archive: TelegramUploadArchiveIO.Archive?
 
+    @concurrent func discardInBackground() async throws {
+        // Cleanup is required even when the owning editor task was cancelled.
+        try discard()
+    }
+
     func discard() throws {
         var failure: (any Error)?
         for item in items {

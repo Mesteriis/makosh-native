@@ -5,6 +5,27 @@ The combined Telegram-enabled application is distributed under **GNU GPL v3**
 under [MIT](LICENSES/Makosh-MIT.txt); that grant does not relicense upstream code
 or make the combined executable MIT. Upstream notices remain in prepared source.
 
+## Mail and common workspace provenance
+
+MMail (`69bf8c9b2436d7d000652f41362f8fdebf406599`, MIT, copyright 2026
+moerdowo) supplies the adapted IMAP/SMTP/MIME and rich text editor source.
+Aether Courier (`8ab37e1da22363744be5d7b019f4300d8238d625`, MIT,
+copyright 2026 Aether Courier contributors) supplies the adapted Aurora backdrop
+and the verified sidebar/list/reading layout. The complete MIT notices are
+retained in `Dependencies/Mail` and copied into the app's Resources/Licenses.
+Origin headers identify adapted files. No Aether EmailKit, AI or backend is used.
+
+`Dependencies/Mail.lock.json` and `Package.resolved` pin the seven remote Swift
+packages and retain their Apache-2.0/MIT and included component notices. The
+verifier checks exact revisions, package URLs, pristine checkout trees and notice
+hashes. The selected IMAP manifest also resolves swift-nio-ssl for its unused CLI;
+**NIOSSL and CNIOBoringSSL are not linked**. Its retained NOTICE includes legacy
+OpenSSL/SSLeay terms that must not be silently introduced into the GPLv3 app.
+The product instead uses its own narrow NIO TLS handler over the project's
+existing OpenSSL 3, with mandatory certificate/hostname verification and TLS 1.2+
+minimum. Build/runtime never reads the research clones. This does not establish
+clean-machine distribution or CA-store packaging acceptance.
+
 ## Telegram engine provenance
 
 The selected reference is [overtake/TelegramSwift](https://github.com/overtake/TelegramSwift)
@@ -367,8 +388,8 @@ Development object storage uses the external [SeaweedFS 4.48 service](https://gi
 
 This repository publishes Makosh source, build adaptations and notices. Prepared
 engine files, generator caches and local app bundles remain ignored; no binary
-release is published. The local development bundle dynamically links installed
-Homebrew libpq and OpenSSL and is ad-hoc signed. Before distributing a standalone
+release is published. The local development bundle packages reviewed libpq/OpenSSL dylibs and is
+ad-hoc signed. Before distributing a standalone
 binary, provide the complete corresponding source for its exact engine/build,
 all selected dependency copyright notices and sources as required, and audited
 packaging of the actual libpq/OpenSSL versions. A local ignored checkout or a
@@ -410,3 +431,71 @@ adapted under GPL3-or-later. The mapping algorithm, PCM ringtone, wave and nativ
 SwiftUI/AppKit presentation are independently authored Makosh code (MIT). No
 outer GPLv2-only UI, audio or branding asset is copied. Existing GPL text and this
 notice are bundled; no engine recipe, source revision or capture entitlement changes.
+
+
+## Portable database/TLS client runtime
+
+`Dependencies/MacRuntime.lock.json` pins PostgreSQL18.6 source archive/hash and
+COPYRIGHT, plus OpenSSL3.6.4 source archive/hash and Apache2 license.
+`prepare-postgres-client.py` builds only libpq from the pinned source, without
+GSSAPI, LDAP or the server. OpenSSL3.6.4 is supplied by the local build toolchain;
+its exact version and LICENSE hash are checked before packaging. The bundle
+retains both licenses and a runtime library SHA256 inventory. Normal TLS trust
+comes from macOS SecTrust, not a Homebrew CA file. No reference checkout or
+third-party installer runs during app startup. Binary release still requires
+corresponding source/build delivery for the complete GPLv3 combined application
+and compliance with every selected dependency's terms; no release is published.
+
+## WhatsApp block 1 — separate worker
+
+WhatsApp Zen 790066aa411d395562a572101a74057147af67db, MIT, Copyright (c)
+2026 Mehmet Deniz Aydın. Makosh adapts Bot lifecycle, protobuf mapping and native
+pairing/chat layouts. Open-question additions also adapt the poll presentation
+and account-scoped/negative avatar workflow from More.swift and Images.swift,
+and the multiple-selection/first-caption composer workflow from MainView.swift
+and Store.swift, plus PhotoEditor.swift ordered crop/rotate/mark geometry and
+Images.swift standard/HD preparation. Makosh owns the bounded vCard parser and encrypted cache implementation.
+See LICENSES/WhatsApp-Zen-MIT.txt. No upstream application
+shell, private logger, automatic store migration/reset or app lock is imported.
+
+The independent protocol worker uses whatsapp-rust 0.7.0. Its Cargo metadata
+claims MIT, but wacore-libsignal source files retain Signal Messenger copyrights
+and AGPL-3.0-only headers. These source terms take precedence in Makosh's review.
+The user chose a separate AGPLv3 worker on 2026-10-15. No Rust code links into the
+Swift application; the worker communicates through private framed local IPC.
+LICENSES/WhatsApp-Worker-AGPL-3.0.txt contains its license. Original copyrights
+remain in the corresponding source, with exact header hashes in
+Dependencies/WhatsApp.lock.json. Main application licensing remains unchanged.
+
+That lock records exact target package versions/checksums, declared and effective
+licenses, build script hashes and copied notice hashes. Complete notices are in
+LICENSES/WhatsApp-dependencies/. MIT is selected for dual MIT/Apache packages;
+Apache/ISC/BSD/Zlib/Unicode/CDLA texts and SQLCipher's BSD notice are preserved.
+VoIP, private tracing, insecure TLS/certificate and legacy session features are
+excluded. The separate corresponding-source artifact includes the worker and
+all target crate source, the reviewed SDK durability patch and prepared output,
+notices and reproducible build instructions; it must
+accompany a distributed worker. This task does not publish a release.
+
+## Teams — native Swift contract port
+
+The public Graph/OAuth workflows are adapted from rvben/teams-cli revision
+9c8a72c32369f9d9bd15b793099522a80070a063, MIT, Copyright (c)2026 teams-cli
+contributors. The exact license is retained in LICENSES/Teams-cli-MIT.txt; original
+auth/Graph source hashes and adaptation boundaries are in Dependencies/Teams.lock.json.
+Reference source retained for provenance is excluded from compilation and runtime.
+No Rust crate or CLI/TUI is linked. Microsoft authentication uses a separately
+configured organization-owned public client registration. Own Swift source remains
+MIT; combined application licensing remains GPLv3.
+
+## Telemost first stage
+
+MakoshTelemost uses independently authored Swift implementations of the official
+Yandex Telemost REST and Yandex ID OAuth/user-info contracts. The MIT
+Bezooom/yandex-messenger-native reference at
+`f0a237c6016088a8e3816dde2e56c06e4a47c5eb` is research only: no source,
+GTK/GStreamer dependency, credentials or private messenger endpoints are linked
+or shipped from it. Its independent provenance manifest and boundary are in
+`Dependencies/Telemost.lock.json` and `Dependencies/Telemost/README.md`.
+Makosh owns this implementation under its existing license; combined app license
+and existing dependencies are unchanged.

@@ -44,7 +44,7 @@ private nonisolated func archiveModeNativeMessages(_ box: Postbox, ids: [Telegra
                 controller.bind(provider: nil)
                 controller.bind(provider: TelegramSyntheticUploadProvider(postbox: box), recoveryStore: store, requiresRecovery: true)
                 let stored = try await sourceFactsLoad(store), recovered = try await store.restoreBundle(draft: stored)
-                guard controller.restore(draft: stored, bundle: recovered, target: fixture.target,
+                guard await controller.restore(draft: stored, bundle: recovered, target: fixture.target,
                                          restorationEpoch: controller.recoveryRestoreEpoch) else {
                     try recovered.discard(); XCTFail("Inactive ZIP cache must restore in its selected mode"); continue
                 }

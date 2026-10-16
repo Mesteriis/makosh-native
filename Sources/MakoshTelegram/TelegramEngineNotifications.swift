@@ -106,7 +106,7 @@ extension TelegramNotificationController {
             }
         }))
         subscriptions.add((TelegramEngine(account: account).data.subscribe(TelegramEngine.EngineData.Item.Messages.TotalReadCounters())
-            |> map { telegramNotificationUnreadCounts($0._asCounters()) } |> deliverOnMainQueue).start(next: { [weak self] counts in
+            |> deliverOnMainQueue |> map { telegramNotificationUnreadCounts($0._asCounters()) }).start(next: { [weak self] counts in
                 self?.receiveUnread(counts, contextID: context)
             }))
         source.set(subscriptions)

@@ -27,8 +27,9 @@ import Foundation
             active.bind(provider: CaptionControllerProvider(), recoveryStore: store, requiresRecovery: true)
             defer { active.clear() }
             let restored = try await store.restoreBundle(draft: frozen)
-            XCTAssertTrue(active.restore(draft: frozen, bundle: restored, target: fixture.target,
-                restorationEpoch: active.recoveryRestoreEpoch))
+            let restoredUpload1 = await active.restore(draft: frozen, bundle: restored, target: fixture.target,
+                restorationEpoch: active.recoveryRestoreEpoch)
+            XCTAssertTrue(restoredUpload1)
             XCTAssertTrue(active.canSend); XCTAssertEqual(active.captionMaximumUTF16Count, 2048)
             let id = try XCTUnwrap(active.preparationContextID), oldIDs = active.items.map(\.id)
             XCTAssertTrue(active.moveItem(id: oldIDs[1], to: 0, contextID: id, revision: active.itemsRevision))

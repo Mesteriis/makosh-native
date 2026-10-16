@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "version": "1.6.1",
+  "url": "https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz",
+  "archiveSHA256": "6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1",
+  "licenseSHA256": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551",
+  "cmakeOptions": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_OSX_ARCHITECTURES": "arm64",
+    "CMAKE_OSX_DEPLOYMENT_TARGET": "26.0",
+    "BUILD_SHARED_LIBS": "OFF",
+    "OPUS_BUILD_SHARED_LIBRARY": "OFF",
+    "OPUS_BUILD_TESTING": "OFF",
+    "OPUS_BUILD_PROGRAMS": "OFF",
+    "OPUS_DRED": "OFF",
+    "OPUS_OSCE": "OFF",
+    "OPUS_HARDENING": "ON",
+    "OPUS_INSTALL_PKG_CONFIG_MODULE": "OFF",
+    "OPUS_INSTALL_CMAKE_CONFIG_MODULE": "OFF"
+  }
+}

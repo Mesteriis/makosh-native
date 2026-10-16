@@ -262,9 +262,10 @@ class APIImportTests(unittest.TestCase):
 
     def test_installs_private_file_and_preserves_existing_destination(self):
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "private/api.json"
+            path = Path(temporary) / "private/build.env"
             configuration = {"apiID": "123", "apiHash": "a" * 32}
             api_import.install(configuration, path)
+            self.assertEqual(path.read_text(), 'MAKOSH_TELEGRAM_API_ID=123\nMAKOSH_TELEGRAM_API_HASH=' + 'a' * 32 + '\n')
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             original = path.read_bytes()
             with self.assertRaises(ValueError):

@@ -1,17 +1,19 @@
 import Foundation
 import Security
 
-struct TelegramProxyRecord: Equatable, CustomStringConvertible, CustomDebugStringConvertible {
+struct TelegramProxyRecord: Sendable, Equatable, CustomStringConvertible, CustomDebugStringConvertible {
     let configuration: TelegramProxyConfiguration
     let token: Data?
     var description: String { "TelegramProxyRecord(redacted)" }
     var debugDescription: String { description }
 }
-@MainActor final class TelegramProxyVault {
-    typealias Lookup = ([String: Any]) -> (OSStatus, [String: Any]?)
+/// All native Keychain operations, including CAS confirmation, form one serialized
+/// worker job. No suspension separates an atomic update from its confirming read.
+actor TelegramProxyVault {
+    typealias Lookup = @Sendable ([String: Any]) -> (OSStatus, [String: Any]?)
     private let lookup: Lookup
-    private let add: ([String: Any]) -> OSStatus
-    private let update: ([String: Any], [String: Any]) -> OSStatus
+    private let add: @Sendable ([String: Any]) -> OSStatus
+    private let update: @Sendable ([String: Any], [String: Any]) -> OSStatus
     private struct Stored: Codable { let version: Int; let configuration: TelegramProxyConfiguration }
     private var query: [String: Any] {
         [kSecClass as String:kSecClassGenericPassword, kSecAttrService as String:"org.makosh.telegram.proxy",
@@ -21,8 +23,8 @@ struct TelegramProxyRecord: Equatable, CustomStringConvertible, CustomDebugStrin
         var value: CFTypeRef?
         let result = SecItemCopyMatching(query as CFDictionary, &value)
         return (result, value as? [String: Any])
-    }, add: @escaping ([String: Any]) -> OSStatus = { SecItemAdd($0 as CFDictionary, nil) },
-        update: @escaping ([String: Any], [String: Any]) -> OSStatus = { SecItemUpdate($0 as CFDictionary, $1 as CFDictionary) }) {
+    }, add: @escaping @Sendable ([String: Any]) -> OSStatus = { SecItemAdd($0 as CFDictionary, nil) },
+        update: @escaping @Sendable ([String: Any], [String: Any]) -> OSStatus = { SecItemUpdate($0 as CFDictionary, $1 as CFDictionary) }) {
         self.lookup = lookup; self.add = add; self.update = update
     }
     func read() throws -> TelegramProxyRecord {

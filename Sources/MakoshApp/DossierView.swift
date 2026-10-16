@@ -1,11 +1,14 @@
 import SwiftUI
 import MakoshCore
+import MakoshTelemost
 
 struct DossierView: View {
     let contact: Contact
     @ObservedObject var model: WorkspaceModel
+    var openMeeting: (String) -> Void = { _ in }
     let edit: () -> Void
     @State private var note = ""
+    @State private var noteSubmitting = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
@@ -16,7 +19,7 @@ struct DossierView: View {
                         Text([contact.jobTitle, contact.organization].filter { !$0.isEmpty }.joined(separator: " · ")).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Изменить", action: edit).accessibilityIdentifier("contact.edit")
+                    Button("Изменить", action: edit).disabled(!model.canWrite).accessibilityIdentifier("contact.edit")
                 }
                 if !contact.tags.isEmpty { Text(contact.tags.map { "#" + $0 }.joined(separator: "   ")).font(.callout).foregroundStyle(.indigo) }
                 GroupBox {
@@ -32,11 +35,23 @@ struct DossierView: View {
                     ForEach(contact.notes) { item in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(item.text).textSelection(.enabled)
+                            if item.source.identity.service == "telemost", let link = item.text.split(separator: "\n").compactMap({ try? TelemostMeetingURL(String($0)) }).first,
+                               link.conferenceID.utf8.elementsEqual(item.source.identity.externalID.utf8) {
+                                Button("Открыть встречу Телемоста") { openMeeting(link.url.absoluteString) }
+                            }
                             Text("\(item.source.identity.service) · \(item.source.identity.accountID) · \(item.source.fetchedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
                         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
                     }
                     TextField("Новая заметка", text: $note, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder).accessibilityIdentifier("contact.note")
-                    HStack { Spacer(); Button("Добавить заметку") { if model.addNote(note) { note = "" } }.disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("contact.note.add") }
+                    HStack { Spacer(); Button("Добавить заметку") {
+                        guard model.canWrite, !noteSubmitting else { return }
+                        let text = note, id = contact.id
+                        noteSubmitting = true
+                        Task {
+                            defer { noteSubmitting = false }
+                            if await model.addNote(text, contactID: id), note == text, model.selectedID == id { note = "" }
+                        }
+                    }.disabled(!model.canWrite || noteSubmitting || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("contact.note.add") }
                 }
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 14) {
@@ -76,6 +91,7 @@ struct ContactEditor: View {
     @State private var emails: String
     @State private var tags: String
     @State private var error: String?
+    @State private var submitting = false
     init(contact: Contact?, model: WorkspaceModel) {
         self.contact = contact; self.model = model
         _name = State(initialValue: contact?.displayName ?? "")
@@ -99,14 +115,19 @@ struct ContactEditor: View {
             Text("Несколько телефонов, адресов или меток разделяйте запятой. Изменённые поля будут сохранены как ручные.").font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).foregroundStyle(.red).font(.callout).textSelection(.enabled) }
             HStack {
-                Button("Отмена", role: .cancel) { dismiss() }; Spacer()
+                Button("Отмена", role: .cancel) { dismiss() }.disabled(submitting); Spacer()
                 Button("Сохранить") {
                     let draft = ContactDraft(displayName: name, organization: organization, jobTitle: job, phones: split(phones), emails: split(emails), tags: split(tags))
-                    if model.save(draft, id: contact?.id) { dismiss() }
-                    else { error = model.error; model.error = nil }
-                }.buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("editor.save")
+                    guard model.canWrite, !submitting else { return }
+                    submitting = true
+                    Task {
+                        defer { submitting = false }
+                        if await model.save(draft, id: contact?.id) { dismiss() }
+                        else { error = model.error; model.error = nil }
+                    }
+                }.buttonStyle(.borderedProminent).disabled(!model.canWrite || submitting || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("editor.save")
             }
-        }.padding(28).frame(width: 510)
+        }.padding(28).frame(width: 510).interactiveDismissDisabled(submitting)
     }
     private func split(_ text: String) -> [String] { text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } }
 }

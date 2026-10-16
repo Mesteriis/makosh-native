@@ -142,7 +142,20 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
     @State private var reveal = TelegramMediaRevealState()
 
     var body: some View {
-        if attachment.kind == .photo || attachment.playback == .video {
+        if let location = attachment.location {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(location.title, systemImage: "mappin.and.ellipse").font(.callout.weight(.medium))
+                if let address = location.address { Text(address).font(.caption).foregroundStyle(.secondary) }
+                Text(location.coordinates).font(.caption.monospaced()).textSelection(.enabled)
+                if location.isLive { Text("Транслируемая геопозиция · снимок сообщения").font(.caption).foregroundStyle(.secondary) }
+                if let url = location.mapsURL {
+                    Link("Открыть в Картах", destination: url)
+                        .help("Передать координаты приложению «Карты»")
+                }
+            }.padding(12).frame(minWidth: 220, alignment: .leading)
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("telegram.location." + attachment.id)
+        } else if attachment.kind == .photo || attachment.playback == .video {
             TelegramSingleMediaLayout(attachment: attachment, hasCaption: hasCaption) {
                 TelegramVisualMediaView(attachment: attachment, contextID: contextID, media: media, actions: actions,
                     playback: playback, identifierPrefix: "telegram.visual", contentMode: .fit, menu: menu)

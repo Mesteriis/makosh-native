@@ -6,6 +6,8 @@ import SwiftSignalKit
 
 struct TelegramBlockedPage {
     let users: [TelegramBlockedUser]
+    let otherPeers: [TelegramBlockedOtherPeer]
+    var peerKeys: Set<String> { Set(users.map { "user:\($0.id)" } + otherPeers.map(\.id)) }
     let serverInputs: [Int64: Api.InputPeer]
     let totalCount: Int
     let nextOffset: Int?
@@ -36,14 +38,22 @@ func telegramBlockedPage(_ response: Api.contacts.Blocked, offset: Int) -> Teleg
         if let input = telegramBlockedServerInput(user, selfID: 0) { inputs[id] = input }
         names[id] = title.isEmpty ? "Недоступное имя" : String(title.prefix(512))
     }
-    var result: [TelegramBlockedUser] = [], seen: Set<Int64> = []
+    var result: [TelegramBlockedUser] = [], otherPeers: [TelegramBlockedOtherPeer] = [], seen: Set<String> = []
     for case let .peerBlocked(peer, _) in blocked {
-        // This screen handles cloud users. An unsupported peer must never disappear silently.
-        guard case let .peerUser(id) = peer, telegramBlockedNativeID(id) != nil, seen.insert(id).inserted else { return nil }
-        result.append(.init(id: id, title: names[id] ?? "Недоступное имя"))
+        switch peer {
+        case let .peerUser(id):
+            guard telegramBlockedNativeID(id) != nil, seen.insert("user:\(id)").inserted else { return nil }
+            result.append(.init(id: id, title: names[id] ?? "Недоступное имя"))
+        case let .peerChat(id), let .peerChannel(id):
+            let kind: TelegramBlockedOtherPeer.Kind
+            if case .peerChat = peer { kind = .group } else { kind = .channel }
+            let value = TelegramBlockedOtherPeer(kind: kind, rawID: id)
+            guard telegramBlockedNativeID(id) != nil, seen.insert(value.id).inserted else { return nil }
+            otherPeers.append(value)
+        }
     }
     let next = offset + blocked.count
-    return .init(users: result, serverInputs: inputs, totalCount: total, nextOffset: next < total ? next : nil)
+    return .init(users: result, otherPeers: otherPeers, serverInputs: inputs, totalCount: total, nextOffset: next < total ? next : nil)
 }
 private struct BlockedUsersRead {
     let snapshot: TelegramBlockedUsersSnapshot
@@ -53,19 +63,20 @@ func telegramLoadBlockedUsers(accountID: Int64, fetch: @escaping (Int32) -> Sign
     telegramReadBlockedUsers(accountID: accountID, fetch: fetch) |> map(\.snapshot)
 }
 private func telegramReadBlockedUsers(accountID: Int64, fetch: @escaping (Int32) -> Signal<Api.contacts.Blocked, TelegramPrivacyError>) -> Signal<BlockedUsersRead, TelegramPrivacyError> {
-    func page(offset: Int, total: Int?, previous: [TelegramBlockedUser], inputs: [Int64: Api.InputPeer]) -> Signal<BlockedUsersRead, TelegramPrivacyError> {
+    func page(offset: Int, total: Int?, previous: [TelegramBlockedUser], otherPeers: [TelegramBlockedOtherPeer], inputs: [Int64: Api.InputPeer]) -> Signal<BlockedUsersRead, TelegramPrivacyError> {
         fetch(Int32(offset)) |> take(1) |> mapToSignal { response in
             guard let value = telegramBlockedPage(response, offset: offset), total == nil || total == value.totalCount,
-                  Set(previous.map(\.id)).isDisjoint(with: value.users.map(\.id)) else { return .fail(.failed) }
+                  Set(previous.map { "user:\($0.id)" } + otherPeers.map(\.id)).isDisjoint(with: value.peerKeys) else { return .fail(.failed) }
             let all = previous + value.users
+            let other = otherPeers + value.otherPeers
             let hashes = inputs.merging(value.serverInputs.filter { key, _ in value.users.contains { $0.id == key } }) { _, new in new }
-            if let next = value.nextOffset { return page(offset: next, total: value.totalCount, previous: all, inputs: hashes) }
-            let result = TelegramBlockedUsersSnapshot(accountID: accountID, users: all)
+            if let next = value.nextOffset { return page(offset: next, total: value.totalCount, previous: all, otherPeers: other, inputs: hashes) }
+            let result = TelegramBlockedUsersSnapshot(accountID: accountID, users: all, otherPeers: other)
             guard result.isValid else { return .fail(.failed) }
             return .single(.init(snapshot: result, inputs: hashes))
         }
     }
-    return telegramBlockedValue(page(offset: 0, total: nil, previous: [], inputs: [:]), emptyError: .failed)
+    return telegramBlockedValue(page(offset: 0, total: nil, previous: [], otherPeers: [], inputs: [:]), emptyError: .failed)
 }
 func telegramBlockedInput(user: TelegramUser, selfID: Int64) -> Api.InputPeer? {
     let id = user.id.id._internalGetInt64Value()

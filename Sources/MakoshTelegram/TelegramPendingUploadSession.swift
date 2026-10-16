@@ -9,6 +9,8 @@ import SwiftSignalKit
     private let repository: any TelegramPendingUploadRepository
     private let files: @MainActor () throws -> TelegramPendingUploadFiles
     private var tail: Task<Void, Never>?
+    // Instance-bound scheduling seam; capture still validates and opens its owned inode.
+    var willCaptureVideoCover: (@Sendable () throws -> Void)?
 
     init(repository: any TelegramPendingUploadRepository,
          files: @escaping @MainActor () throws -> TelegramPendingUploadFiles) {
@@ -54,13 +56,13 @@ import SwiftSignalKit
             }
             // Validate every source before capturing any durable addition.
             for item in additions { try await item.verifySourceFacts(); try await item.verifyGIFPair() }
-            let captures = try additions.map { try TelegramPendingUploadFiles.captureFile($0.file) }
-            let covers = try additions.map { try $0.file.videoCover.map(TelegramPendingUploadFiles.captureCover) }
-            let originals = try additions.map { try $0.originalFile.map(TelegramPendingUploadFiles.captureFile) }
+            let captures = try await BackgroundWork.run { try additions.map { try TelegramPendingUploadFiles.captureFile($0.file) } }
+            let covers = try await BackgroundWork.run { try additions.map { try $0.file.videoCover.map(TelegramPendingUploadFiles.captureCover) } }
+            let originals = try await BackgroundWork.run { try additions.map { try $0.originalFile.map(TelegramPendingUploadFiles.captureFile) } }
             for (index, item) in additions.enumerated() {
                 guard let facts = item.sourceFacts,
                       let capture = facts.role == .original ? originals[index] : captures[index],
-                      try capture.plaintextSHA256() == facts.plaintextSHA256 else {
+                      try await BackgroundWork.run { try capture.plaintextSHA256() } == facts.plaintextSHA256 else {
                     throw TelegramPendingUploadPersistenceError.incompatibleData
                 }
             }
@@ -98,7 +100,7 @@ import SwiftSignalKit
                 let sources = restored.map { TelegramUploadArchiveIO.Source(itemID: $0.id, file: $0.rawSource) }
                 let zip = try await TelegramUploadArchiveIO.prepare(sources, id: archiveID)
                 defer { try? TelegramUploadFileIO.discard(zip.file) }
-                let capture = try TelegramPendingUploadFiles.captureArchive(zip.file)
+                let capture = try await BackgroundWork.run { try TelegramPendingUploadFiles.captureArchive(zip.file) }
                 let record = try await storage.saveArchive(zip, sources: sources, archiveID: archiveID,
                     accountID: accountID, chatID: snapshot.chatID, preparationID: snapshot.id,
                     capture: capture, reservedID: archiveRecordID)
@@ -246,9 +248,13 @@ import SwiftSignalKit
               file.video?.isValid(name: file.name, size: file.size) == true else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
-        // Freeze the owned inode before suspension. The account-bound write can
-        // finish after the editor/window releases its temporary path.
-        let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
+        // The controller's write owner retains the candidate while this worker
+        // validates and freezes its inode, even after the editor is released.
+        let beforeCapture = willCaptureVideoCover
+        let capture = try await BackgroundWork.run {
+            try beforeCapture?()
+            return try cover.map(TelegramPendingUploadFiles.captureCover)
+        }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
                   current.resourceSchemaVersion < 6, current.disposition == .prepared, current.file.attachment.kind == "video",
@@ -424,14 +430,14 @@ import SwiftSignalKit
                 }
             }
             for item in items { try await item.verifySourceFacts() }
-            let captures = try items.map { try TelegramPendingUploadFiles.captureFile($0.file) }
-            let covers = try items.map { try $0.file.videoCover.map(TelegramPendingUploadFiles.captureCover) }
-            let originals = try items.map { try $0.originalFile.map(TelegramPendingUploadFiles.captureFile) }
+            let captures = try await BackgroundWork.run { try items.map { try TelegramPendingUploadFiles.captureFile($0.file) } }
+            let covers = try await BackgroundWork.run { try items.map { try $0.file.videoCover.map(TelegramPendingUploadFiles.captureCover) } }
+            let originals = try await BackgroundWork.run { try items.map { try $0.originalFile.map(TelegramPendingUploadFiles.captureFile) } }
             for (index, item) in items.enumerated() {
                 try await item.verifyGIFPair()
                 if let facts = item.sourceFacts {
                     let capture = facts.role == .original ? originals[index] : captures[index]
-                    guard let capture, try capture.plaintextSHA256() == facts.plaintextSHA256 else {
+                    guard let capture, try await BackgroundWork.run { try capture.plaintextSHA256() } == facts.plaintextSHA256 else {
                         throw TelegramPendingUploadPersistenceError.incompatibleData
                     }
                 }
@@ -551,8 +557,8 @@ import SwiftSignalKit
             let sources = originals.items.map { TelegramUploadArchiveIO.Source(itemID: $0.id, file: $0.rawSource) }
             let created = try await TelegramUploadArchiveIO.prepare(sources)
             zip = created
-            let capture = try TelegramPendingUploadFiles.captureArchive(created.file)
-            let digest = try capture.plaintextSHA256()
+            let capture = try await BackgroundWork.run { try TelegramPendingUploadFiles.captureArchive(created.file) }
+            let digest = try await BackgroundWork.run { try capture.plaintextSHA256() }
             let members = created.members.map { TelegramPendingUploadArchive.Member(itemID: $0.itemID, entryName: $0.entryName) }
             if intent == nil {
                 let reserved = TelegramPendingUploadArchiveIntent(preparationID: current.id, expectedRevision: current.revision,
@@ -667,7 +673,11 @@ import SwiftSignalKit
               file.video?.isValid(name: file.name, size: file.size) == true else {
             throw TelegramPendingUploadPersistenceError.incompatibleData
         }
-        let capture = try cover.map(TelegramPendingUploadFiles.captureCover)
+        let beforeCapture = willCaptureVideoCover
+        let capture = try await BackgroundWork.run {
+            try beforeCapture?()
+            return try cover.map(TelegramPendingUploadFiles.captureCover)
+        }
         try await serial { [self] in
             guard let current = try await read(chatID: target.chatID), current.id == preparationID,
                   (6...19).contains(current.resourceSchemaVersion), current.disposition == .prepared, current.presentation != .archive,

@@ -4,6 +4,17 @@ import UserNotifications
 @testable import MakoshTelegram
 
 @MainActor final class TelegramSystemNotificationTests: XCTestCase {
+    func testOnlyActiveKeyVisibleOwnedWindowSuppressesForegroundNotifications() {
+        let cases: [(TelegramNotificationWindowState, Bool)] = [
+            (.init(applicationActive: true, hasWindow: true, key: true, visible: true, miniaturized: false), true),
+            (.init(applicationActive: false, hasWindow: true, key: true, visible: true, miniaturized: false), false),
+            (.init(applicationActive: true, hasWindow: false, key: false, visible: false, miniaturized: false), false),
+            (.init(applicationActive: true, hasWindow: true, key: false, visible: true, miniaturized: false), false),
+            (.init(applicationActive: true, hasWindow: true, key: true, visible: false, miniaturized: false), false),
+            (.init(applicationActive: true, hasWindow: true, key: true, visible: true, miniaturized: true), false)
+        ]
+        for (state, expected) in cases { XCTAssertEqual(telegramNotificationWindowIsActive(state), expected) }
+    }
     func testSystemPayloadContainsOnlyOpaqueActivationTokenAndNoReplyOrMediaSideEffects() {
         let content = telegramSystemNotificationContent(.init(id: "opaque-uuid", title: "Alice", body: "Hello ██████", sound: true, bounce: false))
         XCTAssertEqual(content.title, "Alice"); XCTAssertEqual(content.body, "Hello ██████")

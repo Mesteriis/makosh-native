@@ -290,15 +290,24 @@ private struct CallVideoImage: NSViewRepresentable {
     let frame: CVPixelBuffer
     func makeNSView(context: Context) -> CallVideoSurface { CallVideoSurface() }
     func updateNSView(_ view: CallVideoSurface, context: Context) { view.display(frame) }
+    static func dismantleNSView(_ view: CallVideoSurface, coordinator: ()) { view.close() }
 }
 private final class CallVideoSurface: NSView {
-    private let renderer = CIContext(options: [.cacheIntermediates: false])
+    private lazy var renderer: TelegramCallFrameRenderer = TelegramCallFrameRenderer { [weak self] token, image in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.renderer.acknowledge() }
+            guard self.renderer.isCurrent(token) else { return }
+            self.layer?.contents = image
+        }
+    }
     private var last: CVPixelBuffer?
     override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true; layer?.contentsGravity = .resizeAspect; layer?.backgroundColor = NSColor.black.cgColor }
     required init?(coder: NSCoder) { nil }
     func display(_ frame: CVPixelBuffer) {
         guard last !== frame else { return }; last = frame
-        let image = CIImage(cvPixelBuffer: frame)
-        layer?.contents = renderer.createCGImage(image, from: image.extent)
+        renderer.submit(frame)
     }
+    func close() { renderer.close(); last = nil; layer?.contents = nil }
+    isolated deinit { renderer.close() }
 }

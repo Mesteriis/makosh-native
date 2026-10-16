@@ -4,6 +4,51 @@ import TelegramCore
 @testable import MakoshTelegram
 
 final class TelegramAttachmentsTests: XCTestCase {
+    func testGeolocationIsRecognizedWithoutGrantingFileResourceAccess() throws {
+        let map = TelegramMediaMap(latitude: 40.4168, longitude: -3.7038, heading: nil,
+            accuracyRadius: nil, venue: nil)
+        let source = try XCTUnwrap(telegramAttachments(message([map])).first)
+        XCTAssertNotEqual(source.attachment.kind, .unsupported)
+        XCTAssertTrue(source.attachment.name.contains("40.4168"), "Coordinates must survive archive attachment projection")
+        XCTAssertTrue(source.attachment.name.contains("-3.7038"))
+        XCTAssertFalse(source.attachment.canDownload); XCTAssertFalse(source.attachment.hasPreview)
+        XCTAssertNil(source.full); XCTAssertNil(source.preview)
+        XCTAssertEqual(source.attachment.location?.latitude, 40.4168)
+        XCTAssertEqual(source.attachment.location?.mapsURL?.scheme, "maps")
+    }
+
+    func testGeolocationUpdatesSurviveProjectionAndInvalidCoordinatesFailClosed() throws {
+        func mapped(_ latitude: Double, _ longitude: Double) -> TelegramAttachment {
+            telegramAttachments(message([TelegramMediaMap(latitude: latitude, longitude: longitude,
+                heading: nil, accuracyRadius: nil, venue: nil)]))[0].attachment
+        }
+        let first = mapped(40, -3), changed = mapped(41, -3)
+        XCTAssertEqual(first.id, changed.id)
+        XCTAssertNotEqual(first, changed)
+        XCTAssertNotEqual(first.name, changed.name, "Archive snapshots must retain a changed coordinate")
+        for pair in [(Double.nan, 0.0), (0.0, Double.infinity), (90.1, 0.0), (0.0, -180.1)] {
+            let value = mapped(pair.0, pair.1)
+            XCTAssertEqual(value.kind, .unsupported); XCTAssertNil(value.location)
+            XCTAssertFalse(value.canDownload)
+        }
+    }
+    func testLocationDisplayIsByteBoundedWhileArchiveRetainsFullVenueStrings() throws {
+        let title = String(repeating: "а", count: 513) + "END-TITLE"
+        let address = "a" + String(repeating: "\u{301}", count: 3000) + "END-ADDRESS"
+        let map = TelegramMediaMap(latitude: 40, longitude: -3, heading: nil, accuracyRadius: nil,
+            venue: MapVenue(title: title, address: address, provider: "synthetic-provider", id: "synthetic-id", type: "synthetic-type"),
+            address: MapGeoAddress(country: "XX", state: "Synthetic state", city: "Synthetic city", street: "Synthetic street"),
+            liveBroadcastingTimeout: 300, liveProximityNotificationRadius: 25)
+        let value = try XCTUnwrap(telegramAttachments(message([map])).first?.attachment)
+        let location = try XCTUnwrap(value.location)
+        XCTAssertLessThanOrEqual(location.title.utf8.count, 2048)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(location.address).utf8.count, 2048)
+        XCTAssertTrue(value.name.contains(title)); XCTAssertTrue(value.name.contains(address))
+        for field in ["synthetic-provider", "synthetic-id", "synthetic-type", "Synthetic state", "Synthetic city", "Synthetic street", "25"] {
+            XCTAssertTrue(value.name.contains(field))
+        }
+    }
+
     private func message(_ media: [Media], id: Int32 = 1, peer: Int64 = 100,
                          groupInfo: MessageGroupInfo? = nil, groupingKey: Int64? = nil, attributes: [MessageAttribute] = []) -> Message {
         let peerID = PeerId(namespace: Namespaces.Peer.CloudGroup, id: ._internalFromInt64Value(peer))

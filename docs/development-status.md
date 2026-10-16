@@ -1,5 +1,42 @@
 # Development status — 2026-10-16
 
+## Main consolidation — 2026-10-16
+
+The user requested consolidation into main and deletion of merged topic branches.
+All pending source/docs/notices were committed as64a5f36 and fast-forwarded into
+main, together with the existing first-login fixes5186d46/76c43e6. The captured
+15 local and14 remote feature-branch tips are ancestors of main; cleanup is
+restricted to those merged tips and protects the exact remote SHAs. All1850
+regular project files matched their pre-merge contents; the integration changed
+history, with this status entry added after verification. Earlier no-commit/
+no-publication statements below describe their original implementation phases
+and are superseded by this explicit integration request.
+
+Fresh merged-main gates exit0: scripts/dev-db.sh up; scripts/test.sh672.497s —
+Swift2864 (WhatsApp142,Telemost74,Telegram2307,Teams108,Mail100,Core133), Rust58,
+Python153/34runs, zero failures. One existing Telegram microphone-precondition
+test is skipped; no physical device or real account is used. Expected SQLt19
+1238 and existing Contacts-XPC4097 diagnostics remain separate from passes.
+scripts/build-app.sh60.344s and strict deep codesign verification exit0. The
+bundle has six ARM64 binaries/four bundled libraries, a separate WhatsApp worker,
+public source/notices and no private resource configurations or Swift→Rust link.
+
+Publication review covers unignored source and the three incoming commit diffs;
+its six pattern matches are public AWS signature examples/rejected synthetic
+credential URLs in tests. Runtime credentials/generated constants remain ignored.
+An absolute Makefile symlink into local PostgreSQL preparation is preserved and
+excluded locally, rather than publishing a machine-specific artifact. Staged
+whitespace diagnostics exit2:304 in exact hash-pinned upstream licenses/notices
+and unified-patch context, plus two harmless extra EOF newlines in previously
+reviewed own source files. Bytes are preserved; this is not a passing whitespace
+check. No unrelated formatting or implementation changes were made for merging.
+
+Raw exits, content hashes and a verified pre-merge Git bundle are retained in
+ignored .local/integration-main/. QA evidence, PostgreSQL/S3 data, sessions and
+prepared files are preserved. Live acceptance remains paused; all documented
+provider/device/visual/distribution gaps and deferred Minor findings below remain.
+
+
 ## WhatsApp open questions — implementation and post-review integration complete
 
 The user approved the specification and ten-task native inline plan on 2026-10-16.

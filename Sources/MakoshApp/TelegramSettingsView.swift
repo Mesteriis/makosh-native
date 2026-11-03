@@ -2,8 +2,6 @@ import SwiftUI
 import MakoshTelegram
 
 struct TelegramSettingsView: View {
-    @StateObject private var systemAppearance = TelegramSystemAppearance()
-    @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     var sessions: TelegramSessionsController? = nil
     var webSessions: TelegramWebSessionsController? = nil
     var privacy: TelegramPrivacyController? = nil
@@ -22,11 +20,6 @@ struct TelegramSettingsView: View {
     var close: (() -> Void)? = nil
     private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность", notifications = "Уведомления и звуки", data = "Данные и память", calls = "Звонки" }
     @State private var page: Page?
-    @AppStorage(TelegramLocalTheme.preferenceKey) private var theme = TelegramLocalTheme.system.rawValue
-    @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
-    private var appearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
-    private var resolvedScheme: ColorScheme { telegramWorkspaceScheme(theme:theme,telegramSelected:true,system:systemAppearance.scheme,night:appearance.night,date:systemAppearance.now,cloudDark:appearance.cloudPalette?.isDark) }
-    private var resolvedAccent: Color { appearance.effectivePalette(isDark:resolvedScheme == .dark).map { telegramPaletteColor($0,"accent",$0.accent) } ?? TelegramAccent(preference:accent).color }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -44,7 +37,7 @@ struct TelegramSettingsView: View {
             switch page {
             case .general: TelegramGeneralSettingsView()
             case .calls: TelegramCallAudioSettingsView(synthetic: synthetic)
-            case .appearance: TelegramAppearanceView(systemScheme: systemAppearance.scheme, catalog: appearanceCatalog)
+            case .appearance: TelegramAppearanceView(systemScheme: .dark, catalog: appearanceCatalog)
             case .data:
                 if let autoDownload, let cache, let proxy { TelegramDataSettingsView(settings: autoDownload, cache: cache, maintenance:cacheMaintenance, proxy: proxy) }
             case .notifications:
@@ -81,9 +74,7 @@ struct TelegramSettingsView: View {
                 }.formStyle(.grouped)
             }
         }.frame(width: 560, height: 630)
-            .tint(resolvedAccent)
-            .accentColor(resolvedAccent)
-            .preferredColorScheme(resolvedScheme)
+            .makoshAppearance()
     }
     private func settingsRow(_ value: Page, symbol: String, id: String) -> some View {
         Button { page = value } label: {

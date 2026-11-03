@@ -12,9 +12,16 @@ struct TelegramSyntheticPages {
     var forum = false
     var dataSettings = false
     var secretChats = false
+    var workspaceLayout = false
 
-    func chats(folder: TelegramChatFolder, anchor: ChatListIndex?) ->
+    func chats(folder: TelegramChatFolder, anchor: ChatListIndex?, workspaceFolderID: Int32? = nil) ->
         (items: [TelegramChat], previous: ChatListIndex?, next: ChatListIndex?) {
+        if workspaceLayout {
+            let titles = ["Мария Соколова", "Команда Makosh", "Иван Кузнецов", "Дизайн продукта", "Дмитрий Крылов", "Анна Никифорова", "Избранное"]
+            let members: [Int32: Set<Int>] = [1: [0,1,2,3,4], 2: [0,5], 3: [1,3], 4: [3]]
+            let offsets = folder == .archive ? [4] : (0..<titles.count).filter { workspaceFolderID.flatMap { members[$0] }?.contains($0) ?? true }
+            return (offsets.map { offset in TelegramChat(id: 10001 + Int64(offset), title: titles[offset], preview: offset == 0 ? "Отлично, буду на связи." : "Материалы и обсуждения проекта", unreadCount: offset < 3 ? 1 : 0) }, nil, nil)
+        }
         let total = folder == .inbox ? 125 : 65
         let start = max(0, min(Int(anchor?.messageIndex.id.id ?? 1) - 1, total - 1))
         let end = min(start + size, total)
@@ -38,6 +45,17 @@ struct TelegramSyntheticPages {
 
     func messages(chatID: Int64, anchor: MessageIndex?, threadID: Int64? = nil) ->
         (items: [TelegramMessage], previous: MessageIndex?, next: MessageIndex?) {
+        if workspaceLayout {
+            let text = ["Привет! Отправляю обновлённый план проекта.", "В документе обновила этап запуска и сроки.", "Спасибо, посмотрю сегодня. Вернусь с комментариями.", "Отлично, буду на связи."]
+            let now = Date()
+            var items: [TelegramMessage] = (0..<4).map { index in
+                let id = "synthetic:\(chatID):\(127 + index)"
+                let date = now.addingTimeInterval(Double(index - 4) * 120)
+                return TelegramMessage(id: id, date: date, text: text[index], author: index == 2 ? "Вы" : "Мария Соколова", isOutgoing: index == 2, delivery: .sent)
+            }
+            items[1].attachments = [TelegramAttachment(id: "workspace-plan", kind: .file, name: "План проекта.pdf", byteCount: 1_800_000, mimeType: "application/pdf", hasPreview: false, canDownload: false)]
+            return (items, nil, nil)
+        }
         let total = 130
         let scoped = forum && chatID == 10001
         let lower: Int, upper: Int

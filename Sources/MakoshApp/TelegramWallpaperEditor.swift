@@ -73,7 +73,7 @@ struct TelegramWallpaperEditor: View {
             }.padding()
             Form {
                 Section {
-                    Picker("Фон",selection:$mode) {
+                    MakoshPicker("Фон",selection:$mode) {
                         Text("По умолчанию").tag("automatic"); Text("Цвета и узор").tag("colors"); Text("Изображение").tag("image")
                     }.accessibilityIdentifier("telegram.wallpaper.mode")
                     if mode == "colors" {

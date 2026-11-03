@@ -24,10 +24,10 @@ struct MailSenderAvatar: View {
 struct MailPaperSheet: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(Color(red: 0.678, green: 0.639, blue: 0.533))
+            .background(WorkspaceStyle.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.black.opacity(0.14), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.3), radius: 16, y: 6)
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.08), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
             .padding(14)
     }
 }

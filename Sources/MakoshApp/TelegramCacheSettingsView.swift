@@ -27,7 +27,7 @@ struct TelegramCacheSettingsView: View {
                 if let maintenance { TelegramCacheRetentionView(maintenance:maintenance) }
                 if let snapshot = controller.snapshot, !snapshot.peers.isEmpty {
                     Section("Чаты") {
-                        Picker("Область очистки",selection:$selectChats) {
+                        MakoshPicker("Область очистки",selection:$selectChats) {
                             Text("Весь проверенный кэш").tag(false); Text("Выбранные чаты").tag(true)
                         }.disabled(controller.phase != .idle).accessibilityIdentifier("telegram.data.cache.scope")
                         if selectChats {
@@ -92,12 +92,12 @@ private struct TelegramCacheRetentionView: View {
     @ObservedObject var maintenance: TelegramCacheMaintenance
     var body: some View {
         Section("Автоматическая очистка") {
-            Picker("Хранить облачные копии",selection:Binding(get:{ maintenance.preferences.days },set:{ days in
+            MakoshPicker("Хранить облачные копии",selection:Binding(get:{ maintenance.preferences.days },set:{ days in
                 var value = maintenance.preferences; value.days = days; _ = maintenance.update(value)
             })) {
                 Text("1 день").tag(1); Text("1 неделю").tag(7); Text("1 месяц").tag(31); Text("Бессрочно").tag(0)
             }.accessibilityIdentifier("telegram.data.cache.retention.days")
-            Picker("Максимальный размер кэша",selection:Binding(get:{ maintenance.preferences.limitGB },set:{ limit in
+            MakoshPicker("Максимальный размер кэша",selection:Binding(get:{ maintenance.preferences.limitGB },set:{ limit in
                 var value = maintenance.preferences; value.limitGB = limit; _ = maintenance.update(value)
             })) {
                 Text("5 ГБ").tag(5); Text("16 ГБ").tag(16); Text("32 ГБ").tag(32); Text("Без ограничения").tag(0)

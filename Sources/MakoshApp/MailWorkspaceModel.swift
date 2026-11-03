@@ -475,13 +475,33 @@ import MakoshMail
     private func announceChange() { NotificationCenter.default.post(name: Self.changed, object: self) }
     private func seed(_ repository: MailRepository) async throws {
         let snapshot=try await repository.snapshot();guard snapshot.accounts.isEmpty else { return }
-        let account=MailAccount(id:"15500000-0000-4000-8000-000000000001",displayName:"Тестовая почта",email:"qa@example.invalid",imapHost:"imap.example.invalid",imapUsername:"qa@example.invalid",smtpHost:"smtp.example.invalid",smtpUsername:"qa@example.invalid")
+        let account=MailAccount(id:"15500000-0000-4000-8000-000000000001",displayName:"Рабочая почта",email:"alex@example.test",imapHost:"imap.example.invalid",imapUsername:"alex@example.test",smtpHost:"smtp.example.invalid",smtpUsername:"alex@example.test")
         try await repository.saveAccount(account)
         let folders=[MailFolder(accountID:account.id,path:"INBOX",kind:.inbox),.init(accountID:account.id,path:"Sent",kind:.sent),.init(accountID:account.id,path:"Drafts",kind:.drafts),.init(accountID:account.id,path:"Archive",kind:.archive),.init(accountID:account.id,path:"Trash",kind:.trash)]
         try await repository.saveFolders(folders,accountID:account.id)
-        try await repository.saveLetters([
-            .init(key:.init(accountID:account.id,folder:"INBOX",uidValidity:42,uid:7),subject:"Всё готово к переносу",senderName:"Команда Макоша",sender:"team@example.invalid",recipient:account.email,date:Date(),text:"Почта открывается в общем рабочем пространстве.\n\nСлева — папки, рядом — список писем, здесь — чтение и вложения. Досье отправителя доступно справа.\n\nЭто синтетическая переписка. Реальные аккаунты не используются.",html:"<h2>Всё готово к переносу</h2><p>Это <strong>синтетическое письмо</strong> Макоша.</p><img src='https://example.invalid/tracking.png'>"),
-            .init(key:.init(accountID:account.id,folder:"INBOX",uidValidity:42,uid:6),subject:"Материалы встречи",senderName:"Алексей Тестовый",sender:"alex@example.invalid",recipient:account.email,date:Date().addingTimeInterval(-3600),seen:true,flagged:true,text:"Черновик повестки и результаты встречи доступны в досье."),
-            .init(key:.init(accountID:account.id,folder:"INBOX",uidValidity:42,uid:5),subject:"Сборка прошла проверку",senderName:"Makosh CI",sender:"build@example.invalid",recipient:account.email,date:Date().addingTimeInterval(-86400),text:"Локальные проверки завершены. Это не подтверждение доставки реальной почты.")])
+        let now = Date()
+        let body = "Алексей, добрый день!\n\nОтправляю материалы к нашей встрече. В документе — обновлённая структура проекта и вопросы для обсуждения. Посмотри, пожалуйста, раздел с этапами.\n\nЕсли всё подходит, подготовлю финальную версию.\n\nСпасибо,\nМария."
+        // Synthetic attachment metadata only; no real files, provider or S3 access.
+        let files: [MailAttachment] = [
+            .init(id: "qa-plan", filename: "План проекта.pdf", mimeType: "application/pdf", byteCount: 1_800_000),
+            .init(id: "qa-stages", filename: "Этапы.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", byteCount: 240_000)
+        ]
+        let rows: [(String, String, String, String)] = [
+            ("Иван Кузнецов", "ivan@example.test", "Обновления по проекту", "Привет! Добавил последние правки в документ. Буду ждать твоих комментариев."),
+            ("Анна Никифорова", "anna@example.test", "Запрос на согласование", "Коллеги, пожалуйста, посмотрите и подтвердите возможность реализации."),
+            ("Дмитрий Крылов", "dmitry@example.test", "Результаты тестирования", "Привет! Отправляю результаты тестирования. Основные замечания в приложении."),
+            ("Елена Лебедева", "elena@example.test", "Встреча в понедельник", "Предлагаю обсудить планы на следующий спринт. Удобно в 11:00?"),
+            ("Сергей Белов", "sergey@example.test", "Доступы к стенду", "Подготовил инструкции для подключения к тестовой среде."),
+            ("Наталья Волкова", "natalia@example.test", "Спасибо!", "Спасибо за помощь и оперативные ответы!")
+        ]
+        var letters = [MailLetter(key: .init(accountID: account.id, folder: "INBOX", uidValidity: 42, uid: 7),
+            subject: "Материалы встречи", senderName: "Мария Соколова", sender: "maria@example.test", recipient: account.email,
+            date: now, text: body, html: "<p>Алексей, добрый день!</p><p>Отправляю <strong>материалы к нашей встрече</strong>.</p><img src='https://example.invalid/tracking.png'>", attachments: files)]
+        for (index, row) in rows.enumerated() {
+            letters.append(.init(key: .init(accountID: account.id, folder: "INBOX", uidValidity: 42, uid: UInt32(6 - index)),
+                subject: row.2, senderName: row.0, sender: row.1, recipient: account.email,
+                date: now.addingTimeInterval(-Double(index + 1) * 3600), seen: index > 1, flagged: index == 2, text: row.3))
+        }
+        try await repository.saveLetters(letters)
     }
 }

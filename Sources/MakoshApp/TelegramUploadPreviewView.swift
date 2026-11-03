@@ -37,6 +37,14 @@ struct TelegramUploadPreviewView: View {
         default: "Отправить вложение"
         }
     }
+    private var actionsAccessibilityLabel: String {
+        if upload.items.count > 1 { return "Действия с вложениями" }
+        switch upload.file?.mode {
+        case .video: return "Действия с видео"
+        case .photo: return "Действия с фото"
+        default: return "Действия с вложением"
+        }
+    }
     var body: some View {
         let captionContext = upload.captionContextID
         let captionRevision = upload.captionRevision
@@ -47,7 +55,7 @@ struct TelegramUploadPreviewView: View {
                 Text(title).font(.headline)
                 Spacer()
                 if upload.canUseFilePresentation || upload.canSwitchPresentation || canUseMediaOptions || upload.items.count > 1 {
-                    Menu {
+                    MakoshMenu {
                         presentationButtons(revision: upload.itemsRevision)
                         groupingButton(revision: upload.itemsRevision)
                         videoCoverButtons(revision: upload.videoCoverRevision)
@@ -57,8 +65,8 @@ struct TelegramUploadPreviewView: View {
                         }
                         photoSizeButton()
                     } label: { Image(systemName: "ellipsis.circle") }
-                        .menuStyle(.borderlessButton).fixedSize()
-                        .accessibilityLabel(upload.items.count > 1 ? "Действия с вложениями" : upload.file?.mode == .video ? "Действия с видео" : upload.file?.mode == .photo ? "Действия с фото" : "Действия с вложением").accessibilityIdentifier("telegram.upload.actions")
+                        .makoshMenuStyle(.plain).fixedSize()
+                        .accessibilityLabel(actionsAccessibilityLabel).accessibilityIdentifier("telegram.upload.actions")
                         .accessibilityValue(upload.presentation == .archive ? "Архив" : upload.presentation == .file ? "Файлы" : "Медиа")
                 }
                 Button { upload.dismissPreparation(contextID: contextID) } label: { Image(systemName: "xmark") }
@@ -118,12 +126,12 @@ struct TelegramUploadPreviewView: View {
                         .accessibilityIdentifier("telegram.upload.clear")
                 } else {
                     if canUseMediaOptions {
-                        Menu {
+                        MakoshMenu {
                             sendAsSpoilerButton(revision: captionRevision)
                         } label: {
                             Text(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить")
                         } primaryAction: { send() }
-                        .menuIndicator(.hidden)
+                        .makoshMenuIndicator(.hidden)
                         .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
                         .accessibilityIdentifier("telegram.upload.send")
                         .contextMenu { sendAsSpoilerButton(revision: captionRevision) }
@@ -245,7 +253,7 @@ struct TelegramUploadPreviewView: View {
     @ViewBuilder private func photoSizeButton() -> some View {
         if upload.presentation == .media, !upload.isRecordedRoundVideo {
             Divider()
-            Toggle("Отправлять большие фотографии", isOn: $sendLargePhotos)
+            MakoshDropdownToggle("Отправлять большие фотографии", isOn: $sendLargePhotos)
                 .help("Увеличенный размер применяется к новым подготовкам фотографий.")
                 .accessibilityIdentifier("telegram.upload.sendLargePhotos")
                 .accessibilityValue(sendLargePhotos ? "Включено" : "Выключено")
@@ -253,10 +261,10 @@ struct TelegramUploadPreviewView: View {
     }
     @ViewBuilder private func videoCoverButtons(revision: UUID) -> some View {
         if model.composerSupportsExtendedMediaOptions, upload.items.count == 1, upload.file?.mode == .video {
-            Button(upload.file?.videoCover == nil ? "Добавить обложку" : "Изменить обложку") { chooseVideoCover(revision: revision) }
+            MakoshMenuItem(upload.file?.videoCover == nil ? "Добавить обложку" : "Изменить обложку") { chooseVideoCover(revision: revision) }
                 .disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.choose")
             if upload.file?.videoCover != nil {
-                Button("Удалить обложку") {
+                MakoshMenuItem("Удалить обложку") {
                     guard let edit = upload.beginVideoCoverEdit(contextID: contextID, revision: revision) else { return }
                     Task { @MainActor in
                         let committed = await upload.commitVideoCover(nil, editID: edit)
@@ -269,14 +277,14 @@ struct TelegramUploadPreviewView: View {
     }
     @ViewBuilder private func presentationButtons(revision: UUID) -> some View {
         if upload.canSwitchPresentation {
-            Button {
+            MakoshMenuItem {
                 upload.updatePresentation(.media, contextID: contextID, revision: revision)
             } label: {
                 Label("Отправить как медиа", systemImage: upload.presentation == .media ? "checkmark" : "photo.on.rectangle")
             }.disabled(!upload.canEditPresentation).accessibilityIdentifier("telegram.upload.asMedia")
         }
         if upload.canUseFilePresentation {
-            Button {
+            MakoshMenuItem {
                 upload.updatePresentation(.file, contextID: contextID, revision: revision)
             } label: {
                 Label(upload.items.count > 1 ? "Отправить как файлы" : "Отправить как файл",
@@ -284,7 +292,7 @@ struct TelegramUploadPreviewView: View {
             }.disabled(!upload.canEditPresentation).accessibilityIdentifier("telegram.upload.asFile")
         }
         if upload.canUseArchivePresentation {
-            Button {
+            MakoshMenuItem {
                 upload.updatePresentation(.archive, contextID: contextID, revision: revision)
             } label: {
                 Label("Отправить как архив", systemImage: upload.presentation == .archive ? "checkmark" : "archivebox")
@@ -294,7 +302,7 @@ struct TelegramUploadPreviewView: View {
     }
     @ViewBuilder private func groupingButton(revision: UUID) -> some View {
         if upload.items.count > 1 {
-            Button(upload.isGrouped ? "Отправить отдельно" : "Сгруппировать") {
+            MakoshMenuItem(upload.isGrouped ? "Отправить отдельно" : "Сгруппировать") {
                 upload.updateGrouping(!upload.isGrouped, contextID: contextID, revision: revision)
             }.disabled(!upload.canEditItems || (!upload.isGrouped && !upload.canGroupItems)).accessibilityIdentifier("telegram.upload.grouping")
             Divider()
@@ -323,14 +331,14 @@ struct TelegramUploadPreviewView: View {
         }
     }
     private func placementButton(context: UUID, revision: UUID, above: Bool) -> some View {
-        Button(above ? "Переместить подпись вниз" : "Переместить подпись вверх") {
+        MakoshMenuItem(above ? "Переместить подпись вниз" : "Переместить подпись вверх") {
             upload.updateCaptionPlacement(!above, contextID: context, revision: revision)
         }
         .disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving || upload.preparationContextID != contextID)
         .accessibilityIdentifier("telegram.upload.captionPlacement")
     }
     private func spoilerButton(context: UUID, revision: UUID, spoiler: Bool) -> some View {
-        Button(spoiler ? "Отключить спойлер" : "Скрыть под спойлером") {
+        MakoshMenuItem(spoiler ? "Отключить спойлер" : "Скрыть под спойлером") {
             upload.updateMediaSpoiler(!spoiler, contextID: context, revision: revision)
         }
         .disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving || upload.preparationContextID != contextID)
@@ -341,7 +349,7 @@ struct TelegramUploadPreviewView: View {
         upload.send(contextID: contextID)
     }
     private func sendAsSpoilerButton(revision: UUID) -> some View {
-        Button("Отправить под спойлером") {
+        MakoshMenuItem("Отправить под спойлером") {
             guard captionError == nil else { return }
             upload.sendAsSpoiler(contextID: contextID, revision: revision)
         }

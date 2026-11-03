@@ -98,15 +98,15 @@ struct TelegramCallButtons: View {
     let hasTarget: Bool
     var body: some View {
         if hasTarget {
-            Menu {
-                Button("Аудиозвонок") { start(false) }.disabled(controller.peerStatus != .ready || controller.peer?.canVoice != true).accessibilityIdentifier("telegram.call.start.audio")
-                Button("Видеозвонок") { start(true) }.disabled(controller.peerStatus != .ready || controller.peer?.canVideo != true).accessibilityIdentifier("telegram.call.start.video")
+            MakoshMenu {
+                MakoshMenuItem("Аудиозвонок") { start(false) }.disabled(controller.peerStatus != .ready || controller.peer?.canVoice != true).accessibilityIdentifier("telegram.call.start.audio")
+                MakoshMenuItem("Видеозвонок") { start(true) }.disabled(controller.peerStatus != .ready || controller.peer?.canVideo != true).accessibilityIdentifier("telegram.call.start.video")
                 if controller.peerStatus == .failed || controller.peerStatus == .timedOut {
                     Text("Не удалось проверить возможность звонка")
-                    Button("Проверить снова", action: controller.refreshPeer).accessibilityIdentifier("telegram.call.peer.retry")
+                    MakoshMenuItem("Проверить снова", action: controller.refreshPeer).accessibilityIdentifier("telegram.call.peer.retry")
                 }
             } label: { Image(systemName: "phone").frame(width: 28, height: 28) }
-                .menuStyle(.borderlessButton).fixedSize().disabled(controller.isBusy || !controller.permitsStart())
+                .makoshMenuStyle(.plain).fixedSize().disabled(controller.isBusy || !controller.permitsStart())
                 .help("Позвонить").accessibilityLabel("Позвонить").accessibilityIdentifier("telegram.call.menu")
         }
     }
@@ -132,7 +132,7 @@ private struct TelegramCallWindowView: View {
     private var animate: Bool { TelegramCallDecoration.animates(active:active,visible:windowVisible,enabled:((try? TelegramAppearancePreferences.decode(appearanceRaw)) ?? .init()).animationsEnabled,reduceMotion:reduceMotion) }
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(red: 0.15, green: 0.22, blue: 0.28), Color(red: 0.08, green: 0.12, blue: 0.19)], startPoint: .top, endPoint: .bottom)
+            WorkspaceBackdrop(intensity: 0.7)
                 .overlay {
                     if let avatars, let id = controller.call?.peerID ?? controller.incoming.first?.peerID {
                         GeometryReader { geometry in

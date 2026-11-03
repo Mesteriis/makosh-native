@@ -93,7 +93,7 @@ struct TelegramGroupMembershipView: View {
                 Text("Отозванные").tag(TelegramGroupMembershipSection.revokedLinks)
             }.pickerStyle(.segmented).disabled(controller.isBusy).accessibilityIdentifier("telegram.group.links.category")
             if controller.snapshot?.isCreator == true {
-                Picker("Создатель ссылки", selection: Binding(get: { controller.ownerID ?? controller.accountID ?? 0 }, set: { _ = controller.selectOwner($0) })) {
+                MakoshPicker("Создатель ссылки", selection: Binding(get: { controller.ownerID ?? controller.accountID ?? 0 }, set: { _ = controller.selectOwner($0) })) {
                     if let own = controller.accountID { Text("Мои ссылки").tag(own) }
                     ForEach(controller.creators.filter { $0.id != controller.accountID }) { Text($0.title).tag($0.id) }
                 }.disabled(controller.isBusy).accessibilityIdentifier("telegram.group.links.owner")

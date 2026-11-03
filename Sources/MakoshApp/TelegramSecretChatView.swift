@@ -72,7 +72,7 @@ struct TelegramSecretTimerView: View {
                 Text(session.title).font(.title2)
                 LabeledContent("Текущий таймер", value: timerName(session.ttl))
                     .accessibilityIdentifier("telegram.secret.timer.current")
-                Picker("Удалять после прочтения", selection: $selected) {
+                MakoshPicker("Удалять после прочтения", selection: $selected) {
                     ForEach([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 30, 60, 3600, 86400, 604800], id: \.self) { value in
                         Text(timerName(value == 0 ? nil : Int32(value))).tag(Int32(value))
                     }

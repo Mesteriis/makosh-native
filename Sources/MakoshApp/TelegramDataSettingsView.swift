@@ -85,7 +85,7 @@ private struct TelegramDownloadRuleEditor: View {
                     }
                 }
                 Section("Максимальный размер") {
-                    Picker("Размер файла", selection: Binding(get: { value[kind].limit }, set: { value[kind].limit = $0 })) {
+                    MakoshPicker("Размер файла", selection: Binding(get: { value[kind].limit }, set: { value[kind].limit = $0 })) {
                         ForEach(Array(Set([Int64(1),5,10,50,100,500,1024,2048].map { $0 * 1_048_576 } + [value[kind].limit])).sorted(), id: \.self) { size in
                             Text(telegramByteCount(size)).tag(size)
                         }

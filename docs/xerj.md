@@ -156,3 +156,10 @@ Current project scope uses mk-own-v24/project-v24; prior index states remain.
 The installed CLI observed during this run is 1.0.0-rc.95; earlier version and
 coverage notes above are historical. No tool update, external embeddings or
 reranking is performed. Only a successful fresh fingerprint may be reused.
+
+Mail layout/dropdown work: v24 refresh actually exits1 with durable generation
+state inconsistency (execution identity/source policy changed); the diagnostic
+explicitly says rerunning cannot repair it. Raw failure is retained in ignored
+.local/mail-layout/index-v24-refusal.log. Recovery uses a new mk-own-v25/project-v25
+scope; previous indexes/state remain preserved. No source, lock or dependency
+paths are excluded to disguise the failure.

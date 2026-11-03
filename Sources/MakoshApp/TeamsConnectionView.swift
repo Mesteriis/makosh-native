@@ -24,7 +24,7 @@ struct TeamsConnectionView: View {
                     Button("Добавить аккаунт") { Task { await model.addAccount(name: name, clientID: clientID, authority: authority, readOnly: readOnly); if model.error == nil { dismiss() } } }.disabled(model.busy || name.isEmpty || clientID.isEmpty).accessibilityIdentifier("teams.account.create")
                 } else {
                     Text(model.selectedAccount?.name ?? "Аккаунт не выбран").font(.headline)
-                    Picker("Способ входа", selection: $method) { Text("В браузере · PKCE").tag(TeamsAuthorizationMethod.browserPKCE); Text("По коду устройства").tag(TeamsAuthorizationMethod.deviceCode) }.pickerStyle(.menu)
+                    MakoshPicker("Способ входа", selection: $method) { Text("В браузере · PKCE").tag(TeamsAuthorizationMethod.browserPKCE); Text("По коду устройства").tag(TeamsAuthorizationMethod.deviceCode) }.pickerStyle(.menu)
                     Section("Разрешения") {
                         ForEach(TeamsCapability.allCases, id: \.self) { capability in
                             Toggle(teamsCapabilityTitle(capability), isOn: Binding(get: { capabilities.contains(capability) }, set: { enabled in if enabled { capabilities.insert(capability) } else { capabilities.remove(capability) } })).disabled(capability == .basicChats)

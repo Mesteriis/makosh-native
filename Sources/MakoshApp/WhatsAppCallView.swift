@@ -68,7 +68,7 @@ struct WhatsAppCallView: View {
           }.tint(.red).accessibilityIdentifier("whatsapp.call.end")
         }.buttonStyle(.borderedProminent)
       }
-    }.padding(20).frame(minWidth: 340, maxWidth: .infinity, minHeight: 220, maxHeight: .infinity)
+    }.padding(20).frame(minWidth: 340, maxWidth: .infinity, minHeight: 220, maxHeight: .infinity).makoshAppearance()
   }
   private func label(_ state: String) -> String {
     switch state {
@@ -185,7 +185,7 @@ struct WhatsAppCallDevicesView: View {
   private func picker(_ name: String, selection: Binding<String>, values: [WhatsAppCallDevice])
     -> some View
   {
-    Picker(name, selection: selection) {
+    MakoshPicker(name, selection: selection) {
       Text("Системное по умолчанию").tag("")
       ForEach(values) { Text($0.name).tag($0.id) }
     }.disabled(model.call != nil)

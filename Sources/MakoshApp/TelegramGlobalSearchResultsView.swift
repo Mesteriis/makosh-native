@@ -7,7 +7,9 @@ struct TelegramGlobalSearchResultsView: View {
     @ObservedObject private var chats: TelegramSearchModel
     @ObservedObject private var discovery: TelegramRemotePeerSearch
     @State private var allChats = false
-    init(model: TelegramModel) {
+    private let selected: () -> Void
+    init(model: TelegramModel, selected: @escaping () -> Void = {}) {
+        self.selected = selected
         self.model = model; messages = model.globalSearch; chats = model.search; discovery = model.search.discovery
     }
     var body: some View {
@@ -18,7 +20,7 @@ struct TelegramGlobalSearchResultsView: View {
                     TelegramSearchStatusView(status: chats.chatStatus, retry: chats.retryChats).padding(.horizontal, 12)
                     ForEach(Array(chats.chats.prefix(allChats ? chats.chats.count : 5))) { chat in
                         HStack(spacing: 8) {
-                            Button { model.selectedChatID = chat.id } label: {
+                            Button { model.selectedChatID = chat.id; selected() } label: {
                                 HStack(spacing: 10) {
                                     TelegramChatListAvatar(chat: chat, store: model.avatars, isSelected: model.selectedChatID == chat.id)
                                     Text(chat.title).font(.callout.weight(.semibold)).lineLimit(2)

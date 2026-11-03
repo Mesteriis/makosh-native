@@ -14,11 +14,12 @@
   }
   extension WhatsAppWorker {
     public static func openQuestionsQA(
-      configuration: ContactWorkspaceConfiguration, arguments: [String]
+      configuration: ContactWorkspaceConfiguration, arguments: [String], layoutPreview: Bool = false
     ) async throws -> WhatsAppWorker {
       try WhatsAppQAIsolation.validate(configuration: configuration, arguments: arguments)
       let service = WhatsAppWorker(synthetic: true)
       try await service.configureOpenQuestionsQA(configuration: configuration, arguments: arguments)
+      if layoutPreview { try await service.seedWorkspaceLayout() }
       return service
     }
     private func configureOpenQuestionsQA(
@@ -56,6 +57,31 @@
       let accounts = try await load(configuration: configuration)
       guard let first = accounts.first else { throw WhatsAppFailure.storage }
       try await seedOpenQuestions(repository: repository, account: first.id)
+    }
+    /// Extra retained observations for the isolated visual workspace, never provider traffic.
+    private func seedWorkspaceLayout() async throws {
+      guard qaRoot != nil, synthetic, let repository,
+        let account = try await repository.accounts().first else { throw WhatsAppFailure.invalid }
+      var chats = try await repository.chats(accountID: account.id)
+      if !chats.contains(where: { $0.id == "test-design@g.us" }) {
+        chats.append(.init(id: "test-design@g.us", name: "Дизайн продукта", timestamp: 1_792_100_100, unread: 2, group: true))
+        try await repository.saveChats(chats, accountID: account.id)
+      }
+      let texts = [
+        "Коллеги, обновила макет главного окна. Посмотрите, пожалуйста, панель группы.",
+        "Теперь список чатов и переписка воспринимаются как одно пространство.",
+        "Да, фильтры удобно переключать прямо сверху.",
+        "Оставим эту компоновку. Вложения и поиск проверим отдельно.",
+        "Хорошо, подготовлю следующий экран к обсуждению."
+      ]
+      let entries = texts.enumerated().map { index, text in
+        WhatsAppJournalEntry(sequence: 100 + Int64(index), message: .init(
+          chat: "test-team@g.us", id: "layout-\(index)", stanza: "layout-\(index)",
+          sender: index == 3 ? "" : "qa\(index + 1)@lid", timestamp: 1_792_100_100 + Int64(index * 60),
+          outgoing: index == 3, text: text, kind: "text", edited: false, deleted: false),
+          history: true, observed: 1_792_100_500)
+      }
+      try await repository.ingest(entries, accountID: account.id)
     }
     private static func qaPicture() throws -> Data {
       guard

@@ -5,7 +5,7 @@ import SwiftUI
 struct WhatsAppSearchBar: View {
   @ObservedObject var history: WhatsAppHistoryModel
   @State private var query = ""
-  @State private var filter = WhatsAppHistoryFilter.all
+  @Binding var filter: WhatsAppHistoryFilter
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       HStack {
@@ -13,7 +13,7 @@ struct WhatsAppSearchBar: View {
           .roundedBorder
         ).onSubmit { run() }
         Button("Найти", action: run).disabled(history.busy)
-        Picker("Показать", selection: $filter) {
+        MakoshPicker("Показать", selection: $filter) {
           Text("Все").tag(WhatsAppHistoryFilter.all)
           Text("Избранное").tag(WhatsAppHistoryFilter.starred)
           Text("Закреплённые").tag(WhatsAppHistoryFilter.pinned)
@@ -33,6 +33,7 @@ struct WhatsAppSearchBar: View {
       }
       if let error = history.error { Text(error).font(.caption).foregroundStyle(.red) }
     }.padding(.horizontal, 16).padding(.vertical, 8)
+      .onAppear { if filter != .all { run() } }
   }
   private func run() {
     if query.isEmpty && filter == .all {

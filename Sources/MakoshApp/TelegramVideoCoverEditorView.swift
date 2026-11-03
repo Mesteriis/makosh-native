@@ -75,13 +75,13 @@ struct TelegramVideoCoverEditorView: View {
                     .keyboardShortcut("d", modifiers: .command).disabled(applying)
                     .help("Рисовать на обложке (⌘D)").accessibilityLabel("Рисовать на обложке")
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.draw")
-                Menu {
-                    Button("Из файла…", action: chooseImage)
-                    Button("Скопировать вставку", action: copyImage).keyboardShortcut("c", modifiers: .command)
+                MakoshMenu {
+                    MakoshMenuItem("Из файла…", action: chooseImage)
+                    MakoshMenuItem("Скопировать вставку", action: copyImage).keyboardShortcut("c", modifiers: .command)
                         .disabled(images.selectedID == nil)
-                    Button("На передний план") { images.bringSelectedToFront() }.disabled(images.selectedID == nil)
+                    MakoshMenuItem("На передний план") { images.bringSelectedToFront() }.disabled(images.selectedID == nil)
                 } label: { Image(systemName: "photo.badge.plus") }
-                    .menuStyle(.borderlessButton).fixedSize()
+                    .makoshMenuStyle(.plain).fixedSize()
                     .help("Вставить изображение из файла").accessibilityLabel("Добавить изображение")
                     .accessibilityIdentifier("telegram.upload.videoCoverEditor.insert")
                 Button(action: pasteImages) { Image(systemName: "document.on.clipboard") }

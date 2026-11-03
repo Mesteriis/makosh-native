@@ -31,13 +31,13 @@ struct MailAccountSheet: View {
                 }
                 Section("Входящая почта · IMAP") {
                     TextField("Сервер",text:$imapHost).accessibilityIdentifier("mail.account.imapHost")
-                    HStack { TextField("Порт",value:$imapPort,format:.number.grouping(.never)).frame(width:140);Picker("Защита",selection:$imapSecurity) { Text("TLS").tag(MailConnectionSecurity.tls);Text("STARTTLS").tag(MailConnectionSecurity.startTLS) } }
+                    HStack { TextField("Порт",value:$imapPort,format:.number.grouping(.never)).frame(width:140);MakoshPicker("Защита",selection:$imapSecurity) { Text("TLS").tag(MailConnectionSecurity.tls);Text("STARTTLS").tag(MailConnectionSecurity.startTLS) } }
                     TextField("Имя пользователя",text:$imapUser)
                     SecureField("Пароль приложения",text:$imapPassword).accessibilityIdentifier("mail.account.imapPassword")
                 }
                 Section("Исходящая почта · SMTP") {
                     TextField("Сервер",text:$smtpHost).accessibilityIdentifier("mail.account.smtpHost")
-                    HStack { TextField("Порт",value:$smtpPort,format:.number.grouping(.never)).frame(width:140);Picker("Защита",selection:$smtpSecurity) { Text("TLS").tag(MailConnectionSecurity.tls);Text("STARTTLS").tag(MailConnectionSecurity.startTLS) } }
+                    HStack { TextField("Порт",value:$smtpPort,format:.number.grouping(.never)).frame(width:140);MakoshPicker("Защита",selection:$smtpSecurity) { Text("TLS").tag(MailConnectionSecurity.tls);Text("STARTTLS").tag(MailConnectionSecurity.startTLS) } }
                     TextField("Имя пользователя",text:$smtpUser)
                     Toggle("Использовать пароль IMAP",isOn:$samePassword)
                     if !samePassword { SecureField("Пароль приложения SMTP",text:$smtpPassword) }

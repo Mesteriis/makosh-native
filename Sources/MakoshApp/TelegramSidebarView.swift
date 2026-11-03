@@ -34,31 +34,24 @@ struct TelegramSidebarView: View {
                         .buttonStyle(.plain).help("Вернуться к диалогам")
                         .accessibilityLabel("Вернуться к диалогам").accessibilityIdentifier("telegram.folder.back")
                 }
-                Text(showsForum ? (model.selectedChat?.title ?? "Темы") : model.phase == .ready ? (model.chatFolder == .archive ? "Архив" : "Диалоги") : "Telegram")
-                    .font(.headline).lineLimit(1)
+                Text(showsForum ? (model.selectedChat?.title ?? "Темы") : model.phase == .ready ? (model.workspaceFolderTitle) : "Telegram")
+                    .font(.system(size: 20, weight: .bold)).lineLimit(1)
                 Spacer(minLength: 4)
                 TelegramArchiveButton(archive: model.archive, backupContext: backupContext)
-                if model.phase == .ready {
-                    Button { downloadsPresented = true } label: { Image(systemName:"arrow.down.circle") }
-                        .buttonStyle(.plain).help("Загрузки").accessibilityLabel("Загрузки Telegram").accessibilityIdentifier("telegram.downloads.open")
-                }
-                Button { settingsPresented = true } label: { Image(systemName: "gearshape") }
-                    .buttonStyle(.plain).help("Настройки Telegram").accessibilityLabel("Настройки Telegram")
-                    .accessibilityIdentifier("telegram.settings.open")
-                Button { connectionPresented = true } label: { Image(systemName: "info.circle") }
-                    .buttonStyle(.plain).help("О подключении")
-                    .accessibilityLabel("О подключении Telegram").accessibilityIdentifier("telegram.connection.open")
+                MakoshMenu {
+                    MakoshMenuItem("Загрузки") { downloadsPresented = true }
+                    MakoshMenuItem("Настройки Telegram") { settingsPresented = true }
+                    MakoshMenuItem("О подключении") { connectionPresented = true }
+                } label: { Image(systemName: "ellipsis") }
+                    .accessibilityLabel("Действия Telegram")
                     .popover(isPresented: $connectionPresented) { connectionDetails }
-            }.padding(.horizontal, 12).frame(height: 50)
+            }.padding(.horizontal, 16).frame(height: WorkspaceStyle.mailPaneHeaderHeight)
             Divider()
             if model.phase == .ready && !showsForum {
-                TextField("Поиск", text: $search.chatQuery).textFieldStyle(.roundedBorder).focused($searchFocused)
-                    .padding(.horizontal, 10).frame(height: 40).accessibilityIdentifier("telegram.chatSearch")
-                    .onChange(of: search.chatQuery) { _, query in globalSearch.messageQuery = query }
                 if searchFocused || searching {
                     TelegramSearchMediaTabs(selection: $globalSearch.mediaFilter)
                     HStack {
-                        Picker("Диалоги", selection: $globalSearch.scope) {
+                        MakoshPicker("Диалоги", selection: $globalSearch.scope) {
                             ForEach(TelegramSearchScope.allCases) { scope in Text(scope.title).tag(scope) }
                         }.labelsHidden().accessibilityIdentifier("telegram.globalSearch.scope")
                         Spacer(minLength: 4)
@@ -91,27 +84,32 @@ struct TelegramSidebarView: View {
                     ContentUnavailableView(model.chatFolder == .archive ? "Нет загруженных архивных диалогов" : "Нет загруженных диалогов", systemImage: "bubble.left.and.bubble.right", description: Text(model.phase == .ready ? "В этом списке пока нет диалогов. Можно обновить загрузку." : "Диалоги появятся после подключения вашего отдельного сеанса.")).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
-                List(selection: $model.selectedChatID) {
-                    if showsArchiveEntry { archiveEntry.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)) }
-                    ForEach(visibleChats) { chat in
-                        HStack(spacing: 10) {
-                            TelegramChatListAvatar(chat: chat, store: model.avatars, isSelected: model.selectedChatID == chat.id)
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack { Text(chat.title).font(.headline).lineLimit(1); Spacer(minLength: 4) }
-                                HStack(alignment: .top) {
-                                    Text(chat.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                                    Spacer(minLength: 4)
-                                    if chat.unreadCount > 0 {
-                                        Text("\(chat.unreadCount)").font(.caption.monospacedDigit())
-                                            .foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(Color.accentColor, in: Capsule())
-                                    }
-                                }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(visibleChats) { chat in
+                                Button { model.selectedChatID = chat.id } label: {
+                                    HStack(spacing: 12) {
+                                        TelegramChatListAvatar(chat: chat, store: model.avatars, isSelected: model.selectedChatID == chat.id)
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            HStack { Text(chat.title).font(.system(size: 14, weight: .semibold)); Spacer(minLength: 3)
+                                                if chat.unreadCount > 0 { Text("\(chat.unreadCount)").font(.caption).foregroundStyle(WorkspaceStyle.accent) }
+                                            }
+                                            Text(chat.preview.replacingOccurrences(of: "\n", with: " ")).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(2)
+                                        }.frame(maxWidth: .infinity, alignment: .leading)
+                                    }.padding(12).frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+                                        .background(model.selectedChatID == chat.id ? WorkspaceStyle.accent.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                                        .contentShape(Rectangle())
+                                }.buttonStyle(.plain).id(chat.id)
+                                    .accessibilityValue(model.selectedChatID == chat.id ? "Выбрано" : "")
+                                    .accessibilityIdentifier("telegram.chat.\(chat.id)")
                             }
-                        }.frame(height: 70).listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
-                            .tag(chat.id).accessibilityIdentifier("telegram.chat.\(chat.id)")
-                    }
-                }.listStyle(.inset).accessibilityIdentifier("telegram.chats")
+                        }.padding(8)
+                    }.focusable().focusEffectDisabled()
+                        .onKeyPress(.downArrow) { moveSelection(1); return .handled }
+                        .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
+                        .onChange(of: model.selectedChatID) { _, id in if let id { proxy.scrollTo(id) } }
+                }.accessibilityIdentifier("telegram.chats")
             }
             if model.phase == .ready && !searching && !showsForum {
                 TelegramPaginationBar(page: model.chatPage, prefix: "telegram.chatPage",
@@ -132,6 +130,11 @@ struct TelegramSidebarView: View {
             .onReceive(model.notifications.$activationRequest.dropFirst()) { _ in settingsPresented = false }
     }
 
+    private func moveSelection(_ offset: Int) {
+        guard !visibleChats.isEmpty else { return }
+        let current = visibleChats.firstIndex { $0.id == model.selectedChatID } ?? (offset > 0 ? -1 : visibleChats.count)
+        model.selectedChatID = visibleChats[min(max(current + offset, 0), visibleChats.count - 1)].id
+    }
     private var archiveEntry: some View {
         Button { model.chatFolder = .archive } label: {
             HStack(spacing: 12) {

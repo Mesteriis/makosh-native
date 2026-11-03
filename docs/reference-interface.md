@@ -1,4 +1,58 @@
-## WhatsApp open questions — Tasks7–9, 2026-10-16
+# Интерфейс из выбранных референсов
+
+## WhatsApp — выбранный групповой вариант, 2026-10-18
+
+[Третий показанный вариант](design/whatsapp-group-context.png) задаёт новую
+компоновку внутри общей оболочки: аккаунт, раздел и поиск в64pt строке, список
+чатов слева, переписка в центре, закрываемая264pt панель сведений справа.
+Заголовки трёх областей имеют общую высоту54pt. Общий фон и прозрачная ручка
+разделителя исключают светлые вертикальные полосы; редактор использует общую
+фиолетово-графитовую поверхность. Статусы, новый чат/группа, настройки аккаунта,
+подключение, лицензия/исходники, архив и прежние действия сохраняются.
+
+Fresh XERJ WhatsApp Zen MainView.swift подтверждён исходником pinned790066aa:
+сохраняются список/чат, состояния подключения, поиск, сведения и штатные действия.
+Выбор пользователя заменяет исходный NavigationSplitView и внутренний header,
+сохраняя собственный SwiftUI Makosh и существующие Swift/Rust границы. Настройки,
+rich compose, permanent archive, attachments/outbox/calls используют прежние
+контроллеры и проверки account/chat. Панель читает существующий info API;
+отменённый/чужой ответ не применяется. В отсутствие имени участника показывается
+его идентификатор, без выдуманного имени; фактический состав и число берутся из
+источника. Иллюстративные люди/аватары и число6 из концепта не переносятся в данные.
+Медиа открывает существующий поиск по сохранённым медиа, а не новую библиотеку.
+Нативная визуальная проверка и полный gate записываются в development-status.md.
+Реальная WhatsApp-сеть и устройства остаются вне этой синтетической проверки.
+
+
+## Общая оболочка — выбранный пользователем вариант, 2026-10-16
+
+[Визуальный ориентир](design/main-window-matte-glass.png): второй вариант последней
+тройки — матовое стекло, графитовый фон с фиолетово-индиговым светом. Выбор пользователя
+заменяет прежнюю постоянную общую панель сервисов. Нативное меню разделов расположено
+в toolbar рядом с кнопками окна; содержимое выбранного сервиса занимает оставшуюся
+область. Папки почты сохранены внутри почтового раздела. Компоновка содержимого,
+действия, идентификаторы и протокольные границы сервисов не перерабатываются.
+
+WorkspaceStyle и WorkspaceBackdrop задают общий акцент, фон и поверхности. Главное
+окно, настройки и наследующие их sheet используют тёмное оформление; отдельное окно
+WhatsApp и фон Telegram-звонка используют ту же основу. Зелёные декоративные акценты
+WhatsApp и бежевый лист почты заменены общими фиолетовыми/графитовыми поверхностями.
+HTML сохраняет исходное содержимое и прежнюю блокировку JS/сети/хранилища. Документ
+имеет нейтральный светлый лист внутри тёмного reader: исходные inline-цвета писем
+не переписываются, а чёрный текст автора не теряется на тёмном фоне. Plain text
+использует общую графитовую поверхность и светлый текст.
+
+Явные пользовательские темы, обои и акценты Telegram сохраняются внутри области
+переписки; системная тема по умолчанию следует тёмной оболочке. Новый default акцента
+фиолетовый, сохранённый выбор не мигрируется. Красный destructive, зелёный приём звонка,
+цвета статусов/медиа/аватаров и образцы палитр сохраняют своё значение.
+
+Нативные меню/toolbar/формы используют системные материалы и размеры. Растер концепта
+не является обещанием пиксельного совпадения системных контролов. Старые таблицы
+Aether/Zen ниже остаются историей исходного переноса; описанный здесь выбор изменяет
+только общую визуальную систему. Фактический объём native QA и непроверенные поверхности
+перечислены в корневом design-qa.md и development-status.md.
+
 
 Zen Calls.swift/Video.swift public workflows were queried with fresh XERJ and
 confirmed against the pinned790066aa source. Makosh retains the common workspace
@@ -2115,3 +2169,59 @@ ScreenCaptureKit3811 errors prevented claiming refreshed group pixels. Separate
 settled AX reads confirmed the actions; no alternate UI backend was used.
 QA004 group pixel evidence concerns the unchanged layout. Crop/mark dragging and
 WA-OQ-04 remain unverified; real provider/device/OS checks remain paused.
+
+
+## Mail reading-first layout — user selection 2026-10-18
+
+The second displayed concept is preserved in
+[mail-reading-focus.png](design/mail-reading-focus.png). It supersedes the permanent
+mail folders column: account and exact account-scoped folder menus, search and compose
+share a top row; the two panes hold messages and the reader. Secondary mail controls
+move into menus. Existing MMail worker/storage/approval contracts remain authoritative.
+The titlebar explicitly uses the shared graphite base rather than the system's gray
+toolbar background. Styled app-owned dropdowns, deterministic sender initials,
+real unread counts/timestamps and HTML/dossier affordances remain product-owned.
+The reader uses native paginated selectable text, with attachments after the plain
+body; HTML retains its existing isolated light document and separate attachment row.
+No OAuth, calendar, Copilot or combined multiaccount inbox was introduced.
+Visual evidence and final acceptance are recorded in the current root design-qa.md;
+the earlier shell report is retained in docs/design/main-window-qa.md.
+
+The 2026-10-18 refinement replaces system dropdown popups with shared MakoshMenu /
+MakoshPicker surfaces across 27 menus and 40 dropdown pickers. Segmented/radio controls
+and contextual menus retain their own presentation. Leaf actions dismiss through the
+semantic Button action, including accessibility activation; nested menus expand in
+place. Existing roles, enabled conditions and action closures are retained.
+
+The list and reader actions share a 54pt header. WorkspaceSplitView uses a transparent
+resize handle instead of a system divider gutter. The optional 280pt dossier is a
+contiguous reader pane, with its header on the same baseline. No bright vertical
+strips or native inspector card remain. Earlier three-column mail descriptions in
+this document are historical and superseded by this selected two-pane presentation.
+
+## Telegram folder-rail selection — 2026-10-18
+
+The user selected the third displayed revision that adds custom chat folders:
+[telegram-folder-rail.png](design/telegram-folder-rail.png). The main-window shell
+and shared graphite/violet tokens remain fixed. The84pt folder rail precedes the
+resizable chat list; a264pt contiguous dossier follows the conversation. Main pane
+headers align at54pt. The existing chat selection/history/composer/profile workflows
+remain connected to their current controllers. The rail contains Telegram folders,
+not application services; the service switcher stays beside traffic lights.
+
+The selected reference's colored initial avatars, illustrative folder icons,
+aggregate folder counters and sample dossier job/email/notes are not authoritative
+account data. Native avatars remain account-owned, arbitrary folders use a folder
+symbol, totals are omitted when unavailable, and linked source/manual fields are
+shown only when actually present. All/Archive stay reachable. The UI does not invent
+custom folders for a real account. Search is global. Existing call/media/emoji
+capability guards remain authoritative; unavailable synthetic controls do not
+prove provider acceptance. Chat history retains latest-message anchoring and source
+metadata instead of freezing the mock's sample position and timestamps. No light
+vertical gutters or system-gray composer box remain. Native text selection,
+formatting, attachments, voice control and explicit Telegram themes are retained.
+
+The pinned engine's public AccountViewTracker/TelegramEngine/ChatListFilterPredicate
+surfaces were source-confirmed after XERJ searches. No outer TelegramSwift UI code
+was copied; its GPLv2-only UI remains excluded. Current design QA is in the root
+report, with the earlier mail report retained at design/mail-reading-qa.md.

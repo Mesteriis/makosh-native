@@ -39,7 +39,7 @@ struct TelegramVoiceRecordButton: NSViewRepresentable {
         let floating = phase == .authorizing || phase == .recording || phase == .locked
         view.image = floating ? nil : NSImage(systemSymbolName: round ? "video.fill" : "mic.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 22, weight: .regular))
-        view.contentTintColor = .controlAccentColor
+        view.contentTintColor = NSColor(WorkspaceStyle.accent)
         view.layer?.backgroundColor = nil
         view.setAccessibilityLabel(view.locked ? "Отправить запись" : round ? "Записать круглое видео" : "Записать голосовое сообщение")
         view.toolTip = view.locked ? "Отправить запись" : "Клик — сменить тип записи. Удерживайте для записи, потяните вверх, чтобы закрепить; отпустите вне кнопки для отмены."

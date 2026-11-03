@@ -41,7 +41,7 @@ struct TelegramNotificationSettingsView: View {
             Section("Уведомления и звуки") {
                 Toggle("Показывать уведомления", isOn: binding(\.enabled, context: context)).accessibilityIdentifier("telegram.notifications.enabled")
                 Toggle("Предпросмотр сообщений", isOn: binding(\.previews, context: context)).accessibilityIdentifier("telegram.notifications.previews")
-                Picker("Звук", selection: Binding(get: { controller.preferences.sound }, set: { value in
+                MakoshPicker("Звук", selection: Binding(get: { controller.preferences.sound }, set: { value in
                     var p = controller.preferences; p.sound = value; controller.update(p, contextID: context)
                 })) {
                     Text("Системный").tag(TelegramNotificationSound.system)
@@ -50,14 +50,14 @@ struct TelegramNotificationSettingsView: View {
                 Toggle("Привлекать внимание значком Dock", isOn: binding(\.bounce, context: context))
                 Toggle("Не показывать при активном окне Макоша", isOn: binding(\.suppressWhileActive, context: context))
                     .accessibilityIdentifier("telegram.notifications.suppressActive")
-                Menu("Приостановить уведомления") {
+                MakoshMenu("Приостановить уведомления") {
                     ForEach([30,60,480], id: \.self) { minutes in
-                        Button(minutes == 30 ? "На 30 минут" : minutes == 60 ? "На час" : "На 8 часов") {
+                        MakoshMenuItem(minutes == 30 ? "На 30 минут" : minutes == 60 ? "На час" : "На 8 часов") {
                             var p = controller.preferences; p.snoozeUntil = Date().addingTimeInterval(Double(minutes * 60))
                             controller.update(p, contextID: context)
                         }
                     }
-                    Button("Возобновить") { var p = controller.preferences; p.snoozeUntil = nil; controller.update(p, contextID: context) }
+                    MakoshMenuItem("Возобновить") { var p = controller.preferences; p.snoozeUntil = nil; controller.update(p, contextID: context) }
                 }.accessibilityIdentifier("telegram.notifications.snooze")
                 if let until = controller.preferences.snoozeUntil {
                     TimelineView(.periodic(from: .now, by: 1)) { time in
@@ -76,9 +76,9 @@ struct TelegramNotificationSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }.disabled(controller.error != nil)
             Section("Отдельные чаты") {
-                Menu("Настроить чат…") {
+                MakoshMenu("Настроить чат…") {
                     ForEach(chats) { chat in
-                        Button(chat.title) { peer = .init(id: chat.id, title: chat.title, context: context) }
+                        MakoshMenuItem(chat.title) { peer = .init(id: chat.id, title: chat.title, context: context) }
                     }
                 }.disabled(chats.isEmpty).accessibilityIdentifier("telegram.notifications.chooseChat")
                 Text("Выберите чат из загруженного списка или откройте «Уведомления» в его карточке. Для каждого чата можно настроить показ, предпросмотр и звук.")
@@ -169,13 +169,13 @@ struct TelegramNotificationRuleEditor: View {
             else {
                 Form {
                     Section("На этом Mac") {
-                        Picker("Уведомления", selection: boolBinding(\.enabled)) {
+                        MakoshPicker("Уведомления", selection: boolBinding(\.enabled)) {
                             Text("По общим настройкам").tag(-1); Text("Включены").tag(1); Text("Выключены").tag(0)
                         }.accessibilityIdentifier("telegram.notifications.rule.enabled")
-                        Picker("Предпросмотр", selection: boolBinding(\.previews)) {
+                        MakoshPicker("Предпросмотр", selection: boolBinding(\.previews)) {
                             Text("По общим настройкам").tag(-1); Text("Показывать").tag(1); Text("Скрывать").tag(0)
                         }.accessibilityIdentifier("telegram.notifications.rule.previews")
-                        Picker("Звук", selection: Binding(get: { rule.sound?.rawValue ?? "inherit" }, set: { raw in
+                        MakoshPicker("Звук", selection: Binding(get: { rule.sound?.rawValue ?? "inherit" }, set: { raw in
                             var value = rule; value.sound = TelegramNotificationSound(rawValue: raw); update(value)
                         })) {
                             Text("По общим настройкам").tag("inherit"); Text("Системный").tag("system"); Text("Без звука").tag("none")

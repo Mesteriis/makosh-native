@@ -18,7 +18,7 @@ struct MailAutomationSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack { Text("Настройки почты").font(.title2.bold()); Spacer(); Button("Закрыть") { dismiss() } }
-            Picker("Аккаунт", selection: $accountID) { ForEach(model.accounts) { Text($0.email).tag($0.id) } }
+            MakoshPicker("Аккаунт", selection: $accountID) { ForEach(model.accounts) { Text($0.email).tag($0.id) } }
             Picker("Раздел", selection: $section) {
                 Text("Подпись").tag(0); Text("Шаблоны").tag(1); Text("Правила").tag(2)
             }.pickerStyle(.segmented).accessibilityIdentifier("mail.automation.section")
@@ -50,8 +50,8 @@ struct MailAutomationSettingsView: View {
                             Button("Удалить", role: .destructive) { Task { await model.deleteIncomingRule(rule.id) } }
                         }
                     }
-                    HStack { Picker("Поле", selection: $field) { Text("Отправитель").tag(MailIncomingRule.Field.from); Text("Тема").tag(MailIncomingRule.Field.subject) }; TextField("Содержит", text: $match) }
-                    Picker("Действие", selection: $action) { ForEach(MailIncomingRule.Action.allCases, id: \.self) { Text(actionTitle($0)).tag($0) } }
+                    HStack { MakoshPicker("Поле", selection: $field) { Text("Отправитель").tag(MailIncomingRule.Field.from); Text("Тема").tag(MailIncomingRule.Field.subject) }; TextField("Содержит", text: $match) }
+                    MakoshPicker("Действие", selection: $action) { ForEach(MailIncomingRule.Action.allCases, id: \.self) { Text(actionTitle($0)).tag($0) } }
                     if action == .label { TextField("Локальная метка", text: $label) }
                     Button("Добавить правило") { Task { await model.saveIncomingRule(.init(accountID: accountID, field: field, value: match, action: action, label: action == .label ? label : nil)) } }.disabled(accountID.isEmpty || match.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
                 }.padding() }

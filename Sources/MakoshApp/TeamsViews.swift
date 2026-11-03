@@ -10,20 +10,20 @@ struct TeamsSidebarView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack { Label("Teams", systemImage: "person.3.fill").font(.title2.bold()); Spacer(); Button { adding = true } label: { Image(systemName: "plus") }.help("Добавить аккаунт").disabled(model.isSynthetic).accessibilityIdentifier("teams.account.add") }
-                Picker("Аккаунт", selection: Binding(get: { model.selectedAccountID }, set: { id in if let id { Task { await model.selectAccount(id) } } })) {
+                MakoshPicker("Аккаунт", selection: Binding(get: { model.selectedAccountID }, set: { id in if let id { Task { await model.selectAccount(id) } } })) {
                     Text("Выберите аккаунт").tag(Optional<UUID>.none)
                     ForEach(model.accounts) { Text($0.name).tag(Optional($0.id)) }
                 }.pickerStyle(.menu).accessibilityIdentifier("teams.account.picker")
                 HStack {
                     Text(teamsStateTitle(model.snapshot?.state, synthetic: model.isSynthetic)).font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Menu {
-                        Button("Войти / предоставить разрешения") { signingIn = true }.disabled(model.isSynthetic || model.selectedAccountID == nil)
-                        Button("Подключиться") { Task { await model.connect() } }.disabled(model.isSynthetic || model.selectedAccountID == nil)
-                        Button("Отключиться") { Task { await model.disconnect() } }.disabled(model.selectedAccountID == nil)
-                        Button("Обновить переписку") { Task { await model.synchronize() } }.disabled(model.snapshot?.state != .connected && model.snapshot?.state != .synthetic)
+                    MakoshMenu {
+                        MakoshMenuItem("Войти / предоставить разрешения") { signingIn = true }.disabled(model.isSynthetic || model.selectedAccountID == nil)
+                        MakoshMenuItem("Подключиться") { Task { await model.connect() } }.disabled(model.isSynthetic || model.selectedAccountID == nil)
+                        MakoshMenuItem("Отключиться") { Task { await model.disconnect() } }.disabled(model.selectedAccountID == nil)
+                        MakoshMenuItem("Обновить переписку") { Task { await model.synchronize() } }.disabled(model.snapshot?.state != .connected && model.snapshot?.state != .synthetic)
                         SettingsLink { Text("Настройки Teams…") }
-                    } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).help("Подключение и настройки").accessibilityLabel("Подключение и настройки Teams")
+                    } label: { Image(systemName: "ellipsis.circle") }.makoshMenuStyle(.plain).help("Подключение и настройки").accessibilityLabel("Подключение и настройки Teams")
                 }
                 if model.isSynthetic { Label("Синтетические данные", systemImage: "testtube.2").font(.caption).foregroundStyle(.orange) }
             }.padding(16)

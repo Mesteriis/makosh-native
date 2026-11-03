@@ -3,6 +3,7 @@ import MakoshMail
 
 struct MailTextBody: View {
     let text: String
+    var font: Font = .body
     @State private var pages: [String] = []
     @State private var index = 0
     @State private var error: String?
@@ -17,7 +18,7 @@ struct MailTextBody: View {
             }
             if let error { Text(error).foregroundStyle(.red) }
             else if pages.isEmpty { ProgressView() }
-            else { Text(pages[min(index, pages.count - 1)]).textSelection(.enabled).font(.body).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading) }
+            else { Text(pages[min(index, pages.count - 1)]).textSelection(.enabled).font(font).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading) }
         }.task(id: text) {
             index = 0; pages = []; error = nil
             let task = Task.detached(priority: .userInitiated) { try MailTextPagination.pages(text) }

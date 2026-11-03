@@ -25,7 +25,7 @@ struct WhatsAppComposeView: View {
             Image(systemName: "xmark")
           }
         }.font(.callout).padding(8).background(
-          .green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+          WorkspaceStyle.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
       }
       if model.reply == nil,model.restoredReplyID != nil {
         HStack { Label("Ответ на сохранённое сообщение",systemImage:"arrowshape.turn.up.left");Spacer();Button("Убрать ответ") { model.clearReply() } }.font(.callout)
@@ -39,7 +39,9 @@ struct WhatsAppComposeView: View {
       if model.admittedDraft != nil {
         Button("Черновик уже принят · открыть очередь") { outbox=true;Task { await model.refreshOutbox() } }
       }
-      Text("До 10 файлов · каждый до 100 МиБ · всего до 1000 МиБ").font(.caption).foregroundStyle(.secondary)
+      if !model.orderedItems.isEmpty || model.preparing {
+        Text("До 10 файлов · каждый до 100 МиБ · всего до 1000 МиБ").font(.caption).foregroundStyle(.secondary)
+      }
       if !model.orderedItems.isEmpty {
         ScrollView {
           VStack(spacing:6) {
@@ -75,13 +77,13 @@ struct WhatsAppComposeView: View {
       }
       if let text = model.notice { Text(text).foregroundStyle(.secondary).font(.caption) }
       HStack(alignment: .bottom, spacing: 10) {
-        Menu {
-          Button("Файлы") { choose(asFiles: true) }
-          Button("Фото и медиа") { choose(asFiles: false) }
-          Button("Геопозиция, контакт, опрос", action: rich)
+        MakoshMenu {
+          MakoshMenuItem("Файлы") { choose(asFiles: true) }
+          MakoshMenuItem("Фото и медиа") { choose(asFiles: false) }
+          MakoshMenuItem("Геопозиция, контакт, опрос", action: rich)
         } label: {
           Image(systemName: "plus.circle")
-        }.menuStyle(.borderlessButton).accessibilityLabel("Прикрепить файл или сообщение").help("Прикрепить файл").disabled(
+        }.makoshMenuStyle(.plain).accessibilityLabel("Прикрепить файл или сообщение").help("Прикрепить файл").disabled(
           model.preparing || model.sending || model.attachments.count + model.photoDrafts.count >= 10
         ).accessibilityIdentifier("whatsapp.compose.attach")
         TextField(
@@ -90,7 +92,7 @@ struct WhatsAppComposeView: View {
             get: { model.draftText(account: accountID, chat: chatID) },
             set: { model.setDraftText($0, account: accountID, chat: chatID) }), axis: .vertical
         ).lineLimit(1...6).textFieldStyle(.plain).padding(10).background(
-          .background, in: RoundedRectangle(cornerRadius: 16)
+          WorkspaceStyle.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: 10)
         ).onSubmit { Task { await model.send(expectedAccount: accountID, expectedChat: chatID) } }
           .accessibilityIdentifier("whatsapp.compose.text")
         WhatsAppVoiceRecordingView(
@@ -112,8 +114,10 @@ struct WhatsAppComposeView: View {
             || (model.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
               && model.attachments.isEmpty && model.photoDrafts.isEmpty)
         ).help("Отправить").accessibilityIdentifier("whatsapp.compose.send")
-      }
-    }.padding(12)
+      }.buttonStyle(.plain).padding(8)
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.08)) }
+    }.padding(12).padding(.bottom, 12)
       .fileImporter(isPresented: $choosing, allowedContentTypes: asFiles ? [.item] : [.image, .movie, .audio], allowsMultipleSelection: true) { result in
         if case .success(let urls) = result {
           let account = pickerAccount, chat = pickerChat, mode = asFiles

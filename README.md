@@ -94,7 +94,9 @@ CI builds/tests on the documented GitHub `macos-26` arm64 runner. Its actual run
 ## Почта в общем workspace
 
 Почтовый канал использует MMail IMAP/SMTP/MIME и Aether Courier UI внутри общей
-панели сервисов и досье. Настройка — ручной IMAP/SMTP с TLS/STARTTLS; пароли в
+оболочки с меню разделов рядом с кнопками окна и общим досье. Папки и список
+писем остаются внутри почтовой области. Оформление — тёмное матовое стекло
+с фиолетовым акцентом ([выбранный ориентир](docs/design/main-window-matte-glass.png)). Настройка — ручной IMAP/SMTP с TLS/STARTTLS; пароли в
 Keychain, шифрованные метаданные/версии в PostgreSQL, файлы в encrypted S3.
 Неизвестная отправка/серверное сохранение черновика не повторяется автоматически.
 Подробности, реальный статус и различия: [mail migration](docs/mail-migration.md),

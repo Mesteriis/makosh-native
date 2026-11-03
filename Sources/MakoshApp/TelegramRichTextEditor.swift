@@ -66,13 +66,16 @@ struct NativeTelegramText: NSViewRepresentable {
     }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = TelegramGrowingScrollView()
-        scroll.hasVerticalScroller = false; scroll.scrollerStyle = .overlay; scroll.borderType = .bezelBorder
+        scroll.hasVerticalScroller = false; scroll.scrollerStyle = .overlay; scroll.borderType = accessibilityID == "telegram.composer" ? .noBorder : .bezelBorder
+        scroll.drawsBackground = accessibilityID != "telegram.composer"
         let text = TelegramNativeInput(frame: .zero)
+        text.minimumComposerHeight = accessibilityID == "telegram.composer" ? 32 : 52
         TelegramCustomEmojiTextSystem.install(in: text)
         context.coordinator.customEmojiDescriptors = customEmojiDescriptors
         context.coordinator.customEmojiContext = customEmojiContext
         text.isRichText = true; text.importsGraphics = false; text.allowsUndo = true
         text.textColor = .labelColor; text.backgroundColor = .textBackgroundColor
+        text.drawsBackground = accessibilityID != "telegram.composer"
         text.typingAttributes = [.font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.labelColor]
         text.isAutomaticLinkDetectionEnabled = false; text.isAutomaticDataDetectionEnabled = false
         text.isAutomaticTextReplacementEnabled = false; text.isAutomaticQuoteSubstitutionEnabled = false
@@ -206,7 +209,7 @@ struct NativeTelegramText: NSViewRepresentable {
                 container.containerSize = NSSize(width: max(1,scroll.contentSize.width - text.textContainerInset.width * 2),height: CGFloat.greatestFiniteMagnitude)
                 layout.ensureLayout(for: container)
                 let contentHeight = ceil(layout.usedRect(for: container).height + text.textContainerInset.height * 2 + 2)
-                let bounded = min(160,max(52,contentHeight))
+                let bounded = min(160,max((text as? TelegramNativeInput)?.minimumComposerHeight ?? 52,contentHeight))
                 scroll.hasVerticalScroller = contentHeight > 160
                 let documentHeight = max(contentHeight,scroll.contentSize.height)
                 if abs(text.frame.height - documentHeight) > 0.5 {
@@ -356,6 +359,7 @@ struct NativeTelegramText: NSViewRepresentable {
 }
 
 @MainActor final class TelegramNativeInput: NSTextView {
+    var minimumComposerHeight: CGFloat = 52
     var replaceEmoticons = false
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
         let selection = replacementRange.location == NSNotFound ? selectedRange() : replacementRange

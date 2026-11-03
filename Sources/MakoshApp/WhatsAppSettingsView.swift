@@ -37,7 +37,7 @@ struct WhatsAppCommonSettingsView: View {
   var body: some View {
     VStack {
       if registry.models.count > 1 {
-        Picker("Рабочее окно", selection: $selected) {
+        MakoshPicker("Рабочее окно", selection: $selected) {
           ForEach(registry.models, id: \.0) { id, model in
             Text(model.accounts.map(\.name).joined(separator: ", ")).tag(Optional(id))
           }
@@ -93,7 +93,7 @@ struct WhatsAppSettingsView: View {
         Spacer()
       }.buttonStyle(.plain).padding(16).frame(width: 185).background(.quaternary.opacity(0.35))
       Form {
-        Picker("Настройки для", selection: $scope) {
+        MakoshPicker("Настройки для", selection: $scope) {
           if pane == "notifications" { Text("Все аккаунты WhatsApp").tag(Optional<UUID>.none) }
           ForEach(model.accounts) { Text($0.name).tag(Optional($0.id)) }
         }
@@ -133,7 +133,7 @@ struct WhatsAppSettingsView: View {
               if let rules = actions.info?.rules {
                 ForEach(rules.keys.sorted(), id: \.self) { Text("\($0): \(rules[$0] ?? "")") }
               }
-              Picker("Кто видит", selection: $privacyCategory) {
+              MakoshPicker("Кто видит", selection: $privacyCategory) {
                 Text("Последний визит").tag("last")
                 Text("В сети").tag("online")
                 Text("Фото профиля").tag("profile")
@@ -142,7 +142,7 @@ struct WhatsAppSettingsView: View {
                 Text("Отчёты о прочтении").tag("readreceipts")
                 Text("Звонки").tag("calladd")
               }
-              Picker("Значение", selection: $privacyValue) {
+              MakoshPicker("Значение", selection: $privacyValue) {
                 ForEach(privacyValues, id: \.self) { Text(privacyLabel($0)).tag($0) }
               }
               Button("Применить правило") {

@@ -5,7 +5,7 @@ import MakoshTelegram
 /// Default bubbles keep their own readable surface over arbitrary wallpaper.
 /// Explicit cloud bubble colors/opacity continue to take precedence.
 func telegramDefaultBubbleColor(outgoing:Bool,scheme:ColorScheme,accent:Color = .accentColor) -> Color {
-    let base: Color = scheme == .dark ? Color(red:0.10,green:0.12,blue:0.14) : .white
+    let base: Color = scheme == .dark ? WorkspaceStyle.surface : .white
     return outgoing ? base.mix(with:accent,by:0.14) : base
 }
 
@@ -55,7 +55,7 @@ enum TelegramAccent: String, CaseIterable, Identifiable {
     static let preferenceKey = "Makosh.Telegram.Accent"
     var id: String { rawValue }
     var title: String { switch self { case .blue: "Синий"; case .purple: "Фиолетовый"; case .green: "Зелёный"; case .orange: "Оранжевый" } }
-    var color: Color { switch self { case .blue: .blue; case .purple: .purple; case .green: .green; case .orange: .orange } }
+    var color: Color { switch self { case .blue: .blue; case .purple: WorkspaceStyle.accent; case .green: .green; case .orange: .orange } }
     init(preference: String) { self = Self(rawValue: preference) ?? .blue }
 }
 
@@ -69,7 +69,7 @@ struct TelegramAppearanceView: View {
     var catalog: TelegramAppearanceCatalogController? = nil
     @State private var catalogPresented = false
     @AppStorage(TelegramLocalTheme.preferenceKey) private var theme = TelegramLocalTheme.system.rawValue
-    @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.blue.rawValue
+    @AppStorage(TelegramAccent.preferenceKey) private var accent = TelegramAccent.purple.rawValue
     var body: some View {
         Form {
             if (try? TelegramAppearancePreferences.decode(appearanceRaw)) == nil {
@@ -77,7 +77,7 @@ struct TelegramAppearanceView: View {
                     Button("Сбросить локальное оформление") { appearanceRaw = "" } }
             }
             Section("Размер текста") {
-                Picker("Размер сообщений", selection: Binding(get: { preferences.fontSize }, set: { size in update { $0.fontSize = size } })) {
+                MakoshPicker("Размер сообщений", selection: Binding(get: { preferences.fontSize }, set: { size in update { $0.fontSize = size } })) {
                     ForEach(11...18,id: \.self) { Text("\($0)").tag($0) }
                 }.accessibilityIdentifier("telegram.settings.fontSize")
             }

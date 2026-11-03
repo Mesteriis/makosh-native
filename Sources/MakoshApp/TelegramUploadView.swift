@@ -37,13 +37,13 @@ struct TelegramAttachButtons: View {
         self.model = model; upload = model.upload; self.replySource = replySource; self.replyContextID = replyContextID
     }
     var body: some View {
-        Menu {
-            Button("Фото или видео", systemImage: "photo.on.rectangle") { choose(.media) }
+        MakoshMenu {
+            MakoshMenuItem("Фото или видео", systemImage: "photo.on.rectangle") { choose(.media) }
                 .accessibilityIdentifier("telegram.upload.chooseMedia")
-            Button("Файл", systemImage: "doc") { choose(.file) }
+            MakoshMenuItem("Файл", systemImage: "doc") { choose(.file) }
                 .accessibilityIdentifier("telegram.upload.chooseFile")
         } label: { Image(systemName: "paperclip").font(.system(size: 22)).frame(width: 32, height: 32) }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .makoshMenuStyle(.plain).makoshMenuIndicator(.hidden).fixedSize()
             .help("Прикрепить фото, видео или файл").accessibilityLabel("Прикрепить")
             .accessibilityIdentifier("telegram.upload.attach")
             .disabled(choosing || capturedTarget == nil || upload.phase != .idle || model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil)

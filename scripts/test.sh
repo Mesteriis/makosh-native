@@ -6,6 +6,7 @@ export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPYCACHEPREFIX=/dev/null
 cd "$(dirname "$0")/.."
 source scripts/libpq-env.sh
+bash scripts/test-dropdown-navigation.sh
 # Tests use synthetic accounts. Public source/CI can explicitly omit the API pair.
 python3 scripts/prepare-telegram-build-config.py --allow-unconfigured
 python3 scripts/test-telegram-build-config.py

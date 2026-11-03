@@ -30,7 +30,7 @@ struct TelemostCreateView: View {
 }
 struct TelemostWaitingPicker: View {
     @Binding var value: TelemostWaitingRoom
-    var body: some View { Picker("Зал ожидания", selection: $value) { Text(TelemostWaitingRoom.admins.title).tag(TelemostWaitingRoom.admins); Text(TelemostWaitingRoom.organization.title).tag(TelemostWaitingRoom.organization); Text(TelemostWaitingRoom.publicAccess.title).tag(TelemostWaitingRoom.publicAccess) } }
+    var body: some View { MakoshPicker("Зал ожидания", selection: $value) { Text(TelemostWaitingRoom.admins.title).tag(TelemostWaitingRoom.admins); Text(TelemostWaitingRoom.organization.title).tag(TelemostWaitingRoom.organization); Text(TelemostWaitingRoom.publicAccess.title).tag(TelemostWaitingRoom.publicAccess) } }
 }
 struct TelemostWaitingRoomView: View {
     @ObservedObject var model: TelemostWorkspaceModel

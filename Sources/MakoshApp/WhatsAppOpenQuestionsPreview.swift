@@ -17,23 +17,25 @@
             largeText ? .accessibility1 : .large
           )
           .toolbar {
+            if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticLayoutPreview") as? Bool != true {
             ToolbarItemGroup(placement: .primaryAction) {
               Text("СИНТЕТИЧЕСКАЯ QA · без сети WhatsApp и устройств").font(.caption.bold())
               Toggle("Крупный текст", isOn: $largeText).toggleStyle(.button)
-              Menu("Сценарии QA") {
-                Button("Пакет 10 файлов") {
+              MakoshMenu("Сценарии QA") {
+                MakoshMenuItem("Пакет 10 файлов") {
                   Task { await attach(model, root: root, photo: false, asFiles: true) }
                 }
-                Button("Смешанные 10 вложений") {
+                MakoshMenuItem("Смешанные 10 вложений") {
                   Task { await attach(model, root: root, photo: false, asFiles: false) }
                 }
-                Button("Фото в редактор") {
+                MakoshMenuItem("Фото в редактор") {
                   Task { await attach(model, root: root, photo: true, asFiles: false) }
                 }
-                Button("Выбор участников") { picker = true }
-                Button("Группа · макет") { model.calls.previewGroup() }
-                Button("Личный звонок · макет") { model.calls.preview() }
+                MakoshMenuItem("Выбор участников") { picker = true }
+                MakoshMenuItem("Группа · макет") { model.calls.previewGroup() }
+                MakoshMenuItem("Личный звонок · макет") { model.calls.preview() }
               }.accessibilityIdentifier("whatsapp.qa.scenarios")
+            }
             }
           }
           .sheet(isPresented: $picker) {
@@ -57,7 +59,8 @@
             try WhatsAppQAIsolation.configuration(arguments: args)
           }
           let service = try await WhatsAppWorker.openQuestionsQA(
-            configuration: configuration, arguments: args)
+            configuration: configuration, arguments: args,
+            layoutPreview: Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticLayoutPreview") as? Bool == true)
           root = try WhatsAppQAIsolation.root(arguments: args)
           model = WhatsAppWorkspaceModel(worker: service, polling: true, synthetic: true)
         } catch {

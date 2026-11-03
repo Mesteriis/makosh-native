@@ -65,7 +65,10 @@ struct TelegramComposerView: View {
                 .disabled(!canSend)
                 .accessibilityIdentifier("telegram.send")
             }
-        }.padding(.horizontal, 16).padding(.vertical, 10)
+        }.padding(.horizontal, 12).padding(.vertical, 10)
+            .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.08)) }
+            .padding(.horizontal, 16).padding(.vertical, 12)
         .onChange(of: model.selectedChatID) { _,_ in editorError = nil; dismissEmojiPicker() }
         .onChange(of: model.messageActionContextID) { _,_ in editorError = nil; dismissEmojiPicker() }
         .onChange(of: emojiCatalog.contextID) { _,_ in dismissEmojiPicker() }

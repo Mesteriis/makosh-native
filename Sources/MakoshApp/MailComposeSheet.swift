@@ -51,7 +51,7 @@ struct MailComposeSheet: View {
             HStack { Text("Новое письмо").font(.title2.bold());Spacer();Button("Сохранить черновик", action: saveDraft).disabled(model.busy) }.padding(20)
             Divider()
             Grid(alignment:.leading,horizontalSpacing:12,verticalSpacing:12) {
-                GridRow { Text("От").foregroundStyle(.secondary);Picker("Аккаунт",selection:$draft.accountID) { ForEach(model.accounts) { account in Text(account.email).tag(account.id) } }.labelsHidden().disabled(!draft.files.isEmpty || draft.remoteSave != nil) }
+                GridRow { Text("От").foregroundStyle(.secondary);MakoshPicker("Аккаунт",selection:$draft.accountID) { ForEach(model.accounts) { account in Text(account.email).tag(account.id) } }.labelsHidden().disabled(!draft.files.isEmpty || draft.remoteSave != nil) }
                 GridRow { Text("Кому").foregroundStyle(.secondary);TextField("Адреса через запятую",text:$draft.to).textFieldStyle(.plain).accessibilityIdentifier("mail.compose.to") }
                 if showCopies {
                     GridRow { Text("Копия").foregroundStyle(.secondary);TextField("Cc",text:$draft.cc).textFieldStyle(.plain) }
@@ -67,7 +67,7 @@ struct MailComposeSheet: View {
                 Button { editor.apply(.bullet) } label: { Image(systemName: "list.bullet") }.help("Список")
                 Button { editor.apply(.numbered) } label: { Image(systemName: "list.number") }.help("Нумерованный список")
                 Spacer()
-                Menu("Шаблоны") { ForEach(model.automation.templates) { template in Button(template.name) { applyingTemplate = template } } }.disabled(model.automation.templates.isEmpty)
+                MakoshMenu("Шаблоны") { ForEach(model.automation.templates) { template in MakoshMenuItem(template.name) { applyingTemplate = template } } }.disabled(model.automation.templates.isEmpty)
             }.buttonStyle(.borderless).padding(.horizontal, 20).padding(.top, 10)
             MailRichTextEditor(controller: editor).padding(12).accessibilityIdentifier("mail.compose.body")
             if !attachments.isEmpty {

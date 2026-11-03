@@ -12,7 +12,7 @@ struct TelemostCatalogueView: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack { Text("Телемост").font(.title2.bold()); Spacer(); Button { accountSheet = true } label: { Image(systemName: "person.badge.plus") }.help("Добавить аккаунт API").disabled(!model.ready) }
-            Picker("Каталог", selection: Binding(get: { model.selectedAccountID }, set: { id in Task { await model.selectAccount(id) } })) {
+            MakoshPicker("Каталог", selection: Binding(get: { model.selectedAccountID }, set: { id in Task { await model.selectAccount(id) } })) {
                 Text("Ссылки без аккаунта").tag(UUID?.none)
                 ForEach(model.accounts) { Text($0.name).tag(Optional($0.id)) }
             }.accessibilityIdentifier("telemost.accounts")
@@ -95,7 +95,7 @@ struct TelemostDetailView: View {
                     HStack { if meeting.starred { Label("Избранное", systemImage: "star.fill") }; if meeting.hidden { Label("Скрыта в каталоге; сохранена", systemImage: "eye.slash") }; Spacer(); Button("История версий") { historySheet = true } }
                     GroupBox("Связать с досье") {
                         HStack {
-                            Picker("Контакт", selection: $contactID) { Text("Выберите контакт").tag(UUID?.none); ForEach(contacts) { Text($0.displayName).tag(Optional($0.id)) } }
+                            MakoshPicker("Контакт", selection: $contactID) { Text("Выберите контакт").tag(UUID?.none); ForEach(contacts) { Text($0.displayName).tag(Optional($0.id)) } }
                             Button("Добавить ссылку и открыть") { if let contactID { dossier(contactID) } }.disabled(contactID == nil || model.busy).accessibilityIdentifier("telemost.dossier")
                         }.padding(8)
                     }

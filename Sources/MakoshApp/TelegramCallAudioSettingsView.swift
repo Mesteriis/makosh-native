@@ -96,7 +96,7 @@ struct TelegramCallAudioSettingsView: View {
         let binding = Binding<String>(get: { input ? draft.inputUID : draft.outputUID }, set: { value in
             if input { draft.inputUID = value } else { draft.outputUID = value }; saved = false
         })
-        return Picker(title, selection: binding) {
+        return MakoshPicker(title, selection: binding) {
             Text("Системное по умолчанию").tag("")
             ForEach(devices.filter { input ? $0.input : $0.output }) { Text($0.name).tag($0.id) }
             if !binding.wrappedValue.isEmpty, !devices.contains(where: { $0.id == binding.wrappedValue && (input ? $0.input : $0.output) }) {

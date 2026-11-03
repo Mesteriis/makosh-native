@@ -471,6 +471,43 @@ public final class TelegramModel: ObservableObject {
     @Published public var chatFolder: TelegramChatFolder = .inbox {
         didSet { if oldValue != chatFolder { loadChatList(clear: true); search.setFolder(chatFolder) } }
     }
+    @Published public private(set) var workspaceFolders: [TelegramWorkspaceFolder] = []
+    @Published public private(set) var workspaceFolderID: Int32? = nil
+    private var workspaceNativeFolders: [ChatListFilter] = []
+    private let workspaceFolderObservation = MetaDisposable()
+    public var workspaceFolderTitle: String {
+        if chatFolder == .archive { return "Архив" }
+        return workspaceFolders.first { $0.id == workspaceFolderID }?.title ?? "Все чаты"
+    }
+    public func selectWorkspaceFolder(_ id: Int32?) {
+        guard id == nil || workspaceFolders.contains(where: { $0.id == id }) else { return }
+        let changedGroup = chatFolder != .inbox
+        workspaceFolderID = id
+        if changedGroup { chatFolder = .inbox } else { loadChatList(clear: true) }
+    }
+    public func showWorkspaceArchive() {
+        workspaceFolderID = nil
+        if chatFolder == .archive { loadChatList(clear: true) } else { chatFolder = .archive }
+    }
+    private func bindWorkspaceFolders(_ account: Account?) {
+        workspaceFolderObservation.set(nil)
+        workspaceNativeFolders = []; workspaceFolders = []; workspaceFolderID = nil
+        guard let account else { return }
+        let token = accountGeneration
+        workspaceFolderObservation.set((telegramWorkspaceFolderUpdates(account: account) |> deliverOnMainQueue).start(next: { [weak self] filters in
+            guard let self, self.accountGeneration == token, self.account === account else { return }
+            let previous = self.workspaceNativeFolders.first { $0.id == self.workspaceFolderID }
+            self.workspaceNativeFolders = filters
+            self.workspaceFolders = filters.compactMap {
+                guard case let .filter(id, title, _, _) = $0 else { return nil }
+                return TelegramWorkspaceFolder(id: id, title: title.text)
+            }
+            if let selected = self.workspaceFolderID {
+                if !filters.contains(where: { $0.id == selected }) { self.workspaceFolderID = nil }
+                if previous != filters.first(where: { $0.id == selected }) { self.loadChatList(clear: true) }
+            }
+        }))
+    }
     public var selectedChat: TelegramChat? { selectedChatID.flatMap { knownChats[$0] } }
     @discardableResult public func openDiscoveredPeer(id: Int64, contextID: UUID) -> Bool {
         guard let accountID = draftAccountID, search.discovery.accountID == accountID else { return false }
@@ -1938,7 +1975,7 @@ public final class TelegramModel: ObservableObject {
         account?.shouldBeServiceTaskMaster.set(.single(.never))
         account?.shouldKeepOnlinePresence.set(.single(false))
         account?.network.shouldKeepConnection.set(.single(false))
-        for disposable in [session, authState, action, chatList, history, connection, outgoing, uploadCaptionLimit, contactProfileSubscription, composerDraftLoad, serverDraftObservation, serverDraftResolution] { disposable.dispose() }
+        for disposable in [workspaceFolderObservation, session, authState, action, chatList, history, connection, outgoing, uploadCaptionLimit, contactProfileSubscription, composerDraftLoad, serverDraftObservation, serverDraftResolution] { disposable.dispose() }
     }
 
     public func connect(apiID: String, apiHash: String) {
@@ -2201,6 +2238,7 @@ public final class TelegramModel: ObservableObject {
         action.set(nil)
         qrLogin.bind(nil)
         self.unauthorized = nil; self.account = account
+        bindWorkspaceFolders(account)
         registerProxy(network: account.network)
         // Queue TelegramCore's initial getState/getDifference before providers
         // can submit update groups. A newly authorized cache has no cursor yet.
@@ -2300,6 +2338,7 @@ public final class TelegramModel: ObservableObject {
     }
 
     private func stopAuthorizedAccount() {
+        bindWorkspaceFolders(nil)
         automaticDownloads.setPaused(false); automaticDownloadsPaused = false
         cancelAutomaticDownloads(); autoDownloadSettings.bind(accountID: nil); cache.bind(nil); cacheMaintenance.bind(provider:nil)
         notifications.bind(accountID: nil)
@@ -2475,7 +2514,7 @@ public final class TelegramModel: ObservableObject {
         #if DEBUG
         if let preview {
             let requestID = chatPages.begin(anchor: anchor)
-            let page = preview.chats(folder: chatFolder, anchor: anchor)
+            let page = preview.chats(folder: chatFolder, anchor: anchor, workspaceFolderID: workspaceFolderID)
             receiveChats(page.items, requestID: requestID, previous: page.previous, next: page.next, isLoading: false)
             return
         }
@@ -2484,16 +2523,15 @@ public final class TelegramModel: ObservableObject {
         let token = generation
         let accountToken = accountGeneration
         let folder = chatFolder
+        let workspaceID = workspaceFolderID
+        let selectedFilter = folder == .inbox ? workspaceNativeFolders.first { $0.id == workspaceID } : nil
         let requestID = chatPages.begin(anchor: anchor)
         chatPage = chatPages.navigation
         updateChatDeadline(requestID: requestID)
         let group: PeerGroupId = folder == .inbox ? .root : Namespaces.PeerGroup.archive
-        let signal: Signal<(ChatListView, ViewUpdateType), NoError>
-        if let anchor { signal = account.viewTracker.aroundChatListView(groupId: group, index: anchor, count: 50) }
-        else { signal = account.viewTracker.tailChatListView(groupId: group, count: 50) }
-        chatList.set((telegramProjectChatPage(account: account, signal: signal) |> deliverOnMainQueue).start(next: { [weak self] page in
+        chatList.set((telegramWorkspaceChatPage(account: account, group: group, filter: selectedFilter, anchor: anchor) |> deliverOnMainQueue).start(next: { [weak self] page in
             guard let self, self.generation == token, self.accountGeneration == accountToken,
-                  self.chatFolder == folder else { return }
+                  self.chatFolder == folder, self.workspaceFolderID == workspaceID, self.chatPages.requestID == requestID else { return }
             self.receiveChats(page.chats, requestID: requestID, previous: page.previous,
                 next: page.next, isLoading: page.isLoading)
         }))
@@ -2623,6 +2661,15 @@ public final class TelegramModel: ObservableObject {
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"
         model.loadChatList(clear: true)
+        return model
+    }
+
+    public static func syntheticWorkspaceLayoutPreview() -> TelegramModel {
+        let model = syntheticPreview()
+        model.preview = TelegramSyntheticPages(workspaceLayout: true)
+        model.workspaceFolders = [.init(id: 1, title: "Работа"), .init(id: 2, title: "Личные"), .init(id: 3, title: "Проекты"), .init(id: 4, title: "Каналы")]
+        model.selectWorkspaceFolder(1)
+        model.selectedChatID = 10001
         return model
     }
 

@@ -35,7 +35,7 @@ struct TelegramPlaybackView: View {
                             .accessibilityIdentifier("telegram.playback.seek")
                         Text(time(playback.position) + " / " + time(playback.duration))
                             .font(.caption.monospacedDigit()).accessibilityIdentifier("telegram.playback.time")
-                        Picker("Скорость", selection: Binding(get: { playback.rate }, set: { playback.setRate($0) })) {
+                        MakoshPicker("Скорость", selection: Binding(get: { playback.rate }, set: { playback.setRate($0) })) {
                             ForEach([Float(0.5), 1, 1.5, 2], id: \.self) { rate in Text(String(format: "%g×", rate)).tag(rate) }
                         }.frame(width: 120).accessibilityIdentifier("telegram.playback.rate")
                     }

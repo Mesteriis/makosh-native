@@ -220,7 +220,7 @@ struct TelegramContactProfileView: View {
     }
 }
 
-private struct TelegramDossierLinkView: View {
+struct TelegramDossierLinkView: View {
     @ObservedObject var workspace: WorkspaceModel
     @ObservedObject var telegram: TelegramModel
     let profile: TelegramContactProfile
@@ -267,7 +267,7 @@ private struct TelegramDossierLinkView: View {
         } else if profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text("В карточке нет имени. Привязка станет доступна после его появления в Telegram.").foregroundStyle(.secondary)
         } else {
-            Picker("Связать с", selection: $existing) {
+            MakoshPicker("Связать с", selection: $existing) {
                 Text("Новым досье").tag(false)
                 Text("Существующим контактом").tag(true)
             }.accessibilityIdentifier("telegram.profile.linkMode")
@@ -275,7 +275,7 @@ private struct TelegramDossierLinkView: View {
             if existing {
                 TextField("Поиск контакта", text: $query).accessibilityIdentifier("telegram.profile.contactSearch")
                     .onChange(of: query) { _, _ in targetID = nil }
-                Picker("Контакт", selection: $targetID) {
+                MakoshPicker("Контакт", selection: $targetID) {
                     Text("Выберите контакт").tag(nil as UUID?)
                     ForEach(candidates) { contact in
                         Text(contact.organization.isEmpty ? contact.displayName : "\(contact.displayName) · \(contact.organization)")

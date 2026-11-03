@@ -21,7 +21,7 @@ struct DossierView: View {
                     Spacer()
                     Button("Изменить", action: edit).disabled(!model.canWrite).accessibilityIdentifier("contact.edit")
                 }
-                if !contact.tags.isEmpty { Text(contact.tags.map { "#" + $0 }.joined(separator: "   ")).font(.callout).foregroundStyle(.indigo) }
+                if !contact.tags.isEmpty { Text(contact.tags.map { "#" + $0 }.joined(separator: "   ")).font(.callout).foregroundStyle(WorkspaceStyle.accent) }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(contact.emails, id: \.self) { value in Label(value, systemImage: "envelope").textSelection(.enabled) }
@@ -73,7 +73,7 @@ struct DossierView: View {
                     if contact.events.isEmpty { Text("Изменений пока нет").foregroundStyle(.secondary) }
                 }
             }.padding(30).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-        }.background(Color(nsColor: .textBackgroundColor).opacity(0.65)).id(contact.id)
+        }.background { WorkspaceBackdrop(intensity: 0.4) }.id(contact.id)
     }
     private func fieldLabel(_ field: String) -> String {
         ["displayName": "Имя", "organization": "Компания", "jobTitle": "Должность", "phones": "Телефон", "emails": "Почта", "tags": "Метки"][field] ?? field

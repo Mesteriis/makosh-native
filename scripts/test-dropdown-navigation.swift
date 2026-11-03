@@ -1,0 +1,43 @@
+import Foundation
+import SwiftUI
+
+@main struct DropdownNavigationChecks {
+    @MainActor static func main() {
+        let navigation = MakoshDropdownNavigation()
+        let a = UUID(), b = UUID(), c = UUID()
+        precondition(navigation.initialFocusID == nil)
+        navigation.move(from: a, by: 1)
+        precondition(navigation.focusedID == nil, "An empty menu ignores arrow keys")
+        navigation.update([.init(id: a), .init(id: b, preferred: true), .init(id: c)])
+        precondition(navigation.focusedID == b, "The selected option receives initial focus")
+        navigation.move(from: b, by: 1)
+        precondition(navigation.focusedID == c, "Down follows rendered order")
+        navigation.move(from: c, by: 1)
+        precondition(navigation.focusedID == a, "Down wraps at the last enabled row")
+        navigation.move(from: a, by: -1)
+        precondition(navigation.focusedID == c, "Up wraps at the first row")
+        navigation.update([.init(id: a), .init(id: b, preferred: true)])
+        precondition(navigation.focusedID == b, "Removing a focused/disabled row restores a valid selection")
+        navigation.move(from: b, by: -1)
+        precondition(navigation.focusedID == a)
+        navigation.update([.init(id: b, preferred: true), .init(id: a)])
+        precondition(navigation.focusedID == a, "Reordering retains a still-visible focused row")
+        navigation.move(from: a, by: 1)
+        precondition(navigation.focusedID == b, "New rendered order governs arrows")
+        navigation.update([.init(id: a)])
+        precondition(navigation.focusedID == a, "Disabled rows disappear from navigation")
+        navigation.move(from: a, by: 1)
+        precondition(navigation.focusedID == a, "One enabled row wraps to itself")
+        let other = MakoshDropdownNavigation()
+        other.update([.init(id: c)])
+        precondition(navigation.focusedID == a, "Open menus have independent navigation")
+        navigation.update([])
+        precondition(navigation.focusedID == nil, "Dismissed rows cannot retain stale focus")
+        navigation.update([.init(id: a), .init(id: b, preferred: true)])
+        navigation.move(from: b, by: -1)
+        precondition(navigation.initialFocusID == b, "Moving focus does not mutate selection")
+        navigation.update([.init(id: a)])
+        precondition(navigation.initialFocusID == a, "Removing selection restores the first visible row")
+        print("Dropdown keyboard navigation: 16 behavioral checks passed")
+    }
+}

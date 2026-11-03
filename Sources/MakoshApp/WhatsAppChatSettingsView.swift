@@ -79,9 +79,9 @@ struct WhatsAppChatSettingsView: View {
             TextField("Описание", text: $about)
             Button("Изменить описание") { command(.init(.groupAbout, text: about)) }
             TextField("JID участника", text: $member)
-            Menu("Участники") {
+            MakoshMenu("Участники") {
               ForEach(["add", "remove", "promote", "demote"], id: \.self) { operation in
-                Button(memberLabel(operation)) {
+                MakoshMenuItem(memberLabel(operation)) {
                   var a = WhatsAppAction(.groupUpdate, target: member)
                   a.category = operation
                   command(a)
@@ -101,9 +101,9 @@ struct WhatsAppChatSettingsView: View {
               command(.init(.block, on: model.info?.blocked != true))
             }
           }
-          Menu("Исчезающие сообщения") {
+          MakoshMenu("Исчезающие сообщения") {
             ForEach([Int64(0), 86400, 604800, 7_776_000], id: \.self) { v in
-              Button(v == 0 ? "Выключить" : "\(v/86400) дн.") {
+              MakoshMenuItem(v == 0 ? "Выключить" : "\(v/86400) дн.") {
                 command(.init(.ephemeral, duration: v))
               }
             }

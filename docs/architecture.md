@@ -36,6 +36,14 @@ not be mistaken for proof of every native runtime path.
 
 Aether Courier's indexed `RootView`/`ReadingPaneView` and inspected `docs/screenshot.png` informed the sidebar → list → dossier hierarchy, violet emphasis, compact caption metadata and separate reading panel. The earlier Contacts shell used original SwiftUI. The mail migration now adapts the MIT Aether Aurora backdrop and MIT MMail transports/editor with retained notices; Telegram outer UI remains independently implemented. See `research-ui-meetings.md` for pinned evidence and queries.
 
+The user-selected matte-glass shell (2026-10-16) replaces the persistent service
+sidebar with a titlebar section dropdown. WorkspaceSplitView retains existing
+service panes/width bounds; mail keeps folders, list and reader. It avoids the
+NavigationSplitView-generated toggle that displaced the menu on this runtime.
+WorkspaceStyle/WorkspaceBackdrop own shared chrome; explicit chat themes and
+content colors remain scoped. See reference-interface.md and ../design-qa.md for
+scope and acceptance limits. Workers, ownership and lifecycle admission are unchanged.
+
 SwiftUI owns workspace and sheet state; AppKit provides the JSON file panel. On the local macOS 27 build, SwiftUI's importer left a valid JSON selection unavailable. The explicit `NSOpenPanel` sets file-selection flags after allowed types, as the macOS 27 SDK requires when those flags must be preserved. Merge review uses an item-driven sheet and requires an explicit survivor selection before enabling confirmation. System background colors and an appearance-aware accent support the observed dark appearance.
 
 Adapters will expose source-scoped identities and timestamped import observations to the core. Do not build a general plugin framework. WhatsApp now uses a separate AGPLv3 Rust process with private framed JSON IPC; no Rust code links into the Swift executable. Its native owned-buffer functions remain internal to the worker. See `docs/whatsapp-migration.md`. Other service contracts remain concrete and source-scoped.
@@ -168,3 +176,27 @@ late results before UI publication. Constructors do no provider/key/device IO;
 explicit QA validates both schemas, endpoint/files/root ownership before service
 construction and excludes other service/OS/device hosts. See whatsapp-migration.md
 and development-status.md for actual acceptance limits.
+
+
+Mail reading-first composition (2026-10-18): account/folder/search/compose controls
+span the two mail panes. One shared 54pt pane header aligns list and reading
+actions. A scoped resizable WorkspaceSplitView uses a transparent eight-point
+hit region and accessibility increment/decrement; per-section widths are local
+window state. Mail dossier is an edge-to-edge optional pane, with no system
+inspector material gutters. MakoshMenu/MakoshPicker use app-owned SwiftUI popovers
+and public container tags; segmented/radio controls and native context menus
+retain their platform representation. Each popover owns focus/navigation state;
+rendered enabled-row preferences determine keyboard order. Service workers,
+authorization, protocol identity, retention and account generations are unchanged.
+
+### Telegram workspace folder presentation
+
+The Telegram branch adds a service-owned folder rail and top navigation around the
+existing list/detail. `TelegramModel` owns the account-scoped observed filter IDs,
+selection and native page admission. `TelegramWorkspaceFolders.swift` constructs
+native filter/page pipelines outside MainActor; publication rechecks account,
+connection generation, folder and request. No app-owned universal folder schema or
+local approximation over one loaded page is introduced. The optional dossier reuses
+current source-scoped profile/link contracts; its UI does not bypass contact workers
+or infer notes from a chat. Rich native input remains responsible for formatting,
+selection, undo, draft routing and send admission; only its composer surface changes.

@@ -63,7 +63,7 @@ struct TelegramSessionsView: View {
                     }
                     if !snapshot.others.isEmpty { Section("Активные сеансы") { ForEach(snapshot.others) { row($0) } } }
                     Section("Автоматически завершать старые сеансы") {
-                        Picker("Если неактивны", selection: Binding(get: { selectedTTL ?? snapshot.ttlDays }, set: { selectedTTL = $0 })) {
+                        MakoshPicker("Если неактивны", selection: Binding(get: { selectedTTL ?? snapshot.ttlDays }, set: { selectedTTL = $0 })) {
                             Text("1 неделя").tag(Int32(7)); Text("1 месяц").tag(Int32(31))
                             Text("3 месяца").tag(Int32(93)); Text("6 месяцев").tag(Int32(186))
                             if ![7, 31, 93, 186].contains(snapshot.ttlDays) { Text("\(snapshot.ttlDays) дней").tag(snapshot.ttlDays) }

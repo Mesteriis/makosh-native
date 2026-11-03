@@ -19,7 +19,7 @@ struct MailHTMLView: NSViewRepresentable {
         context.coordinator.lastHTML=html
         // The restrictive first policy cannot be loosened by a later message policy.
         let document="""
-        <!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; script-src 'none'"><style>body{font:15px -apple-system;padding:22px;line-height:1.55;overflow-wrap:anywhere;color:#20202a;background:#ada388}img{max-width:100%}pre{white-space:pre-wrap}a{color:#7855bd}</style></head><body>\(html)</body></html>
+        <!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; script-src 'none'"><style>body{font:15px -apple-system;padding:22px;line-height:1.55;overflow-wrap:anywhere;color:#20202a;background:#f5f4f8;color-scheme:light}img{max-width:100%}pre{white-space:pre-wrap}a{color:#7855bd}</style></head><body>\(html)</body></html>
         """
         view.loadHTMLString(document,baseURL:nil)
     }

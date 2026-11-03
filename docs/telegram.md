@@ -3601,3 +3601,40 @@ the window is hidden. Device switching during an active call is deliberately
 excluded by the user; validated next-call selection remains. Observed native synthetic UI
 acceptance and separately chosen real-account/physical-device acceptance are
 reported independently in development-status.md.
+
+## Folder-rail workspace — 2026-10-18
+
+The selected Telegram presentation is `docs/design/telegram-folder-rail.png`.
+`TelegramWorkspaceNavigation` places the existing session, global search, downloads
+and peer discovery above the workspace. New Chat opens the existing peer-search
+flow; choosing a peer does not submit a message. `TelegramFolderRail` shows All,
+account-supplied custom folders and Archive. Its settings action opens the existing
+Telegram settings. Folder creation/renaming is not added by this presentation slice.
+
+The engine's `updatedChatListFilters` supplies IDs/titles/rules from the active
+account. No Work/Personal/Project names are fabricated for real accounts. The own
+`telegramWorkspaceFolderPredicate` passes explicit include/exclude/pinned peers,
+archive inclusion, categories and unread-mention calculations to Postbox before
+native tail/around pagination. Folder revisions invalidate the current page;
+account/generation/folder/request checks reject obsolete publications. Teardown
+cancels observations and clears account-scoped folder definitions. The native
+signal/predicate/projection construction remains outside MainActor. No provider
+mutation or folder-settings write is performed by switching folders. Aggregate
+folder unread counts are omitted until they have authoritative full-folder data;
+loaded chat unread counts remain visible on rows. Global search remains global,
+explicitly labelled “Поиск в Telegram”, rather than pretending to search only a
+folder's currently loaded page.
+
+The optional contiguous dossier shows the current source profile and unambiguous
+account-scoped contact notes. Existing create/link/open actions and their context,
+revision and committed-write guards are reused. The full peer card, secret-chat
+card, common media, settings, archive and file policy remain available. Secret-chat
+content does not populate this ordinary dossier. Returning from the full peer card
+refreshes the open dossier using the current context. No local passcode, AI,
+calendar or new account/authentication flow is introduced.
+
+`--telegram-layout-synthetic-preview` is a DEBUG-only fixture using an explicit
+`qa_telegram_dossier_` configuration. Its folder names, seven peers and short history
+are synthetic; the ordinary preview fixtures and provider stores remain separate.
+A metadata-only sample attachment is intentionally unavailable rather than a claim
+of a real download. QA scope and actual build/UI evidence are in development-status.md.

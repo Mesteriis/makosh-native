@@ -3,138 +3,91 @@ import MakoshWhatsApp
 // See LICENSES/WhatsApp-Zen-MIT.txt and docs/reference-interface.md.
 import SwiftUI
 
-private enum WhatsAppFilter: String, CaseIterable {
-  case all = "Все"
-  case unread = "Непрочитанные"
-  case groups = "Группы"
-  case archived = "Архив"
+enum WhatsAppFilter: String, CaseIterable {
+  case all = "Все", unread = "Непрочитанные", groups = "Группы", archived = "Архив"
 }
-struct WhatsAppSidebarView: View {
+@MainActor final class WhatsAppWorkspaceNavigationState: ObservableObject {
+  @Published var search = ""
+  @Published var filter = WhatsAppFilter.all
+  func matches(_ chat: WhatsAppChat, search: Bool = true) -> Bool {
+    (filter == .archived ? chat.archived : !chat.archived)
+      && (filter != .unread || chat.unread > 0) && (filter != .groups || chat.group)
+      && (!search || self.search.isEmpty || chat.name.localizedCaseInsensitiveContains(self.search))
+  }
+}
+struct WhatsAppWorkspaceNavigation: View {
   @ObservedObject var model: WhatsAppWorkspaceModel
-  @State private var search = ""
-  @State private var filter = WhatsAppFilter.all
+  @ObservedObject var navigation: WhatsAppWorkspaceNavigationState
   @State private var adding = false
   @State private var statuses = false
   @State private var accountSettings = false
   @State private var newChat = false
   @State private var name = ""
-  private var chats: [WhatsAppChat] {
-    model.chats.filter { chat in
-      (filter == .archived ? chat.archived : !chat.archived)
-        && (filter != .unread || chat.unread > 0) && (filter != .groups || chat.group)
-        && (search.isEmpty || chat.name.localizedCaseInsensitiveContains(search))
-    }
-  }
   var body: some View {
     VStack(spacing: 0) {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          Text("WhatsApp").font(.title2.bold())
-          Spacer()
-          Menu {
-            Button("Новый чат или группа") { newChat = true }.disabled(
-              model.selectedAccountID == nil)
-            Button("Настройки WhatsApp") { accountSettings = true }
-            Button("Статусы") { statuses = true }.disabled(model.selectedAccountID == nil)
-            Button("Лицензия ядра") {
-              if let url = Bundle.main.resourceURL?.appendingPathComponent(
-                "Licenses/WhatsApp-Worker-AGPL-3.0.txt")
-              {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-              }
-            }
-            Button("Исходники ядра") {
-              if let url = Bundle.main.url(
-                forResource: "MakoshWhatsAppWorker-Source", withExtension: "tar.gz")
-              {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-              }
-            }
-          } label: {
-            Image(systemName: "info.circle")
-          }.menuStyle(.borderlessButton).frame(width: 22).help("Лицензия и исходники ядра WhatsApp")
-          Button {
-            adding = true
-          } label: {
-            Image(systemName: "plus")
-          }.help("Добавить аккаунт").disabled(model.isSynthetic).accessibilityIdentifier(
-            "whatsapp.account.add")
-        }
-        if !model.accounts.isEmpty {
-          Picker(
-            "Аккаунт",
-            selection: Binding(
-              get: { model.selectedAccountID },
-              set: { id in if let id { Task { await model.selectAccount(id) } } })
-          ) {
-            ForEach(model.accounts) { Text($0.name).tag(Optional($0.id)) }
-          }.labelsHidden().accessibilityIdentifier("whatsapp.account.selector")
-        }
-        Label(
-          model.isSynthetic ? "Синтетическая проверка · без сети" : model.status.label,
-          systemImage: model.status.linked ? "checkmark.circle.fill" : "circle.dashed"
-        ).font(.caption).foregroundStyle(.secondary)
-        if model.isSynthetic {
-          #if DEBUG
-            Button("Тестовое окно звонка") { model.calls.preview() }.accessibilityIdentifier(
-              "whatsapp.qa.call")
-            Button("Показать тестовый QR") { Task { await model.previewPairing() } }
-              .accessibilityIdentifier("whatsapp.qa.qr")
-          #endif
-        } else if model.selectedAccountID != nil {
-          HStack {
+      HStack(spacing: 16) {
+        MakoshMenu {
+          Text(model.isSynthetic ? "Синтетическая проверка · без сети" : model.status.label)
+            .font(.caption).foregroundStyle(.secondary)
+          ForEach(model.accounts) { account in
+            MakoshMenuItem(account.name) { Task { await model.selectAccount(account.id) } }
+          }
+          Divider()
+          MakoshMenuItem("Добавить аккаунт") { adding = true }.disabled(model.isSynthetic)
+          MakoshMenuItem("Настройки WhatsApp") { accountSettings = true }
+          if !model.isSynthetic, model.selectedAccountID != nil {
             if model.status.state != "logged_out" {
-              Button(model.status.linked ? "Подключено" : "Подключить") { model.connect() }
-                .disabled(model.busy || model.status.linked).accessibilityIdentifier(
-                  "whatsapp.connect")
+              MakoshMenuItem(model.status.linked ? "Подключено" : "Подключить") { model.connect() }
+                .disabled(model.busy || model.status.linked)
             }
             if model.busy || model.status.state != "offline" {
-              Button("Отключить") { Task { await model.disconnect() } }.accessibilityIdentifier(
-                "whatsapp.disconnect")
+              MakoshMenuItem("Отключить") { Task { await model.disconnect() } }
             }
           }
-        }
-        if let error = model.notificationError {
-          Text(error).font(.caption).foregroundStyle(.orange)
-        }
-        if let error = model.archiveError { Text(error).font(.caption).foregroundStyle(.orange) }
-        TextField("Поиск чатов", text: $search).textFieldStyle(.roundedBorder)
-          .accessibilityIdentifier("whatsapp.search")
-        ScrollView(.horizontal) {
-          HStack(spacing: 6) {
-            ForEach(WhatsAppFilter.allCases, id: \.self) { item in
-              Button(item.rawValue) { filter = item }.tint(filter == item ? .green : .secondary)
-                .buttonStyle(.bordered).accessibilityIdentifier("whatsapp.filter.\(item)")
+          #if DEBUG
+          if model.isSynthetic {
+            MakoshMenuItem("Тестовое окно звонка") { model.calls.preview() }
+            MakoshMenuItem("Показать тестовый QR") { Task { await model.previewPairing() } }
+          }
+          #endif
+          Divider()
+          MakoshMenuItem("Лицензия ядра") {
+            if let url = Bundle.main.resourceURL?.appendingPathComponent("Licenses/WhatsApp-Worker-AGPL-3.0.txt") {
+              NSWorkspace.shared.activateFileViewerSelecting([url])
             }
           }
-        }.scrollIndicators(.hidden)
-      }.padding(16)
-      Divider()
-      if chats.isEmpty {
-        ContentUnavailableView(
-          model.accounts.isEmpty ? "Подключите WhatsApp" : "Чатов пока нет",
-          systemImage: "bubble.left.and.bubble.right",
-          description: Text(
-            model.accounts.isEmpty
-              ? "Добавьте аккаунт и свяжите его с телефоном по QR-коду."
-              : "Сохранённая история появится здесь после синхронизации. Проверьте выбранный аккаунт и фильтр."
-          )
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
-        List(
-          selection: Binding(
-            get: { model.selectedChatID }, set: { id in Task { await model.selectChat(id) } })
-        ) {
-          ForEach(chats) { chat in
-            WhatsAppChatRow(chat: chat, model: model).padding(.vertical, 5).fixedSize(
-              horizontal: false, vertical: true
-            )
-            .tag(chat.id).accessibilityIdentifier("whatsapp.chat.\(chat.id)")
+          MakoshMenuItem("Исходники ядра") {
+            if let url = Bundle.main.url(forResource: "MakoshWhatsAppWorker-Source", withExtension: "tar.gz") {
+              NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
           }
-        }.listStyle(.plain)
-      }
-    }.tint(.green)
+        } label: {
+          Label(model.accounts.first { $0.id == model.selectedAccountID }?.name ?? "Аккаунт WhatsApp", systemImage: "person.crop.circle")
+            .lineLimit(1)
+        }.makoshMenuStyle(.bordered).makoshMenuIndicator(.visible)
+          .accessibilityIdentifier("whatsapp.account.selector")
+        MakoshPicker("Раздел", selection: $navigation.filter) {
+          ForEach(WhatsAppFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }.labelsHidden().fixedSize().accessibilityIdentifier("whatsapp.workspace.filter")
+        HStack(spacing: 10) {
+          Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+          TextField("Поиск чатов", text: $navigation.search).textFieldStyle(.plain)
+            .accessibilityIdentifier("whatsapp.search")
+          if !navigation.search.isEmpty {
+            Button { navigation.search = "" } label: { Image(systemName: "xmark.circle.fill") }
+              .buttonStyle(.plain).accessibilityLabel("Очистить поиск чатов")
+          }
+        }.padding(11).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+          .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.08)) }
+        Button { statuses = true } label: { Image(systemName: "circle.dashed") }
+          .buttonStyle(.plain).accessibilityLabel("Статусы WhatsApp").disabled(model.selectedAccountID == nil)
+        Button { newChat = true } label: { Label("Новый чат", systemImage: "square.and.pencil") }
+          .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.selectedAccountID == nil)
+          .accessibilityIdentifier("whatsapp.workspace.newChat")
+      }.padding(.horizontal, 20).frame(height: 64)
+      if let error = model.notificationError { Text(error).font(.caption).foregroundStyle(.orange).padding(.horizontal) }
+      if let error = model.archiveError { Text(error).font(.caption).foregroundStyle(.orange).padding(.horizontal) }
+    }.background { WorkspaceBackdrop(intensity: 0.5) }.tint(WorkspaceStyle.accent)
       .sheet(isPresented: $newChat) {
         if let account = model.selectedAccountID {
           WhatsAppNewChatView(model: model, accountID: account)
@@ -185,6 +138,46 @@ struct WhatsAppSidebarView: View {
       }
   }
 }
+struct WhatsAppSidebarView: View {
+  @ObservedObject var model: WhatsAppWorkspaceModel
+  @ObservedObject var navigation: WhatsAppWorkspaceNavigationState
+  private var chats: [WhatsAppChat] { model.chats.filter { navigation.matches($0) } }
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(navigation.filter == .all ? "Чаты" : navigation.filter.rawValue).font(.title2.bold())
+        Text("\(chats.count)").font(.callout).foregroundStyle(.secondary)
+        Spacer()
+      }.padding(.horizontal, 20).frame(height: WorkspaceStyle.mailPaneHeaderHeight)
+      Divider()
+      if chats.isEmpty {
+        ContentUnavailableView(model.accounts.isEmpty ? "Подключите WhatsApp" : "Нет чатов",
+          systemImage: "bubble.left.and.bubble.right",
+          description: Text(model.accounts.isEmpty ? "Добавьте аккаунт через меню в верхней панели." : "Проверьте выбранный аккаунт, раздел и поиск."))
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        ScrollView {
+          LazyVStack(spacing: 4) {
+            ForEach(chats) { chat in
+              Button { Task { await model.selectChat(chat.id) } } label: {
+                WhatsAppChatRow(chat: chat, model: model).padding(12)
+                  .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                  .background(model.selectedChatID == chat.id ? WorkspaceStyle.accent.opacity(0.19) : .clear,
+                    in: RoundedRectangle(cornerRadius: 10))
+              }.buttonStyle(.plain).accessibilityIdentifier("whatsapp.chat.\(chat.id)")
+                .accessibilityValue(model.selectedChatID == chat.id ? "Выбрано" : "")
+            }
+          }.padding(10)
+        }
+      }
+      Button { navigation.filter = navigation.filter == .archived ? .all : .archived } label: {
+        HStack { Image(systemName: "archivebox"); Text(navigation.filter == .archived ? "Все чаты" : "Архив"); Spacer();
+          Text("\(model.chats.filter(\.archived).count)").foregroundStyle(.secondary)
+        }.padding(16).contentShape(Rectangle())
+      }.buttonStyle(.plain).foregroundStyle(WorkspaceStyle.accent).accessibilityIdentifier("whatsapp.workspace.archive")
+    }
+  }
+}
 private struct WhatsAppChatRow: View {
   let chat: WhatsAppChat
   @ObservedObject var model: WhatsAppWorkspaceModel
@@ -212,23 +205,23 @@ private struct WhatsAppChatRow: View {
           if chat.unread > 0 {
             Text("\(chat.unread)").font(.caption.bold()).foregroundStyle(.white).padding(
               .horizontal, 6
-            ).padding(.vertical, 3).background(.green, in: Capsule())
+            ).padding(.vertical, 3).background(WorkspaceStyle.accent, in: Capsule())
           }
         }
       }
-    }.tint(.green)
+    }.tint(WorkspaceStyle.accent)
   }
 }
 struct WhatsAppAvatar: View {
   let name: String, group: Bool
   var body: some View {
     ZStack {
-      Circle().fill(.green.opacity(0.22))
+      Circle().fill(WorkspaceStyle.accent.opacity(0.22))
       if group {
-        Image(systemName: "person.2.fill").foregroundStyle(.green)
+        Image(systemName: "person.2.fill").foregroundStyle(WorkspaceStyle.accent)
       } else {
         Text(name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
-          .font(.headline).foregroundStyle(.green)
+          .font(.headline).foregroundStyle(WorkspaceStyle.accent)
       }
     }.frame(width: 44, height: 44).accessibilityHidden(true)
   }
@@ -251,6 +244,10 @@ struct WhatsAppDetailView: View {
   @State private var richCompose = false
   @State private var callDevices = false
   @State private var settings = false
+  @State private var showInfo = true
+  @State private var showSearch = false
+  @State private var historyFilter = WhatsAppHistoryFilter.all
+  @State private var peerInfo: WhatsAppPeerInfo?
   @StateObject private var history: WhatsAppHistoryModel
   @State private var archive = false
   @State private var archivedMessage: String?
@@ -265,6 +262,7 @@ struct WhatsAppDetailView: View {
       if ["qr", "connecting", "expired"].contains(model.status.state) {
         WhatsAppPairingView(model: model)
       } else if let chat = model.selectedChat {
+        HStack(spacing: 0) {
         VStack(spacing: 0) {
           HStack(spacing: 12) {
             WhatsAppAvatarView(name: chat.name, group: chat.group,
@@ -273,7 +271,8 @@ struct WhatsAppDetailView: View {
               worker: model.notificationWorker, cache: model.avatarCache)
             VStack(alignment: .leading) {
               Text(chat.name).font(.title3.bold())
-              Text(model.status.label).font(.caption).foregroundStyle(.secondary)
+              Text(chat.group ? (peerInfo?.members.map { "\($0.count) участников" } ?? "Групповой чат") : model.status.label)
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             Button {
@@ -294,49 +293,59 @@ struct WhatsAppDetailView: View {
               Image(systemName: "headphones")
             }.help("Устройства следующего звонка")
             Button {
-              settings = true
-            } label: {
-              Image(systemName: "info.circle")
-            }.help("Информация и настройки чата").accessibilityIdentifier("whatsapp.chat.settings")
-            Menu {
-              Button("Постоянный архив и экспорт") {
+              if showSearch || history.active { showSearch = false; history.clear(); historyFilter = .all }
+              else { showSearch = true }
+            } label: { Image(systemName: "magnifyingglass") }
+              .help("Поиск в переписке").accessibilityLabel("Поиск в переписке")
+              .accessibilityIdentifier("whatsapp.history.searchToggle")
+            Button { showInfo.toggle() } label: { Image(systemName: "sidebar.right") }
+              .help("Сведения о чате").accessibilityLabel("Сведения о чате")
+              .accessibilityIdentifier("whatsapp.chat.infoToggle")
+            MakoshMenu {
+              MakoshMenuItem("Настройки чата") { settings = true }
+              MakoshMenuItem("Обновить историю") { Task { await model.selectChat(chat.id) } }
+              MakoshMenuItem("Загрузить более ранние сообщения") { Task { await model.loadOlder() } }
+                .disabled(!model.hasOlder || model.historyBusy)
+              Divider()
+              MakoshMenuItem("Постоянный архив и экспорт") {
                 archivedMessage = nil
                 archive = true
               }
-              Button(chat.archived ? "Вернуть из архива" : "Архивировать") {
+              MakoshMenuItem(chat.archived ? "Вернуть из архива" : "Архивировать") {
                 command(.init(.archive, on: !chat.archived))
               }
-              Button(chat.pinned ? "Открепить чат" : "Закрепить чат") {
+              MakoshMenuItem(chat.pinned ? "Открепить чат" : "Закрепить чат") {
                 command(.init(.pinChat, on: !chat.pinned))
               }
-              Button("Прочитано") { command(.init(.read)) }
-              Button("Отключить звук") { command(.init(.mute, duration: -1)) }
-              Button("Включить звук") { command(.init(.mute, duration: 0)) }
+              MakoshMenuItem("Прочитано") { command(.init(.read)) }
+              MakoshMenuItem("Отключить звук") { command(.init(.mute, duration: -1)) }
+              MakoshMenuItem("Включить звук") { command(.init(.mute, duration: 0)) }
             } label: {
               Image(systemName: "ellipsis")
-            }.menuStyle(.borderlessButton).accessibilityLabel("Действия чата").accessibilityIdentifier("whatsapp.chat.actions")
-            Button("Ранее") { Task { await model.loadOlder() } }.disabled(
-              !model.hasOlder || model.historyBusy
-            ).accessibilityIdentifier("whatsapp.history.older")
-            Button {
-              Task { await model.selectChat(chat.id) }
-            } label: {
-              Image(systemName: "arrow.clockwise")
-            }.help("Обновить историю")
-          }.padding(16).background(.bar)
+            }.makoshMenuStyle(.plain).accessibilityLabel("Действия чата").accessibilityIdentifier("whatsapp.chat.actions")
+          }.buttonStyle(.plain).padding(.horizontal, 16).frame(height: WorkspaceStyle.mailPaneHeaderHeight)
           Divider()
-          WhatsAppSearchBar(history: history)
+          if showSearch || history.active { WhatsAppSearchBar(history: history, filter: $historyFilter) }
           if displayed.isEmpty {
             ContentUnavailableView(
-              "В этом чате пока нет сообщений", systemImage: "bubble.left",
-              description: Text("Полученная история сохраняется и доступна офлайн.")
+              history.active ? "Ничего не найдено" : "В этом чате пока нет сообщений", systemImage: "bubble.left",
+              description: Text(history.active ? "Измените запрос или фильтр поиска." : "Полученная история сохраняется и доступна офлайн.")
             ).frame(maxWidth: .infinity, maxHeight: .infinity)
           } else {
             ScrollView {
+              let chronological = Array(displayed.reversed())
               LazyVStack(spacing: 8) {
-                ForEach(displayed.reversed()) { message in
+                ForEach(Array(chronological.enumerated()), id: \.element.id) { index, message in
+                  if index == 0 || !Calendar.current.isDate(
+                    Date(timeIntervalSince1970: TimeInterval(message.timestamp)),
+                    inSameDayAs: Date(timeIntervalSince1970: TimeInterval(chronological[index - 1].timestamp))) {
+                    Text(Date(timeIntervalSince1970: TimeInterval(message.timestamp)), style: .date)
+                      .font(.caption2).foregroundStyle(.secondary).padding(.vertical, 12)
+                  }
                   WhatsAppMessageRow(
                     message: message,
+                    senderTitle: chat.group && !message.outgoing && !message.sender.isEmpty
+                      ? (model.chats.first { $0.id.utf8.elementsEqual(message.sender.utf8) }?.name ?? message.sender) : nil,
                     open: {
                       Task {
                         if let sourceAccount,
@@ -368,9 +377,9 @@ struct WhatsAppDetailView: View {
                       NSPasteboard.general.clearContents()
                       NSPasteboard.general.setString(message.text, forType: .string)
                     }
-                    Menu("Реакция") {
+                    MakoshMenu("Реакция") {
                       ForEach(["👍", "❤️", "😂", "😮", "😢", "🙏", ""], id: \.self) { emoji in
-                        Button(emoji.isEmpty ? "Убрать реакцию" : emoji) {
+                        MakoshMenuItem(emoji.isEmpty ? "Убрать реакцию" : emoji) {
                           command(.init(.react, text: emoji, target: message.id))
                         }
                       }
@@ -406,22 +415,28 @@ struct WhatsAppDetailView: View {
                   }
                 }
               }.padding(20)
-            }.defaultScrollAnchor(.bottom).accessibilityIdentifier("whatsapp.history")
+            }.defaultScrollAnchor(.bottom).defaultScrollAnchor(.top, for: .alignment).accessibilityIdentifier("whatsapp.history")
           }
           if history.active, history.hasMore {
             Button("Продолжить поиск") { Task { await history.loadMore() } }.disabled(history.busy)
           }
-          Divider()
           WhatsAppComposeView(
             model: model.composer, accountID: sourceAccount, chatID: sourceChat,
             rich: { richCompose = true })
-        }.background(.green.opacity(0.035))
+        }.frame(minWidth: 380, maxWidth: .infinity).background { WorkspaceBackdrop(intensity: 0.3) }
+        if showInfo, let sourceAccount {
+          WhatsAppWorkspaceInfo(model: model, accountID: sourceAccount, chat: chat,
+            info: $peerInfo, close: { showInfo = false }, settings: { settings = true }, dossier: dossier,
+            media: { showSearch = true; historyFilter = .media })
+            .frame(width: 264).background { WorkspaceBackdrop(intensity: 0.55) }
+        }
+        }
       } else {
         ContentUnavailableView(
           "Выберите чат", systemImage: "bubble.left.and.bubble.right",
           description: Text("Переписка выбранного аккаунта откроется здесь."))
       }
-    }.tint(.green)
+    }.tint(WorkspaceStyle.accent)
       .sheet(isPresented: $richCompose) {
         if let sourceAccount, let sourceChat {
           WhatsAppRichComposeView(model: model, accountID: sourceAccount, chatID: sourceChat)
@@ -519,6 +534,7 @@ struct WhatsAppMessageRow: View {
   @State private var renderedMessage: WhatsAppMessage?
   @State private var rendered: WhatsAppMessagePresentation?
   let message: WhatsAppMessage
+  var senderTitle: String? = nil
   var open: () -> Void = {}
   var vote: (String) -> Void = { _ in }
   private var presentation: WhatsAppMessagePresentation? {
@@ -538,6 +554,10 @@ struct WhatsAppMessageRow: View {
       if message.outgoing { Spacer(minLength: 50) }
       WhatsAppCappedWidth(max: 520) {
         WhatsAppBubbleStack(spacing: 5) {
+          if let senderTitle {
+            Text(senderTitle).font(.caption.weight(.semibold)).foregroundStyle(WorkspaceStyle.accent)
+              .lineLimit(1).truncationMode(.middle)
+          }
           if let quote = message.details?.quotedText {
             Label(quote, systemImage: "arrowshape.turn.up.left").font(.caption).lineLimit(3)
               .padding(7).background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
@@ -606,8 +626,8 @@ struct WhatsAppMessageRow: View {
           .foregroundStyle(message.outgoing ? Color.white : Color.primary)
           .background(
             message.outgoing
-              ? color(scheme == .dark ? 0x1B8A50 : 0x1A9F5A)
-              : color(scheme == .dark ? 0x2B2B2F : 0xECECEF),
+              ? WorkspaceStyle.outgoing
+              : WorkspaceStyle.surface,
             in: UnevenRoundedRectangle(
               topLeadingRadius: 18, bottomLeadingRadius: message.outgoing ? 18 : 5,
               bottomTrailingRadius: message.outgoing ? 5 : 18, topTrailingRadius: 18))
@@ -721,12 +741,12 @@ private struct WhatsAppPairingView: View {
       }
     }.background(
       LinearGradient(
-        colors: [.green.opacity(0.18), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+        colors: [WorkspaceStyle.accent.opacity(0.18), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
   }
   private func step(_ number: Int, _ title: String) -> some View {
     HStack(spacing: 10) {
       Text("\(number)").font(.callout.bold()).foregroundStyle(.white).frame(width: 24, height: 24)
-        .background(.green, in: Circle())
+        .background(WorkspaceStyle.accent, in: Circle())
       Text(title).font(.title3)
     }
   }

@@ -43,6 +43,8 @@ struct MakoshApp: App {
                 TeamsSyntheticPreview().frame(minWidth: 1050, minHeight: 720)
             } else if CommandLine.arguments.contains("--whatsapp-synthetic-preview") {
                 WhatsAppOpenQuestionsPreview().frame(minWidth: 1100, minHeight: 720)
+            } else if CommandLine.arguments.contains("--telegram-layout-synthetic-preview") {
+                WorkspaceView(syntheticTelegram: .syntheticWorkspaceLayoutPreview())
             } else if CommandLine.arguments.contains("--mail-synthetic-preview") {
                 WorkspaceView(syntheticMail: MailWorkspaceModel(synthetic: true)).frame(minWidth: 1100, minHeight: 720)
             } else if Bundle.main.object(forInfoDictionaryKey: "MakoshRequiresSyntheticConfiguration") as? Bool == true,
@@ -77,9 +79,9 @@ struct MakoshApp: App {
                 Text("Эта сборка не поддерживает синтетический запуск. Используйте отдельную debug-сборку QA.").padding(24)
             } else { WorkspaceView(proxy: delegate.telegramProxy, callCoordinator: delegate.telegramCallCoordinator).frame(minWidth: 1000, minHeight: 640) }
             #endif
-            }.environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows).environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings)
+            }.makoshAppearance().environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows).environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings)
         }
-            .defaultSize(width: 1200, height: 800)
+            .defaultSize(width: 1200, height: 854)
             .windowResizability(.contentMinSize)
             .commands { TelegramSearchCommands(); TelegramSelectionCommands() }
         Settings {

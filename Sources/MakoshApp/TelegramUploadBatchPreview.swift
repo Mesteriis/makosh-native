@@ -51,8 +51,8 @@ struct TelegramUploadBatchPreview: View {
             .accessibilityValue(upload.selectedItemID == item.id ? "Выбрано" : "")
             .accessibilityIdentifier("telegram.upload.item." + item.id.uuidString.lowercased())
             if !compact {
-                Menu { actions(item, position: position, revision: revision) } label: { Image(systemName: "ellipsis") }
-                    .menuStyle(.borderlessButton).fixedSize().padding(.trailing, 8)
+                MakoshMenu { actions(item, position: position, revision: revision) } label: { Image(systemName: "ellipsis") }
+                    .makoshMenuStyle(.plain).fixedSize().padding(.trailing, 8)
                     .accessibilityLabel("Действия с \(item.file.name)")
             }
         }
@@ -73,12 +73,12 @@ struct TelegramUploadBatchPreview: View {
     }
 
     @ViewBuilder private func actions(_ item: TelegramUploadBatchItem, position: Int, revision: UUID) -> some View {
-        Button("Переместить выше") { upload.moveItem(id: item.id, to: position - 1, contextID: contextID, revision: revision) }
+        MakoshMenuItem("Переместить выше") { upload.moveItem(id: item.id, to: position - 1, contextID: contextID, revision: revision) }
             .disabled(!upload.canEditItems || position == 0)
-        Button("Переместить ниже") { upload.moveItem(id: item.id, to: position + 1, contextID: contextID, revision: revision) }
+        MakoshMenuItem("Переместить ниже") { upload.moveItem(id: item.id, to: position + 1, contextID: contextID, revision: revision) }
             .disabled(!upload.canEditItems || position + 1 == upload.items.count)
         Divider()
-        Button("Удалить из подготовки") { upload.removeItem(id: item.id, contextID: contextID, revision: revision) }
+        MakoshMenuItem("Удалить из подготовки") { upload.removeItem(id: item.id, contextID: contextID, revision: revision) }
             .disabled(!upload.canEditItems)
     }
 }

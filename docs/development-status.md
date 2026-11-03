@@ -1,4 +1,224 @@
-# Development status — 2026-10-16
+# Development status — 2026-10-18
+
+## WhatsApp group workspace — 2026-10-18
+
+The user selected the third displayed WhatsApp concept, preserved as
+[whatsapp-group-context.png](design/whatsapp-group-context.png). Native common
+workspace now places account/filter/search/status/new-chat controls in one64pt
+row, with a plain selectable chat list, central conversation and264pt closable
+context. Headers share54pt; the continuous graphite/violet surface has no bright
+split-view gutters. Search is expandable; the media action opens the existing
+retained media search. Existing pairing/settings/rich-compose/archive/outbox/call
+controllers and identity/queue/replay/storage guards are retained.
+
+The group context reads the existing account/JID info API; cancellation/request
+and current-account/chat checks reject stale answers. Sender attribution uses a
+verified same-account chat name or source sender ID, not invented contact data.
+Chronological day separators and top alignment for short histories match the
+selected layout while long history retains its bottom initial offset. DEBUG-only
+layout fixtures add two groups and retained synthetic conversation observations;
+ordinary provider behavior and the strict QA argument/schema/local-only guard
+are unchanged. An initial auxiliary CLI flag was correctly rejected by that guard;
+it was removed. The final preview choice uses bundle presentation metadata only,
+after the existing isolation validation. QA001/configuration is retained.
+
+Fresh XERJ project/reference checks and actual queries preceded the change;
+WhatsApp Zen pinned MainView.swift was confirmed from source. Initial QA002 and
+revised QA003 actual2400×1708 pixels are compared with the1487×1058 target at the
+same1200×854 logical density, full and focused regions. QA003 verifies all four
+filters, search/clear, both accounts and clearing source-owned context, group
+switch with an unavailable-info state,32-member expand/collapse, context
+close/reopen, media filter/return, draft entry/clear without sending, chat settings,
+new chat and statuses sheets open/close, archive/all and accessible list-width
+350→370→350. No settings/QR/provider/device action was submitted.
+
+The initial presentation comparison found short chat bottom alignment, missing
+group sender labels and stacked context identity; QA003 confirms their fixes.
+A further source change groups the composer controls into the selected inset
+surface. Canonical-copy QA004 actual `whatsapp-canonical.png` and final full/focused
+comparisons confirm that fix. The attachment menu and draft enable/clear are
+additionally rechecked on QA004 without sending. Its executable text matches the
+ordinary final bundle; it is signed and left open. Root [design-qa.md](../design-qa.md)
+passes for this inspected presentation.
+
+Final scripts/dev-db.sh up, scripts/test.sh, scripts/build-app.sh and strict deep
+codesign verification exit0. XCTest2872 (WhatsApp142,Telemost74,Telegram2315,
+Teams108,Mail100,Core133), one existing microphone-precondition skip, zero failures;
+Rust58,Python153/34runs and16 shared-dropdown checks pass. All601 source hashes
+match the checkpoint recorded before the Swift suite compiled and after final
+canonical build. Build01 failed on a grouped SwiftUI State declaration; splitting
+it fixed compilation. Subsequent canonical builds and the final full suite pass.
+No engine/generated files or protocol/storage/auth contracts changed.
+Final XERJ project refresh exits0 (1539files,1210/1210code); project and
+WhatsApp Zen content-fingerprint checks report fresh. git diff --check exits0.
+The previous Telegram QA is retained at [telegram-folder-qa.md](design/telegram-folder-qa.md).
+Ordinary installation is not replaced. Real WhatsApp QR/account/history/provider
+sends/downloads/calls and devices remain unverified; live QA remains paused.
+Common Contacts-route CUA-pipe and popup-keyboard/physical-drag limits remain
+separate; those checks were not retried. Local logs/artifacts: `.local/whatsapp-layout/`.
+
+
+## Telegram folder-rail workspace — 2026-10-18
+
+The user selected the third displayed folder revision, preserved at
+[telegram-folder-rail.png](design/telegram-folder-rail.png). Native implementation
+adds a84pt custom-folder rail, account/global-search/download/peer-discovery row,
+plain selectable chat rows and a264pt optional contiguous dossier. Headers align
+at54pt; the native formatted composer is transparent inside the shared surface.
+All/Archive/settings, profile/media/secret card, file policy and existing capability,
+draft/send/storage/notification contracts remain connected to their controllers.
+
+Unlike the illustrative mock, the prior adapter exposed only Inbox/Archive.
+The new read-only account-folder observer uses the pinned engine's public filter
+stream and native Postbox predicate before tail/around pagination. It retains
+explicit membership/exclusions/pins, category/mute/read/mention/archive semantics;
+account/generation/folder/request guards reject obsolete results. No folder names
+or aggregate unread totals are invented for real accounts. Global search remains
+explicitly global. Creating/renaming folders and new provider/account flows are
+not added by this presentation slice.
+
+Final exact-source scripts/test.sh exits0:2872 XCTest (WhatsApp142,Telemost74,
+Telegram2315,Teams108,Mail100,Core133), one existing microphone-precondition skip,
+zero failures; Rust58,Python153/34runs and16 shared-dropdown navigation checks.
+Eight new folder regressions include off-main native production. All463 app and
+Telegram source hashes match the checkpoint held during the full suite.
+Database startup, final canonical scripts/build-app.sh and strict deep codesign
+verification exit0. Canonical-copy QA004 executable text matches QA003 and the
+ordinary bundle. QA004 reuses the same isolated QA003 schema, confirming the created
+contact survives the new process and its linked dossier is displayed. Actual final
+pixels: `.local/telegram-layout/telegram-canonical.png`. XERJ v25 refresh exits0
+(1537files,1209/1209code); project and TelegramSwift freshness checks exit0.
+
+QA003 uses an isolated qa_telegram_dossier_ configuration and synthetic data.
+Actual2400×1708 capture is compared with the selected1487×1058 concept at equal
+1200×854 logical density, with full and focused comparisons. Folder switching
+reduces/restores membership while the conversation stays open; New Chat finds a
+synthetic peer and closes even for the already selected peer; draft entry/clear
+works without sending; full profile open/close returns to the dossier. Creating
+the synthetic dossier succeeds and removes the repeatable create action.
+
+Open Dossier then reproduces the prior CUA native-pipe-closed boundary; a single
+fresh read repeats it. QA003 remains running and no recent Makosh crash report
+was found. This is unverified Contacts-route visual acceptance, not a product pass.
+Its schema/artifact remain preserved. Transient AXError.failure on other mutations
+was followed by settled native reads proving the action had completed; no write
+was repeated. Real accounts/folders/provider sends/downloads/devices/OS consent
+remain untested and existing live QA remains paused. Prior popup-keyboard/physical
+splitter-drag gaps remain separate. Source/media/protocol/auth/session data were
+not reset. The ordinary installed app is not replaced.
+
+The retained [Telegram QA report](design/telegram-folder-qa.md) covers this
+selected presentation; mail QA is at [mail-reading-qa.md](design/mail-reading-qa.md).
+Logs, checkpoints and captures are in ignored `.local/telegram-layout/`.
+
+## Mail reading-first layout and dropdown refinement — 2026-10-18
+
+The user selected the second mail concept, then requested a styled titlebar and
+all dropdowns, aligned message-list/reader toolbars and removal of bright side
+gutters. Current target: [mail-reading-focus.png](design/mail-reading-focus.png).
+Account/folder/search/compose share the top row; messages/reader form two panes.
+The optional dossier is contiguous, not a native inspector card. Shared54pt headers
+align; the transparent accessible split handle replaces the system divider gutter.
+The selected mail layout supersedes historical permanent-folder/three-column notes.
+
+Shared MakoshMenu/MakoshPicker surfaces replace27 menu and40 dropdown-picker call
+sites. Native segmented/radio and contextual controls remain. A reproduced AX
+activation bug was fixed by dismissing through MakoshMenuItem's semantic Button
+action, preserving the original action/role/disabled guards. Navigation tests cover
+16 rendered-order/focus/selection/removal/independence cases. Protocol/storage/auth
+contracts are unchanged; MailWorkspaceModel changes only synthetic fixture content.
+
+Exact-source scripts/test.sh exits0:2864 XCTest, one existing microphone-precondition
+skip, zero failures; Rust58, Python153/34runs, plus16 dropdown navigation checks.
+All165 app-source hashes match `.local/mail-layout/source-final-sha256.json`.
+XERJ v25 refresh exits0 (1532files,1205/1205code); the Aether reference is fresh.
+A post-report-edit project check was STALE, requiring final reconciliation with
+source/docs held unchanged. Final reconciliation exits0 and project --check reports
+fresh; Aether --check also exits0. Earlier v24 durable-generation refusal remains recorded.
+Database startup, final canonical scripts/build-app.sh and strict deep codesign
+verification exit0. Canonical-copy synthetic QA011 was launched and its actual pixels verified;
+its executable text matches both the ordinary bundle and QA010. No ordinary installation was replaced.
+
+Native isolated QA010 verifies filter apply/reset and popup closure, folder switch
+and return, nested account actions and settings-sheet open/close, reading, dossier
+open/close and accessible split resize400→380→400. Actual2400×1708 captures were
+compared with the selected concept at equal1200×854 logical size. No personal
+accounts, messages, Contacts, provider send or hardware were accessed.
+
+Limits: CUA omits popup pixels and could not reliably route popup arrow keys;
+physical divider drag returned noWindowsAvailable, while accessible adjustment
+passes. Not every migrated dropdown state was executed. Earlier dossier Save
+transport acceptance and paused real-account/provider/device checks remain open.
+See [mail QA](design/mail-reading-qa.md); the previous shell report is retained at
+[main-window-qa.md](design/main-window-qa.md). Raw logs/captures stay in ignored
+`.local/mail-layout/`. Old gate/UI entries below describe their original revisions.
+
+### Follow-up synthetic QA on the same canonical artifact
+
+QA011 additionally verifies Mail→Telegram→Mail with the selected mail and400pt
+list width preserved. Telegram's synthetic appearance picker opens focused on14,
+selects16 and closes, reopens focused/selected on16, then restores14 and closes.
+The ordinary radio controls remain radio controls. No server settings were changed.
+Mail Down selects Ivan and Up returns to Maria with matching reader content.
+The dossier at380pt list width has aligned headers, continuous side backgrounds,
+readable body and stacked attachment cards; capture:
+`.local/mail-layout/mail-dossier-qa011.png`. Width400 and closed dossier restored.
+No application source changes were needed. The165-source checkpoint still matches;
+previous exact-source build/test results apply. Popup arrow-key routing and physical
+drag acceptance remain unverified at the existing CUA boundary; no alternate input
+backend or permission bypass was used.
+
+## Shared matte-glass workspace — implemented; visual acceptance limits
+
+The user selected the second concept of the last ideation set and approved native
+implementation, then explicitly limited the all-surface follow-up to shared style
+while preserving internal layouts. The tracked visual target is
+[main-window-matte-glass.png](design/main-window-matte-glass.png).
+
+Native titlebar dropdown replaces the persistent service navigation; mail keeps
+folders/list/reader inside its area. The outer HSplitView preserves service view
+composition and pane width bounds while avoiding the unwanted native sidebar toggle.
+WorkspaceStyle/WorkspaceBackdrop unify chrome, sheets/settings, dossier, text mail,
+WhatsApp decoration and call hosts. Workers/auth/storage/privacy/service actions are
+unchanged. Explicit chat themes, media and semantic status/destructive colors remain
+scoped. HTML mail retains a neutral light document inside the dark reader, preserving
+author-specified colors and the existing network/JS/storage policy.
+
+Final canonical gates exit0: scripts/dev-db.sh up; scripts/test.sh —2864 XCTest
+(WhatsApp142,Telemost74,Telegram2307,Teams108,Mail100,Core133), one existing microphone-
+precondition skip, zero failures; Rust58,Python153/34runs; scripts/build-app.sh;
+strict deep codesign; git diff --check. All158 app-source hashes match the final
+checkpoint. The ordinary bundle, current compiled binary and isolated QA004 have
+identical executable text. The earlier full suite predates the last UI changes;
+only the final run is exact-source evidence. An intermediate build failed after
+cleanup removed still-used General Settings preferences; declarations were restored
+before final compilation/tests. Existing UserNotifications/Contacts-XPC diagnostics
+remain separate from test passes; no personal Contacts or accounts were accessed.
+
+Native synthetic QA covers six-section navigation, contact editor, mail folders/
+account form, populated text/HTML mail, rich compose typing with Cc/Bcc, Telegram
+settings, populated WhatsApp/contact/poll rows, photo editor/Cancel, separate call
+preview/End, populated Teams and retained selected chat after switching sections.
+Actual normal/zoom captures are2400×1600 and3600×2130. Final QA004 specifically
+verifies the exact final artifact's shell, Contacts route and dropdown. Prior broad
+captures precede three final decoration-only token changes; they are not claimed as
+exhaustive final-artifact acceptance. Menus are AX-verified; window capture omits
+the separate system popover. System controls/materials and restrained backdrop
+intensity intentionally differ from the raster, with P3 polish noted in
+[design-qa.md](../design-qa.md).
+
+Dossier visual acceptance remains blocked by CUA native-pipe closure after synthetic
+Save and repeated read. No alternate backend, permission bypass or data reset. Final
+capture separately had ScreenCaptureKit3811 and a timeout; fresh same-backend state
+confirmed the successful menu action, without repeating it, and final pixels were
+captured. No real account/provider/delivery/OS notification/Keychain/device acceptance
+is claimed. Other owned QA processes were stopped; schemas/artifacts/data retained.
+QA004 stays open for inspection; ordinary/private-account launch stays paused.
+No Git commit, push or replacement of the user's installed application.
+Final XERJ refresh exits0:1522 files,1196/1196 code. Earlier no-node failure and
+concurrent-edit freshness refusal are retained as failures. The final refresh
+covers the stable source/docs; live state/credentials remain excluded.
+
 
 ## Main consolidation — 2026-10-16
 

@@ -38,7 +38,7 @@ struct WhatsAppPhotoEditorView: View {
         Button(
           model.drafts.count > 1 ? "Отправить \(model.drafts.count)" : "Отправить", action: send
         )
-        .buttonStyle(.borderedProminent).tint(.green).keyboardShortcut(.defaultAction)
+        .buttonStyle(.borderedProminent).tint(WorkspaceStyle.accent).keyboardShortcut(.defaultAction)
         .disabled(model.busy || model.drafts.isEmpty || model.image == nil)
         .accessibilityIdentifier("whatsapp.photo.send")
       }
@@ -95,7 +95,7 @@ struct WhatsAppPhotoEditorView: View {
       cropping = false
       tool = tool == kind ? nil : kind
     }
-    .tint(tool == kind ? .green : .accentColor).help(label).accessibilityIdentifier(
+    .tint(tool == kind ? WorkspaceStyle.accent : .secondary).help(label).accessibilityIdentifier(
       "whatsapp.photo.tool.\(kind.rawValue)")
   }
   private var strip: some View {
@@ -115,7 +115,7 @@ struct WhatsAppPhotoEditorView: View {
               }.frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                   RoundedRectangle(cornerRadius: 8).strokeBorder(
-                    .green, lineWidth: draft.id == model.selectedID ? 2.5 : 0))
+                    WorkspaceStyle.accent, lineWidth: draft.id == model.selectedID ? 2.5 : 0))
             }.buttonStyle(.plain).accessibilityLabel("Выбрать фотографию")
             Button {
               Task { await model.remove(draft.id) }

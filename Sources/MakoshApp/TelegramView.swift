@@ -32,6 +32,7 @@ struct TelegramDetailView: View {
     @StateObject private var attachmentActions = TelegramAttachmentActions()
     @State private var messageActionRequest: TelegramMessageActionRequest?
     @State private var profilePresented = false
+    @State private var dossierPresented = true
     @State private var messageSearchPresented = false
     @State private var messageSearchFocusRequest = UUID()
     private let dossier: WorkspaceModel?
@@ -49,6 +50,7 @@ struct TelegramDetailView: View {
     @State private var code = ""
     @State private var password = ""
     var body: some View {
+        HStack(spacing: 0) {
         VStack(alignment: .leading, spacing: 0) {
             switch model.phase {
             case .configuration: setup
@@ -97,9 +99,18 @@ struct TelegramDetailView: View {
                     .accessibilityIdentifier("telegram.media.saved")
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background {
-            if model.phase == .ready { TelegramWallpaperBackground(wallpaper: wallpaper, fallback: palette.flatMap { p in p.background.map { telegramPaletteColor(p,"background",$0) } } ?? TelegramLocalTheme(preference: telegramTheme).chatBackground) }
+            if wallpaper == .automatic, palette == nil, colorScheme == .dark { WorkspaceBackdrop(intensity: 0.4) }
+            else if model.phase == .ready { TelegramWallpaperBackground(wallpaper: wallpaper, fallback: palette.flatMap { p in p.background.map { telegramPaletteColor(p,"background",$0) } } ?? TelegramLocalTheme(preference: telegramTheme).chatBackground) }
             else { TelegramLocalTheme(preference: telegramTheme).chatBackground }
         }
+        if dossierPresented, let dossier, model.phase == .ready, model.selectedChat != nil, model.conversationCapabilities?.secret == nil {
+            TelegramWorkspaceDossier(model: model, workspace: dossier, close: { dossierPresented = false }, open: openDossier)
+        }
+        }
+            .task(id: model.contactProfileContextID) {
+                if dossierPresented, model.phase == .ready, model.selectedChat != nil, model.conversationCapabilities?.secret == nil { model.loadContactProfile() }
+            }
+            .onChange(of: dossierPresented) { _, visible in if visible { model.loadContactProfile() } }
             .modifier(TelegramUploadDropModifier(model: model))
             .overlay {
                 TelegramRoundVideoRecorderView(recording: model.voiceRecording, upload: upload,
@@ -144,7 +155,10 @@ struct TelegramDetailView: View {
             .sheet(isPresented: $secretTimerPresented) {
                 TelegramSecretTimerView(controller: model.secretChats, synthetic: model.isSyntheticPreview)
             }
-            .sheet(isPresented: $profilePresented, onDismiss: model.cancelContactProfile) {
+            .sheet(isPresented: $profilePresented, onDismiss: {
+                model.cancelContactProfile()
+                if dossierPresented { model.loadContactProfile() }
+            }) {
                 if model.conversationCapabilities?.secret != nil, let chatID = model.selectedChatID {
                     TelegramSecretProfileView(model: model, controller: model.secretChats, chatID: chatID)
                 } else {
@@ -243,7 +257,11 @@ struct TelegramDetailView: View {
                     }.buttonStyle(.plain).foregroundStyle(messageSearchPresented ? Color.accentColor : Color.secondary)
                         .help("Поиск сообщений (⌘F)").accessibilityLabel("Поиск сообщений в диалоге")
                         .accessibilityIdentifier("telegram.messageSearch.toggle")
-                }.padding(.horizontal, 16).frame(height: 50)
+                    if dossier != nil, model.conversationCapabilities?.secret == nil {
+                        Button { dossierPresented.toggle() } label: { Image(systemName: "sidebar.right") }
+                            .buttonStyle(.plain).accessibilityLabel("Досье собеседника").accessibilityIdentifier("telegram.dossier.toggle")
+                    }
+                }.padding(.horizontal, 16).frame(height: WorkspaceStyle.mailPaneHeaderHeight)
                 if let capabilities = model.conversationCapabilities {
                     TelegramConversationCapabilityBanner(capabilities: capabilities) { secretVerificationPresented = true }
                     if capabilities.secret != nil {
@@ -619,6 +637,7 @@ struct TelegramPaginationBar: View {
     let retry: () -> Void
 
     var body: some View {
+        if page.canLoadPrevious || page.canLoadNext || !page.isAtLatest || page.isLoading || page.timedOut {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Button(action: previous) { Label("Старее", systemImage: "chevron.left") }
@@ -638,6 +657,7 @@ struct TelegramPaginationBar: View {
                     Button("Повторить", action: retry).controlSize(.small).accessibilityIdentifier(prefix + ".retry")
                 }
             }
+        }
         }
     }
 }

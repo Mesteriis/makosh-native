@@ -23,30 +23,38 @@ public struct S3ObjectStoreConfiguration: Codable, Sendable {
     public let accessKeyID: String
     public let secretAccessKey: String
     public init(endpoint: String, region: String, bucket: String, accessKeyID: String, secretAccessKey: String) throws {
-        self.endpoint = endpoint; self.region = region; self.bucket = bucket
-        self.accessKeyID = accessKeyID; self.secretAccessKey = secretAccessKey
+        self.endpoint = endpoint
+        self.region = region
+        self.bucket = bucket
+        self.accessKeyID = accessKeyID
+        self.secretAccessKey = secretAccessKey
         try validate()
     }
     public init(from decoder: Decoder) throws {
         do {
             let values = try decoder.container(keyedBy: CodingKeys.self)
-            try self.init(endpoint: values.decode(String.self, forKey: .endpoint), region: values.decode(String.self, forKey: .region),
+            try self.init(
+                endpoint: values.decode(String.self, forKey: .endpoint), region: values.decode(String.self, forKey: .region),
                 bucket: values.decode(String.self, forKey: .bucket), accessKeyID: values.decode(String.self, forKey: .accessKeyID),
                 secretAccessKey: values.decode(String.self, forKey: .secretAccessKey))
         } catch { throw S3ObjectStoreError.configuration }
     }
     func validate() throws {
         guard let c = URLComponents(string: endpoint), let host = c.host, !host.isEmpty,
-              c.user == nil, c.password == nil, c.query == nil, c.fragment == nil,
-              c.percentEncodedPath == "" || c.percentEncodedPath == "/",
-              c.scheme == "https" || (c.scheme == "http" && ["localhost", "127.0.0.1", "[::1]", "::1"].contains(host.lowercased())),
-              c.port == nil || (1...65535).contains(c.port!),
-              !endpoint.utf8.contains(where: { $0 < 33 || $0 > 126 }),
-              (1...64).contains(region.utf8.count), region.utf8.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }),
-              (3...63).contains(bucket.utf8.count), bucket.first != "-", bucket.last != "-",
-              bucket.utf8.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }),
-              (1...128).contains(accessKeyID.utf8.count), accessKeyID.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }),
-              (1...256).contains(secretAccessKey.utf8.count), secretAccessKey.utf8.allSatisfy({ (33...126).contains($0) }) else {
+            c.user == nil, c.password == nil, c.query == nil, c.fragment == nil,
+            c.percentEncodedPath == "" || c.percentEncodedPath == "/",
+            c.scheme == "https" || (c.scheme == "http" && ["localhost", "127.0.0.1", "[::1]", "::1"].contains(host.lowercased())),
+            c.port == nil || (1...65535).contains(c.port!),
+            !endpoint.utf8.contains(where: { $0 < 33 || $0 > 126 }),
+            (1...64).contains(region.utf8.count), region.utf8.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }),
+            (3...63).contains(bucket.utf8.count), bucket.first != "-", bucket.last != "-",
+            bucket.utf8.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }),
+            (1...128).contains(accessKeyID.utf8.count),
+            accessKeyID.utf8.allSatisfy({
+                (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95
+            }),
+            (1...256).contains(secretAccessKey.utf8.count), secretAccessKey.utf8.allSatisfy({ (33...126).contains($0) })
+        else {
             throw S3ObjectStoreError.configuration
         }
     }
@@ -65,8 +73,10 @@ struct S3Signer {
     static func hex<D: Sequence>(_ bytes: D) -> String where D.Element == UInt8 {
         bytes.map { String(format: "%02x", $0) }.joined()
     }
-    static func authorization(method: String, path: String, headers: [String: String], payloadHash: String,
-                              timestamp: String, region: String, accessKey: String, secret: String) -> String {
+    static func authorization(
+        method: String, path: String, headers: [String: String], payloadHash: String,
+        timestamp: String, region: String, accessKey: String, secret: String
+    ) -> String {
         let names = headers.keys.sorted()
         let canonicalHeaders = names.map { key in
             key + ":" + headers[key]!.split(whereSeparator: { $0 == " " || $0 == "\t" }).joined(separator: " ") + "\n"
@@ -86,41 +96,54 @@ struct S3Signer {
         return "AWS4-HMAC-SHA256 Credential=\(accessKey)/\(scope),SignedHeaders=\(signed),Signature=\(hex(hmac(key, toSign)))"
     }
     static func validateKey(_ key: String) throws {
-        guard (1...1024).contains(key.utf8.count), key.utf8.allSatisfy({
-            (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [47,45,46,95].contains($0)
-        }), key.split(separator: "/", omittingEmptySubsequences: false).allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+        guard (1...1024).contains(key.utf8.count),
+            key.utf8.allSatisfy({
+                (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [47, 45, 46, 95].contains($0)
+            }), key.split(separator: "/", omittingEmptySubsequences: false).allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." })
+        else {
             throw S3ObjectStoreError.invalid
         }
     }
     static func validateHash(_ hash: String, count: Int64) throws {
         guard hash.utf8.count == 64, hash.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
-              count >= 0, count <= 4 * 1024 * 1024 * 1024 + 1024 * 1024 else { throw S3ObjectStoreError.invalid }
+            count >= 0, count <= 4 * 1024 * 1024 * 1024 + 1024 * 1024
+        else { throw S3ObjectStoreError.invalid }
     }
 }
 
 public actor S3ObjectStore {
     private let configuration: S3ObjectStoreConfiguration
     public init(configuration: S3ObjectStoreConfiguration) throws {
-        try configuration.validate(); self.configuration = configuration
+        try configuration.validate()
+        self.configuration = configuration
     }
-    private func request(_ method: String, key: String, payload: String = S3Signer.emptyHash,
-                         extra: [String: String] = [:]) throws -> URLRequest {
+    private func request(
+        _ method: String, key: String, payload: String = S3Signer.emptyHash,
+        extra: [String: String] = [:]
+    ) throws -> URLRequest {
         try S3Signer.validateKey(key)
         guard var components = URLComponents(string: configuration.endpoint) else { throw S3ObjectStoreError.configuration }
         components.percentEncodedPath = "/" + configuration.bucket + "/" + key
         guard let url = components.url, let host = components.host else { throw S3ObjectStoreError.configuration }
         let hostName = host.contains(":") && !host.hasPrefix("[") ? "[" + host + "]" : host
         let hostHeader = hostName + (components.port.map { ":\($0)" } ?? "")
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0); formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
         let timestamp = formatter.string(from: Date())
         var headers = extra
-        headers["host"] = hostHeader; headers["x-amz-date"] = timestamp; headers["x-amz-content-sha256"] = payload
-        var result = URLRequest(url: url); result.httpMethod = method
+        headers["host"] = hostHeader
+        headers["x-amz-date"] = timestamp
+        headers["x-amz-content-sha256"] = payload
+        var result = URLRequest(url: url)
+        result.httpMethod = method
         for (name, value) in headers { result.setValue(value, forHTTPHeaderField: name) }
-        result.setValue(S3Signer.authorization(method: method, path: components.percentEncodedPath, headers: headers,
-            payloadHash: payload, timestamp: timestamp, region: configuration.region,
-            accessKey: configuration.accessKeyID, secret: configuration.secretAccessKey), forHTTPHeaderField: "Authorization")
+        result.setValue(
+            S3Signer.authorization(
+                method: method, path: components.percentEncodedPath, headers: headers,
+                payloadHash: payload, timestamp: timestamp, region: configuration.region,
+                accessKey: configuration.accessKeyID, secret: configuration.secretAccessKey), forHTTPHeaderField: "Authorization")
         result.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         return result
     }
@@ -131,22 +154,25 @@ public actor S3ObjectStore {
             if response.statusCode == 404 { return nil }
             guard response.statusCode == 200 else { throw S3ObjectStoreError.unavailable }
             return try Self.receipt(response, key: key)
-        } catch is CancellationError { throw CancellationError() }
-        catch let error as S3ObjectStoreError { throw error }
-        catch { throw S3ObjectStoreError.unavailable }
+        } catch is CancellationError { throw CancellationError() } catch let error as S3ObjectStoreError { throw error } catch {
+            throw S3ObjectStoreError.unavailable
+        }
     }
     public func put(file: URL, key: String, sha256: String, byteCount: Int64) async throws -> S3ObjectReceipt {
-        try S3Signer.validateKey(key); try S3Signer.validateHash(sha256, count: byteCount)
+        try S3Signer.validateKey(key)
+        try S3Signer.validateHash(sha256, count: byteCount)
         // Upload only a verified owned snapshot; URLSession cannot follow a later source-path replacement.
         let staged = try await S3LocalFile.stage(file, hash: sha256, count: byteCount)
         defer { try? FileManager.default.removeItem(at: staged.deletingLastPathComponent()) }
-        let req = try request("PUT", key: key, payload: sha256, extra: [
-            "content-length": String(byteCount), "x-amz-meta-sha256": sha256, "if-none-match": "*"
-        ])
+        let req = try request(
+            "PUT", key: key, payload: sha256,
+            extra: [
+                "content-length": String(byteCount), "x-amz-meta-sha256": sha256, "if-none-match": "*",
+            ])
         let response: HTTPURLResponse
-        do { response = try await S3Transfer.execute(req, upload: staged, download: false, byteLimit: 0).response }
-        catch is CancellationError { throw CancellationError() }
-        catch {
+        do {
+            response = try await S3Transfer.execute(req, upload: staged, download: false, byteLimit: 0).response
+        } catch is CancellationError { throw CancellationError() } catch {
             // No second PUT. A lost response can mean a committed object.
             return try await reconcile(key: key, hash: sha256, count: byteCount)
         }
@@ -160,20 +186,21 @@ public actor S3ObjectStore {
     }
     private func reconcile(key: String, hash: String, count: Int64) async throws -> S3ObjectReceipt {
         let receipt: S3ObjectReceipt?
-        do { receipt = try await head(key: key) }
-        catch is CancellationError { throw CancellationError() }
-        catch { throw S3ObjectStoreError.uncertain }
+        do { receipt = try await head(key: key) } catch is CancellationError { throw CancellationError() } catch {
+            throw S3ObjectStoreError.uncertain
+        }
         guard let receipt else { throw S3ObjectStoreError.uncertain }
         guard receipt.sha256 == hash, receipt.byteCount == count else { throw S3ObjectStoreError.conflict }
         return receipt
     }
     public func download(key: String, to destination: URL, sha256: String, byteCount: Int64) async throws {
-        try S3Signer.validateKey(key); try S3Signer.validateHash(sha256, count: byteCount)
+        try S3Signer.validateKey(key)
+        try S3Signer.validateHash(sha256, count: byteCount)
         let req = try request("GET", key: key)
         let result: S3Transfer.Result
-        do { result = try await S3Transfer.execute(req, upload: nil, download: true, byteLimit: byteCount) }
-        catch is CancellationError { throw CancellationError() }
-        catch { throw S3ObjectStoreError.unavailable }
+        do { result = try await S3Transfer.execute(req, upload: nil, download: true, byteLimit: byteCount) } catch is CancellationError {
+            throw CancellationError()
+        } catch { throw S3ObjectStoreError.unavailable }
         guard let temporary = result.file else { throw S3ObjectStoreError.unavailable }
         defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
         guard result.response.statusCode == 200 else { throw S3ObjectStoreError.unavailable }
@@ -183,15 +210,20 @@ public actor S3ObjectStore {
     }
     private static func receipt(_ response: HTTPURLResponse, key: String) throws -> S3ObjectReceipt {
         guard let length = response.value(forHTTPHeaderField: "Content-Length"),
-              !length.isEmpty, length.utf8.allSatisfy({ (48...57).contains($0) }), let count = Int64(length),
-              let hash = response.value(forHTTPHeaderField: "x-amz-meta-sha256") else { throw S3ObjectStoreError.integrity }
+            !length.isEmpty, length.utf8.allSatisfy({ (48...57).contains($0) }), let count = Int64(length),
+            let hash = response.value(forHTTPHeaderField: "x-amz-meta-sha256")
+        else { throw S3ObjectStoreError.integrity }
         try S3Signer.validateHash(hash, count: count)
         return S3ObjectReceipt(key: key, byteCount: count, sha256: hash)
     }
 }
 
+/// Continuation, task and progress state are guarded by `lock` against URLSession delegate callbacks.
 final class S3Transfer: NSObject, URLSessionDataDelegate, URLSessionDownloadDelegate, @unchecked Sendable {
-    struct Result: Sendable { let response: HTTPURLResponse; let file: URL? }
+    struct Result: Sendable {
+        let response: HTTPURLResponse
+        let file: URL?
+    }
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Result, Error>?
     private var task: URLSessionTask?
@@ -202,7 +234,10 @@ final class S3Transfer: NSObject, URLSessionDataDelegate, URLSessionDownloadDele
     private var temporary: URL?
     private let limit: Int64
     private let isDownload: Bool
-    init(limit: Int64, download: Bool) { self.limit = limit; self.isDownload = download }
+    init(limit: Int64, download: Bool) {
+        self.limit = limit
+        self.isDownload = download
+    }
     static func execute(_ request: URLRequest, upload: URL?, download: Bool, byteLimit: Int64) async throws -> Result {
         let transfer = S3Transfer(limit: byteLimit, download: download)
         return try await withTaskCancellationHandler {
@@ -211,59 +246,93 @@ final class S3Transfer: NSObject, URLSessionDataDelegate, URLSessionDownloadDele
                 transfer.lock.lock()
                 transfer.continuation = continuation
                 if transfer.cancelled {
-                    transfer.continuation = nil; transfer.lock.unlock()
-                    continuation.resume(throwing: CancellationError()); return
+                    transfer.continuation = nil
+                    transfer.lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                    return
                 }
                 let configuration = URLSessionConfiguration.ephemeral
-                configuration.httpShouldSetCookies = false; configuration.httpCookieStorage = nil
-                configuration.urlCredentialStorage = nil; configuration.urlCache = nil
+                configuration.httpShouldSetCookies = false
+                configuration.httpCookieStorage = nil
+                configuration.urlCredentialStorage = nil
+                configuration.urlCache = nil
                 configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-                configuration.timeoutIntervalForRequest = 60; configuration.timeoutIntervalForResource = 300
+                configuration.timeoutIntervalForRequest = 60
+                configuration.timeoutIntervalForResource = 300
                 let session = URLSession(configuration: configuration, delegate: transfer, delegateQueue: nil)
                 transfer.session = session
                 let task: URLSessionTask
-                if let upload { task = session.uploadTask(with: request, fromFile: upload) }
-                else if download { task = session.downloadTask(with: request) }
-                else { task = session.dataTask(with: request) }
-                transfer.task = task; transfer.lock.unlock(); task.resume()
+                if let upload {
+                    task = session.uploadTask(with: request, fromFile: upload)
+                } else if download {
+                    task = session.downloadTask(with: request)
+                } else {
+                    task = session.dataTask(with: request)
+                }
+                transfer.task = task
+                transfer.lock.unlock()
+                task.resume()
             }
-        } onCancel: { transfer.cancel() }
+        } onCancel: {
+            transfer.cancel()
+        }
     }
     private func cancel() {
-        lock.lock(); cancelled = true; let task = task; lock.unlock(); task?.cancel()
+        lock.lock()
+        cancelled = true
+        let task = task
+        lock.unlock()
+        task?.cancel()
     }
     // Never forward any signed header to another URL, even same-origin redirects.
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void
+    ) {
         completionHandler(nil)
     }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         responseBytes += data.count
-        if responseBytes > 64 * 1024 { failed = true; dataTask.cancel() }
+        if responseBytes > 64 * 1024 {
+            failed = true
+            dataTask.cancel()
+        }
     }
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
-                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+    func urlSession(
+        _ session: URLSession, downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64
+    ) {
         if totalBytesWritten > limit || totalBytesExpectedToWrite != limit {
-            failed = true; downloadTask.cancel()
+            failed = true
+            downloadTask.cancel()
         }
     }
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         do {
             guard !failed, let response = downloadTask.response as? HTTPURLResponse,
-                  response.expectedContentLength == limit else { throw S3ObjectStoreError.integrity }
+                response.expectedContentLength == limit
+            else { throw S3ObjectStoreError.integrity }
             let directory = try S3LocalFile.directory()
             let file = directory.appendingPathComponent("payload")
-            do { try FileManager.default.moveItem(at: location, to: file) }
-            catch { try? FileManager.default.removeItem(at: directory); throw error }
+            do { try FileManager.default.moveItem(at: location, to: file) } catch {
+                try? FileManager.default.removeItem(at: directory)
+                throw error
+            }
             guard chmod(file.path, 0o600) == 0 else {
-                try? FileManager.default.removeItem(at: directory); throw S3ObjectStoreError.unavailable
+                try? FileManager.default.removeItem(at: directory)
+                throw S3ObjectStoreError.unavailable
             }
             temporary = file
         } catch { failed = true }
     }
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        lock.lock(); let continuation = continuation; self.continuation = nil
-        let cancelled = cancelled; self.session = nil; self.task = nil; lock.unlock()
+        lock.lock()
+        let continuation = continuation
+        self.continuation = nil
+        let cancelled = cancelled
+        self.session = nil
+        self.task = nil
+        lock.unlock()
         defer { session.finishTasksAndInvalidate() }
         guard let continuation else { return }
         if cancelled || failed || error != nil || (isDownload && temporary == nil) {
@@ -271,7 +340,9 @@ final class S3Transfer: NSObject, URLSessionDataDelegate, URLSessionDownloadDele
             continuation.resume(throwing: cancelled ? CancellationError() : S3ObjectStoreError.unavailable)
         } else if let response = task.response as? HTTPURLResponse {
             continuation.resume(returning: Result(response: response, file: temporary))
-        } else { continuation.resume(throwing: S3ObjectStoreError.unavailable) }
+        } else {
+            continuation.resume(throwing: S3ObjectStoreError.unavailable)
+        }
     }
 }
 
@@ -287,12 +358,19 @@ enum S3LocalFile {
             let target = directory.appendingPathComponent("payload")
             try await export(source, destination: target, hash: hash, count: count)
             return target
-        } catch { try? FileManager.default.removeItem(at: directory); throw error }
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
     }
     static func export(_ source: URL, destination: URL, hash: String, count: Int64) async throws {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) { try copy(source, destination: destination, hash: hash, count: count) }
-        try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+        try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
     }
     private static func copy(_ source: URL, destination: URL, hash: String, count: Int64) throws {
         try Task.checkCancellation()
@@ -314,32 +392,39 @@ enum S3LocalFile {
         let tempName = ".makosh-s3-" + UUID().uuidString
         let output = openat(parent, tempName, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard output >= 0 else { throw S3ObjectStoreError.unavailable }
-        defer { Darwin.close(output); unlinkat(parent, tempName, 0) }
+        defer {
+            Darwin.close(output)
+            unlinkat(parent, tempName, 0)
+        }
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: 1024 * 1024, alignment: 16)
         defer { buffer.deallocate() }
-        var digest = SHA256(); var total: Int64 = 0
+        var digest = SHA256()
+        var total: Int64 = 0
         while true {
             try Task.checkCancellation()
             let size = Darwin.read(input, buffer, 1024 * 1024)
             if size < 0 && errno == EINTR { continue }
             guard size >= 0 else { throw S3ObjectStoreError.unavailable }
             if size == 0 { break }
-            total += Int64(size); guard total <= count else { throw S3ObjectStoreError.integrity }
+            total += Int64(size)
+            guard total <= count else { throw S3ObjectStoreError.integrity }
             digest.update(bufferPointer: UnsafeRawBufferPointer(start: buffer, count: size))
             var offset = 0
             while offset < size {
                 try Task.checkCancellation()
                 let written = Darwin.write(output, buffer.advanced(by: offset), size - offset)
                 if written < 0 && errno == EINTR { continue }
-                guard written > 0 else { throw S3ObjectStoreError.unavailable }; offset += written
+                guard written > 0 else { throw S3ObjectStoreError.unavailable }
+                offset += written
             }
         }
         var final = stat()
         guard total == count, S3Signer.hex(digest.finalize()) == hash, fstat(input, &final) == 0,
-              final.st_size == initial.st_size, final.st_mtimespec.tv_sec == initial.st_mtimespec.tv_sec,
-              final.st_mtimespec.tv_nsec == initial.st_mtimespec.tv_nsec,
-              final.st_ctimespec.tv_sec == initial.st_ctimespec.tv_sec,
-              final.st_ctimespec.tv_nsec == initial.st_ctimespec.tv_nsec else { throw S3ObjectStoreError.integrity }
+            final.st_size == initial.st_size, final.st_mtimespec.tv_sec == initial.st_mtimespec.tv_sec,
+            final.st_mtimespec.tv_nsec == initial.st_mtimespec.tv_nsec,
+            final.st_ctimespec.tv_sec == initial.st_ctimespec.tv_sec,
+            final.st_ctimespec.tv_nsec == initial.st_ctimespec.tv_nsec
+        else { throw S3ObjectStoreError.integrity }
         guard fsync(output) == 0 else { throw S3ObjectStoreError.unavailable }
         try Task.checkCancellation()
         guard renameatx_np(parent, tempName, parent, name, UInt32(RENAME_EXCL)) == 0 else { throw S3ObjectStoreError.invalid }

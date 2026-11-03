@@ -1,0 +1,195 @@
+import Foundation
+
+/// Row-level persistence for `ContactStore`: one JSONB row per contact and per
+/// merge, plus per-identity import watermarks. Writers hold a schema-scoped
+/// transaction advisory lock, so mutations stay serialized across connections
+/// while each write touches only the contacts it changes.
+final class ContactRecordRepository {
+    static let schemaVersion = 2
+
+    private let connection: PostgresConnection
+    private let schema: String
+    private let contacts: String
+    private let fetches: String
+    private let merges: String
+    private let meta: String
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(connectionString: String, schema: String) throws {
+        guard PostgresConnection.isValidSchemaName(schema) else {
+            throw StoreError.invalid("Недопустимое имя схемы PostgreSQL.")
+        }
+        guard !connectionString.utf8.contains(0) else {
+            throw StoreError.invalid("Недопустимая строка подключения PostgreSQL.")
+        }
+        do { connection = try PostgresConnection(connectionString: connectionString) } catch {
+            throw StoreError.database("PostgreSQL connection failed.")
+        }
+        self.schema = schema
+        let prefix = "\"\(schema)\"."
+        contacts = prefix + "contact_records"
+        fetches = prefix + "contact_source_fetches"
+        merges = prefix + "contact_merges"
+        meta = prefix + "contact_store_meta"
+        do {
+            try connection.transaction {
+                // Serialize initial creation for two connections opening the same schema.
+                try connection.execute("SELECT pg_advisory_xact_lock(hashtext('makosh-schema'), hashtext($1))", [schema])
+                try connection.execute("CREATE SCHEMA IF NOT EXISTS \"\(schema)\"")
+                try connection.execute(
+                    "CREATE TABLE IF NOT EXISTS \(meta) (id SMALLINT PRIMARY KEY CHECK (id=1), schema_version INTEGER NOT NULL)")
+                try connection.execute(
+                    "INSERT INTO \(meta) (id, schema_version) VALUES (1, $1) ON CONFLICT (id) DO NOTHING",
+                    [String(Self.schemaVersion)])
+                try checkVersion()
+                try connection.execute("CREATE TABLE IF NOT EXISTS \(contacts) (id UUID PRIMARY KEY, payload JSONB NOT NULL)")
+                try connection.execute(
+                    "CREATE INDEX IF NOT EXISTS contact_records_identities ON \(contacts) USING gin ((payload->'identities') jsonb_path_ops)"
+                )
+                try connection.execute(
+                    "CREATE INDEX IF NOT EXISTS contact_records_notes ON \(contacts) USING gin ((payload->'notes') jsonb_path_ops)")
+                try connection.execute(
+                    "CREATE TABLE IF NOT EXISTS \(fetches) (identity_key TEXT PRIMARY KEY, fetched_at DOUBLE PRECISION NOT NULL)")
+                try connection.execute("CREATE TABLE IF NOT EXISTS \(merges) (id UUID PRIMARY KEY, payload JSONB NOT NULL)")
+            }
+        } catch {
+            connection.close()
+            throw Self.storeError(error)
+        }
+    }
+
+    // MARK: Transactions
+
+    func read<T>(_ body: () throws -> T) throws -> T {
+        try wrap {
+            try connection.transaction {
+                try checkVersion()
+                return try body()
+            }
+        }
+    }
+
+    func write<T>(_ body: () throws -> T) throws -> T {
+        try wrap {
+            try connection.transaction {
+                try connection.execute("SELECT pg_advisory_xact_lock(hashtext('makosh-contacts'), hashtext($1))", [schema])
+                try checkVersion()
+                return try body()
+            }
+        }
+    }
+
+    // MARK: Contacts
+
+    func allContacts() throws -> [Contact] {
+        try connection.query("SELECT payload::text FROM \(contacts)").map { try decode(Contact.self, $0[0]) }
+    }
+
+    func contact(id: UUID) throws -> Contact? {
+        try connection.query("SELECT payload::text FROM \(contacts) WHERE id=$1::uuid", [id.uuidString])
+            .first.map { try decode(Contact.self, $0[0]) }
+    }
+
+    /// Every contact whose identities contain `identity`; more than one is corruption.
+    func contacts(owning identity: ServiceIdentity) throws -> [Contact] {
+        try connection.query(
+            "SELECT payload::text FROM \(contacts) WHERE payload->'identities' @> $1::jsonb ORDER BY id",
+            [try encode([identity])]
+        ).map { try decode(Contact.self, $0[0]) }
+    }
+
+    func contacts(owningNote id: UUID) throws -> [Contact] {
+        try connection.query(
+            "SELECT payload::text FROM \(contacts) WHERE payload->'notes' @> $1::jsonb ORDER BY id",
+            [try encode([["id": id]])]
+        ).map { try decode(Contact.self, $0[0]) }
+    }
+
+    func insert(_ contact: Contact) throws {
+        try connection.execute(
+            "INSERT INTO \(contacts) (id, payload) VALUES ($1::uuid, $2::jsonb)",
+            [contact.id.uuidString, try encode(contact)])
+    }
+
+    func update(_ contact: Contact) throws {
+        let rows = try connection.query(
+            "UPDATE \(contacts) SET payload=$2::jsonb WHERE id=$1::uuid RETURNING id",
+            [contact.id.uuidString, try encode(contact)])
+        guard rows.count == 1 else { throw StoreError.database("PostgreSQL contact update did not affect exactly one row.") }
+    }
+
+    func delete(contactID: UUID) throws {
+        let rows = try connection.query("DELETE FROM \(contacts) WHERE id=$1::uuid RETURNING id", [contactID.uuidString])
+        guard rows.count == 1 else { throw StoreError.database("PostgreSQL contact delete did not affect exactly one row.") }
+    }
+
+    // MARK: Import watermarks
+
+    func fetchedAt(_ identity: ServiceIdentity) throws -> Date? {
+        guard let text = try connection.query("SELECT fetched_at::text FROM \(fetches) WHERE identity_key=$1", [identity.id]).first?[0]
+        else { return nil }
+        guard let interval = Double(text), interval.isFinite else { throw StoreError.database("PostgreSQL import watermark is invalid.") }
+        return Date(timeIntervalSinceReferenceDate: interval)
+    }
+
+    func setFetchedAt(_ date: Date, for identity: ServiceIdentity) throws {
+        try connection.execute(
+            "INSERT INTO \(fetches) (identity_key, fetched_at) VALUES ($1, $2::double precision) ON CONFLICT (identity_key) DO UPDATE SET fetched_at=EXCLUDED.fetched_at",
+            [identity.id, String(date.timeIntervalSinceReferenceDate)])
+    }
+
+    // MARK: Merges
+
+    func allMerges() throws -> [MergeRecord] {
+        try connection.query("SELECT payload::text FROM \(merges)").map { try decode(MergeRecord.self, $0[0]) }
+    }
+
+    func merge(id: UUID) throws -> MergeRecord? {
+        try connection.query("SELECT payload::text FROM \(merges) WHERE id=$1::uuid", [id.uuidString])
+            .first.map { try decode(MergeRecord.self, $0[0]) }
+    }
+
+    func insert(_ record: MergeRecord) throws {
+        try connection.execute(
+            "INSERT INTO \(merges) (id, payload) VALUES ($1::uuid, $2::jsonb)", [record.id.uuidString, try encode(record)])
+    }
+
+    func update(_ record: MergeRecord) throws {
+        let rows = try connection.query(
+            "UPDATE \(merges) SET payload=$2::jsonb WHERE id=$1::uuid RETURNING id",
+            [record.id.uuidString, try encode(record)])
+        guard rows.count == 1 else { throw StoreError.database("PostgreSQL merge update did not affect exactly one row.") }
+    }
+
+    // MARK: Helpers
+
+    private func checkVersion() throws {
+        guard let text = try connection.query("SELECT schema_version::text FROM \(meta) WHERE id=1").first?[0],
+            let version = Int(text)
+        else { throw StoreError.database("PostgreSQL contact store metadata is missing or invalid.") }
+        guard version == Self.schemaVersion else { throw StoreError.unsupportedSchema(version) }
+    }
+
+    private func wrap<T>(_ body: () throws -> T) throws -> T {
+        do { return try body() } catch { throw Self.storeError(error) }
+    }
+
+    private static func storeError(_ error: Error) -> Error {
+        guard let failure = error as? PostgresConnection.Failure else { return error }
+        if let code = failure.sqlState { return StoreError.database("PostgreSQL operation failed (SQLSTATE \(code)).") }
+        return StoreError.database("PostgreSQL operation failed.")
+    }
+
+    private func encode<T: Encodable>(_ value: T) throws -> String {
+        do { return String(decoding: try encoder.encode(value), as: UTF8.self) } catch {
+            throw StoreError.database("State encoding failed.")
+        }
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, _ text: String) throws -> T {
+        do { return try decoder.decode(type, from: Data(text.utf8)) } catch {
+            throw StoreError.database("PostgreSQL state payload is invalid.")
+        }
+    }
+}

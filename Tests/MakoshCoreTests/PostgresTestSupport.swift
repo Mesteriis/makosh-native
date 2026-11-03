@@ -7,7 +7,13 @@ import CPostgres
 struct PostgresTestDatabase {
     let connectionString: String
     let schema: String
-    var table: String { "\"\(schema)\".state" }
+    /// Every persisted contact-store row, for proving a failed write changed nothing.
+    func contactStoreSnapshot() throws -> [[String]] {
+        try execute(
+            "SELECT 'contact', id::text, payload::text FROM contact_records UNION ALL "
+                + "SELECT 'fetch', identity_key, fetched_at::text FROM contact_source_fetches UNION ALL "
+                + "SELECT 'merge', id::text, payload::text FROM contact_merges ORDER BY 1, 2")
+    }
 
     init() throws {
         guard let value = ProcessInfo.processInfo.environment["MAKOSH_TEST_DATABASE_URL"], !value.isEmpty else {
@@ -22,7 +28,8 @@ struct PostgresTestDatabase {
     }
     func cleanup() throws {
         guard schema.hasPrefix("makosh_test_"), schema.utf8.count == 44,
-              schema.dropFirst(12).utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            schema.dropFirst(12).utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) })
+        else {
             throw StoreError.invalid("Refusing cleanup outside a generated test schema.")
         }
         try execute("DROP SCHEMA \"\(schema)\" CASCADE")

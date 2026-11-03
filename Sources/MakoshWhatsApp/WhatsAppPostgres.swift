@@ -1,11 +1,10 @@
-import CPostgres
 import CryptoKit
 import Foundation
 import MakoshCore
 
 /// Confined to WhatsAppRepository. No connection, SQL, crypto or keys reach UI.
 final class WhatsAppPostgres {
-  private var connection: OpaquePointer?
+  private let connection: PostgresConnection
   private let schema: String
   private var key: SymmetricKey!
   private var vault: UUID!
@@ -26,41 +25,23 @@ final class WhatsAppPostgres {
   var batchOwners: [UUID: WhatsAppBatchLease] = [:]
   func avatarCacheKey(accountID: UUID) throws -> Data {
     guard try accounts().contains(where: { $0.id == accountID }) else { throw WhatsAppFailure.invalid }
-    let derived = HKDF<SHA256>.deriveKey(inputKeyMaterial: key,
+    let derived = HKDF<SHA256>.deriveKey(
+      inputKeyMaterial: key,
       salt: Data(accountID.uuidString.utf8), info: Data("makosh-whatsapp-local-avatars-v1".utf8), outputByteCount: 32)
     return derived.withUnsafeBytes { Data($0) }
   }
-  init(configuration: ContactWorkspaceConfiguration, keyProvider: (UUID, Bool) throws -> Data)
+  init(
+    configuration: ContactWorkspaceConfiguration, keyProvider: (UUID, Bool) throws -> Data
+  )
     throws
   {
     schema = configuration.schema
     guard ArchiveBackup.isValidSchemaName(schema), !configuration.connectionString.utf8.contains(0)
     else { throw WhatsAppFailure.invalid }
-    connection = configuration.connectionString.withCString { dsn in
-      "dbname".withCString { k in
-        "connect_timeout".withCString { t in
-          "5".withCString { v in
-            let keys: [UnsafePointer<CChar>?] = [k, t, nil]
-            let values: [UnsafePointer<CChar>?] = [dsn, v, nil]
-            return keys.withUnsafeBufferPointer { ks in
-              values.withUnsafeBufferPointer { vs in
-                PQconnectdbParams(ks.baseAddress, vs.baseAddress, 1)
-              }
-            }
-          }
-        }
-      }
-    }
-    guard let connection, PQstatus(connection) == CONNECTION_OK else {
-      if let connection { PQfinish(connection) }
-      self.connection = nil
+    do { connection = try PostgresConnection(connectionString: configuration.connectionString) } catch {
       throw WhatsAppFailure.storage
     }
-    PQsetNoticeProcessor(connection, { _, _ in }, nil)
     do {
-      _ = try query("SET client_encoding TO 'UTF8'")
-      _ = try query("SET statement_timeout TO '15s'")
-      _ = try query("SET lock_timeout TO '5s'")
       try transaction {
         _ = try query(
           "SELECT pg_advisory_xact_lock(hashtext('makosh-whatsapp'),hashtext($1))", [schema])
@@ -105,7 +86,9 @@ final class WhatsAppPostgres {
         _ = try query(
           "CREATE TABLE IF NOT EXISTS \(notificationsTable)(token TEXT PRIMARY KEY,account TEXT NOT NULL,sequence BIGINT NOT NULL,state TEXT NOT NULL,ciphertext TEXT NOT NULL)"
         )
-        _ = try query("CREATE TABLE IF NOT EXISTS \(batchesTable)(token TEXT PRIMARY KEY,account TEXT NOT NULL,ts BIGINT NOT NULL,ciphertext TEXT NOT NULL)")
+        _ = try query(
+          "CREATE TABLE IF NOT EXISTS \(batchesTable)(token TEXT PRIMARY KEY,account TEXT NOT NULL,ts BIGINT NOT NULL,ciphertext TEXT NOT NULL)"
+        )
         _ = try query("CREATE TABLE IF NOT EXISTS \(photosTable)(token TEXT PRIMARY KEY,account TEXT NOT NULL,ciphertext TEXT NOT NULL)")
         _ = try query("CREATE TABLE IF NOT EXISTS \(composeTable)(token TEXT PRIMARY KEY,account TEXT NOT NULL,ciphertext TEXT NOT NULL)")
         let rows = try query(
@@ -132,12 +115,10 @@ final class WhatsAppPostgres {
         }
       }
     } catch {
-      PQfinish(connection)
-      self.connection = nil
+      connection.close()
       throw WhatsAppFailure.storage
     }
   }
-  deinit { if let connection { PQfinish(connection) } }
   func transaction<T>(_ body: () throws -> T) throws -> T {
     guard !blocked else { throw WhatsAppFailure.storage }
     _ = try query("BEGIN")
@@ -200,21 +181,7 @@ final class WhatsAppPostgres {
     } catch { throw WhatsAppFailure.storage }
   }
   func query(_ sql: String, _ parameters: [String] = []) throws -> [[String]] {
-    guard let connection, !parameters.contains(where: { $0.utf8.contains(0) }) else {
-      throw WhatsAppFailure.storage
-    }
-    let pointers = parameters.map { strdup($0) }
-    defer { pointers.forEach { free($0) } }
-    let values = pointers.map { UnsafePointer<CChar>($0) }
-    let result = values.withUnsafeBufferPointer {
-      PQexecParams(connection, sql, Int32(parameters.count), nil, $0.baseAddress, nil, nil, 0)
-    }
-    guard let result else { throw WhatsAppFailure.storage }
-    defer { PQclear(result) }
-    guard PQresultStatus(result) == PGRES_TUPLES_OK || PQresultStatus(result) == PGRES_COMMAND_OK
-    else { throw WhatsAppFailure.storage }
-    return (0..<PQntuples(result)).map { row in
-      (0..<PQnfields(result)).map { String(cString: PQgetvalue(result, row, $0)) }
-    }
+    do { return try connection.query(sql, parameters) } catch { throw WhatsAppFailure.storage }
   }
+
 }

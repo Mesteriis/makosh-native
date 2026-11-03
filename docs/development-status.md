@@ -1,4 +1,54 @@
-# Development status — 2026-10-18
+# Development status — 2026-11-03
+
+## Структурный рефакторинг — 2026-11-03
+
+Что изменилось:
+
+- `ContactStore` переписан на построчное хранение (схема хранилища 2):
+  строка JSONB на контакт, на запись слияния и на водяной знак импорта.
+  Запись берёт транзакционный advisory lock схемы и меняет только затронутые
+  строки. Миграции из прежней строки `state` нет — по решению владельца
+  контакты импортируются заново. Старая таблица не читается и не удаляется.
+  Доменные правила вынесены в `ContactReconciliation`, SQL — в
+  `ContactRecordRepository`.
+- Общий `PostgresConnection` (MakoshCore) заменил восемь копий обвязки libpq в
+  Core, Mail, Teams, Telemost и WhatsApp. Таймауты, подавление уведомлений,
+  ошибки только с SQLSTATE и асинхронное освобождение задаются в одном месте.
+  `MailOperationLease` закрывает соединение синхронно, чтобы advisory lock
+  освобождался сразу.
+- `TelegramModel` (2809 строк) разнесён на основной файл с хранимым состоянием
+  и init (~510 строк) и 16 расширений по фичам. `TelegramUploadController`
+  (1706) — на основной файл и 8 расширений. Логика не менялась; `private`
+  члены этих типов стали internal, потому что расширения лежат в других
+  файлах.
+- `MakoshApp` и `MakoshTelegram` разложены по папкам подсистем. Из
+  `WhatsAppViews`, `TelegramView`, `WorkspaceView` и `IMAPService` вынесены
+  независимые типы (атрибуция MIT сохранена).
+- `@unchecked Sendable`: у всех мест есть обоснование. Структуры с CGImage
+  и `WhatsAppCallLifetime` (через `Mutex`) стали проверяемыми `Sendable`.
+- Форматирование: `.swift-format` (отступ 4, для MakoshWhatsApp — 2) и
+  `scripts/format.sh`. Форматируются и проверяются в CI только изменённые
+  файлы; чистые переименования (R100) не трогаются.
+
+Проверки:
+
+- База до изменений: `scripts/test.sh` — 2872 XCTest, 3 падения окружения
+  (два `TelegramAuthorizationConnectionTests`: NSCocoaError 513 при удалении
+  temp-каталога; `MailAutomationWorkerTests`: не найдена фикстура `port`).
+- После изменений: `scripts/test.sh` — 2873 XCTest (+1 новый тест
+  построчной записи), 2 падения:
+  `TelegramSyntheticRoundVideoCaptureTests` и
+  `TelegramUploadAppendControllerTests…ZIP…`. Обе пары классов изолированно
+  проходят 3/3, ZIP-тест — 10/10. Вывод: нестабильность под нагрузкой полного
+  прогона, а не регрессия. Падения базы в этом прогоне прошли.
+- `scripts/build-app.sh` и `codesign --verify --deep --strict` завершились с
+  кодом 0. Собранный бандл, запущенный на изолированной схеме
+  `qa_contacts_refactor`, создал таблицы хранилища контактов v2, почты и Teams.
+- Визуальная UI-проверка НЕ выполнена: в этой сессии macOS не выдал право
+  «Запись экрана» для computer use.
+- Обновление XERJ не выполнено: индекс заблокирован (`read_only_allow_delete`)
+  при заполненном на 97% диске. Повтор — после очистки кэшей сборки.
+
 
 ## WhatsApp group workspace — 2026-10-18
 

@@ -7,6 +7,7 @@ public enum TelegramVoiceCaptureError: Error, Equatable {
     case permissionDenied, unavailable, invalidRecording, invalidState
 }
 
+/// File descriptor and consumption state are guarded by `lock`.
 final class TelegramVoiceCapturePCM: @unchecked Sendable {
     private static let maximumFrames: Int64 = 28_800_000
     private static let maximumOverhead: Int64 = 1_048_576
@@ -32,19 +33,28 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
         }
         var info = stat()
         guard fstat(parent, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else {
-            Darwin.close(parent); rmdir(directory.path)
+            Darwin.close(parent)
+            rmdir(directory.path)
             throw TelegramVoiceCaptureError.unavailable
         }
         let file = openat(parent, "recording.caf", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard file >= 0, fchmod(file, 0o600) == 0 else {
             if file >= 0 { Darwin.close(file) }
-            unlinkat(parent, "recording.caf", 0); Darwin.close(parent); rmdir(directory.path)
+            unlinkat(parent, "recording.caf", 0)
+            Darwin.close(parent)
+            rmdir(directory.path)
             throw TelegramVoiceCaptureError.unavailable
         }
-        directoryFD = parent; directoryIdentity = info; fileFD = file
+        directoryFD = parent
+        directoryIdentity = info
+        fileFD = file
     }
 
-    deinit { discard(); Darwin.close(fileFD); Darwin.close(directoryFD) }
+    deinit {
+        discard()
+        Darwin.close(fileFD)
+        Darwin.close(directoryFD)
+    }
 
     /// Called after the native writer prepares its file, before microphone capture starts.
     func secureForRecording() throws {
@@ -57,10 +67,13 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
             defer { if !keep { Darwin.close(fd) } }
             var info = stat()
             guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-                  info.st_uid == getuid(), info.st_nlink == 1, fchmod(fd, 0o600) == 0 else {
+                info.st_uid == getuid(), info.st_nlink == 1, fchmod(fd, 0o600) == 0
+            else {
                 throw TelegramVoiceCaptureError.unavailable
             }
-            Darwin.close(fileFD); fileFD = fd; keep = true
+            Darwin.close(fileFD)
+            fileFD = fd
+            keep = true
         }
     }
 
@@ -71,9 +84,10 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
             try validateDirectory()
             var info = stat(), path = stat()
             guard fstat(fileFD, &info) == 0, lstat(url.path, &path) == 0,
-                  path.st_dev == info.st_dev, path.st_ino == info.st_ino,
-                  info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(), info.st_nlink == 1,
-                  fchmod(fileFD, 0o600) == 0, fstat(fileFD, &info) == 0 else {
+                path.st_dev == info.st_dev, path.st_ino == info.st_ino,
+                info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(), info.st_nlink == 1,
+                fchmod(fileFD, 0o600) == 0, fstat(fileFD, &info) == 0
+            else {
                 throw TelegramVoiceCaptureError.unavailable
             }
             snapshot = info
@@ -84,7 +98,11 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
         defer { discard() }
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) { try self.readSealed() }
-        let pcm = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+        let pcm = try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
         try Task.checkCancellation()
         return pcm
     }
@@ -95,7 +113,8 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
             discarded = true
             var held = stat()
             if fstat(directoryFD, &held) == 0, held.st_uid == getuid(),
-               held.st_dev == directoryIdentity.st_dev, held.st_ino == directoryIdentity.st_ino {
+                held.st_dev == directoryIdentity.st_dev, held.st_ino == directoryIdentity.st_ino
+            {
                 // A restrictive mode change must not strand our own plaintext capture during refusal.
                 fchmod(directoryFD, 0o700)
             }
@@ -104,7 +123,8 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
             unlinkat(directoryFD, "recording.caf", 0)
             var path = stat()
             if lstat(directory.path, &path) == 0, path.st_mode & S_IFMT == S_IFDIR,
-               path.st_dev == directoryIdentity.st_dev, path.st_ino == directoryIdentity.st_ino {
+                path.st_dev == directoryIdentity.st_dev, path.st_ino == directoryIdentity.st_ino
+            {
                 rmdir(directory.path)
             }
         }
@@ -124,19 +144,21 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
             }
             let dataBytes = try validateCAF(size: original.st_size)
             // Opening our held descriptor avoids a second path lookup by the native reader.
-            let file = try AVAudioFile(forReading: URL(fileURLWithPath: "/dev/fd/\(fileFD)"),
-                                       commonFormat: .pcmFormatInt16, interleaved: true)
+            let file = try AVAudioFile(
+                forReading: URL(fileURLWithPath: "/dev/fd/\(fileFD)"),
+                commonFormat: .pcmFormatInt16, interleaved: true)
             defer { file.close() }
             let format = file.fileFormat.streamDescription.pointee
             let required = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
-            let forbidden = kAudioFormatFlagIsFloat | kAudioFormatFlagIsBigEndian |
-                kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagIsAlignedHigh
+            let forbidden =
+                kAudioFormatFlagIsFloat | kAudioFormatFlagIsBigEndian | kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagIsAlignedHigh
             guard format.mFormatID == kAudioFormatLinearPCM, format.mSampleRate == 48_000,
-                  format.mChannelsPerFrame == 1, format.mBitsPerChannel == 16,
-                  format.mBytesPerFrame == 2, format.mBytesPerPacket == 2, format.mFramesPerPacket == 1,
-                  format.mFormatFlags & required == required, format.mFormatFlags & forbidden == 0,
-                  file.length > 0, file.length <= Self.maximumFrames, dataBytes == file.length * 2,
-                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 32_768) else {
+                format.mChannelsPerFrame == 1, format.mBitsPerChannel == 16,
+                format.mBytesPerFrame == 2, format.mBytesPerPacket == 2, format.mFramesPerPacket == 1,
+                format.mFormatFlags & required == required, format.mFormatFlags & forbidden == 0,
+                file.length > 0, file.length <= Self.maximumFrames, dataBytes == file.length * 2,
+                let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 32_768)
+            else {
                 throw TelegramVoiceCaptureError.invalidRecording
             }
             var result: [Int16] = []
@@ -167,9 +189,10 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
     private func validateDirectory() throws {
         var held = stat(), path = stat()
         guard fstat(directoryFD, &held) == 0, lstat(directory.path, &path) == 0,
-              path.st_mode & S_IFMT == S_IFDIR, held.st_uid == getuid(), held.st_mode & 0o777 == 0o700,
-              held.st_dev == directoryIdentity.st_dev, held.st_ino == directoryIdentity.st_ino,
-              path.st_dev == held.st_dev, path.st_ino == held.st_ino else {
+            path.st_mode & S_IFMT == S_IFDIR, held.st_uid == getuid(), held.st_mode & 0o777 == 0o700,
+            held.st_dev == directoryIdentity.st_dev, held.st_ino == directoryIdentity.st_ino,
+            path.st_dev == held.st_dev, path.st_ino == held.st_ino
+        else {
             throw TelegramVoiceCaptureError.unavailable
         }
     }
@@ -178,13 +201,14 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
         try validateDirectory()
         var held = stat(), path = stat()
         guard fstat(fileFD, &held) == 0, lstat(url.path, &path) == 0,
-              path.st_mode & S_IFMT == S_IFREG, held.st_uid == getuid(), held.st_mode & 0o777 == 0o600,
-              held.st_nlink == 1, path.st_dev == original.st_dev, path.st_ino == original.st_ino,
-              held.st_dev == original.st_dev, held.st_ino == original.st_ino, held.st_size == original.st_size,
-              held.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec,
-              held.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec,
-              held.st_ctimespec.tv_sec == original.st_ctimespec.tv_sec,
-              held.st_ctimespec.tv_nsec == original.st_ctimespec.tv_nsec else {
+            path.st_mode & S_IFMT == S_IFREG, held.st_uid == getuid(), held.st_mode & 0o777 == 0o600,
+            held.st_nlink == 1, path.st_dev == original.st_dev, path.st_ino == original.st_ino,
+            held.st_dev == original.st_dev, held.st_ino == original.st_ino, held.st_size == original.st_size,
+            held.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec,
+            held.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec,
+            held.st_ctimespec.tv_sec == original.st_ctimespec.tv_sec,
+            held.st_ctimespec.tv_nsec == original.st_ctimespec.tv_nsec
+        else {
             throw TelegramVoiceCaptureError.unavailable
         }
     }
@@ -213,10 +237,12 @@ final class TelegramVoiceCapturePCM: @unchecked Sendable {
                 }
                 dataBytes = Int64(length - 4)
             }
-            offset += 12 + Int64(length); chunks += 1
+            offset += 12 + Int64(length)
+            chunks += 1
         }
         guard let dataBytes, dataBytes > 0, dataBytes <= Self.maximumFrames * 2,
-              size - dataBytes <= Self.maximumOverhead else { throw TelegramVoiceCaptureError.invalidRecording }
+            size - dataBytes <= Self.maximumOverhead
+        else { throw TelegramVoiceCaptureError.invalidRecording }
         return dataBytes
     }
 

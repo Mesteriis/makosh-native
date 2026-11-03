@@ -8,172 +8,8 @@ import NIOPosix
 import NIOIMAP
 import NIOIMAPCore
 
-enum MailError: LocalizedError {
-    case notConnected
-    case connectFailed(String)
-    case commandFailed(String)
-    case noResult
-
-    var errorDescription: String? {
-        switch self {
-        case .notConnected: return "Not connected."
-        case .connectFailed(let m): return "Connection failed: \(m)"
-        case .commandFailed(let m): return "Server rejected the command: \(m)"
-        case .noResult: return "No response from server."
-        }
-    }
-}
-
-struct IMAPMessage: Sendable {
-    var uid: UInt32
-    var subject: String
-    var fromName: String
-    var fromEmail: String
-    var toName: String
-    var toEmail: String
-    var ccEmail: String
-    var bccEmail: String
-    var date: Date
-    var seen: Bool
-    var flagged: Bool
-    var messageID: String
-    var inReplyTo: String
-    var keywords: [String]
-}
-
-// NIO-free flag kind so the app layer doesn't import NIOIMAPCore.
-enum MailFlagKind: Sendable { case seen, flagged, deleted }
-
-/// Linearizes cancellation against the final command write on NIO's event loop.
-final class MailCommandDispatch: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cancelled = false
-    func cancel() { lock.lock(); cancelled = true; lock.unlock() }
-    func dispatch<Value>(_ write: () throws -> Value) throws -> Value {
-        lock.lock(); defer { lock.unlock() }
-        guard !cancelled else { throw CancellationError() }
-        return try write()
-    }
-}
-
-// NIO-free incremental-sync results.
-struct IMAPFlagState: Sendable {
-    var seen: Bool
-    var flagged: Bool
-    var keywords: [String]
-}
-
-struct IMAPFolderSync: Sendable {
-    var newMessages: [IMAPMessage]               // UID greater than the highest we had
-    var flags: [UInt32: IMAPFlagState]           // current flags for the already-loaded range
-}
-
-// NIO-free advanced-search criteria. The app builds this; IMAPService turns it
-// into a server SearchKey so the app layer stays free of NIOIMAPCore.
-struct MailSearchCriteria: Sendable {
-    var text = ""
-    var from = ""
-    var to = ""
-    var subject = ""
-    var since: Date?
-    var before: Date?
-    var unseenOnly = false
-    var flaggedOnly = false
-
-    var isEmpty: Bool {
-        text.isEmpty && from.isEmpty && to.isEmpty && subject.isEmpty
-            && since == nil && before == nil && !unseenOnly && !flaggedOnly
-    }
-}
-
-enum MailboxKind: String, Codable, Sendable { case inbox, sent, drafts, trash, junk, archive, other }
-
-struct IMAPMailbox: Sendable {
-    let name: String          // server mailbox path (used for SELECT/MOVE)
-    let displayName: String
-    let kind: MailboxKind
-    let selectable: Bool
-}
-
-// Collects responses per command, matching the FIFO of issued tags.
-final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
-    typealias InboundIn = Response
-
-    private struct Pending { let tag: String; let promise: EventLoopPromise<[Response]>; var acc: [Response] }
-    private var queue: [Pending] = []
-    private var receivedBytes = 0
-    private var idleStarted = false, idleStopRequested = false, idleEnding = false
-    private var idleTag: String?
-    func beginIdle(tag: String, promise: EventLoopPromise<[Response]>) {
-        idleTag = tag; idleStarted = false; idleStopRequested = false; idleEnding = false
-        enqueue(tag: tag, promise: promise)
-    }
-    func stopIdle(channel: Channel) {
-        guard idleTag != nil else { return }
-        idleStopRequested = true
-        if idleStarted && !idleEnding {
-            idleEnding = true
-            let endingTag = idleTag
-            channel.writeAndFlush(IMAPClientHandler.Message.part(.idleDone), promise: nil)
-            // A server that ignores DONE must not hold shutdown forever.
-            channel.eventLoop.scheduleTask(in: .seconds(5)) { [weak self] in
-                if self?.idleTag == endingTag { channel.close(promise: nil) }
-            }
-        }
-    }
-    func closeUnstartedIdle(channel: Channel) { if idleTag != nil && !idleStarted { channel.close(promise: nil) } }
-
-    func enqueue(tag: String, promise: EventLoopPromise<[Response]>) {
-        queue.append(Pending(tag: tag, promise: promise, acc: []))
-    }
-
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let response = unwrapInboundIn(data)
-        guard !queue.isEmpty else { return } // greeting / unsolicited
-        if case .fetch(.streamingBytes(let bytes)) = response { receivedBytes += bytes.readableBytes }
-        guard receivedBytes <= 32 * 1024 * 1024, queue[0].acc.count < 200000 else {
-            failAll(MailFailure.tooLarge); context.close(promise:nil); return
-        }
-        switch response {
-        case .idleStarted:
-            idleStarted = true
-            queue[0].acc.append(response)
-            if idleStopRequested { stopIdle(channel: context.channel) }
-        case .tagged(let tagged):
-            guard tagged.tag == queue[0].tag else { failAll(MailError.noResult); context.close(promise:nil); return }
-            receivedBytes = 0
-            var head = queue.removeFirst()
-            if idleTag == tagged.tag { idleTag = nil }
-            head.acc.append(response)
-            head.promise.succeed(head.acc)
-        case .fatal:
-            failAll(MailError.notConnected); context.close(promise:nil)
-        default:
-            queue[0].acc.append(response)
-            if idleTag != nil {
-                switch response {
-                case .untagged(.mailboxData), .fetch: stopIdle(channel: context.channel)
-                default: break
-                }
-            }
-        }
-    }
-
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        failAll(error)
-        context.close(promise: nil)
-    }
-    func channelInactive(context: ChannelHandlerContext) {
-        failAll(MailError.notConnected)
-        context.fireChannelInactive()
-    }
-    private func failAll(_ error: Error) {
-        idleTag = nil
-        let pending = queue; queue.removeAll()
-        pending.forEach { $0.promise.fail(error) }
-    }
-}
-
+/// Commands are admitted one at a time by the owning MailAccountWorker; only the channel,
+/// which NIO callbacks also read, needs `channelLock`.
 final class IMAPService: @unchecked Sendable {
     private let host: String
     private let port: Int
@@ -187,8 +23,16 @@ final class IMAPService: @unchecked Sendable {
     private let channelLock = NSLock()
     private var storedChannel: Channel?
     private var channel: Channel? {
-        get { channelLock.lock(); defer { channelLock.unlock() }; return storedChannel }
-        set { channelLock.lock(); storedChannel = newValue; channelLock.unlock() }
+        get {
+            channelLock.lock()
+            defer { channelLock.unlock() }
+            return storedChannel
+        }
+        set {
+            channelLock.lock()
+            storedChannel = newValue
+            channelLock.unlock()
+        }
     }
     private let lifetime = MailCommandDispatch()
     private var tagCounter = 0
@@ -207,20 +51,27 @@ final class IMAPService: @unchecked Sendable {
         self.password = password
     }
 
-    private func nextTag() -> String { tagCounter += 1; return "a\(String(format: "%04d", tagCounter))" }
+    private func nextTag() -> String {
+        tagCounter += 1
+        return "a\(String(format: "%04d", tagCounter))"
+    }
 
     // MARK: Connection
 
     func connectAndLogin() async throws {
         let bootstrap = ClientBootstrap(group: Self.group)
             .channelInitializer { [collector] channel in
-                do { try channel.pipeline.syncOperations.addHandlers([IMAPClientHandler(), collector]); return channel.eventLoop.makeSucceededVoidFuture() }
-                catch { return channel.eventLoop.makeFailedFuture(error) }
+                do {
+                    try channel.pipeline.syncOperations.addHandlers([IMAPClientHandler(), collector])
+                    return channel.eventLoop.makeSucceededVoidFuture()
+                } catch { return channel.eventLoop.makeFailedFuture(error) }
             }
         do {
             let channel = try await bootstrap.connectTimeout(.seconds(15)).connect(host: host, port: port).get()
-            do { try lifetime.dispatch { self.channel = channel } }
-            catch { channel.close(promise: nil); throw error }
+            do { try lifetime.dispatch { self.channel = channel } } catch {
+                channel.close(promise: nil)
+                throw error
+            }
             if security == .tls { try await MailTLSHandler.install(channel: channel, host: host, caFile: tlsCAFile).get() }
         } catch {
             throw MailError.connectFailed(error.localizedDescription)
@@ -262,17 +113,25 @@ final class IMAPService: @unchecked Sendable {
         let milliseconds = min(Int64(25 * 60 * 1000), max(1, components.seconds * 1000 + components.attoseconds / 1_000_000_000_000_000))
         let responses = try await withTaskCancellationHandler {
             let resources = try await channel.eventLoop.submit { [collector] in
-                try admission.dispatch { try self.lifetime.dispatch {
-                    guard channel.isActive else { throw MailError.notConnected }
-                    let promise = channel.eventLoop.makePromise(of: [Response].self)
-                    collector.beginIdle(tag: tag, promise: promise)
-                    channel.writeAndFlush(IMAPClientHandler.Message.part(.tagged(TaggedCommand(tag: tag, command: .idleStart))), promise: nil)
-                    let startup = channel.eventLoop.scheduleTask(in: .seconds(15)) { collector.closeUnstartedIdle(channel: channel) }
-                    let renewal = channel.eventLoop.scheduleTask(in: .milliseconds(milliseconds)) { collector.stopIdle(channel: channel) }
-                    return (promise, startup, renewal)
-                } }
+                try admission.dispatch {
+                    try self.lifetime.dispatch {
+                        guard channel.isActive else { throw MailError.notConnected }
+                        let promise = channel.eventLoop.makePromise(of: [Response].self)
+                        collector.beginIdle(tag: tag, promise: promise)
+                        channel.writeAndFlush(
+                            IMAPClientHandler.Message.part(.tagged(TaggedCommand(tag: tag, command: .idleStart))), promise: nil)
+                        let startup = channel.eventLoop.scheduleTask(in: .seconds(15)) { collector.closeUnstartedIdle(channel: channel) }
+                        let renewal = channel.eventLoop.scheduleTask(in: .milliseconds(milliseconds)) {
+                            collector.stopIdle(channel: channel)
+                        }
+                        return (promise, startup, renewal)
+                    }
+                }
             }.get()
-            defer { resources.1.cancel(); resources.2.cancel() }
+            defer {
+                resources.1.cancel()
+                resources.2.cancel()
+            }
             return try await resources.0.futureResult.get()
         } onCancel: {
             admission.cancel()
@@ -281,7 +140,10 @@ final class IMAPService: @unchecked Sendable {
         try Task.checkCancellation()
         guard let last = responses.last, case .tagged(let tagged) = last, case .ok = tagged.state else { throw MailFailure.serverRejected }
         return responses.contains { response in
-            switch response { case .untagged(.mailboxData), .fetch: true; default: false }
+            switch response {
+            case .untagged(.mailboxData), .fetch: true
+            default: false
+            }
         }
     }
 
@@ -292,8 +154,10 @@ final class IMAPService: @unchecked Sendable {
     }
 
     func listMailboxes() async throws -> [IMAPMailbox] {
-        let responses = try await send(.list(nil, reference: MailboxName(ByteBuffer(string: "")),
-                                             .mailbox(ByteBuffer(string: "*")), []))
+        let responses = try await send(
+            .list(
+                nil, reference: MailboxName(ByteBuffer(string: "")),
+                .mailbox(ByteBuffer(string: "*")), []))
         var out: [IMAPMailbox] = []
         for r in responses {
             guard case .untagged(.mailboxData(.list(let info))) = r else { continue }
@@ -303,7 +167,10 @@ final class IMAPService: @unchecked Sendable {
             if name.isEmpty { continue }
             let attrs = info.attributes
             let selectable = !attrs.contains(MailboxInfo.Attribute("\\Noselect"))
-            out.append(IMAPMailbox(name: name, displayName: displayName, kind: Self.classify(name: displayName, attributes: attrs), selectable: selectable))
+            out.append(
+                IMAPMailbox(
+                    name: name, displayName: displayName, kind: Self.classify(name: displayName, attributes: attrs), selectable: selectable)
+            )
         }
         return out
     }
@@ -316,9 +183,14 @@ final class IMAPService: @unchecked Sendable {
         var total = 0
         for r in responses {
             if case .untagged(.mailboxData(.exists(let n))) = r { total = n }
-            if case .untagged(.conditionalState(.ok(let text))) = r, case .uidValidity(let value) = text.code { selectedUIDValidity = UInt32(value) }
+            if case .untagged(.conditionalState(.ok(let text))) = r, case .uidValidity(let value) = text.code {
+                selectedUIDValidity = UInt32(value)
+            }
         }
-        guard selectedUIDValidity > 0 else { currentMailbox = nil; throw MailFailure.staleFolder }
+        guard selectedUIDValidity > 0 else {
+            currentMailbox = nil
+            throw MailFailure.staleFolder
+        }
         return total
     }
 
@@ -404,7 +276,9 @@ final class IMAPService: @unchecked Sendable {
 
     /// Drain new UIDs oldest-first, so a bounded page never skips arrivals.
     /// The cursor includes searched UIDs that disappeared before FETCH.
-    func fetchNewAfter(mailbox name: String, afterUID: UInt32, limit: Int) async throws -> (messages: [IMAPMessage], through: UInt32, hasMore: Bool) {
+    func fetchNewAfter(
+        mailbox name: String, afterUID: UInt32, limit: Int
+    ) async throws -> (messages: [IMAPMessage], through: UInt32, hasMore: Bool) {
         _ = try await ensureSelected(name)
         guard afterUID < UInt32.max else { return ([], afterUID, false) }
         let range = MessageIdentifierRange<UID>(UID(rawValue: afterUID + 1)...UID.max)
@@ -458,7 +332,8 @@ final class IMAPService: @unchecked Sendable {
     func fetchMessageData(mailbox name: String, uid: UInt32, byteLimit: Int?) async throws -> Data {
         _ = try await ensureSelected(name)
         let range = MessageIdentifierRange<UID>(UID(rawValue: uid)...UID(rawValue: uid))
-        let section: FetchAttribute = byteLimit.map { .bodySection(peek: true, .complete, 0...UInt32($0 - 1)) }
+        let section: FetchAttribute =
+            byteLimit.map { .bodySection(peek: true, .complete, 0...UInt32($0 - 1)) }
             ?? .bodySection(peek: true, .complete, nil)
         let responses = try await send(.uidFetch(.range(range), [section], []))
         var raw = ByteBuffer()
@@ -476,7 +351,8 @@ final class IMAPService: @unchecked Sendable {
         _ = try await ensureSelected(name)
         let ranges = uids.map { MessageIdentifierRange<UID>(UID(rawValue: $0)...UID(rawValue: $0)) }
         guard let set = MessageIdentifierSetNonEmpty(set: MessageIdentifierSet(ranges)) else { return [:] }
-        let section: FetchAttribute = byteLimit.map { .bodySection(peek: true, .complete, 0...UInt32($0 - 1)) }
+        let section: FetchAttribute =
+            byteLimit.map { .bodySection(peek: true, .complete, 0...UInt32($0 - 1)) }
             ?? .bodySection(peek: true, .complete, nil)
         let responses = try await send(.uidFetch(.set(set), [.uid, section], []))
         var out: [UInt32: Data] = [:]
@@ -553,7 +429,8 @@ final class IMAPService: @unchecked Sendable {
                 collector.enqueue(tag: tag, promise: promise)
                 let message = AppendMessage(options: AppendOptions(flagList: appendFlags), data: AppendData(byteCount: bytes.readableBytes))
                 let parts: [AppendCommand] = [
-                    .start(tag: tag, appendingTo: self.mailbox(name)), .beginMessage(message: message), .messageBytes(bytes), .endMessage, .finish
+                    .start(tag: tag, appendingTo: self.mailbox(name)), .beginMessage(message: message), .messageBytes(bytes), .endMessage,
+                    .finish,
                 ]
                 for part in parts { channel.write(IMAPClientHandler.Message.part(.append(part)), promise: nil) }
                 channel.flush()
@@ -561,7 +438,7 @@ final class IMAPService: @unchecked Sendable {
             }
         }.get()
 
-        let deadline = channel.eventLoop.scheduleTask(in: .seconds(30)) { channel.close(promise:nil) }
+        let deadline = channel.eventLoop.scheduleTask(in: .seconds(30)) { channel.close(promise: nil) }
         defer { deadline.cancel() }
         let responses = try await promise.futureResult.get()
         if let last = responses.last, case .tagged(let t) = last, case .ok = t.state { return }
@@ -595,20 +472,24 @@ final class IMAPService: @unchecked Sendable {
         let responses = try await withTaskCancellationHandler {
             try Task.checkCancellation()
             let promise = try await channel.eventLoop.submit { [collector] in
-                try admission.dispatch { try self.lifetime.dispatch {
-                    guard channel.isActive else { throw MailError.notConnected }
-                    let promise = channel.eventLoop.makePromise(of: [Response].self)
-                    collector.enqueue(tag: tag, promise: promise)
-                    let message = IMAPClientHandler.Message.part(.tagged(TaggedCommand(tag: tag, command: command)))
-                    channel.writeAndFlush(message, promise: nil)
-                    return promise
-                } }
+                try admission.dispatch {
+                    try self.lifetime.dispatch {
+                        guard channel.isActive else { throw MailError.notConnected }
+                        let promise = channel.eventLoop.makePromise(of: [Response].self)
+                        collector.enqueue(tag: tag, promise: promise)
+                        let message = IMAPClientHandler.Message.part(.tagged(TaggedCommand(tag: tag, command: command)))
+                        channel.writeAndFlush(message, promise: nil)
+                        return promise
+                    }
+                }
             }.get()
-            let deadline = channel.eventLoop.scheduleTask(in: .seconds(30)) { channel.close(promise:nil) }
+            let deadline = channel.eventLoop.scheduleTask(in: .seconds(30)) { channel.close(promise: nil) }
             defer { deadline.cancel() }
             // After dispatch, keep the actual outcome; cancellation cannot authorize replay.
             return try await promise.futureResult.get()
-        } onCancel: { admission.cancel() }
+        } onCancel: {
+            admission.cancel()
+        }
         if let last = responses.last, case .tagged(let tagged) = last {
             if case .ok = tagged.state { return responses }
             throw MailError.commandFailed("\(tagged.state)")
@@ -633,8 +514,20 @@ final class IMAPService: @unchecked Sendable {
         var keywords: [String] = []
 
         func reset() {
-            uid = 0; subject = ""; fromName = ""; fromEmail = ""; toName = ""; toEmail = ""; date = Date()
-            seen = false; flagged = false; messageID = ""; inReplyTo = ""; keywords = []; ccEmail = ""; bccEmail = ""
+            uid = 0
+            subject = ""
+            fromName = ""
+            fromEmail = ""
+            toName = ""
+            toEmail = ""
+            date = Date()
+            seen = false
+            flagged = false
+            messageID = ""
+            inReplyTo = ""
+            keywords = []
+            ccEmail = ""
+            bccEmail = ""
         }
 
         for r in responses {
@@ -671,10 +564,12 @@ final class IMAPService: @unchecked Sendable {
                 }
             case .finish:
                 if uid > 0 {
-                    out.append(IMAPMessage(uid: uid, subject: subject, fromName: fromName,
-                                           fromEmail: fromEmail, toName: toName, toEmail: toEmail, ccEmail: ccEmail, bccEmail: bccEmail,
-                                           date: date, seen: seen, flagged: flagged,
-                                           messageID: messageID, inReplyTo: inReplyTo, keywords: keywords))
+                    out.append(
+                        IMAPMessage(
+                            uid: uid, subject: subject, fromName: fromName,
+                            fromEmail: fromEmail, toName: toName, toEmail: toEmail, ccEmail: ccEmail, bccEmail: bccEmail,
+                            date: date, seen: seen, flagged: flagged,
+                            messageID: messageID, inReplyTo: inReplyTo, keywords: keywords))
                 }
             default:
                 break
@@ -698,7 +593,12 @@ final class IMAPService: @unchecked Sendable {
         var map: [UInt32: IMAPFlagState] = [:]
         var uid: UInt32 = 0, seen = false, flagged = false
         var keywords: [String] = []
-        func reset() { uid = 0; seen = false; flagged = false; keywords = [] }
+        func reset() {
+            uid = 0
+            seen = false
+            flagged = false
+            keywords = []
+        }
         for r in responses {
             guard case .fetch(let fr) = r else { continue }
             switch fr {
@@ -725,8 +625,10 @@ final class IMAPService: @unchecked Sendable {
     private static func parseRFC2822(_ s: String) -> Date? {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
-        for fmt in ["EEE, d MMM yyyy HH:mm:ss Z", "d MMM yyyy HH:mm:ss Z",
-                    "EEE, d MMM yyyy HH:mm:ss zzz", "EEE, d MMM yyyy HH:mm Z"] {
+        for fmt in [
+            "EEE, d MMM yyyy HH:mm:ss Z", "d MMM yyyy HH:mm:ss Z",
+            "EEE, d MMM yyyy HH:mm:ss zzz", "EEE, d MMM yyyy HH:mm Z",
+        ] {
             f.dateFormat = fmt
             if let d = f.date(from: s) { return d }
         }
@@ -735,8 +637,12 @@ final class IMAPService: @unchecked Sendable {
 
     private static func dateFrom(_ c: ServerMessageDate.Components) -> Date? {
         var comps = DateComponents()
-        comps.year = c.year; comps.month = c.month; comps.day = c.day
-        comps.hour = c.hour; comps.minute = c.minute; comps.second = c.second
+        comps.year = c.year
+        comps.month = c.month
+        comps.day = c.day
+        comps.hour = c.hour
+        comps.minute = c.minute
+        comps.second = c.second
         comps.timeZone = TimeZone(secondsFromGMT: c.zoneMinutes * 60)
         return Calendar(identifier: .gregorian).date(from: comps)
     }

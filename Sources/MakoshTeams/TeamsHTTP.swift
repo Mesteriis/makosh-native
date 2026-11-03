@@ -5,7 +5,9 @@ public struct TeamsHTTPResponse: Sendable {
     public let headers: [String: String]
     public let body: Data
     public init(status: Int, headers: [String: String], body: Data) {
-        self.status = status; self.headers = headers; self.body = body
+        self.status = status
+        self.headers = headers
+        self.body = body
     }
     func header(_ name: String) -> String? { headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value }
 }
@@ -34,9 +36,12 @@ public struct TeamsURLSessionTransport: TeamsHTTPTransport {
     public init() { self.init(configuration: .ephemeral) }
     init(configuration: URLSessionConfiguration) {
         let copy = configuration.copy() as! URLSessionConfiguration
-        copy.httpCookieStorage = nil; copy.urlCredentialStorage = nil; copy.urlCache = nil
+        copy.httpCookieStorage = nil
+        copy.urlCredentialStorage = nil
+        copy.urlCache = nil
         copy.requestCachePolicy = .reloadIgnoringLocalCacheData
-        copy.timeoutIntervalForRequest = 30; copy.timeoutIntervalForResource = 30
+        copy.timeoutIntervalForRequest = 30
+        copy.timeoutIntervalForResource = 30
         self.configuration = copy
     }
     public func response(to request: URLRequest) async throws -> TeamsHTTPResponse {
@@ -44,7 +49,8 @@ public struct TeamsURLSessionTransport: TeamsHTTPTransport {
     }
     public func upload(file: URL, to request: URLRequest) async throws -> TeamsHTTPResponse {
         guard file.isFileURL, request.httpMethod == "PUT", request.httpBody == nil,
-              let url = request.url, TeamsGraphURL.accepts(url) else { throw TeamsFailure.invalidResource }
+            let url = request.url, TeamsGraphURL.accepts(url)
+        else { throw TeamsFailure.invalidResource }
         return try await exchange(request, file: file)
     }
     private func exchange(_ request: URLRequest, file: URL?) async throws -> TeamsHTTPResponse {
@@ -55,10 +61,13 @@ public struct TeamsURLSessionTransport: TeamsHTTPTransport {
         let exchange = TeamsHTTPExchange(configuration: configuration)
         return try await withTaskCancellationHandler {
             try await exchange.run(request, file: file)
-        } onCancel: { exchange.cancel() }
+        } onCancel: {
+            exchange.cancel()
+        }
     }
 }
 
+/// Mutable exchange state is guarded by `lock` against URLSession delegate callbacks.
 private final class TeamsHTTPExchange: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private let configuration: URLSessionConfiguration
@@ -75,13 +84,16 @@ private final class TeamsHTTPExchange: NSObject, URLSessionDataDelegate, @unchec
     func run(_ request: URLRequest, file: URL?) async throws -> TeamsHTTPResponse {
         try await withCheckedThrowingContinuation { continuation in
             lock.lock()
-            if cancelled { lock.unlock(); continuation.resume(throwing: CancellationError()); return }
+            if cancelled {
+                lock.unlock()
+                continuation.resume(throwing: CancellationError())
+                return
+            }
             self.continuation = continuation
             let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
             self.session = session
             let task: URLSessionDataTask
-            if let file { task = session.uploadTask(with: request, fromFile: file) }
-            else { task = session.dataTask(with: request) }
+            if let file { task = session.uploadTask(with: request, fromFile: file) } else { task = session.dataTask(with: request) }
             self.task = task
             lock.unlock()
             task.resume()
@@ -95,21 +107,30 @@ private final class TeamsHTTPExchange: NSObject, URLSessionDataDelegate, @unchec
 
     private func finish(_ result: Result<TeamsHTTPResponse, any Error>) {
         let work = lock.withLock { () -> (CheckedContinuation<TeamsHTTPResponse, any Error>?, URLSession?) in
-            let pending = continuation; continuation = nil
-            let active = session; session = nil; task = nil
+            let pending = continuation
+            continuation = nil
+            let active = session
+            session = nil
+            task = nil
             return (pending, active)
         }
         work.1?.invalidateAndCancel()
         work.0?.resume(with: result)
     }
 
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
-                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+    func urlSession(
+        _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
         guard let http = response as? HTTPURLResponse else {
-            completionHandler(.cancel); finish(.failure(TeamsFailure.invalidResponse)); return
+            completionHandler(.cancel)
+            finish(.failure(TeamsFailure.invalidResponse))
+            return
         }
         guard response.expectedContentLength <= Int64(limit) else {
-            completionHandler(.cancel); finish(.failure(TeamsFailure.bodyTooLarge)); return
+            completionHandler(.cancel)
+            finish(.failure(TeamsFailure.bodyTooLarge))
+            return
         }
         lock.withLock { self.response = http }
         completionHandler(.allow)
@@ -118,19 +139,25 @@ private final class TeamsHTTPExchange: NSObject, URLSessionDataDelegate, @unchec
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         let accepted = lock.withLock { () -> Bool in
             guard continuation != nil, data.count <= limit - body.count else { return false }
-            body.append(data); return true
+            body.append(data)
+            return true
         }
         if !accepted { finish(.failure(TeamsFailure.bodyTooLarge)) }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void
+    ) {
         completionHandler(nil)
         finish(.failure(TeamsFailure.redirectRejected))
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
-        if let error { finish(.failure(error is CancellationError ? CancellationError() : TeamsFailure.transport)); return }
+        if let error {
+            finish(.failure(error is CancellationError ? CancellationError() : TeamsFailure.transport))
+            return
+        }
         let result = lock.withLock { () -> TeamsHTTPResponse? in
             guard let response else { return nil }
             let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, pair in

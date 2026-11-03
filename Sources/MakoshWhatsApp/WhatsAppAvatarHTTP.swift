@@ -1,5 +1,6 @@
 import Foundation
 
+/// Immutable after init; the private configuration copy is never mutated or shared.
 final class WhatsAppAvatarHTTP: WhatsAppAvatarFetching, @unchecked Sendable {
   private let configuration: URLSessionConfiguration
   init(configuration: URLSessionConfiguration = .ephemeral) {

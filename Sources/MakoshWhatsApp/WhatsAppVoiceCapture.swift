@@ -70,6 +70,7 @@ public actor WhatsAppVoiceCapture {
     native = nil
   }
 }
+/// Sample/flag state is guarded by `lock`; the engine is started and stopped on `queue`.
 private final class VoiceInput: @unchecked Sendable {
   private let queue: DispatchQueue, engine = AVAudioEngine(), lock = NSLock()
   private var samples = WhatsAppVoiceSamples(limit: 28_800_000)

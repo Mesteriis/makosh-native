@@ -23,12 +23,13 @@ final class SMTPResponseDecoder: ByteToMessageDecoder, @unchecked Sendable {
         while let crlf = buffer.readableBytesView.firstRange(of: [0x0D, 0x0A]) {
             let lineLength = crlf.lowerBound - buffer.readableBytesView.startIndex
             let lineBytes = buffer.readBytes(length: lineLength) ?? []
-            buffer.moveReaderIndex(forwardBy: 2) // consume CRLF
+            buffer.moveReaderIndex(forwardBy: 2)  // consume CRLF
             let line = String(decoding: lineBytes, as: UTF8.self)
             guard lineLength >= 4, lineLength <= 8192, pending.count < 1000,
-                  let code = Int(line.prefix(3)), (100...599).contains(code),
-                  pendingCode == nil || pendingCode == code else { throw MailError.noResult }
-            let separator = line[line.index(line.startIndex,offsetBy:3)]
+                let code = Int(line.prefix(3)), (100...599).contains(code),
+                pendingCode == nil || pendingCode == code
+            else { throw MailError.noResult }
+            let separator = line[line.index(line.startIndex, offsetBy: 3)]
             guard separator == " " || separator == "-" else { throw MailError.noResult }
             pendingCode = code
             pending.append(line)
@@ -38,7 +39,8 @@ final class SMTPResponseDecoder: ByteToMessageDecoder, @unchecked Sendable {
                 if line[idx] == " " {
                     let code = Int(line.prefix(3)) ?? 0
                     context.fireChannelRead(wrapInboundOut(SMTPResponse(code: code, lines: pending)))
-                    pending.removeAll(); pendingCode = nil
+                    pending.removeAll()
+                    pendingCode = nil
                     producedSomething = true
                 }
             }
@@ -48,28 +50,32 @@ final class SMTPResponseDecoder: ByteToMessageDecoder, @unchecked Sendable {
     }
 }
 
+/// Buffer and waiters are touched only on the channel's event loop.
 final class SMTPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = SMTPResponse
     private var buffered: [SMTPResponse] = []
     private var waiters: [EventLoopPromise<SMTPResponse>] = []
 
     func await(promise: EventLoopPromise<SMTPResponse>) {
-        if !buffered.isEmpty { promise.succeed(buffered.removeFirst()) }
-        else { waiters.append(promise) }
+        if !buffered.isEmpty { promise.succeed(buffered.removeFirst()) } else { waiters.append(promise) }
     }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let resp = unwrapInboundIn(data)
-        if !waiters.isEmpty { waiters.removeFirst().succeed(resp) }
-        else { buffered.append(resp) }
+        if !waiters.isEmpty { waiters.removeFirst().succeed(resp) } else { buffered.append(resp) }
     }
     func errorCaught(context: ChannelHandlerContext, error: Error) {
-        waiters.forEach { $0.fail(error) }; waiters.removeAll(); context.close(promise: nil)
+        waiters.forEach { $0.fail(error) }
+        waiters.removeAll()
+        context.close(promise: nil)
     }
     func channelInactive(context: ChannelHandlerContext) {
-        waiters.forEach { $0.fail(MailError.notConnected) }; waiters.removeAll(); context.fireChannelInactive()
+        waiters.forEach { $0.fail(MailError.notConnected) }
+        waiters.removeAll()
+        context.fireChannelInactive()
     }
 }
 
+/// The channel is guarded by `connectionLock`; one send runs at a time per instance.
 final class SMTPService: @unchecked Sendable {
     private let host: String
     private let port: Int
@@ -83,11 +89,22 @@ final class SMTPService: @unchecked Sendable {
     private let connectionLock = NSLock()
     private var connection: Channel?
     private var channel: Channel? {
-        get { connectionLock.lock(); defer { connectionLock.unlock() }; return connection }
-        set { connectionLock.lock(); connection = newValue; connectionLock.unlock() }
+        get {
+            connectionLock.lock()
+            defer { connectionLock.unlock() }
+            return connection
+        }
+        set {
+            connectionLock.lock()
+            connection = newValue
+            connectionLock.unlock()
+        }
     }
     private let admission = MailCommandDispatch()
-    func cancel() { admission.cancel(); channel?.close(promise: nil) }
+    func cancel() {
+        admission.cancel()
+        channel?.close(promise: nil)
+    }
 
     init(config: MailAccountConfig, password: String, tlsCAFile: String? = nil) {
         self.tlsCAFile = tlsCAFile
@@ -100,19 +117,25 @@ final class SMTPService: @unchecked Sendable {
 
     /// Connects, authenticates, sends one message, and disconnects.
     /// `progress` reports the DATA upload fraction (0...1) for large messages.
-    func send(from: String, fromName: String?, recipients: [String], message: String,
-              progress: (@Sendable (Double) -> Void)? = nil) async throws {
+    func send(
+        from: String, fromName: String?, recipients: [String], message: String,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws {
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
             try await performSend(from: from, fromName: fromName, recipients: recipients, message: message, progress: progress)
-        } onCancel: { self.cancel() }
+        } onCancel: {
+            self.cancel()
+        }
     }
-    private func performSend(from: String, fromName: String?, recipients: [String], message: String,
-                             progress: (@Sendable (Double) -> Void)?) async throws {
+    private func performSend(
+        from: String, fromName: String?, recipients: [String], message: String,
+        progress: (@Sendable (Double) -> Void)?
+    ) async throws {
         try await connect()
         defer { Task { await self.close() } }
 
-        _ = try await expect([220])                      // greeting
+        _ = try await expect([220])  // greeting
         try await ehlo()
         if security == .startTLS {
             _ = try await command("STARTTLS", expect: [220])
@@ -128,9 +151,10 @@ final class SMTPService: @unchecked Sendable {
             _ = try await command("RCPT TO:<\(rcpt)>", expect: [250, 251])
         }
         _ = try await command("DATA", expect: [354])
-        do { _ = try await sendData(message, progress: progress) }
-        catch let error as MailFailure { if error == .serverRejected { throw error }; throw MailFailure.unknownSubmission }
-        catch { throw MailFailure.unknownSubmission }
+        do { _ = try await sendData(message, progress: progress) } catch let error as MailFailure {
+            if error == .serverRejected { throw error }
+            throw MailFailure.unknownSubmission
+        } catch { throw MailFailure.unknownSubmission }
         // Acceptance is final even if QUIT cannot be acknowledged.
         await close()
     }
@@ -144,8 +168,10 @@ final class SMTPService: @unchecked Sendable {
             }
         do {
             let channel = try await bootstrap.connectTimeout(.seconds(15)).connect(host: host, port: port).get()
-            do { try admission.dispatch { self.channel = channel } }
-            catch { channel.close(promise: nil); throw error }
+            do { try admission.dispatch { self.channel = channel } } catch {
+                channel.close(promise: nil)
+                throw error
+            }
             try Task.checkCancellation()
             if security == .tls { try await MailTLSHandler.install(channel: channel, host: host, caFile: tlsCAFile).get() }
         } catch {
@@ -234,7 +260,7 @@ final class SMTPService: @unchecked Sendable {
             handler.await(promise: promise)
             return promise
         }.get()
-        let deadline = channel.eventLoop.scheduleTask(in: .seconds(30)) { channel.close(promise:nil) }
+        let deadline = channel.eventLoop.scheduleTask(in: .seconds(30)) { channel.close(promise: nil) }
         defer { deadline.cancel() }
         let resp = try await promise.futureResult.get()
         guard codes.contains(resp.code) else {

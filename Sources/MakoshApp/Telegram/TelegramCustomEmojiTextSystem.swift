@@ -10,7 +10,8 @@ struct TelegramCustomEmojiLayoutFrame {
 @MainActor enum TelegramCustomEmojiTextSystem {
     static func install(in textView: NSTextView) {
         guard let container = textView.textContainer,
-              !(textView.layoutManager is TelegramCustomEmojiLayoutManager) else { return }
+            !(textView.layoutManager is TelegramCustomEmojiLayoutManager)
+        else { return }
         // AppKit transfers the existing native storage/container graph. The
         // view owns that graph; the overlay never retains its text storage.
         container.replaceLayoutManager(TelegramCustomEmojiLayoutManager())
@@ -25,11 +26,13 @@ struct TelegramCustomEmojiLayoutFrame {
         var end = 0
         self.frames = frames.sorted { $0.range.location < $1.range.location }.filter { entry in
             guard entry.range.location >= end, entry.range.length > 0,
-                  entry.range.location <= length, entry.range.length <= length - entry.range.location,
-                  (1...512).contains(entry.frame.width), (1...512).contains(entry.frame.height),
-                  entry.frame.pixels.count == entry.frame.width * entry.frame.height * 4,
-                  let range = Range(entry.range, in: source), source[range].count == 1 else { return false }
-            end = NSMaxRange(entry.range); return true
+                entry.range.location <= length, entry.range.length <= length - entry.range.location,
+                (1...512).contains(entry.frame.width), (1...512).contains(entry.frame.height),
+                entry.frame.pixels.count == entry.frame.width * entry.frame.height * 4,
+                let range = Range(entry.range, in: source), source[range].count == 1
+            else { return false }
+            end = NSMaxRange(entry.range)
+            return true
         }
         invalidateDisplay(forCharacterRange: NSRange(location: 0, length: textStorage?.length ?? 0))
     }
@@ -43,18 +46,23 @@ struct TelegramCustomEmojiLayoutFrame {
     }
     private func drawReadyGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         guard let storage = textStorage, Data(storage.string.utf8) == source, !frames.isEmpty else {
-            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin); return
+            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+            return
         }
         var ready: [(NSRange, NSRect, NSImage)] = []
         for entry in frames {
             var actual = NSRange(location: NSNotFound, length: 0)
             let glyphs = glyphRange(forCharacterRange: entry.range, actualCharacterRange: &actual)
             guard actual == entry.range, glyphs.length > 0,
-                  NSIntersectionRange(glyphs, glyphsToShow).length > 0,
-                  let container = textContainer(forGlyphAt: glyphs.location, effectiveRange: nil) else { continue }
+                NSIntersectionRange(glyphs, glyphsToShow).length > 0,
+                let container = textContainer(forGlyphAt: glyphs.location, effectiveRange: nil)
+            else { continue }
             let bounds = boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: origin.x, dy: origin.y)
-            let tint = entry.isSingleColor ? (storage.attribute(.foregroundColor, at: entry.range.location,
-                effectiveRange: nil) as? NSColor ?? .textColor) : nil
+            let tint =
+                entry.isSingleColor
+                ? (storage.attribute(
+                    .foregroundColor, at: entry.range.location,
+                    effectiveRange: nil) as? NSColor ?? .textColor) : nil
             guard bounds.width > 0, bounds.height > 0, let image = image(entry.frame, tint: tint) else { continue }
             ready.append((glyphs, bounds, image))
         }
@@ -97,13 +105,16 @@ struct TelegramCustomEmojiLayoutFrame {
             }
         }
         guard let provider = CGDataProvider(data: pixels as CFData),
-              let image = CGImage(width: frame.width, height: frame.height, bitsPerComponent: 8, bitsPerPixel: 32,
+            let image = CGImage(
+                width: frame.width, height: frame.height, bitsPerComponent: 8, bitsPerPixel: 32,
                 bytesPerRow: frame.width * 4, space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: [.byteOrder32Little, CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)],
-                provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { return nil }
+                provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+        else { return nil }
         return NSImage(cgImage: image, size: NSSize(width: frame.width, height: frame.height))
     }
 }
+/// Carries the layout manager across a hop; it is dereferenced only on the main actor.
 private struct TelegramCustomEmojiMainThreadLayoutReference: @unchecked Sendable {
     let layout: TelegramCustomEmojiLayoutManager
 }
@@ -113,7 +124,10 @@ private struct TelegramCustomEmojiMainThreadLayoutReference: @unchecked Sendable
         let playback = TelegramCustomEmojiPlaybackController()
         var subscription: AnyCancellable?
         init(descriptor: TelegramCustomEmojiDescriptor) { self.descriptor = descriptor }
-        func stop() { subscription = nil; playback.stop() }
+        func stop() {
+            subscription = nil
+            playback.stop()
+        }
     }
     private weak var textView: NSTextView?
     private var value: TelegramFormattedText?
@@ -130,41 +144,60 @@ private struct TelegramCustomEmojiMainThreadLayoutReference: @unchecked Sendable
         for entry in entries.values { entry.stop() }
         for observer in clipObservers { NotificationCenter.default.removeObserver(observer) }
     }
-    func update(textView: NSTextView, value: TelegramFormattedText,
+    func update(
+        textView: NSTextView, value: TelegramFormattedText,
         descriptors: [Int64: TelegramCustomEmojiDescriptor], context: TelegramCustomEmojiPlaybackContext?,
-        concealedRanges: [NSRange]) {
-        if self.textView !== textView || self.value != value || self.descriptors != descriptors ||
-           self.context !== context || concealed != concealedRanges || presentation != Data(textView.string.utf8) {
+        concealedRanges: [NSRange]
+    ) {
+        if self.textView !== textView || self.value != value || self.descriptors != descriptors || self.context !== context
+            || concealed != concealedRanges || presentation != Data(textView.string.utf8)
+        {
             detach()
-            self.textView = textView; self.value = value; self.descriptors = descriptors; self.context = context
-            self.concealed = concealedRanges; presentation = Data(textView.string.utf8)
+            self.textView = textView
+            self.value = value
+            self.descriptors = descriptors
+            self.context = context
+            self.concealed = concealedRanges
+            presentation = Data(textView.string.utf8)
         }
         layout()
     }
     func layout() {
         guard !layingOut, let textView, let layout = textView.layoutManager as? TelegramCustomEmojiLayoutManager,
-              let container = textView.textContainer else { return }
+            let container = textView.textContainer
+        else { return }
         observeClipping(of: textView)
         layingOut = true
-        defer { layingOut = false; redraw() }
+        defer {
+            layingOut = false
+            redraw()
+        }
         guard let value, context != nil, presentation == Data(textView.string.utf8),
-              textView.string.utf16.count == value.text.utf16.count else {
-            for entry in entries.values { entry.stop() }; entries.removeAll(); return
+            textView.string.utf16.count == value.text.utf16.count
+        else {
+            for entry in entries.values { entry.stop() }
+            entries.removeAll()
+            return
         }
         layout.ensureLayout(for: container)
         let actual = textView.string as NSString, raw = value.text as NSString
         var boundaries: Set<Int> = [0], count = 0
-        for character in value.text { count += String(character).utf16.count; boundaries.insert(count) }
+        for character in value.text {
+            count += String(character).utf16.count
+            boundaries.insert(count)
+        }
         var visible: [NSRange: (TelegramCustomEmojiDescriptor, Int, Int)] = [:]
         for entity in value.entities {
             guard case let .customEmoji(_, fileID) = entity.kind, let descriptor = descriptors[fileID],
-                  descriptor.fileID == fileID, entity.offset >= 0, entity.length > 0,
-                  entity.offset <= raw.length, entity.length <= raw.length - entity.offset,
-                  boundaries.contains(entity.offset), boundaries.contains(entity.offset + entity.length) else { continue }
+                descriptor.fileID == fileID, entity.offset >= 0, entity.length > 0,
+                entity.offset <= raw.length, entity.length <= raw.length - entity.offset,
+                boundaries.contains(entity.offset), boundaries.contains(entity.offset + entity.length)
+            else { continue }
             let range = NSRange(location: entity.offset, length: entity.length)
             guard !concealed.contains(where: { NSIntersectionRange($0, range).length > 0 }),
-                  actual.substring(with: range).utf8.elementsEqual(raw.substring(with: range).utf8),
-                  raw.substring(with: range).count == 1 else { continue }
+                actual.substring(with: range).utf8.elementsEqual(raw.substring(with: range).utf8),
+                raw.substring(with: range).count == 1
+            else { continue }
             var characterRange = NSRange(location: NSNotFound, length: 0)
             let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: &characterRange)
             guard characterRange == range, glyphs.length > 0 else { continue }
@@ -181,10 +214,12 @@ private struct TelegramCustomEmojiMainThreadLayoutReference: @unchecked Sendable
         }
         for (range, (descriptor, width, height)) in visible {
             let entry: Entry
-            if let previous = entries[range], previous.descriptor == descriptor { entry = previous }
-            else {
+            if let previous = entries[range], previous.descriptor == descriptor {
+                entry = previous
+            } else {
                 entries.removeValue(forKey: range)?.stop()
-                entry = Entry(descriptor: descriptor); entries[range] = entry
+                entry = Entry(descriptor: descriptor)
+                entries[range] = entry
                 entry.subscription = entry.playback.$frame.sink { [weak self] _ in
                     self?.redraw()
                 }
@@ -202,23 +237,35 @@ private struct TelegramCustomEmojiMainThreadLayoutReference: @unchecked Sendable
         let ids = clips.map(ObjectIdentifier.init)
         guard ids != clipIDs else { return }
         for observer in clipObservers { NotificationCenter.default.removeObserver(observer) }
-        clipObservers = []; clipIDs = ids
+        clipObservers = []
+        clipIDs = ids
         for clip in clips {
             clip.postsBoundsChangedNotifications = true
-            clipObservers.append(NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
-                object: clip, queue: .main) { [weak self] _ in
+            clipObservers.append(
+                NotificationCenter.default.addObserver(
+                    forName: NSView.boundsDidChangeNotification,
+                    object: clip, queue: .main
+                ) { [weak self] _ in
                     MainActor.assumeIsolated { self?.layout() }
                 })
         }
     }
     func detach() {
         for observer in clipObservers { NotificationCenter.default.removeObserver(observer) }
-        clipObservers = []; clipIDs = []
-        for entry in entries.values { entry.stop() }; entries.removeAll()
+        clipObservers = []
+        clipIDs = []
+        for entry in entries.values { entry.stop() }
+        entries.removeAll()
         if let textView, let layout = textView.layoutManager as? TelegramCustomEmojiLayoutManager {
-            layout.install(source: textView.string, frames: []); textView.needsDisplay = true
+            layout.install(source: textView.string, frames: [])
+            textView.needsDisplay = true
         }
-        textView = nil; value = nil; descriptors = [:]; context = nil; concealed = []; presentation = Data()
+        textView = nil
+        value = nil
+        descriptors = [:]
+        context = nil
+        concealed = []
+        presentation = Data()
     }
     private func redraw() {
         guard !layingOut, let textView, let layout = textView.layoutManager as? TelegramCustomEmojiLayoutManager else { return }
@@ -228,7 +275,10 @@ private struct TelegramCustomEmojiMainThreadLayoutReference: @unchecked Sendable
             frames = entries.compactMap { range, entry in
                 entry.playback.frame.map { .init(range: range, frame: $0, isSingleColor: entry.descriptor.isSingleColor) }
             }
-        } else { frames = [] }
-        layout.install(source: source, frames: frames); textView.needsDisplay = true
+        } else {
+            frames = []
+        }
+        layout.install(source: source, frames: frames)
+        textView.needsDisplay = true
     }
 }

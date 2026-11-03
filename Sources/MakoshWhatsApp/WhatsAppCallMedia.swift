@@ -15,7 +15,7 @@ public struct WhatsAppCallDeviceSelection: Sendable, Equatable {
   public init() {}
 }
 public struct WhatsAppCallMediaInput: Sendable { public var audio: [[Int16]], video: [UInt8] }
-public struct WhatsAppCallImages: @unchecked Sendable {
+public struct WhatsAppCallImages: Sendable {
   public var local: CGImage?, remote: CGImage?
   public init(local: CGImage?, remote: CGImage?) {
     self.local = local
@@ -32,7 +32,8 @@ public protocol WhatsAppCallMediaServing: Sendable {
   func images() async -> WhatsAppCallImages
   func stop() async
 }
-extension WhatsAppCallMediaServing {public func setGroupVideoMode() async {}}
+extension WhatsAppCallMediaServing { public func setGroupVideoMode() async {} }
+/// All jobs run serially on the one private queue.
 final class MediaExecutor: SerialExecutor, @unchecked Sendable {
   let queue = DispatchQueue(label: "Makosh.whatsapp.call.media", qos: .userInteractive)
   func enqueue(_ job: consuming ExecutorJob) {
@@ -66,7 +67,11 @@ public actor WhatsAppCallMedia: WhatsAppCallMediaServing {
     guard let native else { throw WhatsAppFailure.closed }
     try native.setVideo(on)
   }
-  public func setGroupVideoMode() async {guard let owned=native else {return};owned.beginGroupVideo();await owned.codec.resetDecoder()}
+  public func setGroupVideoMode() async {
+    guard let owned = native else { return }
+    owned.beginGroupVideo()
+    await owned.codec.resetDecoder()
+  }
   public func setMuted(_ on: Bool) { native?.setMuted(on) }
   public func input() throws -> WhatsAppCallMediaInput {
     guard let native, native.healthy else { throw WhatsAppFailure.unavailable }
@@ -137,7 +142,7 @@ private final class CallDevices: NSObject, AVCaptureVideoDataOutputSampleBufferD
   private let engine = AVAudioEngine(), player = AVAudioPlayerNode(), camera = AVCaptureSession()
   private let lock = NSLock()
   private var pcm = WhatsAppPCMFrames(), video = Data(), local: CGImage?, remote: CGImage?
-  private var groupVideo=false
+  private var groupVideo = false
   private var closed = false, muted = false, videoEnabled = false, scheduled = 0, hasTap = false
   private var converter: AVAudioConverter?
   private var lastVideoTime = CMTime.invalid
@@ -154,7 +159,7 @@ private final class CallDevices: NSObject, AVCaptureVideoDataOutputSampleBufferD
     }
     codec.onDecoded = { [weak self] image in
       self?.lock.withLock {
-        guard let self, !self.closed,!self.groupVideo else { return }
+        guard let self, !self.closed, !self.groupVideo else { return }
         self.remote = image
       }
     }
@@ -294,10 +299,15 @@ private final class CallDevices: NSObject, AVCaptureVideoDataOutputSampleBufferD
       return .init(audio: audio, video: Array(frame))
     }
   }
-  func beginGroupVideo() {lock.withLock {groupVideo=true;remote=nil}}
+  func beginGroupVideo() {
+    lock.withLock {
+      groupVideo = true
+      remote = nil
+    }
+  }
   func images() -> WhatsAppCallImages { lock.withLock { .init(local: local, remote: remote) } }
   func receive(_ output: WhatsAppCallOutput) {
-    if !lock.withLock({groupVideo}),let video = output.video, !video.isEmpty {
+    if !lock.withLock({ groupVideo }), let video = output.video, !video.isEmpty {
       codec.decode(Data(video), orientation: output.orientation)
     }
     for frame in output.audio where !frame.isEmpty && frame.count <= 1920 {

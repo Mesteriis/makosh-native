@@ -147,7 +147,7 @@ Rust-процесс под AGPLv3; не связывай его с основн�
 
 - Текущий первый этап — собственный native экран и переданная пользователем
   официальная HTTPS-ссылка, открываемая в официальном приложении/браузере.
-  `Sources/MakoshApp/MeetingsView.swift` реализует browser handoff, не native call.
+  `Sources/MakoshApp/Workspace/MeetingsView.swift` реализует browser handoff, не native call.
 - REST list/create/configuration добавляются для подходящего аккаунта после
   проверки официального контракта. В исследованном срезе API ограничен
   организационными аккаунтами Яндекс 360 для бизнеса; consumer-доступ не
@@ -161,7 +161,7 @@ Rust-процесс под AGPLv3; не связывай его с основн�
 ## Общие контракты переноса
 
 - Используй существующий workspace и service sidebar
-  (`Sources/MakoshApp/WorkspaceView.swift`). До изменения UI/worker-границ читай
+  (`Sources/MakoshApp/Workspace/WorkspaceView.swift`). До изменения UI/worker-границ читай
   [main-thread-boundaries.md](main-thread-boundaries.md). Конкретный сервис
   владеет транспортом, подписками, credentials, кешем и жизненным циклом;
   MainActor принимает команды и публикует состояние. Общая plugin framework

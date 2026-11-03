@@ -43,6 +43,14 @@ upstream dependency graph; собственный NIO TLS handler использ
 OpenSSL 3, обязательные trust/hostname checks, TLS 1.2+. Никакой `.references`
 зависимости сборки или исполнения нет.
 
+Портированный из MMail `IMAPService.swift` разделён (2026-11-03) на
+`IMAPTypes.swift` (модели и ошибки), `IMAPResponseHandler.swift` (NIO-обработчик
+ответов) и `IMAPService.swift` (сессия и команды); каждый файл сохраняет
+заголовок MIT-атрибуции MMail. Поведение не менялось. PostgreSQL-сессии
+`MailRepository` и `MailOperationLease` используют общий `PostgresConnection`
+из MakoshCore; лиз закрывает соединение синхронно, чтобы advisory lock
+освобождался вместе с ним.
+
 MailRepository шифрует state, отдельные полные письма и короткие previews;
 append-only versions не допускают UPDATE/DELETE/TRUNCATE. Cache paging имеет
 folder/current UIDVALIDITY/removed predicates и независимый курсор. Старые

@@ -54,7 +54,7 @@ protocol WhatsAppParticipantDecoding: AnyObject, Sendable {
   func stop() async
 }
 extension WhatsAppH264Codec: WhatsAppParticipantDecoding {}
-public struct WhatsAppGroupCallImage: @unchecked Sendable {
+public struct WhatsAppGroupCallImage: Sendable {
   public let stream: WhatsAppCallStreamID
   public let image: CGImage
 }
@@ -76,7 +76,9 @@ public actor WhatsAppGroupCallMedia {
   init(factory: @escaping @Sendable () -> any WhatsAppParticipantDecoding) {
     self.factory = factory
   }
-  public func setVisibleStreams(_ ids: [WhatsAppCallStreamID], callID: String, epoch: UInt64)
+  public func setVisibleStreams(
+    _ ids: [WhatsAppCallStreamID], callID: String, epoch: UInt64
+  )
     async throws
   {
     guard !closed, ids.count <= 9, Set(ids).count == ids.count, !callID.isEmpty else {

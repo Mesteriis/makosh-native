@@ -6,14 +6,20 @@ import CoreImage
 import Foundation
 @preconcurrency import VideoToolbox
 
+/// Pending frames and flags are guarded by `lock`; VideoToolbox sessions are used only on `queue`.
 final class WhatsAppH264Codec: @unchecked Sendable {
-  static func validDimensions(width:Int,height:Int)->Bool {width>0 && height>0 && max(width,height)<=1920 && min(width,height)<=1080}
-  private let tileSize:CGSize?
-  private var resetting=false
+  static func validDimensions(width: Int, height: Int) -> Bool {
+    width > 0 && height > 0 && max(width, height) <= 1920 && min(width, height) <= 1080
+  }
+  private let tileSize: CGSize?
+  private var resetting = false
   private let queue: DispatchQueue
   init(
-    queue: DispatchQueue = DispatchQueue(label: "Makosh.whatsapp.call.codec", qos: .userInteractive),tileSize:CGSize?=nil
-  ) { self.queue = queue;self.tileSize=tileSize }
+    queue: DispatchQueue = DispatchQueue(label: "Makosh.whatsapp.call.codec", qos: .userInteractive), tileSize: CGSize? = nil
+  ) {
+    self.queue = queue
+    self.tileSize = tileSize
+  }
   private let lock = NSLock()
   private var closed = false, encoding = false
   private var decoding = false, rendering = false
@@ -106,7 +112,7 @@ final class WhatsAppH264Codec: @unchecked Sendable {
     guard !data.isEmpty, data.count <= 256 * 1024, orientation <= 3 else { return }
     let key = Self.units(data).contains { [5, 7].contains(Int(($0.first ?? 0) & 31)) }
     let schedule = lock.withLock {
-      guard !closed,!resetting else { return false }
+      guard !closed, !resetting else { return false }
       if key {
         pendingKey = (data, orientation)
         pendingDecode = nil
@@ -171,8 +177,11 @@ final class WhatsAppH264Codec: @unchecked Sendable {
       }
     }
     guard let format else { return }
-    let dimensions=CMVideoFormatDescriptionGetDimensions(format)
-    guard Self.validDimensions(width:Int(dimensions.width),height:Int(dimensions.height)) else {self.format=nil;return}
+    let dimensions = CMVideoFormatDescriptionGetDimensions(format)
+    guard Self.validDimensions(width: Int(dimensions.width), height: Int(dimensions.height)) else {
+      self.format = nil
+      return
+    }
     if decoder == nil {
       var created: VTDecompressionSession?
       let status = VTDecompressionSessionCreate(
@@ -222,7 +231,7 @@ final class WhatsAppH264Codec: @unchecked Sendable {
     // The decompressor callback enters without actor inheritance. Conversion
     // is serialized with codec work, and UI receives an immutable CGImage.
     let schedule = lock.withLock {
-      guard !closed,!resetting else { return false }
+      guard !closed, !resetting else { return false }
       pendingRender = (PixelFrame(image), orientation)
       if rendering { return false }
       rendering = true
@@ -240,7 +249,10 @@ final class WhatsAppH264Codec: @unchecked Sendable {
     guard let (frame, orientation) = frame else { return }
     var ci = CIImage(cvPixelBuffer: frame.value).oriented(
       [.up, .right, .down, .left][Int(orientation)])
-    if let tileSize {let scale=min(1,tileSize.width/ci.extent.width,tileSize.height/ci.extent.height);ci=ci.transformed(by:CGAffineTransform(scaleX:scale,y:scale))}
+    if let tileSize {
+      let scale = min(1, tileSize.width / ci.extent.width, tileSize.height / ci.extent.height)
+      ci = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    }
     let context = self.context ?? CIContext(options: [.cacheIntermediates: false])
     self.context = context
     if let image = context.createCGImage(ci, from: ci.extent) {
@@ -250,12 +262,27 @@ final class WhatsAppH264Codec: @unchecked Sendable {
   }
 
   func resetDecoder() async {
-    lock.withLock {resetting=true;pendingDecode=nil;pendingKey=nil;pendingRender=nil}
-    await withCheckedContinuation {continuation in queue.async { [self] in
-      if let decoder {VTDecompressionSessionWaitForAsynchronousFrames(decoder);VTDecompressionSessionInvalidate(decoder)}
-      decoder=nil;format=nil;sps=nil;pps=nil;context=nil
-      lock.withLock {resetting=false};continuation.resume()
-    }}
+    lock.withLock {
+      resetting = true
+      pendingDecode = nil
+      pendingKey = nil
+      pendingRender = nil
+    }
+    await withCheckedContinuation { continuation in
+      queue.async { [self] in
+        if let decoder {
+          VTDecompressionSessionWaitForAsynchronousFrames(decoder)
+          VTDecompressionSessionInvalidate(decoder)
+        }
+        decoder = nil
+        format = nil
+        sps = nil
+        pps = nil
+        context = nil
+        lock.withLock { resetting = false }
+        continuation.resume()
+      }
+    }
   }
   func stop() async {
     lock.withLock {

@@ -59,6 +59,17 @@ final class MailAIIndexSourceTests: XCTestCase {
         XCTAssertTrue(chat.isEmpty)
     }
 
+    func testAccountBackfillReturnsLatestStateOnly() async throws {
+        let repository = try repository(), mine = account("me@example.invalid")
+        try await repository.saveAccount(mine)
+        var removed = letter(mine, uid: 5, from: "p@example.invalid", text: "removed later")
+        try await repository.saveLetters([removed, letter(mine, uid: 6, from: "p@example.invalid", text: "stays")])
+        removed.removedFromSource = true
+        try await repository.saveLetters([removed])
+        let items = try await MailAIIndexSource(repository: repository).items(in: .mailAccount(accountID: mine.id), after: 0, limit: 200)
+        XCTAssertEqual(items.map(\.text), ["stays"])
+    }
+
     func testHTMLOnlyLetterBecomesPlainText() async throws {
         let repository = try repository(), mine = account("me@example.invalid")
         try await repository.saveAccount(mine)

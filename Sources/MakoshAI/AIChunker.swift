@@ -14,7 +14,9 @@ enum AIChunker {
     static func chunks(_ items: [AIIndexItem], generation: Int64, admits: (AIIndexItem) -> Bool) -> [AIChunk] {
         var result: [AIChunk] = []
         var seen = Set<String>()
-        let admitted = items.filter { !$0.removed && !$0.text.isEmpty && admits($0) }
+        // Only the newest version of each message in this batch is chunked.
+        let latest = Dictionary(grouping: items, by: \.identity).compactMap { $0.value.max { $0.sequence < $1.sequence } }
+        let admitted = latest.filter { !$0.removed && !$0.text.isEmpty && admits($0) }
         let byScope = Dictionary(grouping: admitted, by: \.scope)
         for scope in byScope.keys.sorted(by: { "\($0)" < "\($1)" }) {
             let group = byScope[scope, default: []].sorted { $0.sequence < $1.sequence }

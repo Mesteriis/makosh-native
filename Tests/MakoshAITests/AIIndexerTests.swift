@@ -10,8 +10,17 @@ actor AIFakeIndexSource: AIIndexSource {
     func items(after sequence: Int64, limit: Int) -> [AIIndexItem] {
         Array(stored.filter { $0.sequence > sequence }.sorted { $0.sequence < $1.sequence }.prefix(limit))
     }
+    /// Like real sources: the latest state of each message, without deleted ones.
     func items(in scope: AIAccessScope, after sequence: Int64, limit: Int) -> [AIIndexItem] {
-        Array(stored.filter { $0.scope == scope && $0.sequence > sequence }.sorted { $0.sequence < $1.sequence }.prefix(limit))
+        let latest = Dictionary(grouping: stored.filter { $0.scope == scope }, by: \.identity).compactMap { $0.value.max { $0.sequence < $1.sequence } }
+        return Array(latest.filter { !$0.removed && $0.sequence > sequence }.sorted { $0.sequence < $1.sequence }.prefix(limit))
+    }
+    func edit(messageID: String, sequence: Int64, text: String) {
+        guard let original = stored.first(where: { $0.identity.messageID == messageID }) else { return }
+        stored.append(
+            AIIndexItem(
+                sequence: sequence, identity: original.identity, scope: original.scope, author: original.author, isOutgoing: original.isOutgoing,
+                date: original.date, title: original.title, text: text, removed: false))
     }
 }
 
@@ -126,6 +135,34 @@ final class AIIndexerTests: XCTestCase {
                 sequence: 2, identity: MessageArchiveIdentity(service: "telegram", accountID: "acc", conversationID: "c", messageID: "1"),
                 scope: chat, author: nil, isOutgoing: false, date: Date(), title: "", text: "", removed: true)
         ])
+        _ = try await indexer.runOnce()
+        let texts = try await indexedTexts()
+        XCTAssertTrue(texts.isEmpty)
+    }
+
+    func testEditReplacesOldText() async throws {
+        await source.add([aiItem(1, text: "neighbour"), aiItem(2, text: "first draft")])
+        await access.setScope(chat, enabled: true)
+        let indexer = indexer()
+        _ = try await indexer.runOnce()
+        await source.edit(messageID: "2", sequence: 3, text: "final wording")
+        _ = try await indexer.runOnce()
+        let texts = try await indexedTexts().joined(separator: "\n")
+        XCTAssertFalse(texts.contains("first draft"))
+        XCTAssertTrue(texts.contains("final wording"))
+        XCTAssertTrue(texts.contains("neighbour"))
+    }
+
+    func testBackfillSkipsDeletedHistory() async throws {
+        await source.add([aiItem(1, text: "gone message")])
+        await source.add([
+            AIIndexItem(
+                sequence: 2, identity: MessageArchiveIdentity(service: "telegram", accountID: "acc", conversationID: "c", messageID: "1"),
+                scope: chat, author: nil, isOutgoing: false, date: Date(), title: "", text: "", removed: true)
+        ])
+        let indexer = indexer()
+        _ = try await indexer.runOnce()
+        await access.setScope(chat, enabled: true)
         _ = try await indexer.runOnce()
         let texts = try await indexedTexts()
         XCTAssertTrue(texts.isEmpty)

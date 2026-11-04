@@ -15,11 +15,24 @@ public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable
         try store.records(after: sequence, limit: limit).compactMap(Self.item)
     }
 
+    /// The current state of the conversation: the latest version of each
+    /// message, deleted messages left out, ordered by that version's sequence.
     public func items(in scope: AIAccessScope, after sequence: Int64, limit: Int) async throws -> [AIIndexItem] {
-        guard case .conversation(let service, let accountID, let conversationID) = scope, service != "mail" else { return [] }
-        return try store.records(service: service, accountID: accountID, conversationID: conversationID, after: sequence, limit: limit)
-            .compactMap(Self.item)
+        guard case .conversation(let service, let accountID, let conversationID) = scope, service != "mail", (1...200).contains(limit) else {
+            return []
+        }
+        var latest: [MessageArchiveIdentity: AIIndexItem] = [:]
+        var cursor: Int64 = 0
+        for _ in 0..<Self.maximumPages {
+            let page = try store.records(service: service, accountID: accountID, conversationID: conversationID, after: cursor, limit: 200)
+            for item in page.compactMap(Self.item) { latest[item.identity] = item }
+            guard page.count == 200, let last = page.last?.sequence else { break }
+            cursor = last
+        }
+        return Array(latest.values.filter { !$0.removed && $0.sequence > sequence }.sorted { $0.sequence < $1.sequence }.prefix(limit))
     }
+    /// Bounds one back-fill scan to 200 000 archive versions.
+    private static let maximumPages = 1000
 
     private static func item(_ record: MessageArchiveRecord) -> AIIndexItem? {
         let observation = record.observation, identity = observation.identity

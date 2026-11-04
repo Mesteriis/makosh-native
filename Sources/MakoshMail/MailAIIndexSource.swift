@@ -14,9 +14,19 @@ public struct MailAIIndexSource: AIIndexSource {
         try await items(accountID: nil, after: sequence, limit: limit)
     }
 
+    /// The current state of the mailbox: the latest version of each letter,
+    /// letters removed from the server left out.
     public func items(in scope: AIAccessScope, after sequence: Int64, limit: Int) async throws -> [AIIndexItem] {
-        guard case .mailAccount(let accountID) = scope else { return [] }
-        return try await items(accountID: accountID, after: sequence, limit: limit)
+        guard case .mailAccount(let accountID) = scope, (1...200).contains(limit) else { return [] }
+        var latest: [MessageArchiveIdentity: AIIndexItem] = [:]
+        var cursor: Int64 = 0
+        for _ in 0..<1000 {
+            let page = try await items(accountID: accountID, after: cursor, limit: 200)
+            for item in page { latest[item.identity] = item }
+            guard page.count == 200, let last = page.last?.sequence else { break }
+            cursor = last
+        }
+        return Array(latest.values.filter { !$0.removed && $0.sequence > sequence }.sorted { $0.sequence < $1.sequence }.prefix(limit))
     }
 
     private func items(accountID: String?, after sequence: Int64, limit: Int) async throws -> [AIIndexItem] {

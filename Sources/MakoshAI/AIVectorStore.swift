@@ -168,6 +168,13 @@ public actor AIVectorStore {
         try db.query("DELETE FROM \(db.prefix)ai_chunks WHERE author_tokens && $1::text[]", [Self.array([try authorToken(author, db: db)])])
     }
 
+    public func hasMessage(_ message: MessageArchiveIdentity) throws -> Bool {
+        let db = try preparedDatabase()
+        return try !db.query(
+            "SELECT 1 FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[] LIMIT 1", [Self.array([try messageToken(message, db: db)])]
+        ).isEmpty
+    }
+
     public func delete(message: MessageArchiveIdentity) throws {
         let db = try preparedDatabase()
         try db.query("DELETE FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[]", [Self.array([try messageToken(message, db: db)])])

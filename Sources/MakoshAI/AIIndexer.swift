@@ -160,6 +160,7 @@ public actor AIIndexer {
 
         // New journal entries, re-reading a window below each cursor.
         var items: [AIIndexItem] = []
+        var edited = Set<AIAccessScope>()
         for source in sources {
             let cursor = state.cursors[source.name, default: 0]
             var seen = Set(state.recent[source.name, default: []])
@@ -167,7 +168,15 @@ public actor AIIndexer {
             for _ in 0..<Self.livePages {
                 let page = try await source.items(after: after, limit: Self.pageSize)
                 for item in page where seen.insert(item.sequence).inserted {
-                    if item.removed { try await vectors.delete(message: item.identity) } else { items.append(item) }
+                    if item.removed {
+                        try await vectors.delete(message: item.identity)
+                    } else if try await vectors.hasMessage(item.identity) {
+                        // An edit: drop chunks with the old text and rebuild the conversation from its current state.
+                        try await vectors.delete(message: item.identity)
+                        edited.insert(item.scope)
+                    } else {
+                        items.append(item)
+                    }
                 }
                 highest = max(highest, page.last?.sequence ?? highest)
                 guard page.count == Self.pageSize, let last = page.last?.sequence else { break }
@@ -175,6 +184,9 @@ public actor AIIndexer {
             }
             state.cursors[source.name] = highest
             state.recent[source.name] = seen.filter { $0 > highest - Self.overlap }.sorted()
+        }
+        for scope in edited.intersection(enabled) where !state.backfill.contains(where: { $0.scope == scope }) {
+            state.backfill.append(.init(scope: scope))
         }
         for index in state.backfill.indices {
             for source in sources where !state.backfill[index].done.contains(source.name) {

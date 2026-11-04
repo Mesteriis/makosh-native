@@ -65,6 +65,24 @@ final class MessageArchiveIndexSourceTests: XCTestCase {
         XCTAssertTrue(mail.isEmpty)
     }
 
+    func testScopeBackfillReturnsLatestStateOnly() async throws {
+        let (store, source) = try fixture()
+        let edited = message("telegram", chat: "a", id: "1", text: "old text")
+        let deleted = message("telegram", chat: "a", id: "2", text: "deleted text")
+        _ = try store.append([edited, deleted, message("telegram", chat: "a", id: "3", text: "kept")])
+        _ = try store.append([
+            .init(identity: edited.identity, source: .synthetic,
+                  event: .message(.init(date: Date(timeIntervalSince1970: 100), text: "new text", author: "Peer", authorID: "peer", isOutgoing: false))),
+            .init(identity: deleted.identity, source: .synthetic, event: .deleted),
+        ])
+        let scope = AIAccessScope.conversation(service: "telegram", accountID: "acc", conversationID: "a")
+        let items = try await source.items(in: scope, after: 0, limit: 200)
+        XCTAssertEqual(items.map(\.text), ["kept", "new text"])
+        XCTAssertFalse(items.contains { $0.removed })
+        let tail = try await source.items(in: scope, after: try XCTUnwrap(items.first?.sequence), limit: 200)
+        XCTAssertEqual(tail.map(\.text), ["new text"])
+    }
+
     func testAuthorMapping() async throws {
         let (store, source) = try fixture()
         _ = try store.append([

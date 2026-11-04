@@ -33,18 +33,25 @@
   приложение на QA-схеме `qa_contacts_refactor` работает 12 с без ошибок в
   логе. Визуальная проверка интерфейса не выполнялась.
 
-Блокер подготовки зависимостей:
+Источник Telegram-зависимостей (решение владельца 2026-11-04, «Да, перевести»):
 
 - Репозитории `overtake/Telegram-iOS`, `overtake/TelegramSwift` и
-  `overtake/tgcalls` на GitHub удалены (404). Закреплённые коммиты есть в
-  официальных `TelegramMessenger/Telegram-iOS` (`a24bbe45…`) и
-  `TelegramMessenger/tgcalls` (`5ddc3ccf…`, дерево `df0c4e90…` совпадает с
-  блокировкой). Проверки этой сессии шли с подменой адресов только в
-  окружении процесса (`GIT_CONFIG_*` insteadOf). Файлы блокировок,
-  `references.lock.json` и уведомления по-прежнему указывают на `overtake`:
-  без подмены `prepare-telegram.py`, `prepare-opus.py`,
-  `prepare-mozjpeg.py`, `prepare-opusfile.py` и `prepare-telegram-voip.py`
-  на чистой машине падают. Решение о смене источника — за владельцем.
+  `overtake/tgcalls` на GitHub удалены (404). Блокировки движка, Opus,
+  mozjpeg, эмодзи звонков, VoIP, `prepare-telegram-voip.py` и
+  `references.lock.json` переведены на официальные
+  `TelegramMessenger/Telegram-iOS` и `TelegramMessenger/tgcalls`; закреплённые
+  коммиты `a24bbe45…` и `5ddc3ccf…` не менялись. `TelegramSwift` остаётся
+  только исследовательским источником без замены.
+- Проверка без подмены адресов и без локальных зеркал: подготовка
+  telegram/opus/opusfile/mozjpeg/telegram-voip — exit 0, дерево движка
+  `0beebf84…` совпадает с блокировкой; `scripts/build-app.sh` — exit 0.
+- Полный `scripts/test.sh` после перевода завис на
+  `WhatsAppBatchDispatchTests.testCancellationDrainsCurrentReceiptAndLeavesRemainderPrepared`:
+  тест ждал вторую отправку только 200 мс, под нагрузкой не дождался, и
+  вторая отправка потом висела бесконечно. Ожидание заменено на 30-секундный
+  срок с выходом без зависания; класс прошёл 9/9. Похожие короткие циклы
+  ожидания остаются в других тестах WhatsApp. Полный `test.sh` будет повторён
+  на границе задач домена «ИИ».
 
 ## Структурный рефакторинг — 2026-11-03
 

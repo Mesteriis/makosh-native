@@ -3,7 +3,7 @@
   "components": [
     {
       "path": "calls",
-      "url": "https://github.com/overtake/tgcalls.git",
+      "url": "https://github.com/TelegramMessenger/tgcalls.git",
       "revision": "5ddc3ccf2086127722a06e3d836698fcd717f11b",
       "tree": "df0c4e900ebf3f5ecd42743da6e26a5323334682",
       "sourceFingerprint": "031f8e067e3e907d6d068b5b5cb094bc175f36d6625452afb54215d9515b8671",

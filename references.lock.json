@@ -28,7 +28,7 @@
         ]
       },
       "engine": {
-        "url": "https://github.com/overtake/Telegram-iOS.git",
+        "url": "https://github.com/TelegramMessenger/Telegram-iOS.git",
         "sha": "a24bbe45f9861f736a79916a50898512f751e0dc",
         "officialEquivalentSHA": "0699602bbc2756d1feaeb67df485e376dce44ad2",
         "tree": "0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0",

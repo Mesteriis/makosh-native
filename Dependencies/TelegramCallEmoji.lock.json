@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "repository": "https://github.com/overtake/Telegram-iOS",
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
   "revision": "a24bbe45f9861f736a79916a50898512f751e0dc",
   "source": "submodules/TelegramCallsUI/CallsEmoji/Sources/CallsEmoji.m",
   "sourceSHA256": "247d234fc2983c7fed56ec101bbd0d74f4222391c0307f44873ffbfaaa0adca7",

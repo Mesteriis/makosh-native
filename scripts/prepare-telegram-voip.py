@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parent.parent
 DEST = ROOT / '.local/telegram-voip'
 PINS = [
-    ('calls', 'https://github.com/overtake/tgcalls.git', '5ddc3ccf2086127722a06e3d836698fcd717f11b', 'df0c4e900ebf3f5ecd42743da6e26a5323334682', 'tgcalls-source.git'),
+    ('calls', 'https://github.com/TelegramMessenger/tgcalls.git', '5ddc3ccf2086127722a06e3d836698fcd717f11b', 'df0c4e900ebf3f5ecd42743da6e26a5323334682', 'tgcalls-source.git'),
     ('owt', 'https://github.com/desktop-app/tg_owt.git', 'be39b8c8d0db1f377118f813f0c4bd331d341d5e', '9410c5c094e3d35d3abdd3dc7e5281c9a01651f1', 'tg-owt-source.git'),
     ('owt/src/third_party/abseil-cpp', 'https://github.com/abseil/abseil-cpp.git', 'd7aaad83b488fd62bd51c81ecf16cd938532cc0a', 'b7787164b428ec7b9dc8168cfe8d5363654e2600', 'voip-abseil-source.git'),
     ('owt/src/third_party/crc32c/src', 'https://github.com/google/crc32c.git', '21fc8ef30415a635e7351ffa0e5d5367943d4a94', '96bd5adb8040b61b0d5e887c229f714e2d407d2c', 'voip-crc32c-source.git'),

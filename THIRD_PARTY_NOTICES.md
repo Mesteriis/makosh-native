@@ -33,6 +33,14 @@ at `579cebbf0c01fd41b712eff3647fa7f69db9665d`. Its `submodules/telegram-ios`
 gitlink pins [overtake/Telegram-iOS](https://github.com/overtake/Telegram-iOS)
 at `a24bbe45f9861f736a79916a50898512f751e0dc`.
 
+Both overtake repositories and overtake/tgcalls returned 404 on 2026-11-04.
+The same commit `a24bbe45…` is fetched from official
+[TelegramMessenger/Telegram-iOS](https://github.com/TelegramMessenger/Telegram-iOS),
+and tgcalls `5ddc3ccf…` (tree `df0c4e90…`) from official
+[TelegramMessenger/tgcalls](https://github.com/TelegramMessenger/tgcalls). Commit
+and tree hashes are unchanged; only the fetch location moved. The TelegramSwift
+reference has no public replacement and remains a local research clone only.
+
 That entire Git tree is identical to official TelegramMessenger/Telegram-iOS
 commit [`0699602bbc2756d1feaeb67df485e376dce44ad2`](https://github.com/TelegramMessenger/Telegram-iOS/tree/0699602bbc2756d1feaeb67df485e376dce44ad2):
 tree `0beebf847c66e5d1bcfe3e2d7f28054ca7b8fbe0`, zero differing blobs,

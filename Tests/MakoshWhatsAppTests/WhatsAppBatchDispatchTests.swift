@@ -225,11 +225,18 @@ final class WhatsAppBatchDispatchTests: XCTestCase {
       try await f.worker.sendBatch(
         accountID: f.account, chat: "peer@lid", content: .init(text: "", files: files.map(\.id)))
     }
-    for _ in 0..<100 where !(await f.transport.waitingSecond()) {
-      try await Task.sleep(for: .milliseconds(2))
+    // A loaded parallel run can take far longer than a fixed number of short
+    // polls; releasing before the second dispatch suspends would hang it.
+    let deadline = ContinuousClock.now + .seconds(30)
+    while !(await f.transport.waitingSecond()), ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(5))
     }
     let waiting = await f.transport.waitingSecond()
-    XCTAssertTrue(waiting)
+    guard waiting else {
+      sending.cancel()
+      XCTFail("second dispatch never suspended")
+      return
+    }
     sending.cancel()
     await f.transport.releaseSecond()
     let stopped = try await sending.value

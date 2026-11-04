@@ -179,6 +179,8 @@ struct MakoshApp: App {
                     || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"
                 {
                     TeamsCommonSettingsView()
+                } else if CommandLine.arguments.contains(AIQAIsolation.flag) {
+                    Text("ИИ QA · настройки внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else {
                     TabView {
                         TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }

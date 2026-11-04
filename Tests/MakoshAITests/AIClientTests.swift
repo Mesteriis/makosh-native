@@ -101,6 +101,13 @@ final class AIClientTests: XCTestCase {
         XCTAssertEqual(error as? AIFailure, .network)
     }
 
+    func testTruncatedFinalEventIsInterrupted() async {
+        reply(["data: {\"choices\":[{\"delta\":{\"content\":\"part\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"he"])
+        let (events, error) = await collect(chat())
+        XCTAssertEqual(events, [.delta("part")])
+        XCTAssertEqual(error as? AIFailure, .network)
+    }
+
     func testHTTPErrorsMapWithoutBody() async {
         for (status, expected) in [(401, AIFailure.unauthorized), (429, .rateLimited), (503, .server(status: 503))] {
             reply(["{\"error\":{\"message\":\"secret body sk-1\"}}"], status: status)

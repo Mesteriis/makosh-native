@@ -51,8 +51,17 @@ public struct AIClient: AIServing {
                     let (bytes, response) = try await session.bytes(for: request)
                     try Self.check(response)
                     var parser = AIServerSentEvents()
+                    // An unparsable line is only an error when more follows; as the
+                    // last line it is an event cut off by a dropped connection.
+                    var truncated = false
                     for try await line in bytes.lines {
-                        guard let event = try parser.feed(line) else { continue }
+                        if truncated { throw AIFailure.malformedResponse }
+                        let parsed: AIStreamEvent?
+                        do { parsed = try parser.feed(line) } catch {
+                            truncated = true
+                            continue
+                        }
+                        guard let event = parsed else { continue }
                         continuation.yield(event)
                         if event == .done {
                             continuation.finish()

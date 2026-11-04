@@ -18,6 +18,8 @@ final class AIFakeService: AIServing, @unchecked Sendable {
     private var _failure: AIFailure?
     private var _turns: [[AIChatTurn]] = []
     private var _calls = 0
+    private var _imageHold = false
+    private var _imageStarted = false
     var deltas: [String] {
         get { locked { _deltas } }
         set { locked { _deltas = newValue } }
@@ -30,6 +32,11 @@ final class AIFakeService: AIServing, @unchecked Sendable {
         get { locked { _failure } }
         set { locked { _failure = newValue } }
     }
+    var imageHold: Bool {
+        get { locked { _imageHold } }
+        set { locked { _imageHold = newValue } }
+    }
+    var imageStarted: Bool { locked { _imageStarted } }
     var turns: [[AIChatTurn]] { locked { _turns } }
     var calls: Int { locked { _calls } }
     private func locked<T>(_ body: () -> T) -> T {
@@ -60,7 +67,14 @@ final class AIFakeService: AIServing, @unchecked Sendable {
         }
     }
     func image(connection: AIConnection, token: String?, model: String, prompt: String) async throws -> Data {
-        locked { _calls += 1 }
+        locked {
+            _calls += 1
+            _imageStarted = true
+        }
+        while imageHold {
+            try Task.checkCancellation()
+            try await Task.sleep(for: .milliseconds(5))
+        }
         return Data("PNG-\(prompt)".utf8)
     }
     func transcribe(connection: AIConnection, token: String?, model: String, audio: URL) async throws -> String {
@@ -267,6 +281,50 @@ final class AIWorkerTests: XCTestCase {
         XCTAssertFalse(try Data(contentsOf: imageDirectory.appendingPathComponent(stored[0])).contains(Data("PNG-cat".utf8)))
         try await worker.deleteConversation(conversation.id)
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: imageDirectory.path).isEmpty)
+    }
+
+    func testDeleteDuringImageGenerationLeavesNothing() async throws {
+        try await worker.assign(.init(role: .images, connectionID: connection.id, model: "img"), role: .images)
+        service.imageHold = true
+        let conversation = try await worker.createConversation()
+        let worker = self.worker!
+        let generating = Task { try await worker.generateImage(prompt: "cat", conversationID: conversation.id) }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !service.imageStarted, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        try await worker.deleteConversation(conversation.id)
+        service.imageHold = false
+        _ = try? await generating.value
+        let messages = try await worker.messages(conversation.id)
+        XCTAssertTrue(messages.isEmpty)
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: imageDirectory.path)) ?? []
+        XCTAssertTrue(files.isEmpty)
+    }
+
+    func testImageWhileStreamingRejected() async throws {
+        try await worker.assign(.init(role: .images, connectionID: connection.id, model: "img"), role: .images)
+        service.hold = true
+        let conversation = try await worker.createConversation()
+        let stream = await worker.send("q", conversationID: conversation.id, editing: nil)
+        let consumer = Task { await aiDrain(stream) }
+        try await waitForStreaming(conversation.id)
+        do {
+            _ = try await worker.generateImage(prompt: "cat", conversationID: conversation.id)
+            XCTFail("image generated during a stream")
+        } catch { XCTAssertEqual(error as? AIFailure, .busy) }
+        await worker.stop(conversationID: conversation.id)
+        _ = await consumer.value
+    }
+
+    func testChangingOriginDropsStoredToken() async throws {
+        var moved = connection
+        moved.baseURL = URL(string: "http://127.0.0.1:9/other")!
+        try await worker.save(moved, token: nil)
+        let samePath = await vault.load(connectionID: connection.id)
+        XCTAssertEqual(samePath, "sk-synthetic")
+        moved.baseURL = URL(string: "https://proxy.example/v1")!
+        try await worker.save(moved, token: nil)
+        let otherOrigin = await vault.load(connectionID: connection.id)
+        XCTAssertNil(otherOrigin)
     }
 
     func testRemoveConnectionRemovesToken() async throws {

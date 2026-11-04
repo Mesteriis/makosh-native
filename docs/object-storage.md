@@ -172,3 +172,14 @@ otherwise the S3 integration cases explicitly skip. Hosted macOS CI downloads a
 checksum-verified pinned SeaweedFS binary and starts an isolated native service
 because Docker is unavailable there. Hosted success must be checked for each
 published head; workflow configuration alone does not prove a pass.
+
+## AI conversation images
+
+Generated AI images use the same sealed envelope under `ai/<conversation>/<object>`,
+but each image has its own random key stored only inside the encrypted AI message
+record in PostgreSQL. The bucket still denies DeleteObject and the app still has no
+delete API: deleting a conversation removes that record (and any local copy), which
+leaves the S3 object as unreadable ciphertext. This is not a forensic erase. Until
+PostgreSQL reclaims dead tuples and WAL segments, and in any database-level backup
+taken before the deletion, the record — and therefore the image key — remains
+recoverable by someone holding the archive vault key from the Keychain.

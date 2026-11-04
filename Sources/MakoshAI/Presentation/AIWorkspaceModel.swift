@@ -15,8 +15,14 @@ import MakoshCore
     @Published package private(set) var roles: [AIRole: AIRoleAssignment] = [:]
     @Published package private(set) var ready = false
     private var selection: UInt64 = 0
+    private var subscriptions: Set<AnyCancellable> = []
 
     package init(worker: AIWorker) { self.worker = worker }
+
+    /// Keeps role-dependent actions current when the settings scene changes roles.
+    package func follow(_ settings: AISettingsModel) {
+        settings.$roles.dropFirst().sink { [weak self] roles in self?.roles = roles }.store(in: &subscriptions)
+    }
 
     package func start(configuration: ContactWorkspaceConfiguration) async {
         guard !ready else { return }
@@ -124,28 +130,29 @@ import MakoshCore
 
     package func dismissFailure() { failure = nil }
 
+    /// Publishes while the stream's conversation is selected, including after
+    /// the user leaves and comes back to it mid-answer.
     private func consume(_ stream: AsyncThrowingStream<AIConversationEvent, Error>, conversation id: UUID) async {
-        let token = selection
         failure = nil
         isStreaming = true
         do {
             for try await event in stream {
-                guard selection == token else { continue }
+                guard selectedConversationID == id else { continue }
                 if case .updated(let message) = event {
                     if let index = path.firstIndex(where: { $0.id == message.id }) {
                         path[index] = message
                     } else {
-                        await refresh(id, token: token)
+                        await refresh(id, token: selection)
                     }
                 }
             }
         } catch {
-            if selection == token { failure = error as? AIFailure ?? .network }
+            if selectedConversationID == id { failure = error as? AIFailure ?? .network }
         }
-        guard selection == token else { return }
-        isStreaming = false
-        await refresh(id, token: token)
         await reload()
+        guard selectedConversationID == id else { return }
+        isStreaming = false
+        await refresh(id, token: selection)
     }
 
     private func refresh(_ id: UUID, token: UInt64) async {

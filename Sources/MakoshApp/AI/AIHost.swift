@@ -15,6 +15,7 @@ import MakoshCore
         workspace = AIWorkspaceModel(worker: worker)
         settings = AISettingsModel(worker: worker)
         isSynthetic = synthetic
+        workspace.follow(settings)
     }
 
     convenience init() {

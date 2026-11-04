@@ -21,6 +21,8 @@ public actor AIWorker {
     private let now: @Sendable () -> Date
     private var active: [UUID: Task<Void, Never>] = [:]
     private var epochs: [UUID: UInt64] = [:]
+    /// Conversations whose deletion has started; new work on them is refused.
+    private var deleted: Set<UUID> = []
 
     public init(
         repository: AIRepository = .init(), client: any AIServing = AIClient(), vault: any AITokenStoring = AITokenVault(),
@@ -52,8 +54,20 @@ public actor AIWorker {
 
     /// A nil token keeps the stored one; an empty token removes it.
     public func save(_ connection: AIConnection, token: String?) async throws {
-        try await repository.save(connection.validated())
-        if let token { try await vault.save(token, connectionID: connection.id) }
+        let validated = try connection.validated()
+        let previous = try await repository.connections().first { $0.id == connection.id }
+        try await repository.save(validated)
+        if let token {
+            try await vault.save(token, connectionID: connection.id)
+        } else if let previous, Self.origin(previous.baseURL) != Self.origin(validated.baseURL) {
+            // A stored secret never follows a connection to another origin.
+            try await vault.remove(connectionID: connection.id)
+        }
+    }
+    private static func origin(_ url: URL) -> String {
+        let scheme = url.scheme?.lowercased() ?? ""
+        let port = url.port ?? (scheme == "https" ? 443 : 80)
+        return "\(scheme)://\((url.host ?? "").lowercased()):\(port)"
     }
     public func removeConnection(_ id: UUID) async throws {
         try await repository.removeConnection(id)
@@ -86,6 +100,7 @@ public actor AIWorker {
     public func isStreaming(conversationID: UUID) -> Bool { active[conversationID] != nil }
 
     public func deleteConversation(_ id: UUID) async throws {
+        deleted.insert(id)
         epochs[id, default: 0] += 1
         if let task = active[id] {
             task.cancel()
@@ -124,8 +139,8 @@ public actor AIWorker {
         conversationID: UUID, prepare: @escaping @Sendable (isolated AIWorker) async throws -> Preparation
     ) -> AsyncThrowingStream<AIConversationEvent, Error> {
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: AIConversationEvent.self)
-        guard active[conversationID] == nil else {
-            continuation.finish(throwing: AIFailure.busy)
+        guard active[conversationID] == nil, !deleted.contains(conversationID) else {
+            continuation.finish(throwing: deleted.contains(conversationID) ? AIFailure.invalidConfiguration : AIFailure.busy)
             return stream
         }
         let epoch = epochs[conversationID, default: 0]
@@ -271,7 +286,25 @@ public actor AIWorker {
 
     // MARK: Images and voice
 
+    /// Runs as the conversation's one active job, so deletion cancels and
+    /// awaits it like a chat stream.
     public func generateImage(prompt: String, conversationID: UUID) async throws -> AIMessage {
+        guard !deleted.contains(conversationID) else { throw AIFailure.invalidConfiguration }
+        guard active[conversationID] == nil else { throw AIFailure.busy }
+        let epoch = epochs[conversationID, default: 0]
+        let (results, continuation) = AsyncThrowingStream.makeStream(of: AIMessage.self)
+        active[conversationID] = Task {
+            do {
+                continuation.yield(try await self.produceImage(prompt: prompt, conversationID: conversationID, epoch: epoch))
+                continuation.finish()
+            } catch { continuation.finish(throwing: error) }
+            self.finish(conversationID)
+        }
+        for try await message in results { return message }
+        throw AIFailure.cancelled
+    }
+
+    private func produceImage(prompt: String, conversationID: UUID, epoch: UInt64) async throws -> AIMessage {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw AIFailure.invalidConfiguration }
         guard let images else { throw AIFailure.storage }
@@ -279,6 +312,10 @@ public actor AIWorker {
         let png = try await client.image(connection: connection, token: token, model: model, prompt: trimmed)
         let reference = try await images.store(
             png, conversationID: conversationID, toS3: repository.imagesSavedToS3())
+        guard epochs[conversationID, default: 0] == epoch, !Task.isCancelled else {
+            try? await images.delete(reference, conversationID: conversationID)
+            throw AIFailure.cancelled
+        }
         let path = AIMessage.path(try await repository.messages(conversationID: conversationID))
         let questionVersion = AIMessageVersion(text: trimmed, state: .complete, model: nil, createdAt: now())
         let question = AIMessage(

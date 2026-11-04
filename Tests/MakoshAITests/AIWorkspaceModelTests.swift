@@ -75,6 +75,35 @@ final class AIWorkspaceModelTests: XCTestCase {
         XCTAssertFalse(streaming)
     }
 
+    func testReturningToStreamingConversationFollowsIt() async throws {
+        service.hold = true
+        let model = try await started()
+        await model.newConversation()
+        let first = try XCTUnwrap(model.selectedConversationID)
+        let sending = Task { await model.send("q") }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !(await worker.isStreaming(conversationID: first)), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        await model.newConversation()
+        await model.select(first)
+        XCTAssertTrue(model.isStreaming)
+        model.stop()
+        await sending.value
+        XCTAssertFalse(model.isStreaming)
+        XCTAssertEqual(model.path.last?.current?.state, .interrupted)
+    }
+
+    func testWorkspaceFollowsSettingsRoles() async throws {
+        let model = try await started()
+        let settings = AISettingsModel(worker: worker)
+        model.follow(settings)
+        await settings.assign(.images, connectionID: connection.id, model: "img")
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.roles[.images] == nil, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(model.roles[.images]?.model, "img")
+    }
+
     func testUnassignedChatRoleShowsFailure() async throws {
         let model = AIWorkspaceModel(worker: worker)
         await model.start(configuration: database.configuration)

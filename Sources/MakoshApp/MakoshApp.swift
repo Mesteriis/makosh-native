@@ -6,6 +6,7 @@ import MakoshWhatsApp
 import UniformTypeIdentifiers
 import MakoshMail
 import MakoshTelemost
+import MakoshAI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var telegramNotificationRouter = TelegramSystemNotificationRouter(
@@ -15,12 +16,14 @@ import MakoshTelemost
             || CommandLine.arguments.contains("--telemost-synthetic-preview")
             || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "telemost"
             || CommandLine.arguments.contains("--teams-synthetic-preview")
-            || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"))
+            || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"
+            || CommandLine.arguments.contains(AIQAIsolation.flag)))
     lazy var telegramProxy = TelegramProxyController()
     let telegramCallCoordinator = TelegramCallCoordinator()
     let telegramCallWindows = TelegramCallWindows()
     let whatsappSettings = WhatsAppSettingsRegistry()
     let teamsSettings = TeamsSettingsRegistry()
+    lazy var ai = AIHost()
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -32,7 +35,7 @@ struct MakoshApp: App {
     static func permitsOrdinaryReleaseLaunch(marker: String?, requiresSynthetic: Bool, arguments: [String]) -> Bool {
         WhatsAppQAIsolation.permitsNormalLaunch(marker: marker, arguments: arguments)
             && TelemostSyntheticLaunchPolicy.permitsNormalLaunch(marker: marker, arguments: arguments)
-            && !arguments.contains("--teams-synthetic-preview") && !requiresSynthetic
+            && !arguments.contains("--teams-synthetic-preview") && !arguments.contains(AIQAIsolation.flag) && !requiresSynthetic
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -51,6 +54,8 @@ struct MakoshApp: App {
                     Text("Телемост QA требует явную синтетическую конфигурацию.").padding(24)
                 } else if CommandLine.arguments.contains("--telemost-synthetic-preview") {
                     TelemostSyntheticPreview().frame(minWidth: 1100, minHeight: 720)
+                } else if CommandLine.arguments.contains(AIQAIsolation.flag) {
+                    AISyntheticPreview().frame(minWidth: 1000, minHeight: 680)
                 } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams",
                     !CommandLine.arguments.contains("--teams-synthetic-preview")
                 {
@@ -152,7 +157,7 @@ struct MakoshApp: App {
                 }
                 #endif
             }.makoshAppearance().environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
-                .environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings)
+                .environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(delegate.ai)
         }
         .defaultSize(width: 1200, height: 854)
         .windowResizability(.contentMinSize)
@@ -179,10 +184,12 @@ struct MakoshApp: App {
                         TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }
                         WhatsAppCommonSettingsView().tabItem { Label("WhatsApp", systemImage: "message") }
                         TeamsCommonSettingsView().tabItem { Label("Teams", systemImage: "person.3") }
+                        AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }
                     }
                 }
             }.environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(
-                delegate.telegramNotificationRouter)
+                delegate.telegramNotificationRouter
+            ).environmentObject(delegate.ai)
         }
     }
 }

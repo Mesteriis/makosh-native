@@ -211,3 +211,23 @@ local approximation over one loaded page is introduced. The optional dossier reu
 current source-scoped profile/link contracts; its UI does not bypass contact workers
 or infer notes from a chat. Rich native input remains responsible for formatting,
 selection, undo, draft routing and send admission; only its composer surface changes.
+
+## ADR-013: MakoshAI service boundary — 2026-11-04
+
+Spec: `docs/superpowers/specs/2026-11-04-ai-domain-design.md`. `MakoshAI` is a
+service module beside Mail/Teams/Telemost: `AIWorker` (actor) owns
+OpenAI-compatible HTTP/SSE (`AIClient`, own `URLSession`, no SDK, bodies never
+logged), `AIRepository` owns `ai_records` in the configured schema with AES-GCM
+values under keys derived from the archive vault key (`makosh-ai-*-v1`), and
+`AITokenVault` keeps API tokens only in the Keychain
+(`org.makosh.ai.tokens.v1`). Roles (chat, embeddings, images, transcription,
+speech) map to a connection and model; an unassigned role disables its action.
+`AIWorkspaceModel`/`AISettingsModel` live in `Presentation/` with `package`
+access; the app's `AIHost` shares one worker between the workspace window and
+the settings scene. One generation runs per conversation; deletion bumps an
+epoch so late deltas are never written. Conversations are the only
+user-deletable history in Makosh; the message archive is unaffected. The S3
+bucket denies DeleteObject, so generated images carry a random per-image key
+stored only in the encrypted message record — deleting the conversation
+forgets the key, local copies are removed. Part 1 has no RAG, tools or
+cross-domain embedding; `MakoshAI` imports no other service module.

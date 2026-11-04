@@ -6,10 +6,12 @@ import MakoshMail
 import MakoshWhatsApp
 import MakoshTeams
 import MakoshTelemost
+import MakoshAI
 import UniformTypeIdentifiers
 
 private enum Destination: String, CaseIterable, Identifiable {
-    case contacts = "Контакты", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи"
+    case contacts = "Контакты", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи", ai =
+        "ИИ"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -19,6 +21,7 @@ private enum Destination: String, CaseIterable, Identifiable {
         case .whatsapp: "message"
         case .teams: "person.3"
         case .meetings: "video"
+        case .ai: "sparkles"
         }
     }
 }
@@ -29,6 +32,7 @@ private struct EditorSelection: Identifiable {
 
 struct WorkspaceView: View {
     @EnvironmentObject private var callWindows: TelegramCallWindows
+    @EnvironmentObject private var ai: AIHost
     @StateObject private var systemAppearance = TelegramSystemAppearance()
     @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @Environment(\.colorScheme) private var colorScheme
@@ -184,6 +188,9 @@ struct WorkspaceView: View {
         .onReceive(teams.$notificationActivation.dropFirst()) { _ in destination = .teams }
         .task {
             await model.load()
+            if let configuration = model.mailConfiguration, ordinaryLaunch {
+                Task { await ai.start(configuration: configuration) }
+            }
             if let configuration = model.mailConfiguration {
                 if !whatsapp.isSynthetic && !teams.isSynthetic && !telemost.isSynthetic { await mail.load(configuration: configuration) }
                 if destination == .whatsapp && !teams.isSynthetic && !telemost.isSynthetic {
@@ -243,6 +250,11 @@ struct WorkspaceView: View {
             }
         }
         .frame(minWidth: destination == .telegram || destination == .whatsapp ? 1160 : destination == .mail ? 1040 : nil)
+    }
+    /// AI starts only in the ordinary app; every service QA preview keeps it off.
+    private var ordinaryLaunch: Bool {
+        !isolatedWhatsApp && !mail.synthetic && !whatsapp.isSynthetic && !teams.isSynthetic && !telemost.isSynthetic
+            && !telegram.isSyntheticPreview
     }
     private var sidebarLayout: (min: CGFloat, ideal: CGFloat, max: CGFloat) {
         switch destination {
@@ -320,6 +332,8 @@ struct WorkspaceView: View {
             TelemostCatalogueView(model: telemost).frame(minWidth: 300, idealWidth: 340, maxWidth: 440)
         } else if destination == .whatsapp {
             WhatsAppSidebarView(model: whatsapp, navigation: whatsappNavigation).frame(minWidth: 300, idealWidth: 350, maxWidth: 440)
+        } else if destination == .ai {
+            AIConversationListView(model: ai.workspace).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 Label(destination?.rawValue ?? "", systemImage: destination?.symbol ?? "square").font(.title2.bold())
@@ -401,6 +415,8 @@ struct WorkspaceView: View {
                             if id != nil { destination = .contacts }
                         }
                     }
+                } else if destination == .ai {
+                    AIConversationView(model: ai.workspace)
                 } else {
                     ContentUnavailableView(
                         "\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square",

@@ -8,7 +8,8 @@ import MakoshCore
 /// configured. The bucket denies DeleteObject (docs/object-storage.md), so
 /// deleting an S3 image means forgetting its key; local files are removed.
 public actor AIImageStore {
-    private let s3: S3ObjectStore?
+    private var s3: S3ObjectStore?
+    private var s3ConfigurationFile: URL?
     private let localDirectory: URL
 
     public init(s3: S3ObjectStore?, localDirectory: URL) {
@@ -16,7 +17,28 @@ public actor AIImageStore {
         self.localDirectory = localDirectory
     }
 
+    /// Reads the S3 configuration on first use, off the main actor. A missing
+    /// or invalid file means images stay in the local encrypted directory.
+    public init(s3ConfigurationFile: URL?, localDirectory: URL) {
+        self.s3ConfigurationFile = s3ConfigurationFile
+        self.localDirectory = localDirectory
+    }
+
+    private func objectStore() -> S3ObjectStore? {
+        if let s3 { return s3 }
+        guard let file = s3ConfigurationFile else { return nil }
+        s3ConfigurationFile = nil
+        struct Wrapper: Decodable { let s3: S3ObjectStoreConfiguration }
+        guard let data = try? Data(contentsOf: file),
+            let configuration = (try? JSONDecoder().decode(Wrapper.self, from: data))?.s3
+                ?? (try? JSONDecoder().decode(S3ObjectStoreConfiguration.self, from: data))
+        else { return nil }
+        s3 = try? S3ObjectStore(configuration: configuration)
+        return s3
+    }
+
     public func store(_ png: Data, conversationID: UUID, toS3: Bool) async throws -> AIImageReference {
+        let s3 = objectStore()
         let objectID = UUID()
         let key = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
         let work = try temporaryDirectory()
@@ -46,6 +68,7 @@ public actor AIImageStore {
     }
 
     public func load(_ reference: AIImageReference, conversationID: UUID) async throws -> Data {
+        let s3 = objectStore()
         let work = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: work) }
         var sealed = localFile(reference.objectID)

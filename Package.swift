@@ -16,7 +16,7 @@ let package = Package(
         .library(name: "MakoshTelemost", targets: ["MakoshTelemost"]),
         .library(name: "MakoshAI", targets: ["MakoshAI"]),
         .library(name: "MakoshTelegram", targets: ["MakoshTelegram"]),
-        .executable(name: "Makosh", targets: ["MakoshApp"])
+        .executable(name: "Makosh", targets: ["MakoshApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-atomics.git", revision: "b601256eab081c0f92f059e12818ac1d4f178ff7"),
@@ -38,16 +38,23 @@ let package = Package(
         .package(name: "Postbox", path: ".local/telegram-engine/submodules/Postbox"),
         .package(name: "TelegramApi", path: ".local/telegram-engine/submodules/TelegramApi"),
         .package(name: "MtProtoKit", path: ".local/telegram-engine/submodules/MtProtoKit"),
-        .package(name: "EncryptionProvider", path: ".local/telegram-engine/submodules/EncryptionProvider")
+        .package(name: "EncryptionProvider", path: ".local/telegram-engine/submodules/EncryptionProvider"),
     ],
     targets: [
         .systemLibrary(name: "CMailOpenSSL", pkgConfig: "openssl", providers: [.brew(["openssl@3"])]),
-        .target(name: "CMailTLS", dependencies: ["CMailOpenSSL"], linkerSettings: [.linkedFramework("Security"), .linkedFramework("CoreFoundation")]),
+        .target(
+            name: "CMailTLS", dependencies: ["CMailOpenSSL"],
+            linkerSettings: [.linkedFramework("Security"), .linkedFramework("CoreFoundation")]),
         .systemLibrary(name: "CPostgres", pkgConfig: "libpq", providers: [.brew(["libpq"])]),
-        .target(name: "CMakoshTelegramVoIP", linkerSettings: [
-            .unsafeFlags(["-L" + callLibraryDirectory, "-Xlinker", "-rpath", "-Xlinker", callLibraryDirectory,
-                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
-            .linkedLibrary("MakoshTelegramVoIP")]),
+        .target(
+            name: "CMakoshTelegramVoIP",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + callLibraryDirectory, "-Xlinker", "-rpath", "-Xlinker", callLibraryDirectory,
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+                ]),
+                .linkedLibrary("MakoshTelegramVoIP"),
+            ]),
         .target(name: "MakoshCore", dependencies: ["CPostgres"]),
         .target(name: "MakoshTeams", dependencies: ["MakoshCore", "CPostgres"]),
         .target(name: "MakoshTelemost", dependencies: ["MakoshCore", "CPostgres"]),
@@ -57,42 +64,66 @@ let package = Package(
         .testTarget(name: "MakoshTeamsTests", dependencies: ["MakoshApp", "MakoshTeams", "MakoshCore", "CPostgres"]),
         .target(name: "MakoshVoiceCodec", dependencies: ["MakoshOpusControl", .product(name: "COpus", package: "MakoshOpus")]),
         .target(name: "MakoshWhatsApp", dependencies: ["MakoshCore", "CPostgres", "MakoshVoiceCodec"]),
-        .testTarget(name: "MakoshWhatsAppTests", dependencies: ["MakoshApp", "MakoshWhatsApp", "MakoshCore", "CPostgres", "MakoshVoiceCodec"]),
-        .target(name: "MakoshMail", dependencies: ["MakoshCore", "CPostgres", "CMailTLS", .product(name: "NIO", package: "swift-nio"), .product(name: "NIOPosix", package: "swift-nio"), .product(name: "NIOIMAP", package: "swift-nio-imap")]),
-        .testTarget(name: "MakoshMailTests", dependencies: ["MakoshApp", "MakoshMail", "MakoshCore", "CPostgres", .product(name: "NIOEmbedded", package: "swift-nio")], exclude: ["Fixtures"]),
+        .testTarget(
+            name: "MakoshWhatsAppTests", dependencies: ["MakoshApp", "MakoshWhatsApp", "MakoshCore", "CPostgres", "MakoshVoiceCodec"]),
+        .target(
+            name: "MakoshMail",
+            dependencies: [
+                "MakoshCore", "CPostgres", "CMailTLS", .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"), .product(name: "NIOIMAP", package: "swift-nio-imap"),
+            ]),
+        .testTarget(
+            name: "MakoshMailTests",
+            dependencies: ["MakoshApp", "MakoshMail", "MakoshCore", "CPostgres", .product(name: "NIOEmbedded", package: "swift-nio")],
+            exclude: ["Fixtures"]),
         .target(name: "MakoshBuildConfiguration", path: ".local/build-configuration"),
         .target(name: "MakoshOpusControl", dependencies: [.product(name: "COpus", package: "MakoshOpus")]),
         .target(name: "MakoshJPEGControl", dependencies: [.product(name: "CMozjpeg", package: "MakoshMozjpeg")]),
         .target(name: "MakoshCodeHighlight", dependencies: [.product(name: "CPrismaEngine", package: "MakoshPrisma")]),
-        .target(name: "MakoshCustomEmojiControl", dependencies: [.product(name: "CRLottie", package: "MakoshRLottie"),
-            .product(name: "CVPX", package: "MakoshVPX")]),
-        .target(name: "MakoshTelegram", dependencies: ["MakoshCore", "MakoshVoiceCodec", "MakoshBuildConfiguration", "CMakoshTelegramVoIP",
-            .product(name: "TelegramApi", package: "TelegramApi"),
-            .product(name: "MtProtoKit", package: "MtProtoKit"),
-            "MakoshJPEGControl",
-            "MakoshCodeHighlight",
-            "MakoshCustomEmojiControl",
-            "MakoshOpusControl", .product(name: "COpus", package: "MakoshOpus"),
-            .product(name: "COgg", package: "MakoshOpusFile"),
-            .product(name: "COpusFile", package: "MakoshOpusFile"),
-            .product(name: "TelegramCore", package: "TelegramCore"),
-            .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
-            .product(name: "SwiftSignalKit", package: "SSignalKit"),
-            .product(name: "Postbox", package: "Postbox")
-        ]),
-        .executableTarget(name: "MakoshApp", dependencies: ["MakoshTelemost", "MakoshTeams", "MakoshCore", "MakoshTelegram", "MakoshMail", "MakoshWhatsApp"]),
+        .target(
+            name: "MakoshCustomEmojiControl",
+            dependencies: [
+                .product(name: "CRLottie", package: "MakoshRLottie"),
+                .product(name: "CVPX", package: "MakoshVPX"),
+            ]),
+        .target(
+            name: "MakoshTelegram",
+            dependencies: [
+                "MakoshCore", "MakoshVoiceCodec", "MakoshBuildConfiguration", "CMakoshTelegramVoIP",
+                .product(name: "TelegramApi", package: "TelegramApi"),
+                .product(name: "MtProtoKit", package: "MtProtoKit"),
+                "MakoshJPEGControl",
+                "MakoshCodeHighlight",
+                "MakoshCustomEmojiControl",
+                "MakoshOpusControl", .product(name: "COpus", package: "MakoshOpus"),
+                .product(name: "COgg", package: "MakoshOpusFile"),
+                .product(name: "COpusFile", package: "MakoshOpusFile"),
+                .product(name: "TelegramCore", package: "TelegramCore"),
+                .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
+                .product(name: "SwiftSignalKit", package: "SSignalKit"),
+                .product(name: "Postbox", package: "Postbox"),
+            ]),
+        .executableTarget(
+            name: "MakoshApp",
+            dependencies: ["MakoshAI", "MakoshTelemost", "MakoshTeams", "MakoshCore", "MakoshTelegram", "MakoshMail", "MakoshWhatsApp"]),
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),
-        .target(name: "MakoshJPEGFaultFixture", dependencies: [.product(name: "CMozjpeg", package: "MakoshMozjpeg")],
+        .target(
+            name: "MakoshJPEGFaultFixture", dependencies: [.product(name: "CMozjpeg", package: "MakoshMozjpeg")],
             path: "Tests/MakoshJPEGFaultFixture",
             cSettings: [.headerSearchPath("../../Sources/MakoshJPEGControl/include")]),
-        .testTarget(name: "MakoshTelegramTests", dependencies: ["MakoshApp", "MakoshTelegram", "MakoshCore", "CPostgres", "MakoshJPEGControl", "MakoshJPEGFaultFixture", "MakoshCodeHighlight", "MakoshCustomEmojiControl",
-            .product(name: "COpus", package: "MakoshOpus"),
-            .product(name: "Postbox", package: "Postbox"),
-            .product(name: "TelegramCore", package: "TelegramCore"),
-            .product(name: "TelegramApi", package: "TelegramApi"),
-            .product(name: "MtProtoKit", package: "MtProtoKit"),
-            .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
-            .product(name: "EncryptionProvider", package: "EncryptionProvider")])
+        .testTarget(
+            name: "MakoshTelegramTests",
+            dependencies: [
+                "MakoshApp", "MakoshTelegram", "MakoshCore", "CPostgres", "MakoshJPEGControl", "MakoshJPEGFaultFixture",
+                "MakoshCodeHighlight", "MakoshCustomEmojiControl",
+                .product(name: "COpus", package: "MakoshOpus"),
+                .product(name: "Postbox", package: "Postbox"),
+                .product(name: "TelegramCore", package: "TelegramCore"),
+                .product(name: "TelegramApi", package: "TelegramApi"),
+                .product(name: "MtProtoKit", package: "MtProtoKit"),
+                .product(name: "OpenSSLEncryption", package: "OpenSSLEncryption"),
+                .product(name: "EncryptionProvider", package: "EncryptionProvider"),
+            ]),
     ],
     cxxLanguageStandard: .cxx17
 )

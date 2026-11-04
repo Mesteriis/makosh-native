@@ -114,7 +114,8 @@ final class AIRepositoryTests: XCTestCase {
 
     func testDeleteConversationRemovesMessagesAndReturnsImages() async throws {
         let conversation = AIConversation(title: "c", createdAt: date, updatedAt: date)
-        let image = AIImageReference(objectID: UUID(), byteCount: 3, sha256: "abc", inS3: true)
+        let image = AIImageReference(
+            objectID: UUID(), byteCount: 3, sha256: "abc", plaintextByteCount: 1, key: Data(repeating: 1, count: 32), inS3: true)
         try await repository.save(conversation)
         try await repository.save(message(conversation.id, image: image))
         let images = try await repository.deleteConversation(conversation.id)

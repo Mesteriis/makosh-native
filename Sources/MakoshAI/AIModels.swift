@@ -71,15 +71,23 @@ public enum AIMessageAuthor: String, Codable, Sendable { case user, assistant }
 
 public enum AIMessageState: String, Codable, Sendable { case complete, streaming, interrupted, failed }
 
+/// An encrypted image envelope; `byteCount`/`sha256` describe the stored
+/// envelope, `plaintextByteCount` the decrypted PNG. `key` is random per image
+/// and lives only inside the encrypted message record: S3 denies deletion, so
+/// deleting the record is what makes an S3 copy unreadable.
 public struct AIImageReference: Codable, Equatable, Sendable {
     public let objectID: UUID
     public let byteCount: Int64
     public let sha256: String
+    public let plaintextByteCount: Int64
+    public let key: Data
     public let inS3: Bool
-    public init(objectID: UUID, byteCount: Int64, sha256: String, inS3: Bool) {
+    public init(objectID: UUID, byteCount: Int64, sha256: String, plaintextByteCount: Int64, key: Data, inS3: Bool) {
         self.objectID = objectID
         self.byteCount = byteCount
         self.sha256 = sha256
+        self.plaintextByteCount = plaintextByteCount
+        self.key = key
         self.inS3 = inS3
     }
 }
@@ -104,24 +112,39 @@ public struct AIMessageVersion: Codable, Equatable, Identifiable, Sendable {
 public struct AIMessage: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let conversationID: UUID
-    /// The previous message on this branch; edits and regenerations create
-    /// siblings that share a parent.
+    /// The previous message on this branch and the version of it this
+    /// message answers or follows; an edit adds a version, so the old branch
+    /// stays reachable by selecting the old version.
     public let parentID: UUID?
+    public let parentVersionID: UUID?
     public let author: AIMessageAuthor
     public var versions: [AIMessageVersion]
     public var selectedVersion: Int
     public init(
-        id: UUID = UUID(), conversationID: UUID, parentID: UUID?, author: AIMessageAuthor, versions: [AIMessageVersion],
-        selectedVersion: Int = 0
+        id: UUID = UUID(), conversationID: UUID, parentID: UUID?, parentVersionID: UUID? = nil, author: AIMessageAuthor,
+        versions: [AIMessageVersion], selectedVersion: Int = 0
     ) {
         self.id = id
         self.conversationID = conversationID
         self.parentID = parentID
+        self.parentVersionID = parentVersionID
         self.author = author
         self.versions = versions
         self.selectedVersion = selectedVersion
     }
     public var current: AIMessageVersion? { versions.indices.contains(selectedVersion) ? versions[selectedVersion] : versions.last }
+
+    /// The branch selected by each message's current version, from the root.
+    public static func path(_ messages: [AIMessage]) -> [AIMessage] {
+        var result: [AIMessage] = []
+        var next = messages.first { $0.parentID == nil }
+        while let message = next, !result.contains(where: { $0.id == message.id }) {
+            result.append(message)
+            let version = message.current?.id
+            next = messages.last { $0.parentID == message.id && $0.parentVersionID == version }
+        }
+        return result
+    }
 }
 
 public enum AIFailure: Error, Equatable, Sendable {

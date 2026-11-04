@@ -2,6 +2,7 @@ import Foundation
 import MakoshAI
 import MakoshCore
 import MakoshMail
+import MakoshTeams
 
 /// One AI worker per process, shared by the workspace window and the
 /// settings scene. The workspace hands over the database configuration once
@@ -58,7 +59,8 @@ import MakoshMail
                     connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider)
                 var sources: [any AIIndexSource] = [
                     try MessageArchiveIndexSource(
-                        connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider)
+                        connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider,
+                        authorKeys: ["teams": TeamsPerson.archiveAuthorKey])
                 ]
                 // MailRepository connects in its initializer; keep it off the main actor.
                 if mail {

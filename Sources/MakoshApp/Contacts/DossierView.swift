@@ -58,10 +58,6 @@ struct DossierView: View {
                             "«Запрещено» закрывает сообщения этого человека для ИИ во всех чатах и ящиках. «Разрешено» не открывает выключенный чат."
                         )
                         .font(.caption).foregroundStyle(.secondary)
-                        if contact.identities.contains(where: { $0.service == "teams" }) {
-                            Text("Для сообщений Teams пока действует только флаг чата: запрет контакта к ним не применяется.")
-                                .font(.caption).foregroundStyle(.orange)
-                        }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                 } label: {
                     Label("ИИ", systemImage: "sparkles")

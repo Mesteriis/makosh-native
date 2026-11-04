@@ -241,7 +241,8 @@ Spec: `docs/superpowers/specs/2026-11-04-ai-domain-design.md`, plan
 The contact flag is `Contact.aiAccess` (`inherit`/`allowed`/`forbidden`); a merge
 keeps `forbidden`, undo restores both cards. `MakoshCore.AIIndexSource` is the only
 contract the index reads: `MessageArchiveIndexSource` follows the shared archive
-(Telegram, WhatsApp, Teams; mail events skipped) and `MailAIIndexSource` follows
+(Telegram, WhatsApp, Teams; mail events skipped; Teams authors are re-keyed from the
+retained source payload to the dossier tenant+user identity) and `MailAIIndexSource` follows
 retained letter versions. Back-fill reads the current state (latest version, deleted
 omitted). `AIIndexer` keeps per-source cursors with a 1000-sequence re-read window,
 back-fills newly opened scopes, purges closed scopes and forbidden authors, and

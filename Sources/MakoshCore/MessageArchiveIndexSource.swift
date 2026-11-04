@@ -6,9 +6,18 @@ import Foundation
 public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable {
     public let name = "archive"
     private let store: MessageArchiveStore
+    private let authorKeys: [String: @Sendable (Data) -> String?]
 
-    public init(connectionString: String, schema: String, keyProvider: @escaping (UUID, Bool) throws -> Data) throws {
+    /// `authorKeys` maps a service's retained source payload to the author's
+    /// dossier external ID when the archive author ID is not that identity
+    /// (Teams keys people by tenant and user). A service with a mapper never
+    /// falls back to its raw author ID.
+    public init(
+        connectionString: String, schema: String, keyProvider: @escaping (UUID, Bool) throws -> Data,
+        authorKeys: [String: @Sendable (Data) -> String?] = [:]
+    ) throws {
         store = try MessageArchiveStore(connectionString: connectionString, schema: schema, readOnly: true, keyProvider: keyProvider)
+        self.authorKeys = authorKeys
     }
 
     /// Skipped mail records never shorten a page: fewer than `limit` items
@@ -20,7 +29,7 @@ public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable
         for _ in 0..<Self.maximumPages {
             let page = try store.records(after: cursor, limit: 200)
             for record in page {
-                guard let item = Self.item(record) else { continue }
+                guard let item = self.item(record) else { continue }
                 result.append(item)
                 if result.count == limit { return result }
             }
@@ -41,7 +50,7 @@ public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable
         var cursor: Int64 = 0
         for _ in 0..<Self.maximumPages {
             let page = try store.records(service: service, accountID: accountID, conversationID: conversationID, after: cursor, limit: 200)
-            for item in page.compactMap(Self.item) { latest[item.identity] = item }
+            for item in page.compactMap(self.item) { latest[item.identity] = item }
             guard page.count == 200, let last = page.last?.sequence else { break }
             cursor = last
         }
@@ -50,14 +59,15 @@ public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable
     /// Bounds one back-fill scan to 200 000 archive versions.
     private static let maximumPages = 1000
 
-    private static func item(_ record: MessageArchiveRecord) -> AIIndexItem? {
+    private func item(_ record: MessageArchiveRecord) -> AIIndexItem? {
         let observation = record.observation, identity = observation.identity
         guard identity.service != "mail" else { return nil }
         let scope = AIAccessScope.conversation(
             service: identity.service, accountID: identity.accountID, conversationID: identity.conversationID)
         switch observation.event {
         case .message(let content):
-            let author = content.authorID.flatMap {
+            let externalID = authorKeys[identity.service].map { key in observation.sourcePayload.flatMap(key) } ?? content.authorID
+            let author = externalID.flatMap {
                 $0.isEmpty ? nil : ServiceIdentity(service: identity.service, accountID: identity.accountID, externalID: $0)
             }
             return AIIndexItem(

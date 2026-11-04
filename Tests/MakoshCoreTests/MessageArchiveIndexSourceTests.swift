@@ -115,3 +115,34 @@ final class MessageArchiveIndexSourceTests: XCTestCase {
         XCTAssertNil(items[2].author)
     }
 }
+
+final class MessageArchiveIndexSourceAuthorKeyTests: XCTestCase {
+    private let key = Data(repeating: 0x66, count: 32)
+
+    func testServiceAuthorKeyReplacesRawAuthorID() async throws {
+        let db = try PostgresTestDatabase()
+        addTeardownBlock { try db.cleanup() }
+        let key = key
+        let store = try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, _ in key }
+        let content = MessageArchiveContent(
+            date: Date(timeIntervalSince1970: 100), text: "t", author: "P", authorID: "raw", isOutgoing: false)
+        _ = try store.append([
+            .init(
+                identity: .init(service: "teams", accountID: "a", conversationID: "c", messageID: "1"), source: .synthetic,
+                event: .message(content), sourcePayload: Data("dossier-key".utf8)),
+            .init(
+                identity: .init(service: "teams", accountID: "a", conversationID: "c", messageID: "2"), source: .synthetic,
+                event: .message(content)),
+            .init(
+                identity: .init(service: "telegram", accountID: "a", conversationID: "c", messageID: "3"), source: .synthetic,
+                event: .message(content), sourcePayload: Data("ignored".utf8)),
+        ])
+        let source = try MessageArchiveIndexSource(
+            connectionString: db.connectionString, schema: db.schema, keyProvider: { _, _ in key },
+            authorKeys: ["teams": { String(data: $0, encoding: .utf8) }])
+        let items = try await source.items(after: 0, limit: 200)
+        XCTAssertEqual(items.map(\.author?.externalID), ["dossier-key", nil, "raw"])
+        let scoped = try await source.items(in: .conversation(service: "teams", accountID: "a", conversationID: "c"), after: 0, limit: 200)
+        XCTAssertEqual(scoped.map(\.author?.externalID), ["dossier-key", nil])
+    }
+}

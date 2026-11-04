@@ -7,7 +7,9 @@ public struct ContactWorkspaceConfiguration: Decodable, Sendable {
     public let archiveSchema: String?
     private enum CodingKeys: String, CodingKey { case connectionString, schema, archiveSchema }
     public init(connectionString: String, schema: String = "makosh", archiveSchema: String? = nil) {
-        self.connectionString = connectionString; self.schema = schema; self.archiveSchema = archiveSchema
+        self.connectionString = connectionString
+        self.schema = schema
+        self.archiveSchema = archiveSchema
     }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -61,14 +63,17 @@ public enum ContactWorkspaceError: LocalizedError, Equatable, Sendable {
         }
     }
     public var errorDescription: String? {
-        let setup = "Не удалось открыть PostgreSQL. Запустите scripts/dev-db.sh up и scripts/run.sh. Проверьте файл конфигурации базы данных."
+        let setup =
+            "Не удалось открыть PostgreSQL. Запустите scripts/dev-db.sh up и scripts/run.sh. Проверьте файл конфигурации базы данных."
         switch self {
         case .setup: return setup
         case .missingConfigurationPath: return "После --database-config укажите путь к JSON-конфигурации базы. " + setup
         case .explicitConfigurationRequired: return "Синтетическая проверка требует --database-config с отдельной тестовой схемой."
         case .invalidExplicitConfiguration: return "Для этой проверки нужна отдельная тестовая схема выбранного сервиса."
         case .unavailable: return "Хранилище не открыто. Перезапустите приложение после устранения ошибки."
-        case .writesBlocked: return "Результат предыдущего сохранения требует проверки. Не повторяйте действие. Проверьте подключение к PostgreSQL и откройте приложение заново."
+        case .writesBlocked:
+            return
+                "Результат предыдущего сохранения требует проверки. Не повторяйте действие. Проверьте подключение к PostgreSQL и откройте приложение заново."
         case .operation(let message, _): return message
         }
     }
@@ -109,16 +114,21 @@ public actor ContactWorkspaceWorker {
     private var configuration: ContactWorkspaceConfiguration?
     private var blocked = false
 
-    public init(arguments: [String] = CommandLine.arguments, requireExplicitDatabaseConfiguration: Bool = false,
-                syntheticSchemaPrefix: String = "qa_telegram_dossier_") {
+    public init(
+        arguments: [String] = CommandLine.arguments, requireExplicitDatabaseConfiguration: Bool = false,
+        syntheticSchemaPrefix: String = "qa_telegram_dossier_"
+    ) {
         source = .arguments(arguments, requireExplicit: requireExplicitDatabaseConfiguration, syntheticSchemaPrefix: syntheticSchemaPrefix)
         storeFactory = { try ContactStore(connectionString: $0.connectionString, schema: $0.schema) }
     }
-    init(configuration: ContactWorkspaceConfiguration,
-         storeFactory: @escaping @Sendable (ContactWorkspaceConfiguration) throws -> any ContactWorkspacePersistence = {
-             try ContactStore(connectionString: $0.connectionString, schema: $0.schema)
-         }) {
-        source = .value(configuration); self.storeFactory = storeFactory
+    init(
+        configuration: ContactWorkspaceConfiguration,
+        storeFactory: @escaping @Sendable (ContactWorkspaceConfiguration) throws -> any ContactWorkspacePersistence = {
+            try ContactStore(connectionString: $0.connectionString, schema: $0.schema)
+        }
+    ) {
+        source = .value(configuration)
+        self.storeFactory = storeFactory
     }
 
     public func open() throws -> ContactWorkspaceOpened {
@@ -153,17 +163,27 @@ public actor ContactWorkspaceWorker {
         if case .importFile(let url) = command {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
-            do { document = try ImportDocument.decode(Data(contentsOf: url)) }
-            catch { throw ContactWorkspaceError.operation("Не удалось прочитать JSON-файл контактов. Проверьте формат файла.", blocksWrites: false) }
-        } else { document = nil }
+            do { document = try ImportDocument.decode(Data(contentsOf: url)) } catch {
+                throw ContactWorkspaceError.operation(
+                    "Не удалось прочитать JSON-файл контактов. Проверьте формат файла.", blocksWrites: false)
+            }
+        } else {
+            document = nil
+        }
 
         let value: ContactWorkspaceWriteResult.Value
         do {
             switch command {
             case .save(let draft, let id):
-                if let id { try store.updateContact(id: id, draft: draft); value = .saved(id) }
-                else { value = try .saved(store.createContact(draft: draft)) }
-            case .addNote(let id, let text): try store.addNote(contactID: id, text: text); value = .noted
+                if let id {
+                    try store.updateContact(id: id, draft: draft)
+                    value = .saved(id)
+                } else {
+                    value = try .saved(store.createContact(draft: draft))
+                }
+            case .addNote(let id, let text):
+                try store.addNote(contactID: id, text: text)
+                value = .noted
             case .addSourceNote(let id, let note): value = .sourceNoted(try store.addSourceNote(contactID: id, note: note))
             case .link(let incoming, let source, let fetchedAt, let id):
                 value = try .linked(store.linkImportedContact(incoming, source: source, fetchedAt: fetchedAt, contactID: id))
@@ -171,17 +191,21 @@ public actor ContactWorkspaceWorker {
                 guard let document else { throw ContactWorkspaceError.unavailable }
                 value = try .imported(store.importDocument(document))
             case .merge(let survivor, let removed):
-                _ = try store.merge(survivorID: survivor, removedID: removed); value = .merged(survivor)
-            case .undo(let id): try store.undoMerge(id: id); value = .undone
-            case .setAIAccess(let id, let access): try store.setAIAccess(contactID: id, access: access); value = .aiAccessSet
+                _ = try store.merge(survivorID: survivor, removedID: removed)
+                value = .merged(survivor)
+            case .undo(let id):
+                try store.undoMerge(id: id)
+                value = .undone
+            case .setAIAccess(let id, let access):
+                try store.setAIAccess(contactID: id, access: access)
+                value = .aiAccessSet
             }
         } catch {
             let safe = mutationError(error)
             blocked = safe.blocksWrites
             throw safe
         }
-        do { return try .init(value: value, snapshot: snapshot()) }
-        catch {
+        do { return try .init(value: value, snapshot: snapshot()) } catch {
             // Returning the committed identity/count lets the UI close its editor and
             // keep the successful link even when the visible snapshot cannot refresh.
             blocked = true
@@ -204,7 +228,10 @@ public actor ContactWorkspaceWorker {
         let requireExplicit: Bool
         let syntheticSchemaPrefix: String
         switch source {
-        case .value(let value): configuration = value; requireExplicit = false; syntheticSchemaPrefix = "qa_telegram_dossier_"
+        case .value(let value):
+            configuration = value
+            requireExplicit = false
+            syntheticSchemaPrefix = "qa_telegram_dossier_"
         case .arguments(let arguments, let explicit, let prefix):
             requireExplicit = explicit
             syntheticSchemaPrefix = prefix
@@ -216,19 +243,25 @@ public actor ContactWorkspaceWorker {
                 url = URL(fileURLWithPath: arguments[index + 1])
             } else {
                 guard !explicit else { throw ContactWorkspaceError.explicitConfigurationRequired }
-                url = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-                    .appendingPathComponent("Makosh/database.json")
+                url = try FileManager.default.url(
+                    for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+                )
+                .appendingPathComponent("Makosh/database.json")
             }
             configuration = try JSONDecoder().decode(ContactWorkspaceConfiguration.self, from: Data(contentsOf: url))
         }
-        guard !requireExplicit || (syntheticSchemaPrefix.hasPrefix("qa_") && ArchiveBackup.isValidSchemaName(syntheticSchemaPrefix)
-            && configuration.schema.hasPrefix(syntheticSchemaPrefix)
-            && (configuration.archiveSchema ?? configuration.schema).hasPrefix(syntheticSchemaPrefix)) else {
+        guard
+            !requireExplicit
+                || (syntheticSchemaPrefix.hasPrefix("qa_") && ArchiveBackup.isValidSchemaName(syntheticSchemaPrefix)
+                    && configuration.schema.hasPrefix(syntheticSchemaPrefix)
+                    && (configuration.archiveSchema ?? configuration.schema).hasPrefix(syntheticSchemaPrefix))
+        else {
             throw ContactWorkspaceError.invalidExplicitConfiguration
         }
         guard !configuration.connectionString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              ArchiveBackup.isValidSchemaName(configuration.schema),
-              configuration.archiveSchema.map(ArchiveBackup.isValidSchemaName) ?? true else { throw ContactWorkspaceError.setup }
+            ArchiveBackup.isValidSchemaName(configuration.schema),
+            configuration.archiveSchema.map(ArchiveBackup.isValidSchemaName) ?? true
+        else { throw ContactWorkspaceError.setup }
         return configuration
     }
 }

@@ -1,4 +1,5 @@
 import MakoshAI
+import MakoshCore
 import SwiftUI
 
 struct AISettingsView: View {
@@ -8,7 +9,52 @@ struct AISettingsView: View {
         if host.configuration == nil {
             Text("Откройте рабочее пространство Макоша, чтобы настроить ИИ.").padding(24).frame(minWidth: 520)
         } else {
-            AISettingsForm(model: host.settings)
+            VStack(spacing: 0) {
+                AISettingsForm(model: host.settings)
+                AIIndexSection()
+            }
+        }
+    }
+}
+
+/// Which sources are open to the AI and how far indexing has got.
+struct AIIndexSection: View {
+    @EnvironmentObject private var host: AIHost
+
+    var body: some View {
+        Form {
+            Section("Поиск по данным Макоша") {
+                if host.enabledScopes.isEmpty {
+                    Text("Ни один чат или ящик не открыт для ИИ. Включите «Доступно для ИИ» в настройках чата или ящика.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(host.enabledScopes, id: \.self) { scope in Text(Self.title(scope)).font(.caption) }
+                }
+                LabeledContent("Проиндексировано фрагментов", value: "\(host.indexStatus.indexed)")
+                if host.indexStatus.pending > 0 { LabeledContent("Догружается источников", value: "\(host.indexStatus.pending)") }
+                if let failure = host.indexStatus.failure, failure != .roleUnassigned(.embeddings) || !host.enabledScopes.isEmpty {
+                    Text(failure.message).font(.caption).foregroundStyle(.orange)
+                }
+                Toggle(
+                    "Пауза индексации",
+                    isOn: Binding(get: { host.indexStatus.paused }, set: { value in Task { await host.pauseIndex(value) } })
+                )
+                .accessibilityIdentifier("ai.settings.indexPause")
+            }
+        }
+        .formStyle(.grouped)
+        .task {
+            while !Task.isCancelled {
+                await host.refreshIndex()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    static func title(_ scope: AIAccessScope) -> String {
+        switch scope {
+        case .conversation(let service, _, let conversationID): "\(service.capitalized) · чат \(conversationID.prefix(12))"
+        case .mailAccount(let accountID): "Почта · ящик \(accountID.prefix(12))"
         }
     }
 }

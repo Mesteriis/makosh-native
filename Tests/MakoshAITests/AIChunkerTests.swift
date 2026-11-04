@@ -7,7 +7,8 @@ func aiItem(
     service: String = "telegram"
 ) -> AIIndexItem {
     AIIndexItem(
-        sequence: sequence, identity: MessageArchiveIdentity(service: service, accountID: "acc", conversationID: chat, messageID: "\(sequence)"),
+        sequence: sequence,
+        identity: MessageArchiveIdentity(service: service, accountID: "acc", conversationID: chat, messageID: "\(sequence)"),
         scope: .conversation(service: service, accountID: "acc", conversationID: chat),
         author: author.map { ServiceIdentity(service: service, accountID: "acc", externalID: $0) }, isOutgoing: outgoing,
         date: Date(timeIntervalSince1970: 1_000 + Double(sequence)), title: "", text: text, removed: removed)
@@ -41,8 +42,10 @@ final class AIChunkerTests: XCTestCase {
     func testLongLetterSplitWithHeaders() {
         let letter = AIIndexItem(
             sequence: 1, identity: MessageArchiveIdentity(service: "mail", accountID: "acc", conversationID: "INBOX", messageID: "l"),
-            scope: .mailAccount(accountID: "acc"), author: ServiceIdentity(service: "mail", accountID: "acc", externalID: "p@example.invalid"),
-            isOutgoing: false, date: Date(timeIntervalSince1970: 0), title: "Квартальный отчёт", text: String(repeating: "слово ", count: 700),
+            scope: .mailAccount(accountID: "acc"),
+            author: ServiceIdentity(service: "mail", accountID: "acc", externalID: "p@example.invalid"),
+            isOutgoing: false, date: Date(timeIntervalSince1970: 0), title: "Квартальный отчёт",
+            text: String(repeating: "слово ", count: 700),
             removed: false)
         let chunks = AIChunker.chunks([letter], generation: 1) { _ in true }
         XCTAssertGreaterThanOrEqual(chunks.count, 3)
@@ -55,7 +58,8 @@ final class AIChunkerTests: XCTestCase {
         let first = AIChunker.chunks(items, generation: 1) { _ in true }
         XCTAssertEqual(first.map(\.id), AIChunker.chunks(items, generation: 1) { _ in true }.map(\.id))
         XCTAssertNotEqual(first.map(\.id), AIChunker.chunks(items, generation: 2) { _ in true }.map(\.id))
-        XCTAssertNotEqual(first.map(\.id), AIChunker.chunks([aiItem(1, text: "a"), aiItem(2, text: "edited")], generation: 1) { _ in true }.map(\.id))
+        XCTAssertNotEqual(
+            first.map(\.id), AIChunker.chunks([aiItem(1, text: "a"), aiItem(2, text: "edited")], generation: 1) { _ in true }.map(\.id))
     }
 
     func testRemovedItemsAreNeverChunked() {

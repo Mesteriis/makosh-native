@@ -43,8 +43,15 @@ public struct AIIndexItem: Sendable, Equatable {
         sequence: Int64, identity: MessageArchiveIdentity, scope: AIAccessScope, author: ServiceIdentity?, isOutgoing: Bool, date: Date,
         title: String, text: String, removed: Bool
     ) {
-        self.sequence = sequence; self.identity = identity; self.scope = scope; self.author = author; self.isOutgoing = isOutgoing
-        self.date = date; self.title = title; self.text = text; self.removed = removed
+        self.sequence = sequence
+        self.identity = identity
+        self.scope = scope
+        self.author = author
+        self.isOutgoing = isOutgoing
+        self.date = date
+        self.title = title
+        self.text = text
+        self.removed = removed
     }
 }
 

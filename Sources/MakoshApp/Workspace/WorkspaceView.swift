@@ -189,7 +189,7 @@ struct WorkspaceView: View {
         .task {
             await model.load()
             if let configuration = model.mailConfiguration, ordinaryLaunch {
-                Task { await ai.start(configuration: configuration) }
+                Task { await ai.start(configuration: configuration, contacts: model.dossierWorker) }
             }
             if let configuration = model.mailConfiguration {
                 if !whatsapp.isSynthetic && !teams.isSynthetic && !telemost.isSynthetic { await mail.load(configuration: configuration) }
@@ -416,7 +416,16 @@ struct WorkspaceView: View {
                         }
                     }
                 } else if destination == .ai {
-                    AIConversationView(model: ai.workspace)
+                    AIConversationView(model: ai.workspace) { source in
+                        // Opens the source's section; the message itself is not yet selected there.
+                        switch source.service {
+                        case "telegram": destination = .telegram
+                        case "whatsapp": destination = .whatsapp
+                        case "teams": destination = .teams
+                        case "mail": destination = .mail
+                        default: break
+                        }
+                    }
                 } else {
                     ContentUnavailableView(
                         "\(destination?.rawValue ?? "Сервис") не подключён", systemImage: destination?.symbol ?? "square",

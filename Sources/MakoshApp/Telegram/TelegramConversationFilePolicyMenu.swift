@@ -1,20 +1,30 @@
 import SwiftUI
+import MakoshCore
 import MakoshTelegram
 
 struct TelegramConversationFilePolicyMenu: View {
     @ObservedObject private var policy: TelegramConversationFilePolicyController
     let chatID: Int64
     init(files: TelegramFileArchiveController, chatID: Int64) {
-        policy = files.policy; self.chatID = chatID
+        policy = files.policy
+        self.chatID = chatID
     }
     var body: some View {
         MakoshMenu {
             if let context = policy.context, context.chatID == chatID {
-                MakoshDropdownToggle("Сохранять файлы в S3", isOn: Binding(get: { policy.enabled ?? false }, set: { enabled in
-                    Task { await policy.setEnabled(enabled, contextID: context.id) }
-                }))
+                MakoshDropdownToggle(
+                    "Сохранять файлы в S3",
+                    isOn: Binding(
+                        get: { policy.enabled ?? false },
+                        set: { enabled in
+                            Task { await policy.setEnabled(enabled, contextID: context.id) }
+                        })
+                )
                 .disabled(policy.isBusy || policy.enabled == nil)
                 .accessibilityIdentifier("telegram.chat.saveFilesS3")
+                AIAccessMenuToggle(
+                    scope: .conversation(service: "telegram", accountID: String(context.accountID), conversationID: String(context.chatID)),
+                    title: "Доступно для ИИ")
                 if policy.isBusy { Text("Загрузка или сохранение настройки…") }
                 if let error = policy.error {
                     Text(error)
@@ -29,7 +39,9 @@ struct TelegramConversationFilePolicyMenu: View {
         .makoshMenuStyle(.plain).fixedSize()
         .help("Сохранение файлов этого чата в S3")
         .accessibilityLabel("Сохранение файлов этого чата в S3")
-        .accessibilityValue(policy.isBusy ? "Настройка загружается" : policy.enabled.map { $0 ? "Включено" : "Выключено" } ?? "Настройка недоступна")
+        .accessibilityValue(
+            policy.isBusy ? "Настройка загружается" : policy.enabled.map { $0 ? "Включено" : "Выключено" } ?? "Настройка недоступна"
+        )
         .accessibilityIdentifier("telegram.chat.fileStorage")
     }
 }

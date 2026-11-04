@@ -128,6 +128,17 @@ import MakoshCore
         }
     }
 
+    /// Whether the selected conversation searches permitted Makosh data.
+    package var searchMyData: Bool { conversations.first { $0.id == selectedConversationID }?.searchMyData ?? true }
+
+    package func setSearchMyData(_ enabled: Bool) async {
+        guard let id = selectedConversationID else { return }
+        do {
+            try await worker.setSearchMyData(enabled, conversationID: id)
+            await reload()
+        } catch { failure = error as? AIFailure ?? .storage }
+    }
+
     package func dismissFailure() { failure = nil }
 
     /// Publishes while the stream's conversation is selected, including after

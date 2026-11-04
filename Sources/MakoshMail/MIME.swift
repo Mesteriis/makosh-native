@@ -18,9 +18,12 @@ enum MIME {
             let after = rest[start.upperBound...]
             // charset?enc?text?=
             guard let q1 = after.range(of: "?"),
-                  let q2 = after[q1.upperBound...].range(of: "?"),
-                  let end = after[q2.upperBound...].range(of: "?=") else {
-                result += "=?"; rest = after; continue
+                let q2 = after[q1.upperBound...].range(of: "?"),
+                let end = after[q2.upperBound...].range(of: "?=")
+            else {
+                result += "=?"
+                rest = after
+                continue
             }
             let charset = String(after[after.startIndex..<q1.lowerBound])
             let enc = String(after[q1.upperBound..<q2.lowerBound]).uppercased()
@@ -40,7 +43,7 @@ enum MIME {
         let data: Data?
         if encoding == "B" {
             data = Data(base64Encoded: text)
-        } else { // "Q" — quoted-printable variant (underscore = space)
+        } else {  // "Q" — quoted-printable variant (underscore = space)
             data = quotedPrintableData(text.replacingOccurrences(of: "_", with: " "), underscoreSpace: true)
         }
         guard let d = data else { return nil }
@@ -49,9 +52,11 @@ enum MIME {
 
     // MARK: Outgoing message
 
-    static func buildMessage(from: String, fromName: String?, to: String, cc: String = "",
-                             subject: String, body: String, date: Date = Date(),
-                             attachments: [ComposeAttachment] = [], bodyHTML: String? = nil) -> String {
+    static func buildMessage(
+        from: String, fromName: String?, to: String, cc: String = "",
+        subject: String, body: String, date: Date = Date(),
+        attachments: [ComposeAttachment] = [], bodyHTML: String? = nil
+    ) -> String {
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
         df.dateFormat = "EEE, d MMM yyyy HH:mm:ss Z"
@@ -139,8 +144,19 @@ enum MIME {
 
     // MARK: Incoming text + attachment extraction
 
-    struct Attachment { let filename: String; let mimeType: String; let data: Data }
-    struct Parsed { var text: String; var html: String?; var attachments: [Attachment]; var listUnsubscribe: String?; var calendar: String?; var headers: [String: String] = [:] }
+    struct Attachment {
+        let filename: String
+        let mimeType: String
+        let data: Data
+    }
+    struct Parsed {
+        var text: String
+        var html: String?
+        var attachments: [Attachment]
+        var listUnsubscribe: String?
+        var calendar: String?
+        var headers: [String: String] = [:]
+    }
 
     static func extractText(from data: Data) -> String { parse(data).text }
 
@@ -168,12 +184,14 @@ enum MIME {
         }
 
         // Calendar invite (text/calendar part, or a .ics attachment).
-        let isICS = ctl.contains("text/calendar") || ctl.contains("application/ics")
+        let isICS =
+            ctl.contains("text/calendar") || ctl.contains("application/ics")
             || (filename?.lowercased().hasSuffix(".ics") ?? false)
         if isICS {
             let decoded = decodeBody(body, encoding: enc)
             if result.calendar == nil {
-                result.calendar = string(from: decoded, charset: parameter("charset", in: ct) ?? "utf-8")
+                result.calendar =
+                    string(from: decoded, charset: parameter("charset", in: ct) ?? "utf-8")
                     ?? String(decoding: decoded, as: UTF8.self)
             }
             let filename = filename ?? "invitation.ics"
@@ -185,9 +203,11 @@ enum MIME {
         if disp.contains("attachment") || !ctl.hasPrefix("text/") {
             let filename = filename ?? "attachment-\(result.attachments.count + 1)"
             let decoded = decodeBody(body, encoding: enc)
-            result.attachments.append(Attachment(filename: decodeHeader(filename),
-                                                  mimeType: ctl.split(separator: ";").first.map(String.init) ?? ctl,
-                                                  data: decoded))
+            result.attachments.append(
+                Attachment(
+                    filename: decodeHeader(filename),
+                    mimeType: ctl.split(separator: ";").first.map(String.init) ?? ctl,
+                    data: decoded))
             return
         }
 
@@ -233,10 +253,11 @@ enum MIME {
             }
         }
         guard !summary.isEmpty || start != nil else { return nil }
-        return CalendarEvent(summary: summary.isEmpty ? "(untitled event)" : summary,
-                             start: start, end: end,
-                             location: location.isEmpty ? nil : location,
-                             organizer: organizer.isEmpty ? nil : organizer, raw: ics)
+        return CalendarEvent(
+            summary: summary.isEmpty ? "(untitled event)" : summary,
+            start: start, end: end,
+            location: location.isEmpty ? nil : location,
+            organizer: organizer.isEmpty ? nil : organizer, raw: ics)
     }
 
     private static func unescapeICS(_ s: String) -> String {
@@ -285,10 +306,25 @@ enum MIME {
     private static func parameter(_ name: String, in header: String) -> String? {
         var pieces: [String] = [], current = "", quoted = false, escaped = false
         for character in header {
-            if escaped { current.append(character); escaped = false; continue }
-            if character == "\\", quoted { escaped = true; continue }
-            if character == "\"" { quoted.toggle(); continue }
-            if character == ";", !quoted { pieces.append(current); current = "" } else { current.append(character) }
+            if escaped {
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if character == "\\", quoted {
+                escaped = true
+                continue
+            }
+            if character == "\"" {
+                quoted.toggle()
+                continue
+            }
+            if character == ";", !quoted {
+                pieces.append(current)
+                current = ""
+            } else {
+                current.append(character)
+            }
         }
         pieces.append(current)
         var parameters: [String: String] = [:]
@@ -301,7 +337,11 @@ enum MIME {
         if let extended = parameters[key + "*"], let decoded = decodeExtended(extended) { return decoded }
         if parameters[key + "*0*"] != nil {
             var combined = "", index = 0
-            while let part = parameters[key + "*\(index)*"] ?? parameters[key + "*\(index)"] { combined += part; index += 1; if index > 100 { break } }
+            while let part = parameters[key + "*\(index)*"] ?? parameters[key + "*\(index)"] {
+                combined += part
+                index += 1
+                if index > 100 { break }
+            }
             if let decoded = decodeExtended(combined) { return decoded }
         }
         return parameters[key]
@@ -313,9 +353,15 @@ enum MIME {
         var result = Data(), index = 0
         while index < bytes.count {
             if bytes[index] == 37 {
-                guard index + 2 < bytes.count, let number = UInt8(String(decoding: bytes[(index+1)...(index+2)], as: UTF8.self), radix: 16) else { return nil }
-                result.append(number); index += 3
-            } else { result.append(bytes[index]); index += 1 }
+                guard index + 2 < bytes.count,
+                    let number = UInt8(String(decoding: bytes[(index + 1)...(index + 2)], as: UTF8.self), radix: 16)
+                else { return nil }
+                result.append(number)
+                index += 3
+            } else {
+                result.append(bytes[index])
+                index += 1
+            }
         }
         return string(from: result, charset: String(parts[0]))
     }
@@ -326,20 +372,20 @@ enum MIME {
         var parts: [Data] = [], partStart: Int? = nil
         var cursor = 0
         while cursor < body.count {
-            let lineEnd = body.range(of: Data([10]),in: cursor..<body.count)?.lowerBound ?? body.count
-            var line = Data(body[cursor..<lineEnd]); if line.last == 13 { line.removeLast() }
+            let lineEnd = body.range(of: Data([10]), in: cursor..<body.count)?.lowerBound ?? body.count
+            var line = Data(body[cursor..<lineEnd])
+            if line.last == 13 { line.removeLast() }
             let closing = line == delimiter + Data("--".utf8)
             if line == delimiter || closing {
                 if let start = partStart {
                     var end = cursor
-                    if end >= 2, body[end-2] == 13, body[end-1] == 10 { end -= 2 }
-                    else if end > 0, body[end-1] == 10 { end -= 1 }
+                    if end >= 2, body[end - 2] == 13, body[end - 1] == 10 { end -= 2 } else if end > 0, body[end - 1] == 10 { end -= 1 }
                     if start < end { parts.append(Data(body[start..<end])) }
                 }
                 if closing { break }
-                partStart = min(lineEnd+1,body.count)
+                partStart = min(lineEnd + 1, body.count)
             }
-            cursor = lineEnd+1
+            cursor = lineEnd + 1
         }
         return parts
     }
@@ -368,9 +414,9 @@ enum MIME {
         out.reserveCapacity(bytes.count)
         func hex(_ b: UInt8) -> UInt8? {
             switch b {
-            case 0x30...0x39: return b - 0x30          // 0–9
-            case 0x41...0x46: return b - 0x41 + 10     // A–F
-            case 0x61...0x66: return b - 0x61 + 10     // a–f
+            case 0x30...0x39: return b - 0x30  // 0–9
+            case 0x41...0x46: return b - 0x41 + 10  // A–F
+            case 0x61...0x66: return b - 0x61 + 10  // a–f
             default: return nil
             }
         }
@@ -379,18 +425,32 @@ enum MIME {
             let b = bytes[i]
             if b == 0x3D {  // '='
                 // Soft line break: "=\r\n", "=\n", or a bare "=\r".
-                if i + 2 < bytes.count, bytes[i + 1] == 0x0D, bytes[i + 2] == 0x0A { i += 3; continue }
-                if i + 1 < bytes.count, bytes[i + 1] == 0x0A { i += 2; continue }
-                if i + 1 < bytes.count, bytes[i + 1] == 0x0D { i += 2; continue }
+                if i + 2 < bytes.count, bytes[i + 1] == 0x0D, bytes[i + 2] == 0x0A {
+                    i += 3
+                    continue
+                }
+                if i + 1 < bytes.count, bytes[i + 1] == 0x0A {
+                    i += 2
+                    continue
+                }
+                if i + 1 < bytes.count, bytes[i + 1] == 0x0D {
+                    i += 2
+                    continue
+                }
                 // "=XX" hex escape.
                 if i + 2 < bytes.count, let hi = hex(bytes[i + 1]), let lo = hex(bytes[i + 2]) {
-                    out.append(hi << 4 | lo); i += 3; continue
+                    out.append(hi << 4 | lo)
+                    i += 3
+                    continue
                 }
-                out.append(0x3D); i += 1   // stray '=' — keep literal
+                out.append(0x3D)
+                i += 1  // stray '=' — keep literal
             } else if b == 0x5F, underscoreSpace {  // '_'
-                out.append(0x20); i += 1
+                out.append(0x20)
+                i += 1
             } else {
-                out.append(b); i += 1
+                out.append(b)
+                i += 1
             }
         }
         return Data(out)

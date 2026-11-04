@@ -1,17 +1,26 @@
 import Foundation
 import MakoshAI
 import MakoshCore
+import MakoshMail
 
 /// One AI worker per process, shared by the workspace window and the
 /// settings scene. The workspace hands over the database configuration once
 /// its own load has resolved it.
 @MainActor final class AIHost: ObservableObject {
+    let worker: AIWorker
     let workspace: AIWorkspaceModel
     let settings: AISettingsModel
     @Published private(set) var configuration: ContactWorkspaceConfiguration?
+    @Published private(set) var indexStatus = AIIndexStatus()
+    @Published private(set) var enabledScopes: [AIAccessScope] = []
+    /// Bumped after any access change so toggles reload their state.
+    @Published private(set) var accessRevision = 0
     let isSynthetic: Bool
+    private var access: AIArchiveAccessProvider?
+    private var indexer: AIIndexer?
 
     init(worker: AIWorker, synthetic: Bool = false) {
+        self.worker = worker
         workspace = AIWorkspaceModel(worker: worker)
         settings = AISettingsModel(worker: worker)
         isSynthetic = synthetic
@@ -32,11 +41,78 @@ import MakoshCore
         )
     }
 
-    func start(configuration: ContactWorkspaceConfiguration) async {
+    /// Opens the conversation store, then the index: the archive and mail
+    /// sources, the access flags and the vector store, all off the main actor.
+    func start(
+        configuration: ContactWorkspaceConfiguration, contacts: ContactWorkspaceWorker?,
+        keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open, mail: Bool = true
+    ) async {
         guard self.configuration == nil else { return }
         self.configuration = configuration
         await workspace.start(configuration: configuration)
         await settings.start(configuration: configuration)
+        do {
+            let archiveSchema = configuration.archiveSchema ?? configuration.schema
+            let opened = try await BackgroundWork.run {
+                let store = try MessageArchiveStore(
+                    connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider)
+                let archive = try MessageArchiveIndexSource(
+                    connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider)
+                return (AIArchiveAccessProvider(store: store, contacts: contacts), archive)
+            }
+            var sources: [any AIIndexSource] = [opened.1]
+            if mail {
+                sources.append(MailAIIndexSource(repository: MailRepository(configuration: configuration, keyProvider: keyProvider)))
+            }
+            let vectors = AIVectorStore(keyProvider: keyProvider)
+            try await vectors.open(configuration: configuration)
+            await worker.attachRetrieval(vectors: vectors, access: opened.0)
+            let indexer = AIIndexer(worker: worker, vectors: vectors, sources: sources, access: opened.0)
+            access = opened.0
+            self.indexer = indexer
+            await indexer.start()
+            await refreshIndex()
+        } catch {
+            indexStatus.failure = error as? AIFailure ?? .storage
+        }
+    }
+
+    func accessEnabled(_ scope: AIAccessScope) async -> Bool? {
+        guard let access else { return nil }
+        return try? await access.isEnabled(scope)
+    }
+
+    func setAccess(_ scope: AIAccessScope, enabled: Bool) async {
+        guard let access else { return }
+        do {
+            try await access.setScope(scope, enabled: enabled)
+            accessRevision += 1
+            await indexer?.accessChanged()
+            await refreshIndex()
+        } catch { indexStatus.failure = error as? AIFailure ?? .storage }
+    }
+
+    /// Contact flags live in the dossier; the index only needs to re-check.
+    func contactAccessChanged() async {
+        accessRevision += 1
+        await indexer?.accessChanged()
+    }
+
+    func refreshIndex() async {
+        if let indexer { indexStatus = await indexer.status() }
+        if let access { enabledScopes = (try? await access.snapshot().enabledScopes.sorted { "\($0)" < "\($1)" }) ?? [] }
+    }
+
+    func pauseIndex(_ paused: Bool) async {
+        await indexer?.pause(paused)
+        if !paused { await indexer?.accessChanged() }
+        await refreshIndex()
+    }
+
+    /// The QA preview indexes synchronously so the seeded conversation is searchable at once.
+    func indexNow() async {
+        _ = try? await indexer?.runOnce()
+        await refreshIndex()
     }
 }
 

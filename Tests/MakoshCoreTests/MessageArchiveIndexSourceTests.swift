@@ -18,7 +18,8 @@ final class MessageArchiveIndexSourceTests: XCTestCase {
     ) -> MessageArchiveObservation {
         .init(
             identity: .init(service: service, accountID: account, conversationID: chat, messageID: id), source: .synthetic,
-            event: .message(.init(date: Date(timeIntervalSince1970: 100), text: text, author: "Peer", authorID: author, isOutgoing: outgoing)))
+            event: .message(
+                .init(date: Date(timeIntervalSince1970: 100), text: text, author: "Peer", authorID: author, isOutgoing: outgoing)))
     }
 
     func testItemsAfterAscendingAndBounded() async throws {
@@ -37,7 +38,9 @@ final class MessageArchiveIndexSourceTests: XCTestCase {
 
     func testMailEventsSkipped() async throws {
         let (store, source) = try fixture()
-        _ = try store.append([message("mail", chat: "INBOX", id: "1", text: "outgoing letter"), message("teams", chat: "t", id: "2", text: "hi")])
+        _ = try store.append([
+            message("mail", chat: "INBOX", id: "1", text: "outgoing letter"), message("teams", chat: "t", id: "2", text: "hi"),
+        ])
         let items = try await source.items(after: 0, limit: 200)
         XCTAssertEqual(items.map(\.identity.service), ["teams"])
     }
@@ -71,8 +74,10 @@ final class MessageArchiveIndexSourceTests: XCTestCase {
         let deleted = message("telegram", chat: "a", id: "2", text: "deleted text")
         _ = try store.append([edited, deleted, message("telegram", chat: "a", id: "3", text: "kept")])
         _ = try store.append([
-            .init(identity: edited.identity, source: .synthetic,
-                  event: .message(.init(date: Date(timeIntervalSince1970: 100), text: "new text", author: "Peer", authorID: "peer", isOutgoing: false))),
+            .init(
+                identity: edited.identity, source: .synthetic,
+                event: .message(
+                    .init(date: Date(timeIntervalSince1970: 100), text: "new text", author: "Peer", authorID: "peer", isOutgoing: false))),
             .init(identity: deleted.identity, source: .synthetic, event: .deleted),
         ])
         let scope = AIAccessScope.conversation(service: "telegram", accountID: "acc", conversationID: "a")

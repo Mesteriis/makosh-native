@@ -123,7 +123,8 @@ public actor AIWorker {
             guard role.connectionID == generation.connectionID, role.model == generation.model else { return (nil, []) }
             let query = try await embed([question])
             guard let vector = query.vectors.first else { return (nil, []) }
-            let matches = try await vectors.search(vector, generation: generation.id, limit: AIRetrieval.limit, maxDistance: AIRetrieval.maxDistance)
+            let matches = try await vectors.search(
+                vector, generation: generation.id, limit: AIRetrieval.limit, maxDistance: AIRetrieval.maxDistance)
             let snapshot = try await access.snapshot()
             let permitted = matches.map(\.chunk).filter { snapshot.admits($0) }
             guard !permitted.isEmpty else { return (nil, []) }

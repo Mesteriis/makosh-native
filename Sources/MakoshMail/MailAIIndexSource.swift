@@ -38,7 +38,8 @@ public struct MailAIIndexSource: AIIndexSource {
             let text = letter.text ?? letter.html.map(MIME.stripHTML) ?? ""
             return AIIndexItem(
                 sequence: version.id,
-                identity: MessageArchiveIdentity(service: "mail", accountID: account, conversationID: letter.key.folder, messageID: letter.id),
+                identity: MessageArchiveIdentity(
+                    service: "mail", accountID: account, conversationID: letter.key.folder, messageID: letter.id),
                 scope: .mailAccount(accountID: account), author: ServiceIdentity(service: "mail", accountID: account, externalID: sender),
                 isOutgoing: addresses[account] == sender, date: letter.date, title: letter.subject,
                 text: letter.removedFromSource == true ? "" : text, removed: letter.removedFromSource == true)

@@ -27,6 +27,7 @@ struct AISyntheticPreview: View {
                 .sheet(isPresented: $settings) {
                     VStack {
                         AISettingsForm(model: host.settings)
+                        AIIndexSection().environmentObject(host)
                         Button("Готово") {
                             settings = false
                             Task { await host.workspace.reload() }
@@ -60,16 +61,26 @@ struct AISyntheticPreview: View {
                 let worker = AIWorker(
                     repository: AIRepository(keyProvider: { _, _ in Data(repeating: 0x5a, count: 32) }), client: AISyntheticService(),
                     vault: AIMemoryTokenVault(), images: AIImageStore(s3: nil, localDirectory: directory))
+                let key: @Sendable (UUID, Bool) throws -> Data = { _, _ in Data(repeating: 0x5a, count: 32) }
+                // Seed a synthetic archive conversation that is open to the AI.
+                try await BackgroundWork.run {
+                    let store = try MessageArchiveStore(
+                        connectionString: configuration.connectionString, schema: configuration.archiveSchema ?? configuration.schema,
+                        keyProvider: key)
+                    try AISyntheticSeed.seed(store)
+                }
                 let host = AIHost(worker: worker, synthetic: true)
-                await host.start(configuration: configuration)
+                await host.start(configuration: configuration, contacts: nil, keyProvider: key, mail: false)
                 if host.settings.connections.isEmpty {
                     let connection = AIConnection(name: "Синтетический сервер", baseURL: URL(string: "http://127.0.0.1:9/v1")!)
                     await host.settings.save(connection, token: nil)
                     await host.settings.test(connection.id)
                     await host.settings.assign(.chat, connectionID: connection.id, model: "synthetic-chat")
+                    await host.settings.assign(.embeddings, connectionID: connection.id, model: "synthetic-embed")
                     await host.settings.assign(.images, connectionID: connection.id, model: "synthetic-image")
                     await host.settings.assign(.transcription, connectionID: connection.id, model: "synthetic-transcribe")
                 }
+                await host.indexNow()
                 await host.workspace.reload()
                 self.host = host
             } catch {

@@ -12,14 +12,17 @@ actor AIFakeIndexSource: AIIndexSource {
     }
     /// Like real sources: the latest state of each message, without deleted ones.
     func items(in scope: AIAccessScope, after sequence: Int64, limit: Int) -> [AIIndexItem] {
-        let latest = Dictionary(grouping: stored.filter { $0.scope == scope }, by: \.identity).compactMap { $0.value.max { $0.sequence < $1.sequence } }
+        let latest = Dictionary(grouping: stored.filter { $0.scope == scope }, by: \.identity).compactMap {
+            $0.value.max { $0.sequence < $1.sequence }
+        }
         return Array(latest.filter { !$0.removed && $0.sequence > sequence }.sorted { $0.sequence < $1.sequence }.prefix(limit))
     }
     func edit(messageID: String, sequence: Int64, text: String) {
         guard let original = stored.first(where: { $0.identity.messageID == messageID }) else { return }
         stored.append(
             AIIndexItem(
-                sequence: sequence, identity: original.identity, scope: original.scope, author: original.author, isOutgoing: original.isOutgoing,
+                sequence: sequence, identity: original.identity, scope: original.scope, author: original.author,
+                isOutgoing: original.isOutgoing,
                 date: original.date, title: original.title, text: text, removed: false))
     }
 }

@@ -60,7 +60,9 @@ enum AIChunker {
     private static func letter(_ item: AIIndexItem, generation: Int64) -> [AIChunk] {
         let date = item.date.formatted(.iso8601.year().month().day())
         let header = "Тема: \(item.title)\nОт: \(item.isOutgoing ? "вы" : item.author?.externalID ?? "")\nДата: \(date)\n\n"
-        return parts(of: item.text, header: header).enumerated().map { index, text in chunk([item], text: text, part: index, generation: generation) }
+        return parts(of: item.text, header: header).enumerated().map { index, text in
+            chunk([item], text: text, part: index, generation: generation)
+        }
     }
 
     private static func line(_ item: AIIndexItem) -> String {
@@ -72,7 +74,9 @@ enum AIChunker {
         var rest = Substring(text)
         while !rest.isEmpty {
             var piece = rest.prefix(maxCharacters)
-            if piece.count == maxCharacters, let space = piece.lastIndex(where: \.isWhitespace), piece.distance(from: piece.startIndex, to: space) > maxCharacters / 2 {
+            if piece.count == maxCharacters, let space = piece.lastIndex(where: \.isWhitespace),
+                piece.distance(from: piece.startIndex, to: space) > maxCharacters / 2
+            {
                 piece = rest[rest.startIndex..<space]
             }
             result.append(header + piece)

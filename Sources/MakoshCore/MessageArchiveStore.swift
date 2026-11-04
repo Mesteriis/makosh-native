@@ -228,7 +228,8 @@ public final class MessageArchiveStore {
         defer { lock.unlock() }
         return try transaction {
             _ = try metadata()
-            let rows = try query("SELECT scope_token,ciphertext FROM \(prefix)archive_ai_policy ORDER BY scope_token COLLATE \"C\" LIMIT 100000")
+            let rows = try query(
+                "SELECT scope_token,ciphertext FROM \(prefix)archive_ai_policy ORDER BY scope_token COLLATE \"C\" LIMIT 100000")
             return try rows.compactMap { row in
                 let record = try aiPolicy(row[1], token: row[0])
                 guard try aiPolicyToken(record.scope) == row[0] else { throw MessageArchiveError.integrity }
@@ -376,7 +377,9 @@ public final class MessageArchiveStore {
     public func records(after: Int64, limit: Int) throws -> [MessageArchiveRecord] {
         try readRecords(stream: nil, after: after, limit: limit)
     }
-    public func records(service: String, accountID: String, conversationID: String, after: Int64, limit: Int) throws -> [MessageArchiveRecord] {
+    public func records(
+        service: String, accountID: String, conversationID: String, after: Int64, limit: Int
+    ) throws -> [MessageArchiveRecord] {
         lock.lock()
         defer { lock.unlock() }
         return try readRecords(stream: token([service, accountID, conversationID]), after: after, limit: limit)

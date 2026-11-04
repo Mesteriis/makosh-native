@@ -23,7 +23,12 @@ public struct AIChunk: Codable, Sendable, Equatable {
         id: String, scope: AIAccessScope, messages: [MessageArchiveIdentity], authors: [ServiceIdentity], text: String, date: Date,
         title: String
     ) {
-        self.id = id; self.scope = scope; self.messages = messages; self.authors = authors; self.text = text; self.date = date
+        self.id = id
+        self.scope = scope
+        self.messages = messages
+        self.authors = authors
+        self.text = text
+        self.date = date
         self.title = title
     }
 }
@@ -141,7 +146,10 @@ public actor AIVectorStore {
         guard !chunks.isEmpty else { return }
         let db = try preparedDatabase()
         try db.transaction {
-            guard let dimensions = try db.query("SELECT dimensions FROM \(db.prefix)ai_index_generations WHERE id=$1::bigint", [String(generation)])
+            guard
+                let dimensions = try db.query(
+                    "SELECT dimensions FROM \(db.prefix)ai_index_generations WHERE id=$1::bigint", [String(generation)]
+                )
                 .first.flatMap({ Int($0[0]) })
             else { throw AIFailure.storage }
             for (chunk, vector) in chunks {
@@ -150,7 +158,8 @@ public actor AIVectorStore {
                 try db.query(
                     "INSERT INTO \(db.prefix)ai_chunks(generation,chunk_token,scope_token,author_tokens,message_tokens,embedding,ciphertext) VALUES($1::bigint,$2,$3,$4::text[],$5::text[],$6::vector,$7) ON CONFLICT(generation,chunk_token) DO NOTHING",
                     [
-                        String(generation), token, try scopeToken(chunk.scope, db: db), Self.array(try chunk.authors.map { try authorToken($0, db: db) }),
+                        String(generation), token, try scopeToken(chunk.scope, db: db),
+                        Self.array(try chunk.authors.map { try authorToken($0, db: db) }),
                         Self.array(try chunk.messages.map { try messageToken($0, db: db) }), Self.vector(vector),
                         try db.seal(chunk, token: "chunk:" + token),
                     ])
@@ -171,32 +180,39 @@ public actor AIVectorStore {
     public func hasMessage(_ message: MessageArchiveIdentity) throws -> Bool {
         let db = try preparedDatabase()
         return try !db.query(
-            "SELECT 1 FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[] LIMIT 1", [Self.array([try messageToken(message, db: db)])]
+            "SELECT 1 FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[] LIMIT 1",
+            [Self.array([try messageToken(message, db: db)])]
         ).isEmpty
     }
 
     public func delete(message: MessageArchiveIdentity) throws {
         let db = try preparedDatabase()
-        try db.query("DELETE FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[]", [Self.array([try messageToken(message, db: db)])])
+        try db.query(
+            "DELETE FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[]", [Self.array([try messageToken(message, db: db)])])
     }
 
     public func count(generation: Int64) throws -> Int {
         let db = try preparedDatabase()
-        return try db.query("SELECT count(*) FROM \(db.prefix)ai_chunks WHERE generation=$1::bigint", [String(generation)]).first.flatMap { Int($0[0]) } ?? 0
+        return try db.query("SELECT count(*) FROM \(db.prefix)ai_chunks WHERE generation=$1::bigint", [String(generation)]).first.flatMap {
+            Int($0[0])
+        } ?? 0
     }
 
     func chunks(generation: Int64) throws -> [AIChunk] {
         let db = try preparedDatabase()
         return try db.query(
-            "SELECT chunk_token,ciphertext FROM \(db.prefix)ai_chunks WHERE generation=$1::bigint ORDER BY chunk_token LIMIT 10000", [String(generation)]
+            "SELECT chunk_token,ciphertext FROM \(db.prefix)ai_chunks WHERE generation=$1::bigint ORDER BY chunk_token LIMIT 10000",
+            [String(generation)]
         ).map { try db.decode($0[1], token: "chunk:" + $0[0]) }
     }
 
     public func search(_ vector: [Float], generation: Int64, limit: Int, maxDistance: Double) throws -> [AIChunkMatch] {
         let db = try preparedDatabase()
         guard (1...50).contains(limit),
-            let dimensions = try db.query("SELECT dimensions FROM \(db.prefix)ai_index_generations WHERE id=$1::bigint", [String(generation)])
-                .first.flatMap({ Int($0[0]) }),
+            let dimensions = try db.query(
+                "SELECT dimensions FROM \(db.prefix)ai_index_generations WHERE id=$1::bigint", [String(generation)]
+            )
+            .first.flatMap({ Int($0[0]) }),
             vector.count == dimensions, vector.allSatisfy(\.isFinite)
         else { throw AIFailure.invalidConfiguration }
         let expression = "(embedding::vector(\(dimensions)))"
@@ -219,7 +235,8 @@ public actor AIVectorStore {
         guard let id = Int64(row[0]) else { throw AIFailure.storage }
         let lookup = try db.query("SELECT lookup FROM \(db.prefix)ai_index_generations WHERE id=$1::bigint", [row[0]]).first?[0] ?? ""
         let record: GenerationRecord = try db.decode(row[2], token: "generation:" + lookup)
-        return AIIndexGeneration(id: id, connectionID: record.connectionID, model: record.model, dimensions: record.dimensions, ready: row[1] == "t")
+        return AIIndexGeneration(
+            id: id, connectionID: record.connectionID, model: record.model, dimensions: record.dimensions, ready: row[1] == "t")
     }
     private func db() throws -> AIPostgres {
         guard let database else { throw AIFailure.storage }

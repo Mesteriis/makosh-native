@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import MakoshAI
+import MakoshCore
 import SwiftUI
 
 struct AIConversationListView: View {
@@ -46,6 +47,8 @@ struct AIConversationListView: View {
 
 struct AIConversationView: View {
     @ObservedObject var model: AIWorkspaceModel
+    /// Opens a cited Makosh message in its own section.
+    var openSource: (MessageArchiveIdentity) -> Void = { _ in }
     @StateObject private var voice = AIVoiceInput()
     @State private var draft = ""
     @State private var editing: UUID?
@@ -66,7 +69,7 @@ struct AIConversationView: View {
                                     edit: { text in
                                         editing = message.id
                                         draft = text
-                                    }, speak: { speak(message.id) }
+                                    }, speak: { speak(message.id) }, openSource: openSource
                                 ).id(message.id)
                             }
                         }.padding(20)
@@ -141,6 +144,14 @@ struct AIConversationView: View {
             if voice.denied {
                 Text("Нет доступа к микрофону: разрешите его в Системных настройках.").font(.caption).foregroundStyle(.secondary)
             }
+            Toggle(
+                "Искать в моих данных",
+                isOn: Binding(get: { model.searchMyData }, set: { value in Task { await model.setSearchMyData(value) } })
+            )
+            .toggleStyle(.switch).controlSize(.mini).font(.caption)
+            .help("Подмешивать в вопрос фрагменты чатов, ящиков и контактов, открытых для ИИ")
+            .disabled(model.roles[.embeddings] == nil)
+            .accessibilityIdentifier("ai.searchMyData")
         }
         .padding(12)
     }
@@ -183,6 +194,7 @@ private struct AIMessageRow: View {
     let canSpeak: Bool
     let edit: (String) -> Void
     let speak: () -> Void
+    let openSource: (MessageArchiveIdentity) -> Void
     @State private var image: NSImage?
 
     var body: some View {
@@ -226,8 +238,37 @@ private struct AIMessageRow: View {
                 if message.author == .user { Button("Изменить") { edit(version?.text ?? "") }.disabled(model.isStreaming) }
             }
             .buttonStyle(.borderless).font(.caption)
+            if let sources = version?.sources, !sources.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Источники").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(Array(sources.enumerated()), id: \.offset) { index, source in
+                        Button {
+                            openSource(source.identity)
+                        } label: {
+                            Text("[\(index + 1)] \(AISourceLabel.text(source))").lineLimit(1)
+                        }
+                        .buttonStyle(.link).font(.caption)
+                        .accessibilityIdentifier("ai.source.\(index + 1)")
+                    }
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: message.author == .user ? .trailing : .leading)
         .accessibilityIdentifier("ai.message.\(message.id.uuidString)")
+    }
+}
+
+enum AISourceLabel {
+    static func text(_ source: AISourceReference) -> String {
+        let service =
+            switch source.identity.service {
+            case "telegram": "Telegram"
+            case "whatsapp": "WhatsApp"
+            case "teams": "Teams"
+            case "mail": "Почта"
+            default: source.identity.service
+            }
+        let title = source.title.isEmpty ? "переписка" : source.title
+        return "\(service) · \(title) · \(source.date.formatted(date: .abbreviated, time: .omitted))"
     }
 }

@@ -16,7 +16,9 @@ public struct ServiceIdentity: Codable, Hashable, Identifiable, Sendable {
         hasher.combine(id)
     }
     public init(service: String, accountID: String, externalID: String) {
-        self.service = service; self.accountID = accountID; self.externalID = externalID
+        self.service = service
+        self.accountID = accountID
+        self.externalID = externalID
     }
 }
 
@@ -24,7 +26,8 @@ public struct SourceStamp: Codable, Hashable, Sendable {
     public var identity: ServiceIdentity
     public var fetchedAt: Date
     public init(identity: ServiceIdentity, fetchedAt: Date = Date()) {
-        self.identity = identity; self.fetchedAt = fetchedAt
+        self.identity = identity
+        self.fetchedAt = fetchedAt
     }
 }
 
@@ -34,7 +37,10 @@ public struct Observation: Codable, Hashable, Identifiable, Sendable {
     public var value: String
     public var source: SourceStamp
     public init(id: UUID = UUID(), field: String, value: String, source: SourceStamp) {
-        self.id = id; self.field = field; self.value = value; self.source = source
+        self.id = id
+        self.field = field
+        self.value = value
+        self.source = source
     }
 }
 
@@ -43,7 +49,9 @@ public struct ContactNote: Codable, Hashable, Identifiable, Sendable {
     public var text: String
     public var source: SourceStamp
     public init(id: UUID = UUID(), text: String, source: SourceStamp) {
-        self.id = id; self.text = text; self.source = source
+        self.id = id
+        self.text = text
+        self.source = source
     }
 }
 
@@ -53,7 +61,10 @@ public struct ContactEvent: Codable, Hashable, Identifiable, Sendable {
     public var kind: String
     public var detail: String
     public init(id: UUID = UUID(), date: Date = Date(), kind: String, detail: String) {
-        self.id = id; self.date = date; self.kind = kind; self.detail = detail
+        self.id = id
+        self.date = date
+        self.kind = kind
+        self.detail = detail
     }
 }
 
@@ -64,10 +75,16 @@ public struct ContactDraft: Equatable, Sendable {
     public var phones: [String]
     public var emails: [String]
     public var tags: [String]
-    public init(displayName: String = "", organization: String = "", jobTitle: String = "",
-                phones: [String] = [], emails: [String] = [], tags: [String] = []) {
-        self.displayName = displayName; self.organization = organization; self.jobTitle = jobTitle
-        self.phones = phones; self.emails = emails; self.tags = tags
+    public init(
+        displayName: String = "", organization: String = "", jobTitle: String = "",
+        phones: [String] = [], emails: [String] = [], tags: [String] = []
+    ) {
+        self.displayName = displayName
+        self.organization = organization
+        self.jobTitle = jobTitle
+        self.phones = phones
+        self.emails = emails
+        self.tags = tags
     }
 }
 
@@ -87,18 +104,30 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
     public var revision: Int
     public var aiAccess: AIContactAccess = .inherit
     public var draft: ContactDraft {
-        ContactDraft(displayName: displayName, organization: organization, jobTitle: jobTitle,
-                     phones: phones, emails: emails, tags: tags)
+        ContactDraft(
+            displayName: displayName, organization: organization, jobTitle: jobTitle,
+            phones: phones, emails: emails, tags: tags)
     }
-    public init(id: UUID = UUID(), displayName: String, organization: String = "", jobTitle: String = "",
-                phones: [String] = [], emails: [String] = [], tags: [String] = [],
-                identities: [ServiceIdentity] = [], observations: [Observation] = [],
-                notes: [ContactNote] = [], events: [ContactEvent] = [],
-                manualFields: Set<String> = [], revision: Int = 1) {
-        self.id = id; self.displayName = displayName; self.organization = organization; self.jobTitle = jobTitle
-        self.phones = phones; self.emails = emails; self.tags = tags; self.identities = identities
-        self.observations = observations; self.notes = notes; self.events = events
-        self.manualFields = manualFields; self.revision = revision
+    public init(
+        id: UUID = UUID(), displayName: String, organization: String = "", jobTitle: String = "",
+        phones: [String] = [], emails: [String] = [], tags: [String] = [],
+        identities: [ServiceIdentity] = [], observations: [Observation] = [],
+        notes: [ContactNote] = [], events: [ContactEvent] = [],
+        manualFields: Set<String> = [], revision: Int = 1
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.organization = organization
+        self.jobTitle = jobTitle
+        self.phones = phones
+        self.emails = emails
+        self.tags = tags
+        self.identities = identities
+        self.observations = observations
+        self.notes = notes
+        self.events = events
+        self.manualFields = manualFields
+        self.revision = revision
     }
     private enum CodingKeys: String, CodingKey {
         case id, displayName, organization, jobTitle, phones, emails, tags, identities, observations, notes, events, manualFields, revision,
@@ -106,12 +135,18 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id); displayName = try c.decode(String.self, forKey: .displayName)
-        organization = try c.decode(String.self, forKey: .organization); jobTitle = try c.decode(String.self, forKey: .jobTitle)
-        phones = try c.decode([String].self, forKey: .phones); emails = try c.decode([String].self, forKey: .emails)
-        tags = try c.decode([String].self, forKey: .tags); identities = try c.decode([ServiceIdentity].self, forKey: .identities)
-        observations = try c.decode([Observation].self, forKey: .observations); notes = try c.decode([ContactNote].self, forKey: .notes)
-        events = try c.decode([ContactEvent].self, forKey: .events); manualFields = try c.decode(Set<String>.self, forKey: .manualFields)
+        id = try c.decode(UUID.self, forKey: .id)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        organization = try c.decode(String.self, forKey: .organization)
+        jobTitle = try c.decode(String.self, forKey: .jobTitle)
+        phones = try c.decode([String].self, forKey: .phones)
+        emails = try c.decode([String].self, forKey: .emails)
+        tags = try c.decode([String].self, forKey: .tags)
+        identities = try c.decode([ServiceIdentity].self, forKey: .identities)
+        observations = try c.decode([Observation].self, forKey: .observations)
+        notes = try c.decode([ContactNote].self, forKey: .notes)
+        events = try c.decode([ContactEvent].self, forKey: .events)
+        manualFields = try c.decode(Set<String>.self, forKey: .manualFields)
         revision = try c.decode(Int.self, forKey: .revision)
         // Rows written before AI access existed default to inherit.
         aiAccess = try c.decodeIfPresent(AIContactAccess.self, forKey: .aiAccess) ?? .inherit
@@ -121,7 +156,10 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
 public struct ImportSource: Codable, Equatable, Sendable {
     public var service: String
     public var accountID: String
-    public init(service: String, accountID: String) { self.service = service; self.accountID = accountID }
+    public init(service: String, accountID: String) {
+        self.service = service
+        self.accountID = accountID
+    }
 }
 
 public struct ImportedContact: Codable, Equatable, Sendable {
@@ -133,10 +171,18 @@ public struct ImportedContact: Codable, Equatable, Sendable {
     public var emails: [String]
     public var tags: [String]
     public var notes: [String]
-    public init(externalID: String, displayName: String, organization: String? = nil, jobTitle: String? = nil,
-                phones: [String] = [], emails: [String] = [], tags: [String] = [], notes: [String] = []) {
-        self.externalID = externalID; self.displayName = displayName; self.organization = organization
-        self.jobTitle = jobTitle; self.phones = phones; self.emails = emails; self.tags = tags; self.notes = notes
+    public init(
+        externalID: String, displayName: String, organization: String? = nil, jobTitle: String? = nil,
+        phones: [String] = [], emails: [String] = [], tags: [String] = [], notes: [String] = []
+    ) {
+        self.externalID = externalID
+        self.displayName = displayName
+        self.organization = organization
+        self.jobTitle = jobTitle
+        self.phones = phones
+        self.emails = emails
+        self.tags = tags
+        self.notes = notes
     }
     private enum CodingKeys: String, CodingKey {
         case externalID, displayName, organization, jobTitle, phones, emails, tags, notes
@@ -160,10 +206,14 @@ public struct ImportDocument: Codable, Equatable, Sendable {
     public var fetchedAt: Date
     public var contacts: [ImportedContact]
     public init(schemaVersion: Int = 1, source: ImportSource, fetchedAt: Date = Date(), contacts: [ImportedContact]) {
-        self.schemaVersion = schemaVersion; self.source = source; self.fetchedAt = fetchedAt; self.contacts = contacts
+        self.schemaVersion = schemaVersion
+        self.source = source
+        self.fetchedAt = fetchedAt
+        self.contacts = contacts
     }
     public static func decode(_ data: Data) throws -> ImportDocument {
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(ImportDocument.self, from: data)
     }
 }
@@ -171,7 +221,10 @@ public struct ImportDocument: Codable, Equatable, Sendable {
 public struct ImportResult: Equatable, Sendable {
     public var created: Int
     public var updated: Int
-    public init(created: Int, updated: Int) { self.created = created; self.updated = updated }
+    public init(created: Int, updated: Int) {
+        self.created = created
+        self.updated = updated
+    }
 }
 
 public struct DuplicateCandidate: Identifiable, Equatable, Sendable {
@@ -180,7 +233,9 @@ public struct DuplicateCandidate: Identifiable, Equatable, Sendable {
     public var reasons: [String]
     public var id: String { firstID.uuidString + secondID.uuidString }
     public init(firstID: UUID, secondID: UUID, reasons: [String]) {
-        self.firstID = firstID; self.secondID = secondID; self.reasons = reasons
+        self.firstID = firstID
+        self.secondID = secondID
+        self.reasons = reasons
     }
 }
 
@@ -191,10 +246,16 @@ public struct MergeRecord: Codable, Equatable, Identifiable, Sendable {
     public var expectedRevision: Int
     public var mergedAt: Date
     public var undoneAt: Date?
-    public init(id: UUID = UUID(), survivorBefore: Contact, removedBefore: Contact,
-                expectedRevision: Int, mergedAt: Date = Date(), undoneAt: Date? = nil) {
-        self.id = id; self.survivorBefore = survivorBefore; self.removedBefore = removedBefore
-        self.expectedRevision = expectedRevision; self.mergedAt = mergedAt; self.undoneAt = undoneAt
+    public init(
+        id: UUID = UUID(), survivorBefore: Contact, removedBefore: Contact,
+        expectedRevision: Int, mergedAt: Date = Date(), undoneAt: Date? = nil
+    ) {
+        self.id = id
+        self.survivorBefore = survivorBefore
+        self.removedBefore = removedBefore
+        self.expectedRevision = expectedRevision
+        self.mergedAt = mergedAt
+        self.undoneAt = undoneAt
     }
 }
 

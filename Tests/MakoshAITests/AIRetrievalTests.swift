@@ -36,7 +36,13 @@ final class AIRetrievalTests: XCTestCase {
         let generation = try await vectors.generation(connectionID: connection.id, model: "e1", dimensions: service.dimensions)
         let vector = try await service.embeddings(connection: connection, token: nil, model: "e1", inputs: [text])[0]
         try await vectors.insert(
-            [(AIChunk(id: "chunk", scope: chat, messages: [message], authors: [], text: text, date: Date(timeIntervalSince1970: 50), title: "Работа"), vector)],
+            [
+                (
+                    AIChunk(
+                        id: "chunk", scope: chat, messages: [message], authors: [], text: text, date: Date(timeIntervalSince1970: 50),
+                        title: "Работа"), vector
+                )
+            ],
             generation: generation.id)
         try await vectors.markReady(generation.id)
     }

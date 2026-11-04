@@ -19,7 +19,9 @@ final class AIVectorStoreTests: XCTestCase {
         try database?.cleanup()
     }
 
-    private func chunk(_ id: String, scope: AIAccessScope? = nil, authors: [ServiceIdentity] = [], message: String = "1", text: String = "secret text")
+    private func chunk(
+        _ id: String, scope: AIAccessScope? = nil, authors: [ServiceIdentity] = [], message: String = "1", text: String = "secret text"
+    )
         -> AIChunk
     {
         AIChunk(
@@ -40,7 +42,8 @@ final class AIVectorStoreTests: XCTestCase {
 
     func testInsertSearchNearestFirst() async throws {
         let generation = try await store.generation(connectionID: connection, model: "e", dimensions: 3)
-        try await store.insert([(chunk("a", text: "alpha"), [1, 0, 0]), (chunk("b", message: "2", text: "beta"), [0, 1, 0])], generation: generation.id)
+        try await store.insert(
+            [(chunk("a", text: "alpha"), [1, 0, 0]), (chunk("b", message: "2", text: "beta"), [0, 1, 0])], generation: generation.id)
         let matches = try await store.search([0.9, 0.1, 0], generation: generation.id, limit: 8, maxDistance: 2)
         XCTAssertEqual(matches.map(\.chunk.text), ["alpha", "beta"])
         XCTAssertLessThan(matches[0].distance, matches[1].distance)

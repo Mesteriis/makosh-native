@@ -18,7 +18,8 @@ public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable
     /// The current state of the conversation: the latest version of each
     /// message, deleted messages left out, ordered by that version's sequence.
     public func items(in scope: AIAccessScope, after sequence: Int64, limit: Int) async throws -> [AIIndexItem] {
-        guard case .conversation(let service, let accountID, let conversationID) = scope, service != "mail", (1...200).contains(limit) else {
+        guard case .conversation(let service, let accountID, let conversationID) = scope, service != "mail", (1...200).contains(limit)
+        else {
             return []
         }
         var latest: [MessageArchiveIdentity: AIIndexItem] = [:]
@@ -37,12 +38,16 @@ public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable
     private static func item(_ record: MessageArchiveRecord) -> AIIndexItem? {
         let observation = record.observation, identity = observation.identity
         guard identity.service != "mail" else { return nil }
-        let scope = AIAccessScope.conversation(service: identity.service, accountID: identity.accountID, conversationID: identity.conversationID)
+        let scope = AIAccessScope.conversation(
+            service: identity.service, accountID: identity.accountID, conversationID: identity.conversationID)
         switch observation.event {
         case .message(let content):
-            let author = content.authorID.flatMap { $0.isEmpty ? nil : ServiceIdentity(service: identity.service, accountID: identity.accountID, externalID: $0) }
+            let author = content.authorID.flatMap {
+                $0.isEmpty ? nil : ServiceIdentity(service: identity.service, accountID: identity.accountID, externalID: $0)
+            }
             return AIIndexItem(
-                sequence: record.sequence, identity: identity, scope: scope, author: author, isOutgoing: content.isOutgoing, date: content.date,
+                sequence: record.sequence, identity: identity, scope: scope, author: author, isOutgoing: content.isOutgoing,
+                date: content.date,
                 title: "", text: content.text, removed: false)
         case .deleted, .removedFromSource:
             return AIIndexItem(

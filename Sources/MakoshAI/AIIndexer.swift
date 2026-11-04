@@ -33,6 +33,7 @@ public struct AIIndexStatus: Sendable, Equatable {
     public var pending = 0
     public var paused = false
     public var failure: AIFailure?
+    public init() {}
 }
 
 struct AIIndexState: Codable {
@@ -78,7 +79,8 @@ public actor AIIndexer {
     private var running = false
 
     public init(
-        worker: AIWorker, vectors: AIVectorStore, sources: [any AIIndexSource], access: any AIAccessProvider, pace: Duration = .milliseconds(500)
+        worker: AIWorker, vectors: AIVectorStore, sources: [any AIIndexSource], access: any AIAccessProvider,
+        pace: Duration = .milliseconds(500)
     ) {
         self.worker = worker
         self.vectors = vectors
@@ -223,7 +225,9 @@ public actor AIIndexer {
             for start in stride(from: 0, to: missing.count, by: Self.batchSize) {
                 let batch = Array(missing[start..<min(start + Self.batchSize, missing.count)])
                 let embedded = try await worker.embed(batch.map(\.text))
-                guard embedded.connectionID == destination.connectionID, embedded.model == destination.model else { throw AIFailure.cancelled }
+                guard embedded.connectionID == destination.connectionID, embedded.model == destination.model else {
+                    throw AIFailure.cancelled
+                }
                 let fresh = try await access.snapshot()
                 let kept = zip(batch, embedded.vectors).filter { fresh.admits($0.0) }
                 try await vectors.insert(kept.map { ($0.0, $0.1) }, generation: generation)

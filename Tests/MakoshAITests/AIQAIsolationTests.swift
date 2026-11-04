@@ -42,4 +42,31 @@ final class AIQAIsolationTests: XCTestCase {
         let models = try await service.models(connection: connection, token: nil)
         XCTAssertEqual(models, ["synthetic-chat", "synthetic-embed", "synthetic-image", "synthetic-speech", "synthetic-transcribe"])
     }
+
+    func testSyntheticEmbeddingsDeterministic() async throws {
+        let service = AISyntheticService()
+        let connection = AIConnection(name: "QA", baseURL: URL(string: "http://127.0.0.1:9/v1")!)
+        let first = try await service.embeddings(
+            connection: connection, token: nil, model: "synthetic-embed", inputs: ["отчёт", "отчёт", "погода"])
+        XCTAssertEqual(first[0], first[1])
+        XCTAssertNotEqual(first[0], first[2])
+        XCTAssertEqual(first[0].count, 16)
+    }
+
+    func testSyntheticPreviewSeedsEnabledConversation() throws {
+        let database = try AITestDatabase()
+        defer { try? database.cleanup() }
+        let store = try MessageArchiveStore(
+            connectionString: database.configuration.connectionString, schema: database.configuration.schema
+        ) { _, _ in
+            Data(repeating: 0x5a, count: 32)
+        }
+        let scope = try AISyntheticSeed.seed(store)
+        XCTAssertEqual(try store.enabledAIScopes(), [scope])
+        XCTAssertGreaterThanOrEqual(try store.records(after: 0, limit: 200).count, 4)
+        let seeded = try store.records(after: 0, limit: 200).count
+        let again = try AISyntheticSeed.seed(store)
+        XCTAssertEqual(again, scope)
+        XCTAssertEqual(try store.records(after: 0, limit: 200).count, seeded)
+    }
 }

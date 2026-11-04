@@ -246,6 +246,9 @@ final class WorkspaceModel: ObservableObject {
         guard let id = contactID ?? selectedID else { return false }
         return await perform(.addNote(contactID: id, text: text)) != nil
     }
+    func setAIAccess(_ access: AIContactAccess, contactID: UUID) async -> Bool {
+        await perform(.setAIAccess(contactID: contactID, access: access)) != nil
+    }
     func importFile(_ url: URL) async {
         guard let result = await perform(.importFile(url)), case .imported(let count) = result.value else { return }
         notice = "Импорт завершён: создано \(count.created), обновлено \(count.updated)."

@@ -9,7 +9,8 @@ final class ContactAIAccessTests: XCTestCase {
     private func store() throws -> ContactStore { try ContactStore(connectionString: database.connectionString, schema: database.schema) }
 
     func testDefaultInheritForOldRows() throws {
-        let json = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","displayName":"Old","organization":"","jobTitle":"","phones":[],"emails":[],"tags":[],"identities":[],"observations":[],"notes":[],"events":[],"manualFields":[],"revision":3}"#
+        let json =
+            #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","displayName":"Old","organization":"","jobTitle":"","phones":[],"emails":[],"tags":[],"identities":[],"observations":[],"notes":[],"events":[],"manualFields":[],"revision":3}"#
         let contact = try JSONDecoder().decode(Contact.self, from: Data(json.utf8))
         XCTAssertEqual(contact.aiAccess, .inherit)
         XCTAssertEqual(Contact(displayName: "New").aiAccess, .inherit)

@@ -104,6 +104,14 @@ final class AIWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(model.roles[.images]?.model, "img")
     }
 
+    func testSearchMyDataToggle() async throws {
+        let model = try await started()
+        await model.newConversation()
+        XCTAssertTrue(model.searchMyData)
+        await model.setSearchMyData(false)
+        XCTAssertFalse(model.searchMyData)
+    }
+
     func testUnassignedChatRoleShowsFailure() async throws {
         let model = AIWorkspaceModel(worker: worker)
         await model.start(configuration: database.configuration)

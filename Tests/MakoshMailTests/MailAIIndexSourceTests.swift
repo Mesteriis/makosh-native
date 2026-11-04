@@ -13,7 +13,8 @@ final class MailAIIndexSourceTests: XCTestCase {
             _ = try connection.query("DROP SCHEMA IF EXISTS \"\(schema)\" CASCADE", [])
             connection.close()
         }
-        return MailRepository(configuration: .init(connectionString: dsn, schema: schema), keyProvider: { _, _ in Data(repeating: 9, count: 32) })
+        return MailRepository(
+            configuration: .init(connectionString: dsn, schema: schema), keyProvider: { _, _ in Data(repeating: 9, count: 32) })
     }
     private func account(_ email: String) -> MailAccount {
         .init(
@@ -23,7 +24,8 @@ final class MailAIIndexSourceTests: XCTestCase {
     private func letter(_ account: MailAccount, uid: UInt32, from: String, text: String?, html: String? = nil) -> MailLetter {
         MailLetter(
             key: MailMessageKey(accountID: account.id, folder: "INBOX", uidValidity: 1, uid: uid), subject: "Subject \(uid)",
-            senderName: "Sender", sender: from, recipient: account.email, date: Date(timeIntervalSince1970: 1_000 + Double(uid)), text: text,
+            senderName: "Sender", sender: from, recipient: account.email, date: Date(timeIntervalSince1970: 1_000 + Double(uid)),
+            text: text,
             html: html)
     }
 
@@ -31,7 +33,8 @@ final class MailAIIndexSourceTests: XCTestCase {
         let repository = try repository(), mine = account("me@example.invalid")
         try await repository.saveAccount(mine)
         try await repository.saveLetters([
-            letter(mine, uid: 1, from: "Peer@Example.invalid", text: "first"), letter(mine, uid: 2, from: "me@example.invalid", text: "second"),
+            letter(mine, uid: 1, from: "Peer@Example.invalid", text: "first"),
+            letter(mine, uid: 2, from: "me@example.invalid", text: "second"),
         ])
         let source = MailAIIndexSource(repository: repository)
         XCTAssertEqual(source.name, "mail")
@@ -51,11 +54,14 @@ final class MailAIIndexSourceTests: XCTestCase {
         let repository = try repository(), a = account("a@example.invalid"), b = account("b@example.invalid")
         try await repository.saveAccount(a)
         try await repository.saveAccount(b)
-        try await repository.saveLetters([letter(a, uid: 1, from: "x@example.invalid", text: "for a"), letter(b, uid: 1, from: "y@example.invalid", text: "for b")])
+        try await repository.saveLetters([
+            letter(a, uid: 1, from: "x@example.invalid", text: "for a"), letter(b, uid: 1, from: "y@example.invalid", text: "for b"),
+        ])
         let source = MailAIIndexSource(repository: repository)
         let items = try await source.items(in: .mailAccount(accountID: a.id), after: 0, limit: 200)
         XCTAssertEqual(items.map(\.text), ["for a"])
-        let chat = try await source.items(in: .conversation(service: "telegram", accountID: a.id, conversationID: "c"), after: 0, limit: 200)
+        let chat = try await source.items(
+            in: .conversation(service: "telegram", accountID: a.id, conversationID: "c"), after: 0, limit: 200)
         XCTAssertTrue(chat.isEmpty)
     }
 

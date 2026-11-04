@@ -11,8 +11,23 @@ public final class MessageArchiveIndexSource: AIIndexSource, @unchecked Sendable
         store = try MessageArchiveStore(connectionString: connectionString, schema: schema, readOnly: true, keyProvider: keyProvider)
     }
 
+    /// Skipped mail records never shorten a page: fewer than `limit` items
+    /// means the journal is exhausted, as the indexer expects.
     public func items(after sequence: Int64, limit: Int) async throws -> [AIIndexItem] {
-        try store.records(after: sequence, limit: limit).compactMap(Self.item)
+        guard (1...200).contains(limit) else { throw MessageArchiveError.invalid }
+        var result: [AIIndexItem] = []
+        var cursor = sequence
+        for _ in 0..<Self.maximumPages {
+            let page = try store.records(after: cursor, limit: 200)
+            for record in page {
+                guard let item = Self.item(record) else { continue }
+                result.append(item)
+                if result.count == limit { return result }
+            }
+            guard page.count == 200, let last = page.last?.sequence else { break }
+            cursor = last
+        }
+        return result
     }
 
     /// The current state of the conversation: the latest version of each

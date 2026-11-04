@@ -45,6 +45,19 @@ final class MessageArchiveIndexSourceTests: XCTestCase {
         XCTAssertEqual(items.map(\.identity.service), ["teams"])
     }
 
+    func testSkippedMailRecordsDoNotShortenPages() async throws {
+        let (store, source) = try fixture()
+        _ = try store.append([
+            message("mail", chat: "Sent", id: "m1", text: "sent letter"), message("telegram", chat: "c", id: "1", text: "a"),
+            message("mail", chat: "Sent", id: "m2", text: "another letter"), message("telegram", chat: "c", id: "2", text: "b"),
+            message("telegram", chat: "c", id: "3", text: "c"),
+        ])
+        let page = try await source.items(after: 0, limit: 2)
+        XCTAssertEqual(page.map(\.text), ["a", "b"])
+        let rest = try await source.items(after: try XCTUnwrap(page.last?.sequence), limit: 2)
+        XCTAssertEqual(rest.map(\.text), ["c"])
+    }
+
     func testDeletionBecomesRemoved() async throws {
         let (store, source) = try fixture()
         let original = message("whatsapp", chat: "w", id: "1", text: "hello")

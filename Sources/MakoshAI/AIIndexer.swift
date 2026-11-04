@@ -117,9 +117,14 @@ public actor AIIndexer {
 
     @discardableResult
     public func runOnce() async throws -> AIIndexStatus {
-        guard !current.paused, !running else { return current }
+        guard !running else { return current }
         running = true
         defer { running = false }
+        if current.paused {
+            // Closing a source still purges it while indexing is paused.
+            try? await purgeOnly()
+            return current
+        }
         do {
             try await cycle()
             current.failure = nil
@@ -132,9 +137,26 @@ public actor AIIndexer {
         return current
     }
 
+    /// Deletes chunks of closed scopes and newly forbidden authors without
+    /// recording anything that would skip a later back-fill.
+    private func purgeOnly() async throws {
+        guard try await vectors.available() else { return }
+        let snapshot = try await access.snapshot()
+        var state = try await worker.indexState() ?? AIIndexState()
+        let closed = Set(state.enabled).subtracting(snapshot.enabledScopes)
+        for scope in closed {
+            try await vectors.delete(scope: scope)
+            state.backfill.removeAll { $0.scope == scope }
+        }
+        for identity in snapshot.forbidden.subtracting(state.forbidden) { try await vectors.delete(author: identity) }
+        state.enabled.removeAll { closed.contains($0) }
+        try await worker.saveIndexState(state)
+    }
+
     private func cycle() async throws {
-        let role = try await worker.embeddingRole()
         guard try await vectors.available() else { throw AIFailure.vectorUnavailable }
+        try await purgeOnly()
+        let role = try await worker.embeddingRole()
         let snapshot = try await access.snapshot()
         var state = try await worker.indexState() ?? AIIndexState()
 
@@ -149,7 +171,10 @@ public actor AIIndexer {
         let changed = forbidden.symmetricDifference(wasForbidden)
         var refill = enabled.subtracting(previous).union(enabled.filter { scope in changed.contains { Self.belongs($0, to: scope) } })
         let target = AIIndexState.Target(connectionID: role.connectionID, model: role.model, generation: nil)
-        if !target.same(state.building) && !target.same(state.ready) {
+        if target.same(state.ready) {
+            // Back to the answering model: abandon an unfinished rebuild.
+            state.building = nil
+        } else if !target.same(state.building) {
             state.building = target
             refill = enabled
         }
@@ -223,7 +248,10 @@ public actor AIIndexer {
             let stored = try await vectors.contains(chunks.map(\.id), generation: generation)
             let missing = chunks.filter { !stored.contains($0.id) }
             for start in stride(from: 0, to: missing.count, by: Self.batchSize) {
-                let batch = Array(missing[start..<min(start + Self.batchSize, missing.count)])
+                // Re-check before sending: the user may have closed a source since the cycle began.
+                let before = try await access.snapshot()
+                let batch = missing[start..<min(start + Self.batchSize, missing.count)].filter { before.admits($0) }
+                if batch.isEmpty { continue }
                 let embedded = try await worker.embed(batch.map(\.text))
                 guard embedded.connectionID == destination.connectionID, embedded.model == destination.model else {
                     throw AIFailure.cancelled

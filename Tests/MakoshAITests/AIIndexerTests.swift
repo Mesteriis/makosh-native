@@ -186,6 +186,56 @@ final class AIIndexerTests: XCTestCase {
         XCTAssertTrue(stored.isEmpty)
     }
 
+    func testDisableBetweenBatchesSendsNothingMore() async throws {
+        let scopes = (0..<70).map { AIAccessScope.conversation(service: "telegram", accountID: "acc", conversationID: "chat\($0)") }
+        await source.add((0..<70).map { aiItem(Int64($0 + 1), chat: "chat\($0)", text: "text \($0)") })
+        for scope in scopes { await access.setScope(scope, enabled: true) }
+        service.holdAtCall = 2
+        let indexer = indexer()
+        let running = Task { try await indexer.runOnce() }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while service.embedStarted < 2, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        for scope in scopes { await access.setScope(scope, enabled: false) }
+        service.holdAtCall = nil
+        _ = try await running.value
+        XCTAssertEqual(service.embedded.count, 2, "probe and the first batch only")
+        let texts = try await indexedTexts()
+        XCTAssertTrue(texts.isEmpty)
+    }
+
+    func testReturningToReadyModelResumesIndexing() async throws {
+        await source.add((1...1100).map { aiItem(Int64($0), text: "message \($0)") })
+        await access.setScope(chat, enabled: true)
+        let indexer = indexer()
+        for _ in 0..<5 where try await indexer.runOnce().pending > 0 {}
+        try await worker.assign(.init(role: .embeddings, connectionID: connection.id, model: "e2"), role: .embeddings)
+        let building = try await indexer.runOnce()
+        XCTAssertGreaterThan(building.pending, 0)
+        try await worker.assign(.init(role: .embeddings, connectionID: connection.id, model: "e1"), role: .embeddings)
+        let back = try await indexer.runOnce()
+        XCTAssertNil(back.failure)
+        await source.add([aiItem(2000, text: "after the switch back")])
+        _ = try await indexer.runOnce()
+        let active = try await vectors.activeGeneration()
+        XCTAssertEqual(active?.model, "e1")
+        let texts = try await indexedTexts().joined()
+        XCTAssertTrue(texts.contains("after the switch back"))
+    }
+
+    func testDisablePurgesWhilePausedOrWithoutModel() async throws {
+        await source.add([aiItem(1, text: "kept until disabled")])
+        await access.setScope(chat, enabled: true)
+        let indexer = indexer()
+        _ = try await indexer.runOnce()
+        try await worker.assign(nil, role: .embeddings)
+        await indexer.pause(true)
+        await access.setScope(chat, enabled: false)
+        _ = try await indexer.runOnce()
+        let generation = try await vectors.activeGeneration()
+        let left = try await vectors.chunks(generation: try XCTUnwrap(generation?.id))
+        XCTAssertTrue(left.isEmpty)
+    }
+
     func testModelChangeBuildsNewGeneration() async throws {
         await source.add([aiItem(1, text: "searchable")])
         await access.setScope(chat, enabled: true)

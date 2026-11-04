@@ -56,14 +56,17 @@ import MakoshMail
             let opened = try await BackgroundWork.run {
                 let store = try MessageArchiveStore(
                     connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider)
-                let archive = try MessageArchiveIndexSource(
-                    connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider)
-                return (AIArchiveAccessProvider(store: store, contacts: contacts), archive)
+                var sources: [any AIIndexSource] = [
+                    try MessageArchiveIndexSource(
+                        connectionString: configuration.connectionString, schema: archiveSchema, keyProvider: keyProvider)
+                ]
+                // MailRepository connects in its initializer; keep it off the main actor.
+                if mail {
+                    sources.append(MailAIIndexSource(repository: MailRepository(configuration: configuration, keyProvider: keyProvider)))
+                }
+                return (AIArchiveAccessProvider(store: store, contacts: contacts), sources)
             }
-            var sources: [any AIIndexSource] = [opened.1]
-            if mail {
-                sources.append(MailAIIndexSource(repository: MailRepository(configuration: configuration, keyProvider: keyProvider)))
-            }
+            let sources = opened.1
             let vectors = AIVectorStore(keyProvider: keyProvider)
             try await vectors.open(configuration: configuration)
             await worker.attachRetrieval(vectors: vectors, access: opened.0)

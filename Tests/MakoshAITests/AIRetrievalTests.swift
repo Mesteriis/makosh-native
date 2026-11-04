@@ -65,6 +65,14 @@ final class AIRetrievalTests: XCTestCase {
         XCTAssertEqual(answer.sources, [AISourceReference(identity: message, title: "Работа", date: Date(timeIntervalSince1970: 50))])
     }
 
+    func testRetrievalUsesReadyGenerationDuringRebuild() async throws {
+        try await indexChunk()
+        await access.setScope(chat, enabled: true)
+        try await worker.assign(.init(role: .embeddings, connectionID: connection.id, model: "e2"), role: .embeddings)
+        _ = try await send()
+        XCTAssertEqual(service.turns.last?.first?.author, .system)
+    }
+
     func testRetrievalRechecksAdmission() async throws {
         try await indexChunk()
         let conversation = try await send()

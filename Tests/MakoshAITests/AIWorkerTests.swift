@@ -85,6 +85,11 @@ final class AIFakeService: AIServing, @unchecked Sendable {
     private var _embedFailure: AIFailure?
     private var _embedHold = false
     private var _embedStarted = 0
+    private var _holdAtCall: Int?
+    var holdAtCall: Int? {
+        get { locked { _holdAtCall } }
+        set { locked { _holdAtCall = newValue } }
+    }
     var dimensions = 3
     var embedded: [[String]] { locked { _embedded } }
     var embedFailure: AIFailure? {
@@ -104,7 +109,8 @@ final class AIFakeService: AIServing, @unchecked Sendable {
             _embedStarted += 1
             return _embedFailure
         }
-        while embedHold {
+        let call = embedStarted
+        while embedHold || holdAtCall == call {
             try Task.checkCancellation()
             try await Task.sleep(for: .milliseconds(5))
         }

@@ -119,10 +119,11 @@ public actor AIWorker {
             guard try await repository.conversations().first(where: { $0.id == conversationID })?.searchMyData != false,
                 let generation = try await vectors.activeGeneration()
             else { return (nil, []) }
-            let role = try await embeddingRole()
-            guard role.connectionID == generation.connectionID, role.model == generation.model else { return (nil, []) }
-            let query = try await embed([question])
-            guard let vector = query.vectors.first else { return (nil, []) }
+            // Unassigning the embeddings role turns search off; otherwise the
+            // answering generation's own model embeds the question, even during a rebuild.
+            _ = try await embeddingRole()
+            let query = try await embed([question], connectionID: generation.connectionID, model: generation.model)
+            guard let vector = query.first else { return (nil, []) }
             let matches = try await vectors.search(
                 vector, generation: generation.id, limit: AIRetrieval.limit, maxDistance: AIRetrieval.maxDistance)
             let snapshot = try await access.snapshot()
@@ -388,6 +389,18 @@ public actor AIWorker {
         let vectors = try await client.embeddings(connection: connection, token: token, model: model, inputs: inputs)
         guard vectors.count == inputs.count else { throw AIFailure.malformedResponse }
         return (connection.id, model, vectors)
+    }
+
+    /// Embeds with a specific connection and model, e.g. the generation that is
+    /// still answering while a new model's index is being built.
+    public func embed(_ inputs: [String], connectionID: UUID, model: String) async throws -> [[Float]] {
+        guard let connection = try await repository.connections().first(where: { $0.id == connectionID }) else {
+            throw AIFailure.roleUnassigned(.embeddings)
+        }
+        let vectors = try await client.embeddings(
+            connection: connection, token: try await vault.load(connectionID: connectionID), model: model, inputs: inputs)
+        guard vectors.count == inputs.count else { throw AIFailure.malformedResponse }
+        return vectors
     }
 
     func indexState() async throws -> AIIndexState? { try await repository.setting(AIIndexState.self, key: "indexState") }

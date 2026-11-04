@@ -150,4 +150,5 @@ public struct AIMessage: Codable, Equatable, Identifiable, Sendable {
 public enum AIFailure: Error, Equatable, Sendable {
     case invalidConnection, invalidConfiguration, storage, keyUnavailable, roleUnassigned(AIRole)
     case unauthorized, rateLimited, server(status: Int), network, malformedResponse, cancelled, busy
+    case vectorUnavailable, dimensionsTooLarge
 }

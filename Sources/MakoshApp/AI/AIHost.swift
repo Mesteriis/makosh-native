@@ -67,6 +67,8 @@ extension AIFailure {
         case .malformedResponse: "Провайдер вернул ответ в неожиданном формате."
         case .cancelled: "Запрос остановлен."
         case .busy: "Дождитесь окончания текущего ответа или остановите его."
+        case .vectorUnavailable: "Поиск по данным недоступен: в PostgreSQL нет расширения pgvector."
+        case .dimensionsTooLarge: "Модель эмбеддингов даёт векторы длиннее 2000 — выберите другую модель поиска."
         }
     }
 }

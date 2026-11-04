@@ -54,6 +54,11 @@ struct MakoshApp: App {
                     Text("Телемост QA требует явную синтетическую конфигурацию.").padding(24)
                 } else if CommandLine.arguments.contains("--telemost-synthetic-preview") {
                     TelemostSyntheticPreview().frame(minWidth: 1100, minHeight: 720)
+                } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "ai",
+                    !CommandLine.arguments.contains(AIQAIsolation.flag)
+                {
+                    Text("ИИ QA требует --ai-synthetic-preview и отдельную конфигурацию PostgreSQL.").padding(24).frame(
+                        minWidth: 600, minHeight: 240)
                 } else if CommandLine.arguments.contains(AIQAIsolation.flag) {
                     AISyntheticPreview().frame(minWidth: 1000, minHeight: 680)
                 } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams",

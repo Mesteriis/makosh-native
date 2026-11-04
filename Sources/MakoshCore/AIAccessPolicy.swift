@@ -26,3 +26,32 @@ struct AIAccessPolicyRecord: Codable {
 /// mailbox flag, `forbidden` closes the contact everywhere, and `allowed`
 /// never opens a disabled chat or mailbox.
 public enum AIContactAccess: String, Codable, Sendable { case inherit, allowed, forbidden }
+
+/// One message or letter version offered to the AI index. Sources never
+/// filter by access; the indexer decides admission.
+public struct AIIndexItem: Sendable, Equatable {
+    public let sequence: Int64
+    public let identity: MessageArchiveIdentity
+    public let scope: AIAccessScope
+    public let author: ServiceIdentity?
+    public let isOutgoing: Bool
+    public let date: Date
+    public let title: String
+    public let text: String
+    public let removed: Bool
+    public init(
+        sequence: Int64, identity: MessageArchiveIdentity, scope: AIAccessScope, author: ServiceIdentity?, isOutgoing: Bool, date: Date,
+        title: String, text: String, removed: Bool
+    ) {
+        self.sequence = sequence; self.identity = identity; self.scope = scope; self.author = author; self.isOutgoing = isOutgoing
+        self.date = date; self.title = title; self.text = text; self.removed = removed
+    }
+}
+
+/// A journal the AI indexer follows with its own cursor. `after` is
+/// exclusive and results are ordered by ascending sequence.
+public protocol AIIndexSource: Sendable {
+    var name: String { get }
+    func items(after sequence: Int64, limit: Int) async throws -> [AIIndexItem]
+    func items(in scope: AIAccessScope, after sequence: Int64, limit: Int) async throws -> [AIIndexItem]
+}

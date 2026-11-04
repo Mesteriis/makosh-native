@@ -372,15 +372,30 @@ public final class MessageArchiveStore {
         defer { lock.unlock() }
         return try readRecords(stream: token([service, accountID, conversationID]), before: before, limit: limit)
     }
+    /// Oldest first, for consumers that follow the journal with a cursor.
+    public func records(after: Int64, limit: Int) throws -> [MessageArchiveRecord] {
+        try readRecords(stream: nil, after: after, limit: limit)
+    }
+    public func records(service: String, accountID: String, conversationID: String, after: Int64, limit: Int) throws -> [MessageArchiveRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        return try readRecords(stream: token([service, accountID, conversationID]), after: after, limit: limit)
+    }
+    private func readRecords(stream: String?, after: Int64, limit: Int) throws -> [MessageArchiveRecord] {
+        try readRecords(stream: stream, before: nil, after: after, limit: limit)
+    }
     private func readRecords(stream: String?, before: Int64?, limit: Int) throws -> [MessageArchiveRecord] {
+        try readRecords(stream: stream, before: before, after: nil, limit: limit)
+    }
+    private func readRecords(stream: String?, before: Int64?, after: Int64?, limit: Int) throws -> [MessageArchiveRecord] {
         guard (1...200).contains(limit) else { throw MessageArchiveError.invalid }
         lock.lock()
         defer { lock.unlock() }
         return try transaction {
             _ = try metadata()
             let rows = try query(
-                "SELECT sequence,message_token,ciphertext FROM \(prefix)archive_events WHERE ($1::text IS NULL OR stream_token=$1) AND ($2::bigint IS NULL OR sequence<$2::bigint) ORDER BY sequence DESC LIMIT $3::int",
-                [stream, before.map(String.init), String(limit)])
+                "SELECT sequence,message_token,ciphertext FROM \(prefix)archive_events WHERE ($1::text IS NULL OR stream_token=$1) AND ($2::bigint IS NULL OR sequence<$2::bigint) AND ($4::bigint IS NULL OR sequence>$4::bigint) ORDER BY \(after == nil ? "sequence DESC" : "sequence") LIMIT $3::int",
+                [stream, before.map(String.init), String(limit), after.map(String.init)])
             return try rows.map { row in
                 guard let sequence = Int64(row[0]) else { throw MessageArchiveError.integrity }
                 let observation: MessageArchiveObservation

@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "MakoshWhatsApp", targets: ["MakoshWhatsApp"]),
         .library(name: "MakoshTeams", targets: ["MakoshTeams"]),
         .library(name: "MakoshTelemost", targets: ["MakoshTelemost"]),
+        .library(name: "MakoshAI", targets: ["MakoshAI"]),
         .library(name: "MakoshTelegram", targets: ["MakoshTelegram"]),
         .executable(name: "Makosh", targets: ["MakoshApp"])
     ],
@@ -50,6 +51,8 @@ let package = Package(
         .target(name: "MakoshCore", dependencies: ["CPostgres"]),
         .target(name: "MakoshTeams", dependencies: ["MakoshCore", "CPostgres"]),
         .target(name: "MakoshTelemost", dependencies: ["MakoshCore", "CPostgres"]),
+        .target(name: "MakoshAI", dependencies: ["MakoshCore", "CPostgres"]),
+        .testTarget(name: "MakoshAITests", dependencies: ["MakoshAI", "MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshTelemostTests", dependencies: ["MakoshApp", "MakoshTelemost", "MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshTeamsTests", dependencies: ["MakoshApp", "MakoshTeams", "MakoshCore", "CPostgres"]),
         .target(name: "MakoshVoiceCodec", dependencies: ["MakoshOpusControl", .product(name: "COpus", package: "MakoshOpus")]),

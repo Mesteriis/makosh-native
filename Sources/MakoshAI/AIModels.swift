@@ -1,0 +1,130 @@
+import Foundation
+
+public enum AIRole: String, Codable, CaseIterable, Sendable {
+    case chat, embeddings, images, transcription, speech
+}
+
+/// An OpenAI-compatible endpoint. The token is never part of this value; it
+/// lives in the Keychain under the connection identifier.
+public struct AIConnection: Codable, Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public var name: String
+    public var baseURL: URL
+    public var organization: String?
+    public var project: String?
+    public init(id: UUID = UUID(), name: String, baseURL: URL, organization: String? = nil, project: String? = nil) {
+        self.id = id
+        self.name = name
+        self.baseURL = baseURL
+        self.organization = organization
+        self.project = project
+    }
+    /// HTTPS anywhere; plain HTTP only for loopback servers such as Ollama or LM Studio.
+    public func validated() throws -> AIConnection {
+        var result = self
+        result.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !result.name.isEmpty, result.name.count <= 80,
+            let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+            let scheme = components.scheme?.lowercased(), let host = components.host, !host.isEmpty,
+            components.user == nil, components.password == nil, components.query == nil, components.fragment == nil
+        else { throw AIFailure.invalidConnection }
+        switch scheme {
+        case "https": break
+        case "http" where ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host.lowercased()): break
+        default: throw AIFailure.invalidConnection
+        }
+        result.organization = Self.optional(organization)
+        result.project = Self.optional(project)
+        return result
+    }
+    private static func optional(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
+    }
+}
+
+public struct AIRoleAssignment: Codable, Equatable, Sendable {
+    public let role: AIRole
+    public let connectionID: UUID
+    public let model: String
+    public init(role: AIRole, connectionID: UUID, model: String) {
+        self.role = role
+        self.connectionID = connectionID
+        self.model = model
+    }
+}
+
+public struct AIConversation: Codable, Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public var title: String
+    public let createdAt: Date
+    public var updatedAt: Date
+    public init(id: UUID = UUID(), title: String, createdAt: Date, updatedAt: Date) {
+        self.id = id
+        self.title = title
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+public enum AIMessageAuthor: String, Codable, Sendable { case user, assistant }
+
+public enum AIMessageState: String, Codable, Sendable { case complete, streaming, interrupted, failed }
+
+public struct AIImageReference: Codable, Equatable, Sendable {
+    public let objectID: UUID
+    public let byteCount: Int64
+    public let sha256: String
+    public let inS3: Bool
+    public init(objectID: UUID, byteCount: Int64, sha256: String, inS3: Bool) {
+        self.objectID = objectID
+        self.byteCount = byteCount
+        self.sha256 = sha256
+        self.inS3 = inS3
+    }
+}
+
+public struct AIMessageVersion: Codable, Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public var text: String
+    public var state: AIMessageState
+    public let model: String?
+    public let createdAt: Date
+    public var image: AIImageReference?
+    public init(id: UUID = UUID(), text: String, state: AIMessageState, model: String?, createdAt: Date, image: AIImageReference? = nil) {
+        self.id = id
+        self.text = text
+        self.state = state
+        self.model = model
+        self.createdAt = createdAt
+        self.image = image
+    }
+}
+
+public struct AIMessage: Codable, Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public let conversationID: UUID
+    /// The previous message on this branch; edits and regenerations create
+    /// siblings that share a parent.
+    public let parentID: UUID?
+    public let author: AIMessageAuthor
+    public var versions: [AIMessageVersion]
+    public var selectedVersion: Int
+    public init(
+        id: UUID = UUID(), conversationID: UUID, parentID: UUID?, author: AIMessageAuthor, versions: [AIMessageVersion],
+        selectedVersion: Int = 0
+    ) {
+        self.id = id
+        self.conversationID = conversationID
+        self.parentID = parentID
+        self.author = author
+        self.versions = versions
+        self.selectedVersion = selectedVersion
+    }
+    public var current: AIMessageVersion? { versions.indices.contains(selectedVersion) ? versions[selectedVersion] : versions.last }
+}
+
+public enum AIFailure: Error, Equatable, Sendable {
+    case invalidConnection, invalidConfiguration, storage, keyUnavailable, roleUnassigned(AIRole)
+    case unauthorized, rateLimited, server(status: Int), network, malformedResponse, cancelled, busy
+}

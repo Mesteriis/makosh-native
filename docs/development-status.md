@@ -1,4 +1,50 @@
-# Development status — 2026-11-03
+# Development status — 2026-11-04
+
+## Перенос презентационных моделей — 2026-11-04
+
+Что изменилось:
+
+- Модели почты, Teams, Telemost и WhatsApp, которым не нужны окна AppKit,
+  SwiftUI-вью и общая инфраструктура системных уведомлений, перенесены из
+  `MakoshApp` в `Presentation/` своих сервисных модулей (как `TelegramModel`
+  в `MakoshTelegram`), с доступом `package`. Из view-файлов WhatsApp вынесены
+  `WhatsAppAvatarModel`/`WindowCache`, `WhatsAppGroupCallPickerModel`,
+  `WhatsAppGroupCallLayout`; из Teams — `TeamsHistoryModel` и
+  `teamsOutgoingTitle`. Экспорт архива Teams получает панель сохранения как
+  внедрённое действие. Логика не менялась.
+- 26 тестовых файлов больше не импортируют исполняемую цель. Её по-прежнему
+  импортируют 8 файлов, которые проверяют то, что осталось в приложении:
+  системные уведомления, `WorkspaceModel`, `WhatsAppCallPanel`,
+  `MailComposeSheet`, политику запуска. Поэтому зависимость тестовых целей от
+  `MakoshApp` в `Package.swift` сохраняется.
+- Перенос и форматирование — отдельные коммиты, чтобы сохранилась история
+  переименований.
+
+Проверки (фактические результаты):
+
+- XERJ: после освобождения диска индекс проекта обновлён (exit 0, 1577
+  файлов, 1248/1248 код), `--check` — fresh; поиск подтвердил связи моделей.
+- `scripts/test.sh`: 2873 XCTest, 1 падение —
+  `TelemostOperationTests.testProcessLeaseOwnership`. Причина: тест
+  загружает `.local/postgres-client/lib/libpq.5.dylib`, которую готовит только
+  `build-app.sh`, а не `test.sh`; папка была удалена при чистке. После
+  `build-app.sh` тест прошёл 3/3. Скрытая зависимость теста не исправлена.
+- `scripts/build-app.sh` — exit 0, `codesign --verify --deep --strict` — OK,
+  приложение на QA-схеме `qa_contacts_refactor` работает 12 с без ошибок в
+  логе. Визуальная проверка интерфейса не выполнялась.
+
+Блокер подготовки зависимостей:
+
+- Репозитории `overtake/Telegram-iOS`, `overtake/TelegramSwift` и
+  `overtake/tgcalls` на GitHub удалены (404). Закреплённые коммиты есть в
+  официальных `TelegramMessenger/Telegram-iOS` (`a24bbe45…`) и
+  `TelegramMessenger/tgcalls` (`5ddc3ccf…`, дерево `df0c4e90…` совпадает с
+  блокировкой). Проверки этой сессии шли с подменой адресов только в
+  окружении процесса (`GIT_CONFIG_*` insteadOf). Файлы блокировок,
+  `references.lock.json` и уведомления по-прежнему указывают на `overtake`:
+  без подмены `prepare-telegram.py`, `prepare-opus.py`,
+  `prepare-mozjpeg.py`, `prepare-opusfile.py` и `prepare-telegram-voip.py`
+  на чистой машине падают. Решение о смене источника — за владельцем.
 
 ## Структурный рефакторинг — 2026-11-03
 

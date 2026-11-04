@@ -80,7 +80,9 @@ import MakoshCore
           try Task.checkCancellation()
           if let payload = row.observation.sourcePayload {
             let message = try JSONDecoder().decode(WhatsAppMessage.self, from: payload)
-            guard message.id.utf8.elementsEqual(row.observation.identity.messageID.utf8), message.chat.utf8.elementsEqual(row.observation.identity.conversationID.utf8) else { throw WhatsAppFailure.invalid }
+            guard message.id.utf8.elementsEqual(row.observation.identity.messageID.utf8),
+              message.chat.utf8.elementsEqual(row.observation.identity.conversationID.utf8)
+            else { throw WhatsAppFailure.invalid }
             values[row.id] = message
           }
         }

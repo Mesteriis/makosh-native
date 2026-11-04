@@ -44,7 +44,7 @@ import SwiftUI
     calls = .init(worker: service, synthetic: synthetic)
     polling = true
   }
-  package init(worker: any WhatsAppServing, polling: Bool,synthetic:Bool=false) {
+  package init(worker: any WhatsAppServing, polling: Bool, synthetic: Bool = false) {
     self.worker = worker
     self.polling = polling
     isSynthetic = synthetic
@@ -60,8 +60,11 @@ import SwiftUI
     pollTask?.cancel()
     operationTask?.cancel()
     let worker = worker
-    let composer=composer
-    Task { @MainActor in await composer.flushDrafts();await worker.shutdown() }
+    let composer = composer
+    Task { @MainActor in
+      await composer.flushDrafts()
+      await worker.shutdown()
+    }
   }
   package var selectedChat: WhatsAppChat? { chats.first { $0.id == selectedChatID } }
   package func load(configuration: ContactWorkspaceConfiguration) async {
@@ -254,14 +257,14 @@ import SwiftUI
     if accountGeneration == generation { busy = false }
   }
   #if DEBUG
-    package func previewPairing() async {
-      guard isSynthetic, let account = selectedAccountID else { return }
-      syntheticPairing = true
-      status.state = "qr"
-      status.qr = "MAKOSH-SYNTHETIC-NOT-A-WHATSAPP-LINK"
-      status.expires = Int64(Date().timeIntervalSince1970) + 60
-      await publishStatus(status, account: account, generation: accountGeneration)
-    }
+  package func previewPairing() async {
+    guard isSynthetic, let account = selectedAccountID else { return }
+    syntheticPairing = true
+    status.state = "qr"
+    status.qr = "MAKOSH-SYNTHETIC-NOT-A-WHATSAPP-LINK"
+    status.expires = Int64(Date().timeIntervalSince1970) + 60
+    await publishStatus(status, account: account, generation: accountGeneration)
+  }
   #endif
   package func openNotification(_ event: WhatsAppNotificationEvent) async {
     guard accounts.contains(where: { $0.id == event.accountID }) else { return }
@@ -276,7 +279,9 @@ import SwiftUI
     guard selectedAccountID == event.accountID, selectedChatID == event.chat else { return }
     notificationActivation = UUID()
   }
-  private func publishStatus(_ value: WhatsAppConnectionStatus, account: UUID, generation: UInt64)
+  private func publishStatus(
+    _ value: WhatsAppConnectionStatus, account: UUID, generation: UInt64
+  )
     async
   {
     guard selectedAccountID == account, accountGeneration == generation else { return }

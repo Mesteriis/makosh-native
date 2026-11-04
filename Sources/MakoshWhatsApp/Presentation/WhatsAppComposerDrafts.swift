@@ -53,7 +53,9 @@ extension WhatsAppComposerModel {
   package func persist(_ snapshot: Draft, source: Context) async throws -> WhatsAppComposeDraft {
     try await enqueuePersist(snapshot, source: source).value
   }
-  @discardableResult package func enqueuePersist(_ snapshot: Draft, source: Context) -> Task<
+  @discardableResult package func enqueuePersist(
+    _ snapshot: Draft, source: Context
+  ) -> Task<
     WhatsAppComposeDraft, Error
   > {
     let previous = persistence[source]

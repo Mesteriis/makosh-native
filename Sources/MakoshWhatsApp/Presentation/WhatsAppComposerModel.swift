@@ -8,7 +8,12 @@ import Foundation
   @Published package var admittedDraft: WhatsAppComposeAdmission?
   @Published package var text = "" { didSet { if !text.utf8.elementsEqual(oldValue.utf8) { changed() } } }
   @Published package var attachments: [WhatsAppPreparedFile] = [] { didSet { if attachments != oldValue { changed() } } }
-  @Published package var reply: WhatsAppMessage? { didSet { if !restoring { restoredReplyID=nil };if reply != oldValue { changed() } } }
+  @Published package var reply: WhatsAppMessage? {
+    didSet {
+      if !restoring { restoredReplyID = nil }
+      if reply != oldValue { changed() }
+    }
+  }
   @Published package private(set) var sending = false
   @Published package private(set) var preparing = false
   @Published package private(set) var outbox: [WhatsAppOutgoing] = []
@@ -19,17 +24,17 @@ import Foundation
   @Published package private(set) var notice: String?
   @Published package private(set) var shownBatch: WhatsAppBatchSnapshot?
   @Published package private(set) var batchBusy = false
-  @Published package var showPhotoEditor=false
+  @Published package var showPhotoEditor = false
   @Published package var photoMode: WhatsAppPhotoMode = .standard { didSet { if photoMode != oldValue { changed() } } }
-  package lazy var photoEditor=WhatsAppPhotoEditorModel(worker:worker)
-  package var restoring=false
-  package var itemOrder: [WhatsAppComposeItem]=[]
+  package lazy var photoEditor = WhatsAppPhotoEditorModel(worker: worker)
+  package var restoring = false
+  package var itemOrder: [WhatsAppComposeItem] = []
   package var restoredReplyID: String?
-  package var debounce: Task<Void,Never>?
-  package var dirtyContexts=Set<Context>()
-  package var knownAbsent=Set<Context>()
-  package var admittedRevisions: [Context:UInt64]=[:]
-  package var persistence: [Context:Task<WhatsAppComposeDraft,Error>]=[:]
+  package var debounce: Task<Void, Never>?
+  package var dirtyContexts = Set<Context>()
+  package var knownAbsent = Set<Context>()
+  package var admittedRevisions: [Context: UInt64] = [:]
+  package var persistence: [Context: Task<WhatsAppComposeDraft, Error>] = [:]
   package struct Context: Hashable {
     package let account: UUID
     package let chat: Data
@@ -65,11 +70,13 @@ import Foundation
     }
     guard next != context else { return }
     if let context {
-      let old=snapshotDraft();drafts[context]=old
-      if dirtyContexts.contains(context),!pending.contains(context) { enqueuePersist(old,source:context) }
+      let old = snapshotDraft()
+      drafts[context] = old
+      if dirtyContexts.contains(context), !pending.contains(context) { enqueuePersist(old, source: context) }
     }
-    debounce?.cancel();restoring=true
-    defer { restoring=false }
+    debounce?.cancel()
+    restoring = true
+    defer { restoring = false }
     voice.cancel()
     generation &+= 1
     context = next
@@ -77,9 +84,13 @@ import Foundation
     text = saved?.text ?? ""
     attachments = saved?.attachments ?? []
     reply = saved?.reply
-    photoDrafts=saved?.photos ?? [];itemOrder=saved?.order ?? [];restoredReplyID=saved?.restoredReplyID;photoMode=saved?.photoMode ?? .standard
-    admittedDraft=nil
-    photoEditor.cancel();showPhotoEditor=false
+    photoDrafts = saved?.photos ?? []
+    itemOrder = saved?.order ?? []
+    restoredReplyID = saved?.restoredReplyID
+    photoMode = saved?.photoMode ?? .standard
+    admittedDraft = nil
+    photoEditor.cancel()
+    showPhotoEditor = false
     error = nil
     notice = nil
     outbox = []
@@ -117,23 +128,26 @@ import Foundation
       var old = drafts[source] ?? .init(text: "", attachments: [], reply: nil)
       old.text = value
       drafts[source] = old
-      dirtyContexts.insert(source);enqueuePersist(old,source:source)
+      dirtyContexts.insert(source)
+      enqueuePersist(old, source: source)
     }
   }
   package func send() async {
-    guard let source = context, !pending.contains(source), preparations[source] == nil, !text.isEmpty || !attachments.isEmpty || !photoDrafts.isEmpty
+    guard let source = context, !pending.contains(source), preparations[source] == nil,
+      !text.isEmpty || !attachments.isEmpty || !photoDrafts.isEmpty
     else { return }
     guard attachments.count + photoDrafts.count <= 10, Set(attachments.map(\.id)).count == attachments.count,
-      attachments.allSatisfy({ (0...100 * 1024 * 1024).contains($0.size) }) else {
+      attachments.allSatisfy({ (0...100 * 1024 * 1024).contains($0.size) })
+    else {
       error = "Не больше 10 файлов по 100 МиБ каждый."
       return
     }
     let snapshot = snapshotDraft()
     let capturedRevision = revision
-    let exportMode=photoMode
+    let exportMode = photoMode
     let token = generation
     pending.insert(source)
-    var receivedAdmission=false
+    var receivedAdmission = false
     updateSending()
     error = nil
     notice = nil
@@ -141,26 +155,37 @@ import Foundation
       pending.remove(source)
       updateSending()
       if dirtyContexts.contains(source) {
-        let latest=context == source ? snapshotDraft():drafts[source]
-        if let latest,latest != snapshot || receivedAdmission { enqueuePersist(latest,source:source) }
+        let latest = context == source ? snapshotDraft() : drafts[source]
+        if let latest, latest != snapshot || receivedAdmission { enqueuePersist(latest, source: source) }
       }
     }
     do {
-      let persisted=try await persist(snapshot,source:source)
-      if (context == source && revision == capturedRevision) || (context != source && drafts[source] == snapshot) { dirtyContexts.remove(source) }
-      var photoFiles: [UUID:WhatsAppPreparedFile]=[:]
-      let currentPhotos=snapshot.photos.isEmpty ? [] : try await worker.photoDrafts(accountID:source.account,chat:source.chatID)
-      for photo in snapshot.photos {
-        guard let current=currentPhotos.first(where: { $0.id == photo.id }),current.revision == photo.revision,current.recipe == photo.recipe else { throw WhatsAppFailure.invalid }
-        photoFiles[photo.id]=try await worker.renderPhoto(id:photo.id,accountID:source.account,chat:source.chatID,expectedRevision:current.revision,mode:exportMode)
+      let persisted = try await persist(snapshot, source: source)
+      if (context == source && revision == capturedRevision) || (context != source && drafts[source] == snapshot) {
+        dirtyContexts.remove(source)
       }
-      let prepared=try ordered(snapshot).map { item -> WhatsAppPreparedFile in
+      var photoFiles: [UUID: WhatsAppPreparedFile] = [:]
+      let currentPhotos = snapshot.photos.isEmpty ? [] : try await worker.photoDrafts(accountID: source.account, chat: source.chatID)
+      for photo in snapshot.photos {
+        guard let current = currentPhotos.first(where: { $0.id == photo.id }), current.revision == photo.revision,
+          current.recipe == photo.recipe
+        else { throw WhatsAppFailure.invalid }
+        photoFiles[photo.id] = try await worker.renderPhoto(
+          id: photo.id, accountID: source.account, chat: source.chatID, expectedRevision: current.revision, mode: exportMode)
+      }
+      let prepared = try ordered(snapshot).map { item -> WhatsAppPreparedFile in
         switch item {
-        case .file(let id): guard let file=snapshot.attachments.first(where: { $0.id == id }) else { throw WhatsAppFailure.invalid };return file
-        case .photo(let id): guard let file=photoFiles[id] else { throw WhatsAppFailure.invalid };return file
+        case .file(let id):
+          guard let file = snapshot.attachments.first(where: { $0.id == id }) else { throw WhatsAppFailure.invalid }
+          return file
+        case .photo(let id):
+          guard let file = photoFiles[id] else { throw WhatsAppFailure.invalid }
+          return file
         }
       }
-      let content = WhatsAppOutgoingContent(text: snapshot.text, replyTo: snapshot.reply?.id ?? snapshot.restoredReplyID, files: prepared.map(\.id),composeRevision:persisted.revision)
+      let content = WhatsAppOutgoingContent(
+        text: snapshot.text, replyTo: snapshot.reply?.id ?? snapshot.restoredReplyID, files: prepared.map(\.id),
+        composeRevision: persisted.revision)
       let acceptedNotice: String?
       if prepared.count > 1 {
         let batch = try await worker.sendBatch(accountID: source.account, chat: source.chatID, content: content)
@@ -169,15 +194,26 @@ import Foundation
         let result = try await worker.send(accountID: source.account, chat: source.chatID, content: content)
         acceptedNotice = result.state == .prepared && synthetic ? "Синтетическая очередь · сообщение не отправлено" : nil
       }
-      receivedAdmission=true;admittedRevisions[source]=max(admittedRevisions[source] ?? 0,persisted.revision)
+      receivedAdmission = true
+      admittedRevisions[source] = max(admittedRevisions[source] ?? 0, persisted.revision)
       if context == source, generation == token, revision == capturedRevision {
-        restoring=true
-        text = "";attachments = [];reply = nil;photoDrafts=[];itemOrder=[];restoredReplyID=nil
-        drafts[source] = nil;dirtyContexts.remove(source);restoring=false
-        let admitted=try await worker.composeDraft(accountID:source.account,chat:source.chatID)?.admitted
-        if context == source,generation == token, text.isEmpty,attachments.isEmpty,photoDrafts.isEmpty { admittedDraft=admitted }
+        restoring = true
+        text = ""
+        attachments = []
+        reply = nil
+        photoDrafts = []
+        itemOrder = []
+        restoredReplyID = nil
+        drafts[source] = nil
+        dirtyContexts.remove(source)
+        restoring = false
+        let admitted = try await worker.composeDraft(accountID: source.account, chat: source.chatID)?.admitted
+        if context == source, generation == token, text.isEmpty, attachments.isEmpty, photoDrafts.isEmpty { admittedDraft = admitted }
       }
-      if context != source,drafts[source] == snapshot { drafts[source]=nil;dirtyContexts.remove(source) }
+      if context != source, drafts[source] == snapshot {
+        drafts[source] = nil
+        dirtyContexts.remove(source)
+      }
       if context == source, generation == token {
         notice = acceptedNotice
         await refreshOutbox()
@@ -190,7 +226,9 @@ import Foundation
       }
     }
   }
-  package func attach(_ file: URL, kind: String, mime: String, targetAccount: UUID?, targetChat: String?)
+  package func attach(
+    _ file: URL, kind: String, mime: String, targetAccount: UUID?, targetChat: String?
+  )
     async
   {
     await prepareSelection([file], asFiles: false, targetAccount: targetAccount, targetChat: targetChat, override: (kind, mime))
@@ -198,53 +236,76 @@ import Foundation
   package func attach(_ files: [URL], asFiles: Bool, targetAccount: UUID?, targetChat: String?) async {
     await prepareSelection(files, asFiles: asFiles, targetAccount: targetAccount, targetChat: targetChat, override: nil)
   }
-  private func prepareSelection(_ files: [URL], asFiles: Bool, targetAccount: UUID?, targetChat: String?, override: (String, String)?) async {
+  private func prepareSelection(_ files: [URL], asFiles: Bool, targetAccount: UUID?, targetChat: String?, override: (String, String)?) async
+  {
     guard let targetAccount, let targetChat else { return }
     let source = Context(account: targetAccount, chat: Data(targetChat.utf8))
     guard preparations[source] == nil else { return }
     let token = generation, owner = UUID()
     let existing = context == source ? attachments : drafts[source]?.attachments ?? []
-    let existingPhotos=context == source ? photoDrafts : drafts[source]?.photos ?? []
-    guard existing.count+existingPhotos.count+files.count <= 10 else { error="Можно прикрепить не больше 10 файлов.";return }
-    if context == source { error = nil; notice = nil }
+    let existingPhotos = context == source ? photoDrafts : drafts[source]?.photos ?? []
+    guard existing.count + existingPhotos.count + files.count <= 10 else {
+      error = "Можно прикрепить не больше 10 файлов."
+      return
+    }
+    if context == source {
+      error = nil
+      notice = nil
+    }
     let task = Task<Void, Never> { [weak self] in
       guard let self else { return }
       do {
         let candidates = try await WhatsAppAttachmentSelection.inspect(files, asFiles: asFiles, existing: existing)
         for candidate in candidates {
           try Task.checkCancellation()
-          if !asFiles,override == nil,candidate.kind == "image" {
-            let photo=try await worker.capturePhoto(accountID:source.account,chat:source.chatID,file:candidate.file)
+          if !asFiles, override == nil, candidate.kind == "image" {
+            let photo = try await worker.capturePhoto(accountID: source.account, chat: source.chatID, file: candidate.file)
             try Task.checkCancellation()
-            acceptPhoto(photo,source:source,generation:token)
+            acceptPhoto(photo, source: source, generation: token)
           } else {
-            let value = try await worker.prepareFile(accountID: source.account, chat: source.chatID,
+            let value = try await worker.prepareFile(
+              accountID: source.account, chat: source.chatID,
               file: candidate.file, kind: override?.0 ?? candidate.kind, mime: override?.1 ?? candidate.mime)
-            try Task.checkCancellation();acceptPrepared(value, source: source, generation: token)
+            try Task.checkCancellation()
+            acceptPrepared(value, source: source, generation: token)
           }
         }
       } catch {
         if context == source, generation == token {
-          if error is CancellationError { notice = "Подготовка остановлена. Готовые файлы сохранены в черновике." }
-          else { self.error = (error as? LocalizedError)?.errorDescription ?? "Не удалось подготовить файл." }
+          if error is CancellationError {
+            notice = "Подготовка остановлена. Готовые файлы сохранены в черновике."
+          } else {
+            self.error = (error as? LocalizedError)?.errorDescription ?? "Не удалось подготовить файл."
+          }
         }
       }
     }
-    preparations[source] = (owner, task); updatePreparing()
+    preparations[source] = (owner, task)
+    updatePreparing()
     await task.value
     if preparations[source]?.0 == owner { preparations[source] = nil }
     updatePreparing()
-    if context == source,generation == token { await saveDraft() }
-    else if let old=drafts[source] { _=try? await persist(old,source:source) }
+    if context == source, generation == token {
+      await saveDraft()
+    } else if let old = drafts[source] {
+      _ = try? await persist(old, source: source)
+    }
   }
   package func moveAttachment(from: Int, to: Int) {
     guard attachments.indices.contains(from), attachments.indices.contains(to), from != to else { return }
-    let file = attachments.remove(at: from); attachments.insert(file, at: to)
-    let positions=itemOrder.indices.filter { if case .file = itemOrder[$0] { return true };return false }
-    for (i,position) in positions.enumerated() where i < attachments.count { itemOrder[position] = .file(attachments[i].id) }
+    let file = attachments.remove(at: from)
+    attachments.insert(file, at: to)
+    let positions = itemOrder.indices.filter {
+      if case .file = itemOrder[$0] { return true }
+      return false
+    }
+    for (i, position) in positions.enumerated() where i < attachments.count { itemOrder[position] = .file(attachments[i].id) }
     changed()
   }
-  package func removeAttachment(id: UUID) { itemOrder.removeAll { $0 == .file(id) };attachments.removeAll { $0.id == id } }
+  package func removeAttachment(id: UUID) {
+    itemOrder.removeAll { $0 == .file(id) }
+    attachments.removeAll { $0.id == id }
+  }
   package func cancelPreparation() { if let context { preparations[context]?.1.cancel() } }
   package func recordVoice(expectedAccount: UUID?, expectedChat: String?) {
     guard let source = context, source.account == expectedAccount, source.chatID == expectedChat
@@ -264,11 +325,14 @@ import Foundation
       return
     }
     if context == source, generation == token {
-      itemOrder.append(.file(file.id));attachments.append(file)
+      itemOrder.append(.file(file.id))
+      attachments.append(file)
     } else {
       var old = drafts[source] ?? .init(text: "", attachments: [], reply: nil)
-      old.order.append(.file(file.id));old.attachments.append(file)
-      drafts[source] = old;dirtyContexts.insert(source)
+      old.order.append(.file(file.id))
+      old.attachments.append(file)
+      drafts[source] = old
+      dirtyContexts.insert(source)
     }
   }
   package func quote(_ message: WhatsAppMessage, expectedAccount: UUID) {
@@ -318,7 +382,10 @@ import Foundation
     let token = generation
     do {
       try await worker.resolveOutgoing(accountID: value.accountID, id: value.id, sent: sent)
-      if context == source, generation == token { await refreshOutbox(); await refreshShownBatch() }
+      if context == source, generation == token {
+        await refreshOutbox()
+        await refreshShownBatch()
+      }
     } catch {
       if context == source, generation == token {
         self.error =
@@ -352,7 +419,8 @@ import Foundation
     do {
       let result = try await worker.continueBatch(accountID: source.account, id: batch.batch.id)
       if context == source, generation == token, shownBatch?.batch.id == batch.batch.id {
-        shownBatch = result; await refreshOutbox()
+        shownBatch = result
+        await refreshOutbox()
       }
     } catch { if context == source, generation == token { self.error = error.localizedDescription } }
   }

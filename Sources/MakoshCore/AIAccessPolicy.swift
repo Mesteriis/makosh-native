@@ -21,3 +21,8 @@ struct AIAccessPolicyRecord: Codable {
     let scope: AIAccessScope
     let enabled: Bool
 }
+
+/// Per-contact AI access. `inherit` leaves the decision to the chat or
+/// mailbox flag, `forbidden` closes the contact everywhere, and `allowed`
+/// never opens a disabled chat or mailbox.
+public enum AIContactAccess: String, Codable, Sendable { case inherit, allowed, forbidden }

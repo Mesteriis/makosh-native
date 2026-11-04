@@ -95,6 +95,17 @@ public final class ContactStore {
         }
     }
 
+    public func setAIAccess(contactID: UUID, access: AIContactAccess) throws {
+        try write { repository in
+            guard var contact = try repository.contact(id: contactID) else { throw StoreError.missingContact }
+            guard contact.aiAccess != access else { return }
+            contact.aiAccess = access
+            contact.revision += 1
+            contact.events.append(ContactEvent(kind: "aiAccess", detail: "Доступ для ИИ изменён"))
+            try repository.update(contact)
+        }
+    }
+
     public func importJSON(data: Data) throws -> ImportResult {
         try importDocument(ImportDocument.decode(data))
     }

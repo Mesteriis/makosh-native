@@ -85,6 +85,7 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
     public var events: [ContactEvent]
     public var manualFields: Set<String>
     public var revision: Int
+    public var aiAccess: AIContactAccess = .inherit
     public var draft: ContactDraft {
         ContactDraft(displayName: displayName, organization: organization, jobTitle: jobTitle,
                      phones: phones, emails: emails, tags: tags)
@@ -98,6 +99,22 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
         self.phones = phones; self.emails = emails; self.tags = tags; self.identities = identities
         self.observations = observations; self.notes = notes; self.events = events
         self.manualFields = manualFields; self.revision = revision
+    }
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, organization, jobTitle, phones, emails, tags, identities, observations, notes, events, manualFields, revision,
+            aiAccess
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); displayName = try c.decode(String.self, forKey: .displayName)
+        organization = try c.decode(String.self, forKey: .organization); jobTitle = try c.decode(String.self, forKey: .jobTitle)
+        phones = try c.decode([String].self, forKey: .phones); emails = try c.decode([String].self, forKey: .emails)
+        tags = try c.decode([String].self, forKey: .tags); identities = try c.decode([ServiceIdentity].self, forKey: .identities)
+        observations = try c.decode([Observation].self, forKey: .observations); notes = try c.decode([ContactNote].self, forKey: .notes)
+        events = try c.decode([ContactEvent].self, forKey: .events); manualFields = try c.decode(Set<String>.self, forKey: .manualFields)
+        revision = try c.decode(Int.self, forKey: .revision)
+        // Rows written before AI access existed default to inherit.
+        aiAccess = try c.decodeIfPresent(AIContactAccess.self, forKey: .aiAccess) ?? .inherit
     }
 }
 

@@ -93,6 +93,12 @@ enum ContactReconciliation {
         merged.notes = union(merged.notes, removed.notes)
         merged.events = union(merged.events, removed.events)
         merged.manualFields.formUnion(removed.manualFields)
+        // A forbidden side stays forbidden; allowed only replaces inherit.
+        if [survivor.aiAccess, removed.aiAccess].contains(.forbidden) {
+            merged.aiAccess = .forbidden
+        } else if [survivor.aiAccess, removed.aiAccess].contains(.allowed) {
+            merged.aiAccess = .allowed
+        }
         merged.revision = max(survivor.revision, removed.revision) + 1
         merged.events.append(ContactEvent(kind: "merge", detail: "Объединено с \(removed.displayName)"))
         return merged

@@ -37,11 +37,12 @@ public enum ContactWorkspaceCommand: Sendable {
     case importFile(URL)
     case merge(survivorID: UUID, removedID: UUID)
     case undo(UUID)
+    case setAIAccess(contactID: UUID, access: AIContactAccess)
 }
 
 public struct ContactWorkspaceWriteResult: Sendable {
     public enum Value: Equatable, Sendable {
-        case saved(UUID), noted, sourceNoted(UUID), linked(UUID), imported(ImportResult), merged(UUID), undone
+        case saved(UUID), noted, sourceNoted(UUID), linked(UUID), imported(ImportResult), merged(UUID), undone, aiAccessSet
     }
     public let value: Value
     /// Nil means the write committed but its display refresh failed. Never replay it.
@@ -86,8 +87,13 @@ protocol ContactWorkspacePersistence: AnyObject {
     func linkImportedContact(_ incoming: ImportedContact, source: ImportSource, fetchedAt: Date, contactID: UUID?) throws -> UUID
     func merge(survivorID: UUID, removedID: UUID) throws -> UUID
     func undoMerge(id: UUID) throws
+    func setAIAccess(contactID: UUID, access: AIContactAccess) throws
 }
 extension ContactStore: ContactWorkspacePersistence {}
+extension ContactWorkspacePersistence {
+    /// Stores that predate AI access refuse it instead of silently ignoring it.
+    func setAIAccess(contactID: UUID, access: AIContactAccess) throws { throw ContactWorkspaceError.unavailable }
+}
 
 /// Owns configuration IO, connection creation, SQL, import decoding and duplicate analysis.
 /// Methods contain no suspension points: each write and its refresh finish before another
@@ -167,6 +173,7 @@ public actor ContactWorkspaceWorker {
             case .merge(let survivor, let removed):
                 _ = try store.merge(survivorID: survivor, removedID: removed); value = .merged(survivor)
             case .undo(let id): try store.undoMerge(id: id); value = .undone
+            case .setAIAccess(let id, let access): try store.setAIAccess(contactID: id, access: access); value = .aiAccessSet
             }
         } catch {
             let safe = mutationError(error)

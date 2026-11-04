@@ -9,6 +9,8 @@ enum ArchiveBackupTable: String, Codable, CaseIterable {
     case metadata = "archive_metadata", policies = "archive_conversation_file_policy"
     case events = "archive_events", receipts = "archive_receipts", files = "archive_file_events"
     case aliases = "archive_storage_aliases"
+    /// Added after format version 1 shipped; older backups simply omit it.
+    case aiPolicies = "archive_ai_policy"
     var columns: [String] {
         switch self {
         case .metadata: ["version", "vault", "key_check"]
@@ -17,6 +19,7 @@ enum ArchiveBackupTable: String, Codable, CaseIterable {
         case .receipts: ["observation", "digest"]
         case .files: ["sequence", "object", "state", "attachment_token", "ciphertext"]
         case .aliases: ["source_storage", "destination_storage", "ciphertext"]
+        case .aiPolicies: ["scope_token", "ciphertext"]
         }
     }
     var order: String {
@@ -26,6 +29,7 @@ enum ArchiveBackupTable: String, Codable, CaseIterable {
         case .events, .files: "sequence"
         case .receipts: "observation"
         case .aliases: "source_storage COLLATE \"C\",destination_storage COLLATE \"C\""
+        case .aiPolicies: "scope_token COLLATE \"C\""
         }
     }
 }
@@ -82,7 +86,7 @@ final class ArchiveBackupRowValidator {
     private(set) var counts = Dictionary(uniqueKeysWithValues: ArchiveBackupTable.allCases.map { ($0.rawValue, Int64(0)) })
     private var tablePosition = 0, rowCount = 0, budget = 0
     private var eventSequence: Int64 = 0, fileSequence: Int64 = 0
-    private var previousReceipt = "", previousPolicy = "", previousAlias = ""
+    private var previousReceipt = "", previousPolicy = "", previousAlias = "", previousAIPolicy = ""
     private var eventReceipts: [UUID: String] = [:]
     private var policies: [String: ArchiveBackupPolicy] = [:]
     private var pending: [UUID: String] = [:]
@@ -163,6 +167,16 @@ final class ArchiveBackupRowValidator {
             let alias = try JSONDecoder().decode(ArchiveBackupStorageAlias.self, from: payload)
             guard alias.vaultID == crypto.vaultID, alias.source == values[0], alias.destination == values[1] else { throw ArchiveBackupError.integrity }
             try charge(pair.utf8.count + 128); aliases.insert(pair)
+        case .aiPolicies:
+            guard values[0] > previousAIPolicy else { throw ArchiveBackupError.integrity }
+            previousAIPolicy = values[0]
+            let payload = try crypto.open(values[1], token: "ai-policy-\(values[0])")
+            guard payload.count <= 16384 else { throw ArchiveBackupError.invalid }
+            let record = try JSONDecoder().decode(AIAccessPolicyRecord.self, from: payload)
+            guard record.scope.isValid, crypto.token(["ai-policy"] + record.scope.fields) == values[0] else {
+                throw ArchiveBackupError.integrity
+            }
+            try charge(payload.count + 128)
         }
     }
     func finish() throws -> [ArchiveBackupObject] {

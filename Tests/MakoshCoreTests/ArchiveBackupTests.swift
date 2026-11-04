@@ -184,6 +184,24 @@ final class ArchiveBackupTests: XCTestCase {
         let restored = try MessageArchiveStore(connectionString: fixture.db.connectionString, schema: fixture.target) { id, _ in try XCTUnwrap(targetKeys.access.lookup(id)) }
         XCTAssertFalse(try restored.conversationFileSavingEnabled(identity: fixture.identity, defaultEnabled: true))
     }
+    func testBackupRestoresAIPolicies() async throws {
+        let fixture = try fixture(), targetKeys = BackupTestKeys()
+        let chat = AIAccessScope.conversation(service: "telegram", accountID: "synthetic-account", conversationID: "synthetic-chat")
+        let mailbox = AIAccessScope.mailAccount(accountID: "synthetic-mailbox")
+        try fixture.store.setAIAccess(chat, enabled: true)
+        try fixture.store.setAIAccess(mailbox, enabled: false)
+        try await export(fixture)
+        let inspection = try ArchiveBackup.inspectReceipt(package: fixture.package, recoveryKey: fixture.recovery)
+        _ = try await ArchiveBackup.restore(
+            package: fixture.package, recoveryKey: fixture.recovery, connectionString: fixture.db.connectionString,
+            schema: fixture.target, storage: nil, keys: targetKeys.access, expectedFingerprint: inspection.fingerprint)
+        let restored = try MessageArchiveStore(connectionString: fixture.db.connectionString, schema: fixture.target) { id, _ in
+            try XCTUnwrap(targetKeys.access.lookup(id))
+        }
+        XCTAssertTrue(try restored.aiAccessEnabled(chat))
+        XCTAssertFalse(try restored.aiAccessEnabled(mailbox))
+        XCTAssertEqual(try restored.enabledAIScopes(), [chat])
+    }
     func testExplicitPolicyReadsDistinguishMissingAndEnumerateOffScopesOnly() throws {
         let fixture = try fixture()
         XCTAssertNil(try fixture.store.explicitConversationFileSavingEnabled(identity: fixture.identity))

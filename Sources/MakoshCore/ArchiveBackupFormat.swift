@@ -10,12 +10,15 @@ struct ArchiveBackupHeader: Codable {
     var summary: ArchiveBackupSummary {
         .init(vaultID: vaultID, messageVersions: counts[ArchiveBackupTable.events.rawValue] ?? 0, files: objectCount, encryptedBytes: objectBytes, databaseBytes: databaseBytes)
     }
+    /// Counts with tables that older backups predate filled in as zero.
+    var normalizedCounts: [String: Int64] { counts.merging([ArchiveBackupTable.aiPolicies.rawValue: 0]) { current, _ in current } }
     func validate() throws {
         guard rootKey.count == 32, (1...ArchiveBackupLimits.parts).contains(partCount),
               databaseBytes > 0, databaseBytes <= Int64(ArchiveBackupLimits.part) * Int64(ArchiveBackupLimits.parts),
               partCount == Int((databaseBytes + Int64(ArchiveBackupLimits.part) - 1) / Int64(ArchiveBackupLimits.part)),
               ArchiveBackupCryptography.validHash(databaseHash),
-              Set(counts.keys) == Set(ArchiveBackupTable.allCases.map(\.rawValue)), counts.values.allSatisfy({ (0...Int64(ArchiveBackupLimits.rows)).contains($0) }),
+              Set(counts.keys).union([ArchiveBackupTable.aiPolicies.rawValue]) == Set(ArchiveBackupTable.allCases.map(\.rawValue)),
+              counts.values.allSatisfy({ (0...Int64(ArchiveBackupLimits.rows)).contains($0) }),
               counts.values.reduce(Int64(0), +) <= ArchiveBackupLimits.rows, counts[ArchiveBackupTable.metadata.rawValue] == 1,
               (0...ArchiveBackupLimits.objects).contains(objectCount), objectBytes >= 0,
               objectBytes <= Int64(objectCount) * (4 * 1024 * 1024 * 1024 + 1024 * 1024),
@@ -151,7 +154,7 @@ final class ArchiveBackupVerified {
         let validator = try ArchiveBackupRowValidator(vaultID: header.vaultID, rootKey: header.rootKey)
         while let row = try reader.next() { try Task.checkCancellation(); try validator.accept(row) }
         let objects = try validator.finish()
-        guard validator.counts == header.counts, objects.count == header.objectCount,
+        guard validator.counts == header.normalizedCounts, objects.count == header.objectCount,
               objects.reduce(Int64(0), { $0 + $1.record.byteCount }) == header.objectBytes,
               try inputObjects.names() == Set(objects.map { ArchiveBackupFormat.objectName($0.record.id) }) else { throw ArchiveBackupError.incomplete }
         let outputObjects = try root.createDirectory("objects")

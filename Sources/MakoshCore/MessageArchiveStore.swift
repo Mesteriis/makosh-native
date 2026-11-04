@@ -82,6 +82,8 @@ public final class MessageArchiveStore {
                     "CREATE TABLE IF NOT EXISTS \(prefix)archive_conversation_file_policy (stream_token TEXT PRIMARY KEY, ciphertext TEXT NOT NULL)"
                 )
                 _ = try query(
+                    "CREATE TABLE IF NOT EXISTS \(prefix)archive_ai_policy (scope_token TEXT PRIMARY KEY, ciphertext TEXT NOT NULL)")
+                _ = try query(
                     "CREATE TABLE IF NOT EXISTS \(prefix)archive_storage_aliases (source_storage TEXT NOT NULL, destination_storage TEXT NOT NULL, ciphertext TEXT NOT NULL, PRIMARY KEY(source_storage,destination_storage), CHECK(source_storage<>destination_storage))"
                 )
                 let populated = try query("SELECT 1 FROM \(prefix)archive_events LIMIT 1")
@@ -188,6 +190,58 @@ public final class MessageArchiveStore {
                 "INSERT INTO \(prefix)archive_conversation_file_policy(stream_token,ciphertext) VALUES($1,$2) ON CONFLICT(stream_token) DO UPDATE SET ciphertext=EXCLUDED.ciphertext",
                 [stream, try seal(payload, aad: binding("conversation-file-policy-\(stream)", 0))])
         }
+    }
+
+    private func aiPolicyToken(_ scope: AIAccessScope) throws -> String {
+        guard scope.isValid else { throw MessageArchiveError.invalid }
+        return token(["ai-policy"] + scope.fields)
+    }
+    /// Disabled unless the user enabled this scope; see AIAccessScope.
+    public func aiAccessEnabled(_ scope: AIAccessScope) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let scopeToken = try aiPolicyToken(scope)
+            let rows = try query("SELECT ciphertext FROM \(prefix)archive_ai_policy WHERE scope_token=$1", [scopeToken])
+            guard let row = rows.first else { return false }
+            let record = try aiPolicy(row[0], token: scopeToken)
+            guard record.scope == scope else { throw MessageArchiveError.integrity }
+            return record.enabled
+        }
+    }
+    public func setAIAccess(_ scope: AIAccessScope, enabled: Bool) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try transaction {
+            _ = try metadata()
+            let scopeToken = try aiPolicyToken(scope)
+            let payload = try encode(AIAccessPolicyRecord(scope: scope, enabled: enabled))
+            guard payload.count <= 16384 else { throw MessageArchiveError.invalid }
+            _ = try query(
+                "INSERT INTO \(prefix)archive_ai_policy(scope_token,ciphertext) VALUES($1,$2) ON CONFLICT(scope_token) DO UPDATE SET ciphertext=EXCLUDED.ciphertext",
+                [scopeToken, try seal(payload, aad: binding("ai-policy-\(scopeToken)", 0))])
+        }
+    }
+    public func enabledAIScopes() throws -> [AIAccessScope] {
+        lock.lock()
+        defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let rows = try query("SELECT scope_token,ciphertext FROM \(prefix)archive_ai_policy ORDER BY scope_token COLLATE \"C\" LIMIT 100000")
+            return try rows.compactMap { row in
+                let record = try aiPolicy(row[1], token: row[0])
+                guard try aiPolicyToken(record.scope) == row[0] else { throw MessageArchiveError.integrity }
+                return record.enabled ? record.scope : nil
+            }
+        }
+    }
+    private func aiPolicy(_ ciphertext: String, token scopeToken: String) throws -> AIAccessPolicyRecord {
+        do {
+            let payload = try open(ciphertext, aad: binding("ai-policy-\(scopeToken)", 0))
+            guard payload.count <= 16384 else { throw MessageArchiveError.integrity }
+            return try JSONDecoder().decode(AIAccessPolicyRecord.self, from: payload)
+        } catch { throw MessageArchiveError.integrity }
     }
 
     public func fileVault() throws -> ArchiveFileVault {
@@ -468,7 +522,7 @@ extension MessageArchiveStore {
             _ = try query("INSERT INTO \(prefix)\(row.table.rawValue)(\(columns)) VALUES(\(placeholders))", row.values.map(Optional.some))
         }
         _ = try validator.finish()
-        guard validator.counts == header.counts else { throw ArchiveBackupError.integrity }
+        guard validator.counts == header.normalizedCounts else { throw ArchiveBackupError.integrity }
         for table in [ArchiveBackupTable.events, .files] {
             _ = try query(
                 "SELECT setval(pg_get_serial_sequence($1,'sequence'),GREATEST(COALESCE((SELECT max(sequence) FROM \(prefix)\(table.rawValue)),0),1),(SELECT count(*)>0 FROM \(prefix)\(table.rawValue)))",
@@ -507,7 +561,7 @@ extension MessageArchiveStore {
         _ = try query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
         do {
             for table in ArchiveBackupTable.allCases {
-                if table == .aliases {
+                if table == .aliases || table == .aiPolicies {
                     let present = try query("SELECT to_regclass($1)::text", [prefix + table.rawValue])
                     if present.first?.first?.isEmpty != false { continue }
                 }

@@ -231,3 +231,23 @@ bucket denies DeleteObject, so generated images carry a random per-image key
 stored only in the encrypted message record — deleting the conversation
 forgets the key, local copies are removed. Part 1 has no RAG, tools or
 cross-domain embedding; `MakoshAI` imports no other service module.
+
+## ADR-014: AI access flags, index and retrieval — 2026-11-04
+
+Spec: `docs/superpowers/specs/2026-11-04-ai-domain-design.md`, plan
+`docs/superpowers/plans/2026-11-04-ai-domain-rag.md`. Chat and mailbox flags are
+`AIAccessScope` rows in the encrypted `archive_ai_policy` table of
+`MessageArchiveStore` (backed up; older backups without the table restore).
+The contact flag is `Contact.aiAccess` (`inherit`/`allowed`/`forbidden`); a merge
+keeps `forbidden`, undo restores both cards. `MakoshCore.AIIndexSource` is the only
+contract the index reads: `MessageArchiveIndexSource` follows the shared archive
+(Telegram, WhatsApp, Teams; mail events skipped) and `MailAIIndexSource` follows
+retained letter versions. Back-fill reads the current state (latest version, deleted
+omitted). `AIIndexer` keeps per-source cursors with a 1000-sequence re-read window,
+back-fills newly opened scopes, purges closed scopes and forbidden authors, and
+re-checks access after every provider response before storing. `AIVectorStore`
+(pgvector, own connection) keeps one generation per embedding model with a partial
+HNSW expression index; chunk text and references are AES-GCM, vectors are clear.
+Retrieval re-checks access for every match and sends permitted chunks as a leading
+system turn; answers record `AISourceReference`s. The app's `AIArchiveAccessProvider`
+joins archive flags with dossier contacts; `MakoshAI` still imports no service module.

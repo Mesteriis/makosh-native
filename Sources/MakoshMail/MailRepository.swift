@@ -41,6 +41,10 @@ public actor MailRepository {
     public func versions(_ id: String, beforeSequence: Int64?, limit: Int = 20) throws -> [MailLetterVersion] {
         try db().versions(id, beforeSequence: beforeSequence, limit: limit)
     }
+    /// Every retained letter version, oldest first; optionally one account only.
+    public func versions(accountID: String? = nil, after sequence: Int64, limit: Int) throws -> [MailLetterVersion] {
+        try db().versions(accountID: accountID, after: sequence, limit: limit)
+    }
     public func cachedPage(folder: MailFolder?, beforeSequence: Int64?, limit: Int = 50) throws -> [MailLetter] {
         try db().headers(folder: folder, beforeSequence: beforeSequence, limit: limit)
     }
@@ -579,6 +583,21 @@ private final class MailDatabase {
         ).map { row in
             guard let sequence = Int64(row[0]) else { throw MailFailure.storage }
             return MailLetterVersion(id: sequence, letter: try decodeLetter(row[1], token: id))
+        }
+    }
+    func versions(accountID: String?, after sequence: Int64, limit: Int) throws -> [MailLetterVersion] {
+        guard sequence >= 0, (1...200).contains(limit) else { throw MailFailure.invalidInput }
+        var parameters = [String(sequence)], condition = "v.sequence>$1::bigint"
+        if let accountID {
+            parameters.append(SHA256.hash(data: Data(accountID.utf8)).map { String(format: "%02x", $0) }.joined())
+            condition += " AND l.account_token=$2"
+        }
+        return try query(
+            "SELECT v.sequence,v.token,v.ciphertext FROM \(versionTable) v JOIN \(letterTable) l ON l.token=v.token WHERE " + condition
+                + " ORDER BY v.sequence LIMIT \(limit)", parameters
+        ).map { row in
+            guard let sequence = Int64(row[0]) else { throw MailFailure.storage }
+            return MailLetterVersion(id: sequence, letter: try decodeLetter(row[2], token: row[1]))
         }
     }
     func saveLetters(_ letters: [MailLetter]) throws {

@@ -409,7 +409,7 @@ enum MIME {
         }
     }
 
-    private static func stripHTML(_ html: String) -> String {
+    static func stripHTML(_ html: String) -> String {
         var text = html
         for (tag, repl) in [("<br>", "\n"), ("<br/>", "\n"), ("<br />", "\n"), ("</p>", "\n\n"), ("</div>", "\n")] {
             text = text.replacingOccurrences(of: tag, with: repl, options: .caseInsensitive)

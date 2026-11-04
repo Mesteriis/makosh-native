@@ -59,15 +59,28 @@ public struct AIConversation: Codable, Equatable, Identifiable, Sendable {
     public var title: String
     public let createdAt: Date
     public var updatedAt: Date
-    public init(id: UUID = UUID(), title: String, createdAt: Date, updatedAt: Date) {
+    /// Whether questions in this conversation search permitted Makosh data.
+    public var searchMyData: Bool
+    public init(id: UUID = UUID(), title: String, createdAt: Date, updatedAt: Date, searchMyData: Bool = true) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.searchMyData = searchMyData
+    }
+    private enum CodingKeys: String, CodingKey { case id, title, createdAt, updatedAt, searchMyData }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        searchMyData = try c.decodeIfPresent(Bool.self, forKey: .searchMyData) ?? true
     }
 }
 
-public enum AIMessageAuthor: String, Codable, Sendable { case user, assistant }
+/// `system` appears only in turns sent to the provider (retrieved context), never in stored messages.
+public enum AIMessageAuthor: String, Codable, Sendable { case user, assistant, system }
 
 public enum AIMessageState: String, Codable, Sendable { case complete, streaming, interrupted, failed }
 
@@ -99,13 +112,30 @@ public struct AIMessageVersion: Codable, Equatable, Identifiable, Sendable {
     public let model: String?
     public let createdAt: Date
     public var image: AIImageReference?
-    public init(id: UUID = UUID(), text: String, state: AIMessageState, model: String?, createdAt: Date, image: AIImageReference? = nil) {
+    /// Makosh messages and letters the answer was given from.
+    public var sources: [AISourceReference]
+    public init(
+        id: UUID = UUID(), text: String, state: AIMessageState, model: String?, createdAt: Date, image: AIImageReference? = nil,
+        sources: [AISourceReference] = []
+    ) {
         self.id = id
         self.text = text
         self.state = state
         self.model = model
         self.createdAt = createdAt
         self.image = image
+        self.sources = sources
+    }
+    private enum CodingKeys: String, CodingKey { case id, text, state, model, createdAt, image, sources }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        text = try c.decode(String.self, forKey: .text)
+        state = try c.decode(AIMessageState.self, forKey: .state)
+        model = try c.decodeIfPresent(String.self, forKey: .model)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        image = try c.decodeIfPresent(AIImageReference.self, forKey: .image)
+        sources = try c.decodeIfPresent([AISourceReference].self, forKey: .sources) ?? []
     }
 }
 

@@ -23,6 +23,8 @@ public actor AIWorker {
     private var epochs: [UUID: UInt64] = [:]
     /// Conversations whose deletion has started; new work on them is refused.
     private var deleted: Set<UUID> = []
+    private var retrievalVectors: AIVectorStore?
+    private var retrievalAccess: (any AIAccessProvider)?
 
     public init(
         repository: AIRepository = .init(), client: any AIServing = AIClient(), vault: any AITokenStoring = AITokenVault(),
@@ -94,6 +96,42 @@ public actor AIWorker {
         try await repository.save(conversation)
         return conversation
     }
+    /// Enables answering from permitted Makosh data; attached after the indexer exists.
+    public func attachRetrieval(vectors: AIVectorStore, access: any AIAccessProvider) {
+        retrievalVectors = vectors
+        retrievalAccess = access
+    }
+
+    public func setSearchMyData(_ enabled: Bool, conversationID: UUID) async throws {
+        guard var conversation = try await repository.conversations().first(where: { $0.id == conversationID }) else {
+            throw AIFailure.invalidConfiguration
+        }
+        conversation.searchMyData = enabled
+        try await repository.save(conversation)
+    }
+
+    /// Permitted chunks for a question. Every match is checked against a
+    /// fresh access snapshot, so a chunk closed after indexing never leaves.
+    /// Any failure means a plain answer, not an error.
+    private func retrieve(_ question: String, conversationID: UUID) async -> (turn: AIChatTurn?, sources: [AISourceReference]) {
+        guard let vectors = retrievalVectors, let access = retrievalAccess else { return (nil, []) }
+        do {
+            guard try await repository.conversations().first(where: { $0.id == conversationID })?.searchMyData != false,
+                let generation = try await vectors.activeGeneration()
+            else { return (nil, []) }
+            let role = try await embeddingRole()
+            guard role.connectionID == generation.connectionID, role.model == generation.model else { return (nil, []) }
+            let query = try await embed([question])
+            guard let vector = query.vectors.first else { return (nil, []) }
+            let matches = try await vectors.search(vector, generation: generation.id, limit: AIRetrieval.limit, maxDistance: AIRetrieval.maxDistance)
+            let snapshot = try await access.snapshot()
+            let permitted = matches.map(\.chunk).filter { snapshot.admits($0) }
+            guard !permitted.isEmpty else { return (nil, []) }
+            let context = AIRetrieval.context(permitted)
+            return (context.turn, context.sources)
+        } catch { return (nil, []) }
+    }
+
     public func messages(_ conversationID: UUID) async throws -> [AIMessage] {
         try await repository.messages(conversationID: conversationID)
     }
@@ -187,11 +225,12 @@ public actor AIWorker {
         try await repository.save(question)
         history.append(question)
         try await touch(conversationID, title: trimmed)
+        let retrieved = await retrieve(trimmed, conversationID: conversationID)
         let answer = AIMessage(
             conversationID: conversationID, parentID: question.id, parentVersionID: version.id, author: .assistant,
-            versions: [.init(text: "", state: .streaming, model: model, createdAt: now())])
+            versions: [.init(text: "", state: .streaming, model: model, createdAt: now(), sources: retrieved.sources)])
         try await repository.save(answer)
-        return (answer, Self.turns(history), model, connection, token)
+        return (answer, (retrieved.turn.map { [$0] } ?? []) + Self.turns(history), model, connection, token)
     }
 
     private func prepareRegenerate(_ messageID: UUID, conversationID: UUID) async throws -> Preparation {
@@ -201,11 +240,13 @@ public actor AIWorker {
             throw AIFailure.invalidConfiguration
         }
         var answer = path[index]
-        answer.versions.append(.init(text: "", state: .streaming, model: model, createdAt: now()))
+        let question = path[..<index].last { $0.author == .user }?.current?.text ?? ""
+        let retrieved = question.isEmpty ? (turn: nil, sources: []) : await retrieve(question, conversationID: conversationID)
+        answer.versions.append(.init(text: "", state: .streaming, model: model, createdAt: now(), sources: retrieved.sources))
         answer.selectedVersion = answer.versions.count - 1
         try await repository.save(answer)
         try await touch(conversationID, title: nil)
-        return (answer, Self.turns(Array(path[..<index])), model, connection, token)
+        return (answer, (retrieved.turn.map { [$0] } ?? []) + Self.turns(Array(path[..<index])), model, connection, token)
     }
 
     private static func turns(_ path: [AIMessage]) -> [AIChatTurn] {

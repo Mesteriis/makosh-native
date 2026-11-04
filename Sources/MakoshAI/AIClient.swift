@@ -15,6 +15,7 @@ public protocol AIServing: Sendable {
     func image(connection: AIConnection, token: String?, model: String, prompt: String) async throws -> Data
     func transcribe(connection: AIConnection, token: String?, model: String, audio: URL) async throws -> String
     func speech(connection: AIConnection, token: String?, model: String, text: String) async throws -> Data
+    func embeddings(connection: AIConnection, token: String?, model: String, inputs: [String]) async throws -> [[Float]]
 }
 
 /// OpenAI-compatible HTTP client. Request and response bodies are never
@@ -125,6 +126,25 @@ public struct AIClient: AIServing {
         let audio = try await load(request, limit: Self.mediaLimit)
         guard !audio.isEmpty else { throw AIFailure.malformedResponse }
         return audio
+    }
+
+    public func embeddings(connection: AIConnection, token: String?, model: String, inputs: [String]) async throws -> [[Float]] {
+        struct Response: Decodable {
+            struct Item: Decodable {
+                let index: Int
+                let embedding: [Float]
+            }
+            let data: [Item]
+        }
+        guard !inputs.isEmpty, inputs.count <= 256 else { throw AIFailure.invalidConfiguration }
+        var request = try self.request(connection, token: token, path: "embeddings", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "input": inputs, "encoding_format": "float"])
+        let response: Response = try decode(try await load(request, limit: Self.mediaLimit))
+        let ordered = response.data.sorted { $0.index < $1.index }
+        guard ordered.map(\.index) == Array(inputs.indices), let width = ordered.first?.embedding.count, width > 0,
+            ordered.allSatisfy({ $0.embedding.count == width && $0.embedding.allSatisfy(\.isFinite) })
+        else { throw AIFailure.malformedResponse }
+        return ordered.map(\.embedding)
     }
 
     private func request(_ connection: AIConnection, token: String?, path: String, method: String) throws -> URLRequest {

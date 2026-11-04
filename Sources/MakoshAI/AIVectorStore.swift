@@ -173,6 +173,18 @@ public actor AIVectorStore {
         try db.query("DELETE FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[]", [Self.array([try messageToken(message, db: db)])])
     }
 
+    public func count(generation: Int64) throws -> Int {
+        let db = try preparedDatabase()
+        return try db.query("SELECT count(*) FROM \(db.prefix)ai_chunks WHERE generation=$1::bigint", [String(generation)]).first.flatMap { Int($0[0]) } ?? 0
+    }
+
+    func chunks(generation: Int64) throws -> [AIChunk] {
+        let db = try preparedDatabase()
+        return try db.query(
+            "SELECT chunk_token,ciphertext FROM \(db.prefix)ai_chunks WHERE generation=$1::bigint ORDER BY chunk_token LIMIT 10000", [String(generation)]
+        ).map { try db.decode($0[1], token: "chunk:" + $0[0]) }
+    }
+
     public func search(_ vector: [Float], generation: Int64, limit: Int, maxDistance: Double) throws -> [AIChunkMatch] {
         let db = try preparedDatabase()
         guard (1...50).contains(limit),

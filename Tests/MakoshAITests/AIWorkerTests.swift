@@ -81,6 +81,41 @@ final class AIFakeService: AIServing, @unchecked Sendable {
         locked { _calls += 1 }
         return "текст"
     }
+    private var _embedded: [[String]] = []
+    private var _embedFailure: AIFailure?
+    private var _embedHold = false
+    private var _embedStarted = 0
+    var dimensions = 3
+    var embedded: [[String]] { locked { _embedded } }
+    var embedFailure: AIFailure? {
+        get { locked { _embedFailure } }
+        set { locked { _embedFailure = newValue } }
+    }
+    var embedHold: Bool {
+        get { locked { _embedHold } }
+        set { locked { _embedHold = newValue } }
+    }
+    var embedStarted: Int { locked { _embedStarted } }
+    /// Deterministic vectors: one-hot by the first character, so a query finds text starting the same way.
+    func embeddings(connection: AIConnection, token: String?, model: String, inputs: [String]) async throws -> [[Float]] {
+        let failure = locked {
+            _calls += 1
+            _embedded.append(inputs)
+            _embedStarted += 1
+            return _embedFailure
+        }
+        while embedHold {
+            try Task.checkCancellation()
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        if let failure { throw failure }
+        let dimensions = self.dimensions
+        return inputs.map { input in
+            var vector = [Float](repeating: 0.01, count: dimensions)
+            vector[Int(input.unicodeScalars.first?.value ?? 0) % dimensions] = 1
+            return vector
+        }
+    }
     func speech(connection: AIConnection, token: String?, model: String, text: String) async throws -> Data {
         locked { _calls += 1 }
         return Data("MP3".utf8)

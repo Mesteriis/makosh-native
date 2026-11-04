@@ -335,6 +335,22 @@ public actor AIWorker {
         return try await images.load(reference, conversationID: conversationID)
     }
 
+    /// The connection and model assigned to the embeddings role.
+    public func embeddingRole() async throws -> (connectionID: UUID, model: String) {
+        let (connection, _, model) = try await resolve(.embeddings)
+        return (connection.id, model)
+    }
+
+    public func embed(_ inputs: [String]) async throws -> (connectionID: UUID, model: String, vectors: [[Float]]) {
+        let (connection, token, model) = try await resolve(.embeddings)
+        let vectors = try await client.embeddings(connection: connection, token: token, model: model, inputs: inputs)
+        guard vectors.count == inputs.count else { throw AIFailure.malformedResponse }
+        return (connection.id, model, vectors)
+    }
+
+    func indexState() async throws -> AIIndexState? { try await repository.setting(AIIndexState.self, key: "indexState") }
+    func saveIndexState(_ state: AIIndexState) async throws { try await repository.setSetting(state, key: "indexState") }
+
     public func transcribe(_ audio: URL) async throws -> String {
         let (connection, token, model) = try await resolve(.transcription)
         return try await client.transcribe(connection: connection, token: token, model: model, audio: audio)

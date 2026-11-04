@@ -42,6 +42,15 @@ public struct AISyntheticService: AIServing {
     public func speech(connection: AIConnection, token: String?, model: String, text: String) async throws -> Data {
         throw AIFailure.server(status: 501)
     }
+
+    /// Bag-of-characters vectors: deterministic and offline, close for similar text.
+    public func embeddings(connection: AIConnection, token: String?, model: String, inputs: [String]) async throws -> [[Float]] {
+        inputs.map { input in
+            var vector = [Float](repeating: 0.001, count: 16)
+            for scalar in input.lowercased().unicodeScalars { vector[Int(scalar.value % 16)] += 1 }
+            return vector
+        }
+    }
 }
 
 /// In-memory token store for the synthetic preview; nothing reaches the Keychain.

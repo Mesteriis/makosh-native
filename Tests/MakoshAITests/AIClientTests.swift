@@ -160,6 +160,20 @@ final class AIClientTests: XCTestCase {
         XCTAssertTrue(body.contains("AUDIO"))
     }
 
+    func testEmbeddingsOrderedByIndex() async throws {
+        reply(["{\"data\":[{\"index\":1,\"embedding\":[0.5,0.5]},{\"index\":0,\"embedding\":[1,0]}]}"])
+        let vectors = try await client.embeddings(connection: connection, token: nil, model: "emb", inputs: ["a", "b"])
+        XCTAssertEqual(vectors, [[1, 0], [0.5, 0.5]])
+        XCTAssertEqual(AIStubProtocol.requests.last?.url?.absoluteString, "https://api.example.com/v1/embeddings")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: AIStubProtocol.bodies[0]) as? [String: Any])
+        XCTAssertEqual(body["input"] as? [String], ["a", "b"])
+        reply(["{\"data\":[{\"index\":0,\"embedding\":[1,0]}]}"])
+        do {
+            _ = try await client.embeddings(connection: connection, token: nil, model: "emb", inputs: ["a", "b"])
+            XCTFail("missing vector accepted")
+        } catch { XCTAssertEqual(error as? AIFailure, .malformedResponse) }
+    }
+
     func testSpeechReturnsAudio() async throws {
         reply(["MP3"])
         let audio = try await client.speech(connection: connection, token: nil, model: "tts", text: "hi")

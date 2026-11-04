@@ -82,6 +82,9 @@ public actor AIRepository {
         }
     }
 
+    /// Internal JSON settings such as the indexer's cursors.
+    func setting<T: Decodable>(_ type: T.Type, key: String) throws -> T? { try record(type, kind: .settings, key: key) }
+    func setSetting<T: Encodable>(_ value: T, key: String) throws { try put(value, kind: .settings, key: key) }
     public func imagesSavedToS3() throws -> Bool { try record(Bool.self, kind: .settings, key: "imagesSavedToS3") ?? true }
     public func setImagesSavedToS3(_ value: Bool) throws { try put(value, kind: .settings, key: "imagesSavedToS3") }
 

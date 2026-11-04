@@ -36,6 +36,15 @@ lifetimes. The current audit and concrete rules are in
 [main-thread boundaries](main-thread-boundaries.md); its scoped evidence must
 not be mistaken for proof of every native runtime path.
 
+Presentation models that need no AppKit window, SwiftUI view or application-wide
+notification infrastructure live in their service module's `Presentation/`
+folder (`MakoshMail`, `MakoshTeams`, `MakoshTelemost`, `MakoshWhatsApp`), as
+`TelegramModel` already does in `MakoshTelegram`. They use `package` access, so
+the app target and same-package tests reach them without making them public
+library API, and service model tests do not import the executable target.
+Views, windows/panels, system-notification adapters, settings registries and the
+cross-service `WorkspaceModel` stay in `MakoshApp`; tests of those still import it.
+
 Aether Courier's indexed `RootView`/`ReadingPaneView` and inspected `docs/screenshot.png` informed the sidebar → list → dossier hierarchy, violet emphasis, compact caption metadata and separate reading panel. The earlier Contacts shell used original SwiftUI. The mail migration now adapts the MIT Aether Aurora backdrop and MIT MMail transports/editor with retained notices; Telegram outer UI remains independently implemented. See `research-ui-meetings.md` for pinned evidence and queries.
 
 The user-selected matte-glass shell (2026-10-16) replaces the persistent service

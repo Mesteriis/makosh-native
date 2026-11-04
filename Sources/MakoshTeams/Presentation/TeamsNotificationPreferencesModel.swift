@@ -1,18 +1,17 @@
 import Combine
 import Foundation
-import MakoshTeams
 
-@MainActor final class TeamsNotificationPreferencesModel: ObservableObject {
-  @Published var rule = TeamsNotificationRule()
-  @Published private(set) var loaded = false
-  @Published private(set) var busy = false
-  @Published var notice: String?
+@MainActor package final class TeamsNotificationPreferencesModel: ObservableObject {
+  @Published package var rule = TeamsNotificationRule()
+  @Published package private(set) var loaded = false
+  @Published package private(set) var busy = false
+  @Published package var notice: String?
   private let worker: any TeamsNotificationServing
   private var scope: TeamsNotificationScope = .global
   private var generation: UInt64 = 0
-  init(worker: any TeamsNotificationServing) { self.worker = worker }
-  var canSave: Bool { loaded && !busy }
-  func reset(_ scope: TeamsNotificationScope) {
+  package init(worker: any TeamsNotificationServing) { self.worker = worker }
+  package var canSave: Bool { loaded && !busy }
+  package func reset(_ scope: TeamsNotificationScope) {
     generation &+= 1
     self.scope = scope
     rule = .init()
@@ -20,7 +19,7 @@ import MakoshTeams
     busy = false
     notice = nil
   }
-  func load(expectedScope: TeamsNotificationScope) async {
+  package func load(expectedScope: TeamsNotificationScope) async {
     guard scope == expectedScope else { return }
     let token = generation
     busy = true
@@ -32,7 +31,7 @@ import MakoshTeams
       loaded = true
     } catch { if generation == token { notice = error.localizedDescription } }
   }
-  func save(expectedScope: TeamsNotificationScope) async {
+  package func save(expectedScope: TeamsNotificationScope) async {
     guard loaded, !busy, scope == expectedScope else { return }
     let token = generation
     let value = rule

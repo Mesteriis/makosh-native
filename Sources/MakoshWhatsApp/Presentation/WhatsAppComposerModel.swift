@@ -1,66 +1,65 @@
 import Combine
 import Foundation
-import MakoshWhatsApp
 
 /// Presentation ownership only. SQL, preparation and protocol commands are
 /// delegated to the existing service; a late completion keeps its old context.
-@MainActor final class WhatsAppComposerModel: ObservableObject {
-  @Published var photoDrafts: [WhatsAppPhotoDraft] = []
-  @Published var admittedDraft: WhatsAppComposeAdmission?
-  @Published var text = "" { didSet { if !text.utf8.elementsEqual(oldValue.utf8) { changed() } } }
-  @Published var attachments: [WhatsAppPreparedFile] = [] { didSet { if attachments != oldValue { changed() } } }
-  @Published var reply: WhatsAppMessage? { didSet { if !restoring { restoredReplyID=nil };if reply != oldValue { changed() } } }
-  @Published private(set) var sending = false
-  @Published private(set) var preparing = false
-  @Published private(set) var outbox: [WhatsAppOutgoing] = []
-  @Published private(set) var outboxHasMore = false
-  @Published private(set) var outboxLoading = false
+@MainActor package final class WhatsAppComposerModel: ObservableObject {
+  @Published package var photoDrafts: [WhatsAppPhotoDraft] = []
+  @Published package var admittedDraft: WhatsAppComposeAdmission?
+  @Published package var text = "" { didSet { if !text.utf8.elementsEqual(oldValue.utf8) { changed() } } }
+  @Published package var attachments: [WhatsAppPreparedFile] = [] { didSet { if attachments != oldValue { changed() } } }
+  @Published package var reply: WhatsAppMessage? { didSet { if !restoring { restoredReplyID=nil };if reply != oldValue { changed() } } }
+  @Published package private(set) var sending = false
+  @Published package private(set) var preparing = false
+  @Published package private(set) var outbox: [WhatsAppOutgoing] = []
+  @Published package private(set) var outboxHasMore = false
+  @Published package private(set) var outboxLoading = false
   private var outboxCursor: WhatsAppOutgoingCursor?
-  @Published var error: String?
-  @Published private(set) var notice: String?
-  @Published private(set) var shownBatch: WhatsAppBatchSnapshot?
-  @Published private(set) var batchBusy = false
-  @Published var showPhotoEditor=false
-  @Published var photoMode: WhatsAppPhotoMode = .standard { didSet { if photoMode != oldValue { changed() } } }
-  lazy var photoEditor=WhatsAppPhotoEditorModel(worker:worker)
-  var restoring=false
-  var itemOrder: [WhatsAppComposeItem]=[]
-  var restoredReplyID: String?
-  var debounce: Task<Void,Never>?
-  var dirtyContexts=Set<Context>()
-  var knownAbsent=Set<Context>()
-  var admittedRevisions: [Context:UInt64]=[:]
-  var persistence: [Context:Task<WhatsAppComposeDraft,Error>]=[:]
-  struct Context: Hashable {
-    let account: UUID
-    let chat: Data
-    var chatID: String { String(decoding: chat, as: UTF8.self) }
+  @Published package var error: String?
+  @Published package private(set) var notice: String?
+  @Published package private(set) var shownBatch: WhatsAppBatchSnapshot?
+  @Published package private(set) var batchBusy = false
+  @Published package var showPhotoEditor=false
+  @Published package var photoMode: WhatsAppPhotoMode = .standard { didSet { if photoMode != oldValue { changed() } } }
+  package lazy var photoEditor=WhatsAppPhotoEditorModel(worker:worker)
+  package var restoring=false
+  package var itemOrder: [WhatsAppComposeItem]=[]
+  package var restoredReplyID: String?
+  package var debounce: Task<Void,Never>?
+  package var dirtyContexts=Set<Context>()
+  package var knownAbsent=Set<Context>()
+  package var admittedRevisions: [Context:UInt64]=[:]
+  package var persistence: [Context:Task<WhatsAppComposeDraft,Error>]=[:]
+  package struct Context: Hashable {
+    package let account: UUID
+    package let chat: Data
+    package var chatID: String { String(decoding: chat, as: UTF8.self) }
   }
-  struct Draft: Equatable {
-    var text: String
-    var attachments: [WhatsAppPreparedFile]
-    var reply: WhatsAppMessage?
-    var photos: [WhatsAppPhotoDraft] = []
-    var order: [WhatsAppComposeItem] = []
-    var restoredReplyID: String? = nil
-    var photoMode: WhatsAppPhotoMode = .standard
+  package struct Draft: Equatable {
+    package var text: String
+    package var attachments: [WhatsAppPreparedFile]
+    package var reply: WhatsAppMessage?
+    package var photos: [WhatsAppPhotoDraft] = []
+    package var order: [WhatsAppComposeItem] = []
+    package var restoredReplyID: String? = nil
+    package var photoMode: WhatsAppPhotoMode = .standard
   }
-  lazy var voice = WhatsAppVoiceRecordingModel(
+  package lazy var voice = WhatsAppVoiceRecordingModel(
     worker: worker, synthetic: synthetic,
     prepared: { [weak self] file in self?.acceptPrepared(file) })
-  let worker: any WhatsAppServing
+  package let worker: any WhatsAppServing
   private let synthetic: Bool
-  var context: Context?
-  var generation: UInt64 = 0, revision: UInt64 = 0
-  var drafts: [Context: Draft] = [:]
-  var pending = Set<Context>()
+  package var context: Context?
+  package var generation: UInt64 = 0, revision: UInt64 = 0
+  package var drafts: [Context: Draft] = [:]
+  package var pending = Set<Context>()
   private var preparations: [Context: (UUID, Task<Void, Never>)] = [:]
-  var canResume: Bool { !synthetic && !sending }
-  init(worker: any WhatsAppServing, synthetic: Bool) {
+  package var canResume: Bool { !synthetic && !sending }
+  package init(worker: any WhatsAppServing, synthetic: Bool) {
     self.worker = worker
     self.synthetic = synthetic
   }
-  func setContext(account: UUID?, chat: String?) {
+  package func setContext(account: UUID?, chat: String?) {
     let next = account.flatMap { account in
       chat.map { Context(account: account, chat: Data($0.utf8)) }
     }
@@ -94,22 +93,22 @@ import MakoshWhatsApp
   }
   private func updateSending() { sending = context.map { pending.contains($0) } ?? false }
   private func updatePreparing() { preparing = context.map { preparations[$0] != nil } ?? false }
-  func matchesContext(account: UUID?, chat: String?) -> Bool {
+  package func matchesContext(account: UUID?, chat: String?) -> Bool {
     guard let account, let chat else { return false }
     return context?.account == account && context?.chat == Data(chat.utf8)
   }
-  func send(expectedAccount: UUID?, expectedChat: String?) async {
+  package func send(expectedAccount: UUID?, expectedChat: String?) async {
     guard let expectedAccount, let expectedChat, context?.account == expectedAccount,
       context?.chat == Data(expectedChat.utf8)
     else { return }
     await send()
   }
-  func draftText(account: UUID?, chat: String?) -> String {
+  package func draftText(account: UUID?, chat: String?) -> String {
     guard let account, let chat else { return "" }
     let source = Context(account: account, chat: Data(chat.utf8))
     return context == source ? text : drafts[source]?.text ?? ""
   }
-  func setDraftText(_ value: String, account: UUID?, chat: String?) {
+  package func setDraftText(_ value: String, account: UUID?, chat: String?) {
     guard let account, let chat else { return }
     let source = Context(account: account, chat: Data(chat.utf8))
     if context == source {
@@ -121,7 +120,7 @@ import MakoshWhatsApp
       dirtyContexts.insert(source);enqueuePersist(old,source:source)
     }
   }
-  func send() async {
+  package func send() async {
     guard let source = context, !pending.contains(source), preparations[source] == nil, !text.isEmpty || !attachments.isEmpty || !photoDrafts.isEmpty
     else { return }
     guard attachments.count + photoDrafts.count <= 10, Set(attachments.map(\.id)).count == attachments.count,
@@ -191,12 +190,12 @@ import MakoshWhatsApp
       }
     }
   }
-  func attach(_ file: URL, kind: String, mime: String, targetAccount: UUID?, targetChat: String?)
+  package func attach(_ file: URL, kind: String, mime: String, targetAccount: UUID?, targetChat: String?)
     async
   {
     await prepareSelection([file], asFiles: false, targetAccount: targetAccount, targetChat: targetChat, override: (kind, mime))
   }
-  func attach(_ files: [URL], asFiles: Bool, targetAccount: UUID?, targetChat: String?) async {
+  package func attach(_ files: [URL], asFiles: Bool, targetAccount: UUID?, targetChat: String?) async {
     await prepareSelection(files, asFiles: asFiles, targetAccount: targetAccount, targetChat: targetChat, override: nil)
   }
   private func prepareSelection(_ files: [URL], asFiles: Bool, targetAccount: UUID?, targetChat: String?, override: (String, String)?) async {
@@ -238,16 +237,16 @@ import MakoshWhatsApp
     if context == source,generation == token { await saveDraft() }
     else if let old=drafts[source] { _=try? await persist(old,source:source) }
   }
-  func moveAttachment(from: Int, to: Int) {
+  package func moveAttachment(from: Int, to: Int) {
     guard attachments.indices.contains(from), attachments.indices.contains(to), from != to else { return }
     let file = attachments.remove(at: from); attachments.insert(file, at: to)
     let positions=itemOrder.indices.filter { if case .file = itemOrder[$0] { return true };return false }
     for (i,position) in positions.enumerated() where i < attachments.count { itemOrder[position] = .file(attachments[i].id) }
     changed()
   }
-  func removeAttachment(id: UUID) { itemOrder.removeAll { $0 == .file(id) };attachments.removeAll { $0.id == id } }
-  func cancelPreparation() { if let context { preparations[context]?.1.cancel() } }
-  func recordVoice(expectedAccount: UUID?, expectedChat: String?) {
+  package func removeAttachment(id: UUID) { itemOrder.removeAll { $0 == .file(id) };attachments.removeAll { $0.id == id } }
+  package func cancelPreparation() { if let context { preparations[context]?.1.cancel() } }
+  package func recordVoice(expectedAccount: UUID?, expectedChat: String?) {
     guard let source = context, source.account == expectedAccount, source.chatID == expectedChat
     else { return }
     voice.start(account: source.account, chat: source.chatID)
@@ -272,14 +271,14 @@ import MakoshWhatsApp
       drafts[source] = old;dirtyContexts.insert(source)
     }
   }
-  func quote(_ message: WhatsAppMessage, expectedAccount: UUID) {
+  package func quote(_ message: WhatsAppMessage, expectedAccount: UUID) {
     guard context?.account == expectedAccount, context?.chat == Data(message.chat.utf8) else {
       return
     }
     reply = message
   }
-  func refreshOutbox() async { await loadOutbox(more: false) }
-  func moreOutbox() async { if outboxHasMore { await loadOutbox(more: true) } }
+  package func refreshOutbox() async { await loadOutbox(more: false) }
+  package func moreOutbox() async { if outboxHasMore { await loadOutbox(more: true) } }
   private func loadOutbox(more: Bool) async {
     guard let source = context, !outboxLoading else { return }
     let token = generation
@@ -294,7 +293,7 @@ import MakoshWhatsApp
       }
     } catch { if context == source, generation == token { self.error = error.localizedDescription } }
   }
-  func resume(_ value: WhatsAppOutgoing, copy: Bool = false) async {
+  package func resume(_ value: WhatsAppOutgoing, copy: Bool = false) async {
     guard let source = context, source.account == value.accountID, !pending.contains(source) else {
       return
     }
@@ -314,7 +313,7 @@ import MakoshWhatsApp
       if generation == token { await refreshOutbox() }
     } catch { if generation == token { self.error = error.localizedDescription } }
   }
-  func resolve(_ value: WhatsAppOutgoing, sent: Bool) async {
+  package func resolve(_ value: WhatsAppOutgoing, sent: Bool) async {
     guard let source = context, source.account == value.accountID else { return }
     let token = generation
     do {
@@ -328,7 +327,7 @@ import MakoshWhatsApp
       }
     }
   }
-  func showBatch(_ value: WhatsAppOutgoing) async {
+  package func showBatch(_ value: WhatsAppOutgoing) async {
     guard let id = value.batchID, let source = context, source.account == value.accountID else { return }
     let token = generation
     do {
@@ -336,8 +335,8 @@ import MakoshWhatsApp
       if context == source, generation == token { shownBatch = snapshot }
     } catch { if context == source, generation == token { self.error = error.localizedDescription } }
   }
-  func dismissBatch() { shownBatch = nil }
-  func refreshShownBatch() async {
+  package func dismissBatch() { shownBatch = nil }
+  package func refreshShownBatch() async {
     guard let batch = shownBatch, let source = context, batch.batch.accountID == source.account else { return }
     let token = generation
     do {
@@ -345,7 +344,7 @@ import MakoshWhatsApp
       if context == source, generation == token, shownBatch?.batch.id == batch.batch.id { shownBatch = value }
     } catch { if context == source, generation == token { self.error = error.localizedDescription } }
   }
-  func continueShownBatch() async {
+  package func continueShownBatch() async {
     guard let batch = shownBatch, let source = context, source.account == batch.batch.accountID, !batchBusy, !synthetic else { return }
     let token = generation
     batchBusy = true

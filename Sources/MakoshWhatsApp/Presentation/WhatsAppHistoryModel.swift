@@ -1,16 +1,15 @@
 import Combine
 import Foundation
 import MakoshCore
-import MakoshWhatsApp
 
 /// Owns a single immutable source context. Search cursors advance through the
 /// retained store, including pages with no matches; presentation never scans SQL.
-@MainActor final class WhatsAppHistoryModel: ObservableObject {
-  @Published private(set) var messages: [WhatsAppMessage] = []
-  @Published private(set) var busy = false
-  @Published private(set) var active = false
-  @Published private(set) var hasMore = false
-  @Published var error: String?
+@MainActor package final class WhatsAppHistoryModel: ObservableObject {
+  @Published package private(set) var messages: [WhatsAppMessage] = []
+  @Published package private(set) var busy = false
+  @Published package private(set) var active = false
+  @Published package private(set) var hasMore = false
+  @Published package var error: String?
   private let worker: any WhatsAppServing
   private let accountID: UUID
   private let chat: String
@@ -18,12 +17,12 @@ import MakoshWhatsApp
   private var cursor: WhatsAppCursor?
   private var query = ""
   private var filter = WhatsAppHistoryFilter.all
-  init(worker: any WhatsAppServing, accountID: UUID, chat: String) {
+  package init(worker: any WhatsAppServing, accountID: UUID, chat: String) {
     self.worker = worker
     self.accountID = accountID
     self.chat = chat
   }
-  func clear() {
+  package func clear() {
     generation &+= 1
     messages = []
     cursor = nil
@@ -32,14 +31,14 @@ import MakoshWhatsApp
     active = false
     error = nil
   }
-  func search(query: String, filter: WhatsAppHistoryFilter) async {
+  package func search(query: String, filter: WhatsAppHistoryFilter) async {
     clear()
     self.query = query
     self.filter = filter
     active = true
     await loadMore()
   }
-  func loadMore() async {
+  package func loadMore() async {
     guard active, !busy, cursor != nil || messages.isEmpty else { return }
     busy = true
     let revision = generation
@@ -56,20 +55,20 @@ import MakoshWhatsApp
   }
 }
 
-@MainActor final class WhatsAppArchiveModel: ObservableObject {
-  @Published private(set) var rows: [MessageArchiveRecord] = []
-  @Published private(set) var richMessages: [UUID: WhatsAppMessage] = [:]
-  @Published private(set) var busy = false
-  @Published private(set) var hasMore = true
-  @Published var error: String?
-  let worker: any WhatsAppServing, accountID: UUID, chat: String
+@MainActor package final class WhatsAppArchiveModel: ObservableObject {
+  @Published package private(set) var rows: [MessageArchiveRecord] = []
+  @Published package private(set) var richMessages: [UUID: WhatsAppMessage] = [:]
+  @Published package private(set) var busy = false
+  @Published package private(set) var hasMore = true
+  @Published package var error: String?
+  package let worker: any WhatsAppServing, accountID: UUID, chat: String
   private var cursor: Int64?
-  init(worker: any WhatsAppServing, accountID: UUID, chat: String) {
+  package init(worker: any WhatsAppServing, accountID: UUID, chat: String) {
     self.worker = worker
     self.accountID = accountID
     self.chat = chat
   }
-  func more() async {
+  package func more() async {
     guard !busy, hasMore else { return }
     busy = true
     defer { busy = false }
@@ -94,7 +93,7 @@ import MakoshWhatsApp
       hasMore = page.count == 100
     } catch { self.error = error.localizedDescription }
   }
-  func export() async -> WhatsAppFileLease? {
+  package func export() async -> WhatsAppFileLease? {
     guard !busy else { return nil }
     busy = true
     defer { busy = false }

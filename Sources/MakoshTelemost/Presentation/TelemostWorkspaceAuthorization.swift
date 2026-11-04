@@ -1,8 +1,7 @@
 import Foundation
-import MakoshTelemost
 
 extension TelemostWorkspaceModel {
-    func beginAuthorization(mode: TelemostAuthorizationMode) async {
+    package func beginAuthorization(mode: TelemostAuthorizationMode) async {
         guard let account = selectedAccountID else { return }; let context = contextID
         await authorizationCommand {
             let request = try await service.authorize(accountID: account, mode: mode)
@@ -10,7 +9,7 @@ extension TelemostWorkspaceModel {
             authorization = request
         }
     }
-    func completeAuthorization(callback: URL? = nil, code: String? = nil) async {
+    package func completeAuthorization(callback: URL? = nil, code: String? = nil) async {
         guard let request = authorization else { return }; let context = contextID
         await authorizationCommand {
             let result: TelemostGrantResult
@@ -21,22 +20,22 @@ extension TelemostWorkspaceModel {
             grant = result
         }
     }
-    func confirmAuthorization() async {
+    package func confirmAuthorization() async {
         guard let grant, grant.accountID == selectedAccountID else { return }; let context = contextID
         await authorizationCommand {
             try await service.confirmGrant(grant, accountID: grant.accountID)
             guard context == contextID else { return }; authorization = nil; self.grant = nil; await reload()
         }
     }
-    func cancelAuthorization() async {
+    package func cancelAuthorization() async {
         let request = authorization; authorization = nil; grant = nil
         if let request { await service.cancelAuthorization(id: request.id) }
     }
-    func connect() async {
+    package func connect() async {
         guard let id = selectedAccountID else { return }; let context = contextID
         await authorizationCommand { try await service.connect(accountID: id); guard context == contextID else { return }; await reload() }
     }
-    func disconnect() async {
+    package func disconnect() async {
         guard let id = selectedAccountID else { return }
         invalidateAuthorizationContext(); await service.disconnect(accountID: id); await reload()
     }

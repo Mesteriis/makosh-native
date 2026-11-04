@@ -2,7 +2,6 @@ import AVFoundation
 import Combine
 import CoreGraphics
 import Foundation
-import MakoshWhatsApp
 import Synchronization
 
 private final class WhatsAppCallLifetime: Sendable {
@@ -10,18 +9,18 @@ private final class WhatsAppCallLifetime: Sendable {
     var active: Bool { live.withLock { $0 } }
     func revoke() { live.withLock { $0 = false } }
 }
-@MainActor final class WhatsAppCallController: ObservableObject {
-    @Published private(set) var call: WhatsAppCallSnapshot?
-    @Published private(set) var accountID: UUID?
-    @Published private(set) var images = WhatsAppCallImages(local: nil, remote: nil)
-    @Published private(set) var groupImages: [WhatsAppGroupCallImage] = []
-    @Published var groupPage = 0
-    @Published var pinnedParticipant: String?
-    let avatarCache = WhatsAppAvatarWindowCache()
-    var avatarWorker: any WhatsAppServing { worker }
-    @Published var error: String?
-    @Published var devices = WhatsAppCallDeviceSelection()
-    @Published private(set) var deviceList: WhatsAppCallDeviceList?
+@MainActor package final class WhatsAppCallController: ObservableObject {
+    @Published package private(set) var call: WhatsAppCallSnapshot?
+    @Published package private(set) var accountID: UUID?
+    @Published package private(set) var images = WhatsAppCallImages(local: nil, remote: nil)
+    @Published package private(set) var groupImages: [WhatsAppGroupCallImage] = []
+    @Published package var groupPage = 0
+    @Published package var pinnedParticipant: String?
+    package let avatarCache = WhatsAppAvatarWindowCache()
+    package var avatarWorker: any WhatsAppServing { worker }
+    @Published package var error: String?
+    @Published package var devices = WhatsAppCallDeviceSelection()
+    @Published package private(set) var deviceList: WhatsAppCallDeviceList?
     private struct Run: Sendable {
         let id: UUID, account: UUID, peer: String, media: any WhatsAppCallMediaServing,
             lifetime: WhatsAppCallLifetime
@@ -34,7 +33,7 @@ private final class WhatsAppCallLifetime: Sendable {
     private let makeMedia: @Sendable () -> any WhatsAppCallMediaServing
     private var retiredCalls: [UUID: (String, UInt64)] = [:]
     private var run: Run?, pump: Task<Void, Never>?
-    init(
+    package init(
         worker: any WhatsAppServing, synthetic: Bool,
         permission: @escaping @MainActor (Bool) async -> Bool = WhatsAppCallController.allowMedia,
         makeMedia: @escaping @Sendable () -> any WhatsAppCallMediaServing = { WhatsAppCallMedia() }
@@ -61,7 +60,7 @@ private final class WhatsAppCallLifetime: Sendable {
             }
         }
     }
-    static func allowMedia(_ video: Bool) async -> Bool {
+    package static func allowMedia(_ video: Bool) async -> Bool {
         let types: [AVMediaType] = video ? [.audio, .video] : [.audio]
         for type in types {
             switch AVCaptureDevice.authorizationStatus(for: type) {
@@ -74,35 +73,35 @@ private final class WhatsAppCallLifetime: Sendable {
         return true
     }
     #if DEBUG
-    var isSyntheticPreviewAllowed: Bool { synthetic && run == nil }
-    func installGroupPreview(_ value: WhatsAppCallSnapshot) {
+    package var isSyntheticPreviewAllowed: Bool { synthetic && run == nil }
+    package func installGroupPreview(_ value: WhatsAppCallSnapshot) {
         guard isSyntheticPreviewAllowed else { return }
         call = value
     }
-    func preview() {
+    package func preview() {
         guard synthetic, run == nil else { return }
         call = .init(
             id: "synthetic-preview", epoch: 0, peer: "Синтетический собеседник", state: "preview",
             incoming: false, video: true, remoteVideo: true, videoRequested: false, muted: false)
     }
     #endif
-    func loadDevices() async {
+    package func loadDevices() async {
         guard !synthetic, run == nil, call == nil else { return }
         let list = await WhatsAppCallMedia().devices()
         guard run == nil, call == nil else { return }
         deviceList = list
     }
-    func start(accountID: UUID, peer: String, video: Bool) {
+    package func start(accountID: UUID, peer: String, video: Bool) {
         begin(account: accountID, peer: peer, video: video, incoming: nil)
     }
-    func startGroup(accountID: UUID, groupJID: String, participants: [String], video: Bool) {
+    package func startGroup(accountID: UUID, groupJID: String, participants: [String], video: Bool) {
         do {
             try WhatsAppGroupCallTargets.validateGroup(groupJID)
             let targets = try WhatsAppGroupCallTargets.validate(participants)
             begin(account: accountID, peer: groupJID, video: video, incoming: nil, participants: targets)
         } catch { self.error = error.localizedDescription }
     }
-    func invite(jid: String, ringOnly: Bool) async {
+    package func invite(jid: String, ringOnly: Bool) async {
         guard let run, let call, !call.ended, call.state == "active", !call.id.isEmpty else { return }
         do {
             _ = try await worker.inviteCallParticipant(
@@ -110,8 +109,8 @@ private final class WhatsAppCallLifetime: Sendable {
             guard self.run?.id == run.id, run.lifetime.active else { return }
         } catch { if self.run?.id == run.id { self.error = error.localizedDescription } }
     }
-    func leave() async { await end() }
-    func setVisibleStreams(_ ids: [WhatsAppCallStreamID]) {
+    package func leave() async { await end() }
+    package func setVisibleStreams(_ ids: [WhatsAppCallStreamID]) {
         guard let run, let call, ids.count <= 9 else { return }
         Task { try? await run.groupMedia.setVisibleStreams(ids, callID: call.id, epoch: call.epoch) }
     }
@@ -124,7 +123,7 @@ private final class WhatsAppCallLifetime: Sendable {
         if let call, !call.id.isEmpty, call.epoch > 0 { action.callEpoch = call.epoch }
         return action
     }
-    func accept(video: Bool) {
+    package func accept(video: Bool) {
         guard let accountID, let call, call.incoming, call.state == "ringing" else { return }
         begin(account: accountID, peer: call.peer, video: video, incoming: call)
     }
@@ -219,7 +218,7 @@ private final class WhatsAppCallLifetime: Sendable {
             }
         }
     }
-    func observe(_ snapshot: WhatsAppCallSnapshot?, account: UUID) {
+    package func observe(_ snapshot: WhatsAppCallSnapshot?, account: UUID) {
         guard let snapshot else { return }
         if let retired = retiredCalls[account], retired.0 == snapshot.id, retired.1 >= snapshot.epoch {
             return
@@ -314,7 +313,7 @@ private final class WhatsAppCallLifetime: Sendable {
         if !(error is CancellationError) { self.error = error.localizedDescription }
         await end()
     }
-    func end(sendProtocol: Bool = true) async {
+    package func end(sendProtocol: Bool = true) async {
         let old = run
         let oldCall = call
         let account = accountID
@@ -344,7 +343,7 @@ private final class WhatsAppCallLifetime: Sendable {
             } catch { if self.run == nil, self.call == nil { self.error = error.localizedDescription } }
         }
     }
-    func setMuted(_ value: Bool) async {
+    package func setMuted(_ value: Bool) async {
         guard let run, let call else { return }
         if value { await run.media.setMuted(true) }
         do {
@@ -357,7 +356,7 @@ private final class WhatsAppCallLifetime: Sendable {
             self.call?.muted = value
         } catch { if self.run?.id == run.id { self.error = error.localizedDescription } }
     }
-    func setVideo(_ value: Bool) async {
+    package func setVideo(_ value: Bool) async {
         guard let run, let call else { return }
         if value, await !permission(true) {
             error = "Камера недоступна. Разрешите доступ в настройках macOS."

@@ -1,19 +1,18 @@
 import Combine
 import Foundation
-import MakoshWhatsApp
 
-@MainActor final class WhatsAppVoiceRecordingModel: ObservableObject {
-  @Published private(set) var recording = false
-  @Published private(set) var preparing = false
-  @Published private(set) var seconds = 0
-  @Published var error: String?
+@MainActor package final class WhatsAppVoiceRecordingModel: ObservableObject {
+  @Published package private(set) var recording = false
+  @Published package private(set) var preparing = false
+  @Published package private(set) var seconds = 0
+  @Published package var error: String?
   private let worker: any WhatsAppServing, synthetic: Bool
   private let permission: @MainActor () async -> Bool
   private let prepared: (WhatsAppPreparedFile) -> Void
   private var capture: WhatsAppVoiceCapture?, timer: Task<Void, Never>?
   private var generation: UInt64 = 0
   private var account: UUID?, chat: String?
-  init(
+  package init(
     worker: any WhatsAppServing, synthetic: Bool,
     permission: @escaping @MainActor () async -> Bool = {
       await WhatsAppCallController.allowMedia(false)
@@ -28,8 +27,8 @@ import MakoshWhatsApp
     timer?.cancel()
     if let capture { Task { await capture.cancel() } }
   }
-  var canRecord: Bool { !synthetic }
-  func start(account: UUID, chat: String) {
+  package var canRecord: Bool { !synthetic }
+  package func start(account: UUID, chat: String) {
     guard !synthetic, capture == nil, !preparing else { return }
     generation &+= 1
     let token = generation
@@ -78,7 +77,7 @@ import MakoshWhatsApp
       }
     }
   }
-  func finish() async {
+  package func finish() async {
     guard let capture, let account, let chat, !preparing else { return }
     let token = generation
     self.capture = nil
@@ -94,7 +93,7 @@ import MakoshWhatsApp
       if generation == token { prepared(file) }
     } catch { if generation == token { self.error = error.localizedDescription } }
   }
-  func cancel() {
+  package func cancel() {
     generation &+= 1
     timer?.cancel()
     timer = nil

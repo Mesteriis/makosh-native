@@ -1,42 +1,41 @@
 import CoreImage
 import Foundation
 import MakoshCore
-import MakoshWhatsApp
 import SwiftUI
 
-@MainActor final class WhatsAppWorkspaceModel: ObservableObject {
-  @Published private(set) var accounts: [WhatsAppAccount] = []
-  @Published private(set) var selectedAccountID: UUID?
-  @Published private(set) var selectedChatID: String?
-  @Published private(set) var chats: [WhatsAppChat] = []
-  @Published private(set) var messages: [WhatsAppMessage] = []
-  @Published private(set) var status = WhatsAppConnectionStatus()
-  @Published private(set) var qrImage: Data?
-  @Published private(set) var busy = false
-  @Published private(set) var historyBusy = false
-  @Published private(set) var hasOlder = false
-  @Published var error: String?
-  @Published private(set) var notificationEvents: [WhatsAppNotificationEvent] = []
-  @Published private(set) var notificationActivation: UUID?
-  @Published private(set) var notificationError: String?
-  @Published private(set) var archiveError: String?
-  var notificationWorker: any WhatsAppServing { worker }
-  let isSynthetic: Bool
-  let composer: WhatsAppComposerModel
-  let actions: WhatsAppActionsModel
-  let calls: WhatsAppCallController
-  let avatarCache = WhatsAppAvatarWindowCache()
-  var composerText: String {
+@MainActor package final class WhatsAppWorkspaceModel: ObservableObject {
+  @Published package private(set) var accounts: [WhatsAppAccount] = []
+  @Published package private(set) var selectedAccountID: UUID?
+  @Published package private(set) var selectedChatID: String?
+  @Published package private(set) var chats: [WhatsAppChat] = []
+  @Published package private(set) var messages: [WhatsAppMessage] = []
+  @Published package private(set) var status = WhatsAppConnectionStatus()
+  @Published package private(set) var qrImage: Data?
+  @Published package private(set) var busy = false
+  @Published package private(set) var historyBusy = false
+  @Published package private(set) var hasOlder = false
+  @Published package var error: String?
+  @Published package private(set) var notificationEvents: [WhatsAppNotificationEvent] = []
+  @Published package private(set) var notificationActivation: UUID?
+  @Published package private(set) var notificationError: String?
+  @Published package private(set) var archiveError: String?
+  package var notificationWorker: any WhatsAppServing { worker }
+  package let isSynthetic: Bool
+  package let composer: WhatsAppComposerModel
+  package let actions: WhatsAppActionsModel
+  package let calls: WhatsAppCallController
+  package let avatarCache = WhatsAppAvatarWindowCache()
+  package var composerText: String {
     get { composer.text }
     set { composer.text = newValue }
   }
-  var sending: Bool { composer.sending }
+  package var sending: Bool { composer.sending }
   private let worker: any WhatsAppServing
   private let polling: Bool
   private var loaded = false, loading = false, refreshing = false, syntheticPairing = false
   private var accountGeneration: UInt64 = 0, chatGeneration: UInt64 = 0
   private var pollTask: Task<Void, Never>?, operationTask: Task<Void, Never>?
-  init(synthetic: Bool = false) {
+  package init(synthetic: Bool = false) {
     isSynthetic = synthetic
     let service = WhatsAppWorker(synthetic: synthetic)
     worker = service
@@ -45,7 +44,7 @@ import SwiftUI
     calls = .init(worker: service, synthetic: synthetic)
     polling = true
   }
-  init(worker: any WhatsAppServing, polling: Bool,synthetic:Bool=false) {
+  package init(worker: any WhatsAppServing, polling: Bool,synthetic:Bool=false) {
     self.worker = worker
     self.polling = polling
     isSynthetic = synthetic
@@ -53,7 +52,7 @@ import SwiftUI
     actions = .init(worker: worker)
     calls = .init(worker: worker, synthetic: synthetic)
   }
-  func sendCompose() async {
+  package func sendCompose() async {
     await composer.send()
     await refresh()
   }
@@ -64,8 +63,8 @@ import SwiftUI
     let composer=composer
     Task { @MainActor in await composer.flushDrafts();await worker.shutdown() }
   }
-  var selectedChat: WhatsAppChat? { chats.first { $0.id == selectedChatID } }
-  func load(configuration: ContactWorkspaceConfiguration) async {
+  package var selectedChat: WhatsAppChat? { chats.first { $0.id == selectedChatID } }
+  package func load(configuration: ContactWorkspaceConfiguration) async {
     guard !loaded, !loading else { return }
     loading = true
     defer { loading = false }
@@ -83,7 +82,7 @@ import SwiftUI
       }
     } catch { report(error) }
   }
-  func selectAccount(_ id: UUID) async {
+  package func selectAccount(_ id: UUID) async {
     guard accounts.contains(where: { $0.id == id }) else { return }
     accountGeneration &+= 1
     chatGeneration &+= 1
@@ -109,7 +108,7 @@ import SwiftUI
       await publishStatus(value.status, account: id, generation: generation)
     } catch { if accountGeneration == generation { report(error) } }
   }
-  func selectChat(_ id: String?) async {
+  package func selectChat(_ id: String?) async {
     guard id != "status@broadcast" else { return }
     chatGeneration &+= 1
     let generation = chatGeneration
@@ -139,7 +138,7 @@ import SwiftUI
       }
     }
   }
-  func loadOlder() async {
+  package func loadOlder() async {
     guard !historyBusy, hasOlder, let account = selectedAccountID, let chat = selectedChatID,
       let cursor = messages.last?.cursor
     else { return }
@@ -160,7 +159,7 @@ import SwiftUI
       }
     }
   }
-  func refresh() async {
+  package func refresh() async {
     guard loaded, !refreshing, let account = selectedAccountID else { return }
     refreshing = true
     defer { refreshing = false }
@@ -207,7 +206,7 @@ import SwiftUI
       }
     } catch { if accountGeneration == generation, !Task.isCancelled { report(error) } }
   }
-  func addAccount(_ name: String) async -> Bool {
+  package func addAccount(_ name: String) async -> Bool {
     guard loaded, !busy else { return false }
     busy = true
     do {
@@ -223,7 +222,7 @@ import SwiftUI
       return false
     }
   }
-  func connect() {
+  package func connect() {
     guard loaded, !busy, !isSynthetic, let account = selectedAccountID else { return }
     busy = true
     error = nil
@@ -239,7 +238,7 @@ import SwiftUI
       await self.refresh()
     }
   }
-  func disconnect() async {
+  package func disconnect() async {
     guard let account = selectedAccountID else { return }
     if calls.accountID == account { await calls.end() }
     operationTask?.cancel()
@@ -255,7 +254,7 @@ import SwiftUI
     if accountGeneration == generation { busy = false }
   }
   #if DEBUG
-    func previewPairing() async {
+    package func previewPairing() async {
       guard isSynthetic, let account = selectedAccountID else { return }
       syntheticPairing = true
       status.state = "qr"
@@ -264,7 +263,7 @@ import SwiftUI
       await publishStatus(status, account: account, generation: accountGeneration)
     }
   #endif
-  func openNotification(_ event: WhatsAppNotificationEvent) async {
+  package func openNotification(_ event: WhatsAppNotificationEvent) async {
     guard accounts.contains(where: { $0.id == event.accountID }) else { return }
     await selectAccount(event.accountID)
     await selectChat(event.chat)

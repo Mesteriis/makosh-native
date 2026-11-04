@@ -1,4 +1,5 @@
 import SwiftUI
+import MakoshTelemost
 
 /// Compatibility wrapper for the common workspace's concrete Telemost detail.
 struct MeetingsView: View {

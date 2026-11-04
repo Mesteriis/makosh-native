@@ -1,37 +1,36 @@
 import Foundation
 import SwiftUI
 import MakoshCore
-import MakoshMail
 
-@MainActor final class MailWorkspaceModel: ObservableObject {
-    @Published private(set) var accounts: [MailAccount]=[]
-    @Published private(set) var folders: [MailFolder]=[]
-    @Published private(set) var letters: [MailLetter]=[]
-    @Published private(set) var drafts: [MailDraft]=[]
-    @Published private(set) var submissions: [MailSubmission]=[]
-    @Published private(set) var automation = MailAutomationState()
-    @Published var automationSettings = false
-    @Published var historyLetter: MailLetter?
-    @Published var selectedFolder: MailFolder?
-    @Published var selectedID: String?
-    @Published var search=""
-    @Published var unreadOnly=false
-    @Published var starredOnly=false
-    @Published var showArchive=false
-    @Published var showDossier=false
-    @Published var error: String?
-    @Published var notice: String?
-    @Published var outboxSheet=false
-    @Published var editingAccount: MailAccount?
-    @Published var accountSheet=false
-    @Published var composer: MailDraft?
-    @Published private(set) var ready=false
-    @Published private(set) var busy=false
-    @Published private(set) var connected=Set<String>()
-    @Published private(set) var saveFiles=true
-    @Published var notificationSettingsScope: MailNotificationScope?
-    @Published private(set) var notificationActivation = UUID()
-    let notifications = MailNotificationController()
+@MainActor package final class MailWorkspaceModel: ObservableObject {
+    @Published package private(set) var accounts: [MailAccount]=[]
+    @Published package private(set) var folders: [MailFolder]=[]
+    @Published package private(set) var letters: [MailLetter]=[]
+    @Published package private(set) var drafts: [MailDraft]=[]
+    @Published package private(set) var submissions: [MailSubmission]=[]
+    @Published package private(set) var automation = MailAutomationState()
+    @Published package var automationSettings = false
+    @Published package var historyLetter: MailLetter?
+    @Published package var selectedFolder: MailFolder?
+    @Published package var selectedID: String?
+    @Published package var search=""
+    @Published package var unreadOnly=false
+    @Published package var starredOnly=false
+    @Published package var showArchive=false
+    @Published package var showDossier=false
+    @Published package var error: String?
+    @Published package var notice: String?
+    @Published package var outboxSheet=false
+    @Published package var editingAccount: MailAccount?
+    @Published package var accountSheet=false
+    @Published package var composer: MailDraft?
+    @Published package private(set) var ready=false
+    @Published package private(set) var busy=false
+    @Published package private(set) var connected=Set<String>()
+    @Published package private(set) var saveFiles=true
+    @Published package var notificationSettingsScope: MailNotificationScope?
+    @Published package private(set) var notificationActivation = UUID()
+    package let notifications = MailNotificationController()
     private var notificationSnapshot = MailSnapshot()
     private var reloading = false, reloadRequested = false
     private var reloadWaiters: [CheckedContinuation<Void, any Error>] = []
@@ -56,8 +55,8 @@ import MakoshMail
         let services = Array(workers.values)
         Task { for worker in services { await worker.disconnect() } }
     }
-    let synthetic: Bool
-    init(synthetic: Bool=false) {
+    package let synthetic: Bool
+    package init(synthetic: Bool=false) {
         self.synthetic=synthetic
         changesObserver = NotificationCenter.default.addObserver(forName: Self.changed, object: nil, queue: .main) { [weak self] event in
             guard let other = event.object as? MailWorkspaceModel else { return }
@@ -71,18 +70,18 @@ import MakoshMail
             }
         }
     }
-    var selected: MailLetter? { if let openedLetter, openedLetter.id == selectedID { return openedLetter }; return letters.first { $0.id==selectedID } }
-    func versions(_ id: String, beforeSequence: Int64?) async throws -> [MailLetterVersion] {
+    package var selected: MailLetter? { if let openedLetter, openedLetter.id == selectedID { return openedLetter }; return letters.first { $0.id==selectedID } }
+    package func versions(_ id: String, beforeSequence: Int64?) async throws -> [MailLetterVersion] {
         guard let repository else { throw MailFailure.storage }; return try await repository.versions(id, beforeSequence: beforeSequence)
     }
-    var displayed: [MailLetter] {
+    package var displayed: [MailLetter] {
         letters.filter { letter in
             let inScope=showArchive || (letter.key.accountID==selectedFolder?.accountID && letter.key.folder==selectedFolder?.path && letter.removedFromSource != true && (selectedFolder?.uidValidity == nil || letter.key.uidValidity == selectedFolder?.uidValidity))
             let matches=search.isEmpty || [letter.subject,letter.senderName,letter.sender,letter.text ?? ""].contains { $0.localizedCaseInsensitiveContains(search) }
             return inScope && matches && (!unreadOnly || !letter.seen || letter.id==selectedID) && (!starredOnly || letter.flagged)
         }.sorted { $0.date>$1.date }
     }
-    func load(configuration: ContactWorkspaceConfiguration) async {
+    package func load(configuration: ContactWorkspaceConfiguration) async {
         guard !ready,!busy else { return }
         guard !synthetic || (configuration.schema.hasPrefix("qa_mail_") && (configuration.archiveSchema ?? configuration.schema).hasPrefix("qa_mail_")) else { error="Для почтовой QA нужны отдельные схемы qa_mail_.";return }
         busy=true;defer { finishBusy() }
@@ -107,7 +106,7 @@ import MakoshMail
             if synthetic,let folder=folders.first(where: { $0.kind == .inbox }) ?? folders.first { selectedFolder=folder;selectedID=displayed.first?.id; if let selectedID { openedLetter = try await repository.letter(selectedID) } }
         } catch { self.error=error.localizedDescription }
     }
-    func add(_ account: MailAccount,imapPassword: String?,smtpPassword: String?) async {
+    package func add(_ account: MailAccount,imapPassword: String?,smtpPassword: String?) async {
         guard ready,!busy,!synthetic else { return }
         busy=true;defer { finishBusy() }
         do {
@@ -121,14 +120,14 @@ import MakoshMail
             if let folder=folders.first(where: { $0.accountID==account.id && $0.kind == .inbox }) { selectFolder(folder) }
         } catch { self.error=error.localizedDescription }
     }
-    func connect(_ account: MailAccount) async {
+    package func connect(_ account: MailAccount) async {
         await run {
             _=try await self.worker(account).connect();self.connected.insert(account.id)
         }
         if connected.contains(account.id) { startInboxWatching(account) }
         if connected.contains(account.id), let folder = folders.first(where: { $0.accountID == account.id && $0.kind == .inbox }) { selectFolder(folder) }
     }
-    func disconnect(_ account: MailAccount) async {
+    package func disconnect(_ account: MailAccount) async {
         if selectedFolder?.accountID == account.id { watchTask?.cancel(); watchTask = nil }
         notificationRecoveryAccounts.remove(account.id)
         automationWatches.removeValue(forKey: account.id)?.cancel()
@@ -137,12 +136,12 @@ import MakoshMail
         revision &+= 1; updateNotificationContext()
         await workers[account.id]?.disconnect()
     }
-    func selectArchive() {
+    package func selectArchive() {
         revision &+= 1; showArchive = true; selectedID = nil; openedLetter = nil
         watchTask?.cancel(); watchTask = nil
         cacheCursors.removeValue(forKey: "archive")
     }
-    func selectFolder(_ folder: MailFolder) {
+    package func selectFolder(_ folder: MailFolder) {
         revision &+= 1;selectedFolder=folder;selectedID=nil;showArchive=false;search=""
         watchTask?.cancel(); watchTask = nil
         cacheCursors.removeValue(forKey: folder.id)
@@ -154,7 +153,7 @@ import MakoshMail
         }
         if connected.contains(folder.accountID) { startWatching(folder) }
     }
-    func loadCachedFolder(_ folder: MailFolder) async {
+    package func loadCachedFolder(_ folder: MailFolder) async {
         guard let repository else { return }
         do {
             let page = try await repository.cachedPage(folder: folder, beforeSequence: nil, limit: 50)
@@ -163,7 +162,7 @@ import MakoshMail
             mergeHeaders(page)
         } catch { self.error = error.localizedDescription }
     }
-    var actionFolder: MailFolder? {
+    package var actionFolder: MailFolder? {
         if let letter = selected { return folders.first { $0.accountID == letter.key.accountID && $0.path == letter.key.folder } ?? MailFolder(accountID: letter.key.accountID, path: letter.key.folder, kind: .other, uidValidity: letter.key.uidValidity) }
         return showArchive ? nil : selectedFolder
     }
@@ -198,7 +197,7 @@ import MakoshMail
             }
         }
     }
-    func refresh(older: Bool=false,serverSearch: Bool=false) async {
+    package func refresh(older: Bool=false,serverSearch: Bool=false) async {
         if older, let repository {
             await run {
                 let scope = self.showArchive ? "archive" : (self.selectedFolder?.id ?? "archive")
@@ -223,7 +222,7 @@ import MakoshMail
             if page.isEmpty { self.notice=older ? "Более старых писем нет." : "Папка обновлена." }
         }
     }
-    func select(_ id: String?) {
+    package func select(_ id: String?) {
         revision &+= 1; selectedID=id; openedLetter=nil
         Task { await filePolicy() }
         guard let letter=selected, let repository else { return }
@@ -243,23 +242,23 @@ import MakoshMail
             }
         }
     }
-    func mark(seen: Bool?=nil,starred: Bool?=nil) async {
+    package func mark(seen: Bool?=nil,starred: Bool?=nil) async {
         guard let letter=selected,let account=accounts.first(where: { $0.id==letter.key.accountID }) else { return }
         await run { _=try await self.worker(account).flag(letter,seen:seen,starred:starred) }
     }
-    func move(to folder: MailFolder) async {
+    package func move(to folder: MailFolder) async {
         guard let letter=selected,let account=accounts.first(where: { $0.id==letter.key.accountID }) else { return }
         await run { try await self.worker(account).move(letter,to:folder);self.notice="Перемещение подтверждено сервером. Сохранённая копия остаётся в архиве." }
     }
-    func filePolicy() async {
+    package func filePolicy() async {
         guard let folder=actionFolder,let account=accounts.first(where: { $0.id==folder.accountID }),!synthetic else { return }
         do { let value = try await worker(account).fileSaving(folder:folder); if actionFolder?.id == folder.id { saveFiles = value } } catch { self.error=error.localizedDescription }
     }
-    func setFilePolicy(_ enabled: Bool) async {
+    package func setFilePolicy(_ enabled: Bool) async {
         guard let folder=actionFolder,let account=accounts.first(where: { $0.id==folder.accountID }),!synthetic else { return }
         await run { try await self.worker(account).setFileSaving(folder:folder,enabled:enabled);if self.actionFolder?.id == folder.id { self.saveFiles=enabled } }
     }
-    func compose(reply: Bool=false,forward: Bool=false) {
+    package func compose(reply: Bool=false,forward: Bool=false) {
         let accountID = (reply || forward) ? selected?.key.accountID : selectedFolder?.accountID
         guard let account=accounts.first(where: { $0.id==accountID }) ?? ((reply || forward) ? nil : accounts.first) else { accountSheet=true;return }
         if let letter=selected,reply || forward {
@@ -279,16 +278,16 @@ import MakoshMail
             }
         }
     }
-    func setSignature(accountID: String, text: String) async { await run { try await self.repository?.setSignature(accountID: accountID, text: text) } }
-    func saveTemplate(_ template: MailReplyTemplate) async { await run { try await self.repository?.saveTemplate(template) } }
-    func deleteTemplate(_ id: UUID) async { await run { try await self.repository?.deleteTemplate(id) } }
-    func saveIncomingRule(_ rule: MailIncomingRule) async { await run { try await self.repository?.saveIncomingRule(rule) } }
-    func deleteIncomingRule(_ id: UUID) async { await run { try await self.repository?.deleteIncomingRule(id) } }
-    func cancelSchedule(_ item: MailScheduledSend, edit: Bool = false) async { await run { try await self.repository?.cancelSchedule(item.id); if edit { self.outboxSheet = false; self.composer = item.draft } } }
-    func resolveSchedule(_ item: MailScheduledSend, wasSent: Bool) async { await run { try await self.repository?.resolveSchedule(item.id, wasSent: wasSent) } }
-    func retryRule(_ item: MailRuleOperation, cancel: Bool = false) async { await run { try await self.repository?.retryRulePreparation(item.id, cancel: cancel) } }
-    func resolveRule(_ item: MailRuleOperation) async { await run { try await self.repository?.resolveRuleOperation(item.id) } }
-    func schedule(_ draft: MailDraft, files: [URL], at date: Date) async {
+    package func setSignature(accountID: String, text: String) async { await run { try await self.repository?.setSignature(accountID: accountID, text: text) } }
+    package func saveTemplate(_ template: MailReplyTemplate) async { await run { try await self.repository?.saveTemplate(template) } }
+    package func deleteTemplate(_ id: UUID) async { await run { try await self.repository?.deleteTemplate(id) } }
+    package func saveIncomingRule(_ rule: MailIncomingRule) async { await run { try await self.repository?.saveIncomingRule(rule) } }
+    package func deleteIncomingRule(_ id: UUID) async { await run { try await self.repository?.deleteIncomingRule(id) } }
+    package func cancelSchedule(_ item: MailScheduledSend, edit: Bool = false) async { await run { try await self.repository?.cancelSchedule(item.id); if edit { self.outboxSheet = false; self.composer = item.draft } } }
+    package func resolveSchedule(_ item: MailScheduledSend, wasSent: Bool) async { await run { try await self.repository?.resolveSchedule(item.id, wasSent: wasSent) } }
+    package func retryRule(_ item: MailRuleOperation, cancel: Bool = false) async { await run { try await self.repository?.retryRulePreparation(item.id, cancel: cancel) } }
+    package func resolveRule(_ item: MailRuleOperation) async { await run { try await self.repository?.resolveRuleOperation(item.id) } }
+    package func schedule(_ draft: MailDraft, files: [URL], at date: Date) async {
         await run {
             guard let repository = self.repository, let account = self.accounts.first(where: { $0.id == draft.accountID }) else { throw MailFailure.storage }
             let prepared: MailDraft
@@ -298,7 +297,7 @@ import MakoshMail
             self.composer = nil; self.notice = "Отправка запланирована. Макош должен быть открыт, аккаунт подключён."
         }
     }
-    func save(_ draft: MailDraft, files: [URL] = []) async {
+    package func save(_ draft: MailDraft, files: [URL] = []) async {
         await run {
             guard let repository = self.repository, let account = self.accounts.first(where: { $0.id == draft.accountID }) else { throw MailFailure.storage }
             if self.synthetic { guard files.isEmpty else { throw MailFailure.invalidInput }; try await repository.saveDraft(draft) }
@@ -309,7 +308,7 @@ import MakoshMail
             if self.synthetic { self.notice = "Черновик сохранён локально." }; self.composer = nil
         }
     }
-    func editRemoteDraft() async {
+    package func editRemoteDraft() async {
         guard let letter = selected, let account = accounts.first(where: { $0.id == letter.key.accountID }) else { return }
         let generation = revision
         await run {
@@ -317,16 +316,16 @@ import MakoshMail
             if self.revision == generation { self.composer = draft }
         }
     }
-    func resolveDraftSave(_ draft: MailDraft, saved: Bool) async {
+    package func resolveDraftSave(_ draft: MailDraft, saved: Bool) async {
         await run {
             guard let repository = self.repository, let expected = draft.remoteSave else { throw MailFailure.storage }
             try await repository.updateDraftRemoteSave(draft.id, expected: expected, state: saved ? .userConfirmedSaved : .userConfirmedMissing)
         }
     }
-    func resolveUnknown(_ id: UUID, wasSent: Bool) async {
+    package func resolveUnknown(_ id: UUID, wasSent: Bool) async {
         await run { guard let repository = self.repository else { throw MailFailure.storage }; try await repository.resolveUnknown(id, wasSent: wasSent) }
     }
-    func send(_ draft: MailDraft,files: [URL]) async -> Bool {
+    package func send(_ draft: MailDraft,files: [URL]) async -> Bool {
         guard !synthetic,!busy,let account=accounts.first(where: { $0.id==draft.accountID }) else { return false }
         busy=true;defer { finishBusy() }
         do {
@@ -335,7 +334,7 @@ import MakoshMail
             try await reload();composer=nil;return true
         } catch { self.error=error.localizedDescription;try? await reload();return false }
     }
-    func export(_ attachment: MailAttachment,letter: MailLetter,to url: URL) async {
+    package func export(_ attachment: MailAttachment,letter: MailLetter,to url: URL) async {
         guard let account=accounts.first(where: { $0.id==letter.key.accountID }) else { return }
         await run { try await self.worker(account).exportAttachment(attachment,letter:letter,to:url);self.notice="Вложение сохранено." }
     }
@@ -350,7 +349,7 @@ import MakoshMail
         let worker=MailAccountWorker(account:account,repository:repository,configuration:configuration,storageFile:storage,spool:support.appendingPathComponent("FileArchiveQueue"))
         workers[account.id]=worker;return worker
     }
-    func reload() async throws {
+    package func reload() async throws {
         if reloading {
             reloadRequested = true
             return try await withCheckedThrowingContinuation { reloadWaiters.append($0) }
@@ -397,13 +396,13 @@ import MakoshMail
         notifications.update(snapshot: notificationSnapshot, connected: notificationAccounts, recoveryAccounts: notificationRecoveryAccounts)
     }
     private var notificationAccounts: Set<String> { synthetic ? syntheticNotificationAccounts : connected }
-    func setNotificationRule(scope: MailNotificationScope, rule: MailNotificationRule?, showWhileActive: Bool? = nil) async {
+    package func setNotificationRule(scope: MailNotificationScope, rule: MailNotificationRule?, showWhileActive: Bool? = nil) async {
         await run {
             guard let repository = self.repository else { throw MailFailure.storage }
             try await repository.setNotificationRule(scope: scope, rule: rule, showWhileActive: showWhileActive)
         }
     }
-    func handleNotificationAction(_ action: MailNotificationAction, event: MailNotificationEvent) async {
+    package func handleNotificationAction(_ action: MailNotificationAction, event: MailNotificationEvent) async {
         guard ready, notifications.canActivate(identifier: event.id),
               let account = accounts.first(where: { $0.id == event.key.accountID }),
               let source = folders.first(where: { $0.accountID == account.id && $0.path == event.key.folder && $0.uidValidity == event.key.uidValidity }),
@@ -444,7 +443,7 @@ import MakoshMail
         if connected.contains(account.id) { startInboxWatching(account) }
     }
     #if DEBUG
-    func simulateIncoming() async {
+    package func simulateIncoming() async {
         guard synthetic, let repository, let account = accounts.first,
               syntheticNotificationAccounts.contains(account.id), let folder = folders.first(where: { $0.accountID == account.id && $0.kind == .inbox }) else { return }
         await run {

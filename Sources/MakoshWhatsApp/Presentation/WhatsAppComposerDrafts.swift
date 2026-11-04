@@ -1,9 +1,8 @@
 import Foundation
-import MakoshWhatsApp
 
 extension WhatsAppComposerModel {
-  var orderedItems: [WhatsAppComposeItem] { ordered(snapshotDraft()) }
-  func moveItem(from: Int, to: Int) {
+  package var orderedItems: [WhatsAppComposeItem] { ordered(snapshotDraft()) }
+  package func moveItem(from: Int, to: Int) {
     var items = orderedItems
     guard items.indices.contains(from), items.indices.contains(to), from != to else { return }
     let item = items.remove(at: from)
@@ -19,17 +18,17 @@ extension WhatsAppComposerModel {
     }
     changed()
   }
-  func flushDrafts() async {
+  package func flushDrafts() async {
     debounce?.cancel()
     await saveDraft()
     for task in Array(persistence.values) { _ = try? await task.value }
   }
-  func snapshotDraft() -> Draft {
+  package func snapshotDraft() -> Draft {
     .init(
       text: text, attachments: attachments, reply: reply, photos: photoDrafts, order: itemOrder,
       restoredReplyID: restoredReplyID, photoMode: photoMode)
   }
-  func ordered(_ draft: Draft) -> [WhatsAppComposeItem] {
+  package func ordered(_ draft: Draft) -> [WhatsAppComposeItem] {
     let available = Set(
       draft.attachments.map { WhatsAppComposeItem.file($0.id) } + draft.photos.map { .photo($0.id) }
     )
@@ -39,7 +38,7 @@ extension WhatsAppComposerModel {
     { items.append(item) }
     return items
   }
-  func changed() {
+  package func changed() {
     revision &+= 1
     guard !restoring else { return }
     admittedDraft = nil
@@ -51,10 +50,10 @@ extension WhatsAppComposerModel {
       await self.saveDraft()
     }
   }
-  func persist(_ snapshot: Draft, source: Context) async throws -> WhatsAppComposeDraft {
+  package func persist(_ snapshot: Draft, source: Context) async throws -> WhatsAppComposeDraft {
     try await enqueuePersist(snapshot, source: source).value
   }
-  @discardableResult func enqueuePersist(_ snapshot: Draft, source: Context) -> Task<
+  @discardableResult package func enqueuePersist(_ snapshot: Draft, source: Context) -> Task<
     WhatsAppComposeDraft, Error
   > {
     let previous = persistence[source]
@@ -94,7 +93,7 @@ extension WhatsAppComposerModel {
     knownAbsent.remove(source)
     return task
   }
-  func saveDraft() async {
+  package func saveDraft() async {
     guard let source = context, !restoring, !pending.contains(source),
       dirtyContexts.contains(source)
     else { return }
@@ -113,7 +112,7 @@ extension WhatsAppComposerModel {
       }
     }
   }
-  func restoreDraft() async {
+  package func restoreDraft() async {
     guard let source = context else { return }
     if dirtyContexts.contains(source) {
       await saveDraft()
@@ -187,7 +186,7 @@ extension WhatsAppComposerModel {
     }
   }
   /// Explicit read-only reload is the user's choice to replace unsaved UI edits.
-  func reloadSavedDraft() async {
+  package func reloadSavedDraft() async {
     guard let source = context, !pending.contains(source), !preparing else { return }
     let token = generation
     let capturedRevision = revision
@@ -200,7 +199,7 @@ extension WhatsAppComposerModel {
     error = nil
     await restoreDraft()
   }
-  func acceptPhoto(_ photo: WhatsAppPhotoDraft, source: Context, generation token: UInt64) {
+  package func acceptPhoto(_ photo: WhatsAppPhotoDraft, source: Context, generation token: UInt64) {
     guard photo.accountID == source.account, Data(photo.chat.utf8) == source.chat else { return }
     if context == source, generation == token {
       guard attachments.count + photoDrafts.count < 10 else { return }
@@ -217,7 +216,7 @@ extension WhatsAppComposerModel {
       enqueuePersist(old, source: source)
     }
   }
-  func editPhotos() async {
+  package func editPhotos() async {
     guard let source = context, !photoDrafts.isEmpty, !sending, !preparing else { return }
     let token = generation
     do {
@@ -236,7 +235,7 @@ extension WhatsAppComposerModel {
       }
     }
   }
-  func finishPhotoEditor(send: Bool) async {
+  package func finishPhotoEditor(send: Bool) async {
     guard let source = context, showPhotoEditor, !send || !photoEditor.busy else { return }
     let token = generation
     let current = photoEditor.drafts
@@ -279,12 +278,12 @@ extension WhatsAppComposerModel {
     photoEditor.cancel()
     if send { await self.send() }
   }
-  func removePhoto(id: UUID) {
+  package func removePhoto(id: UUID) {
     photoDrafts.removeAll { $0.id == id }
     itemOrder.removeAll { $0 == .photo(id) }
     changed()
   }
-  func clearReply() {
+  package func clearReply() {
     reply = nil
     restoredReplyID = nil
     changed()

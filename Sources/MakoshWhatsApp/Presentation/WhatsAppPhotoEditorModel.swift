@@ -3,23 +3,22 @@ import Combine
 import Foundation
 import ImageIO
 import MakoshCore
-import MakoshWhatsApp
 
 /// Window-owned conductor; only bounded worker previews are decoded off-main.
-@MainActor final class WhatsAppPhotoEditorModel: ObservableObject {
-  @Published private(set) var drafts: [WhatsAppPhotoDraft] = []
-  @Published private(set) var selectedID: UUID?
-  @Published private(set) var preview: WhatsAppPhotoPreview?
-  @Published private(set) var image: NSImage?
-  @Published private(set) var thumbnails: [UUID: NSImage] = [:]
-  @Published private(set) var busy = false
-  @Published private(set) var error: String?
-  var selectedDraft: WhatsAppPhotoDraft? { drafts.first { $0.id == selectedID } }
+@MainActor package final class WhatsAppPhotoEditorModel: ObservableObject {
+  @Published package private(set) var drafts: [WhatsAppPhotoDraft] = []
+  @Published package private(set) var selectedID: UUID?
+  @Published package private(set) var preview: WhatsAppPhotoPreview?
+  @Published package private(set) var image: NSImage?
+  @Published package private(set) var thumbnails: [UUID: NSImage] = [:]
+  @Published package private(set) var busy = false
+  @Published package private(set) var error: String?
+  package var selectedDraft: WhatsAppPhotoDraft? { drafts.first { $0.id == selectedID } }
   private let worker: any WhatsAppServing
-  private(set) var generation: UInt64 = 0
+  package private(set) var generation: UInt64 = 0
   private var account: UUID?, chat: String?
-  init(worker: any WhatsAppServing) { self.worker = worker }
-  func open(drafts: [WhatsAppPhotoDraft], accountID: UUID, chat: String) async {
+  package init(worker: any WhatsAppServing) { self.worker = worker }
+  package func open(drafts: [WhatsAppPhotoDraft], accountID: UUID, chat: String) async {
     cancel()
     self.account = accountID
     self.chat = chat
@@ -35,24 +34,24 @@ import MakoshWhatsApp
     selectedID = drafts.first?.id
     await refreshPreview()
   }
-  func select(_ id: UUID) async {
+  package func select(_ id: UUID) async {
     guard !busy, drafts.contains(where: { $0.id == id }) else { return }
     generation &+= 1
     selectedID = id
     await refreshPreview()
   }
-  func apply(_ operation: WhatsAppPhotoOperation) async {
+  package func apply(_ operation: WhatsAppPhotoOperation) async {
     guard let draft = selectedDraft else { return }
     var recipe = draft.recipe
     recipe.operations.append(operation)
     await save(recipe)
   }
-  func undo() async {
+  package func undo() async {
     guard var recipe = selectedDraft?.recipe, !recipe.operations.isEmpty else { return }
     recipe.operations.removeLast()
     await save(recipe)
   }
-  func reset() async { await save(.init()) }
+  package func reset() async { await save(.init()) }
   private func save(_ recipe: WhatsAppPhotoRecipe) async {
     guard !busy, let draft = selectedDraft else { return }
     let token = generation
@@ -124,7 +123,7 @@ import MakoshWhatsApp
       }
     }
   }
-  func prepare(mode: WhatsAppPhotoMode) async -> [WhatsAppPreparedFile]? {
+  package func prepare(mode: WhatsAppPhotoMode) async -> [WhatsAppPreparedFile]? {
     guard !busy, !drafts.isEmpty, let account, let chat else { return nil }
     let token = generation
     let snapshot = drafts
@@ -148,7 +147,7 @@ import MakoshWhatsApp
       return nil
     }
   }
-  func remove(_ id: UUID) async {
+  package func remove(_ id: UUID) async {
     guard !busy else { return }
     generation &+= 1
     drafts.removeAll { $0.id == id }
@@ -160,7 +159,7 @@ import MakoshWhatsApp
       await refreshPreview()
     }
   }
-  func cancel() {
+  package func cancel() {
     generation &+= 1
     drafts = []
     selectedID = nil

@@ -1,17 +1,16 @@
 import Combine
 import Foundation
-import MakoshWhatsApp
 
-@MainActor final class WhatsAppNotificationPreferencesModel: ObservableObject {
-  @Published var rule = WhatsAppNotificationRule()
-  @Published private(set) var loaded = false
-  @Published private(set) var busy = false
-  @Published var notice: String?
+@MainActor package final class WhatsAppNotificationPreferencesModel: ObservableObject {
+  @Published package var rule = WhatsAppNotificationRule()
+  @Published package private(set) var loaded = false
+  @Published package private(set) var busy = false
+  @Published package var notice: String?
   private let worker: any WhatsAppServing
   private var account: UUID?
   private var generation: UInt64 = 0
-  init(worker: any WhatsAppServing) { self.worker = worker }
-  func reset(_ account: UUID?) {
+  package init(worker: any WhatsAppServing) { self.worker = worker }
+  package func reset(_ account: UUID?) {
     generation &+= 1
     self.account = account
     rule = .init()
@@ -19,7 +18,7 @@ import MakoshWhatsApp
     busy = false
     notice = nil
   }
-  func load(expectedAccount: UUID?) async {
+  package func load(expectedAccount: UUID?) async {
     guard account == expectedAccount else { return }
     let token = generation
     busy = true
@@ -31,7 +30,7 @@ import MakoshWhatsApp
       loaded = true
     } catch { if generation == token { notice = error.localizedDescription } }
   }
-  func save(expectedAccount: UUID?) async {
+  package func save(expectedAccount: UUID?) async {
     guard loaded, !busy, account == expectedAccount else { return }
     let token = generation
     let value = rule

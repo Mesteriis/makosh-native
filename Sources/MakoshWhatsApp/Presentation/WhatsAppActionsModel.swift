@@ -1,20 +1,19 @@
 import Combine
 import Foundation
-import MakoshWhatsApp
 
-@MainActor final class WhatsAppActionsModel: ObservableObject {
-  @Published private(set) var info: WhatsAppPeerInfo?
-  @Published var rule = WhatsAppNotificationRule()
-  @Published var saving = false
-  @Published private(set) var busy = false
-  @Published private(set) var settingsLoaded = false
-  @Published var error: String?
-  @Published private(set) var notice: String?
+@MainActor package final class WhatsAppActionsModel: ObservableObject {
+  @Published package private(set) var info: WhatsAppPeerInfo?
+  @Published package var rule = WhatsAppNotificationRule()
+  @Published package var saving = false
+  @Published package private(set) var busy = false
+  @Published package private(set) var settingsLoaded = false
+  @Published package var error: String?
+  @Published package private(set) var notice: String?
   private let worker: any WhatsAppServing
   private var account: UUID?, chat: String?
   private var generation: UInt64 = 0
-  init(worker: any WhatsAppServing) { self.worker = worker }
-  func setContext(account: UUID?, chat: String?) {
+  package init(worker: any WhatsAppServing) { self.worker = worker }
+  package func setContext(account: UUID?, chat: String?) {
     generation &+= 1
     self.account = account
     self.chat = chat
@@ -26,10 +25,10 @@ import MakoshWhatsApp
     error = nil
     notice = nil
   }
-  func contextMatches(account: UUID, chat: String) -> Bool {
+  package func contextMatches(account: UUID, chat: String) -> Bool {
     self.account == account && self.chat?.utf8.elementsEqual(chat.utf8) == true
   }
-  func loadSettings() async {
+  package func loadSettings() async {
     guard let account, let chat else { return }
     guard !busy else { return }
     let token = generation
@@ -45,7 +44,7 @@ import MakoshWhatsApp
       settingsLoaded = true
     } catch { if generation == token { self.error = error.localizedDescription } }
   }
-  func saveSettings() async {
+  package func saveSettings() async {
     guard settingsLoaded, let account, let chat, !busy else { return }
     let token = generation
     let r = rule
@@ -58,7 +57,7 @@ import MakoshWhatsApp
       if generation == token { notice = "Настройки сохранены" }
     } catch { if generation == token { self.error = error.localizedDescription } }
   }
-  func inspect(_ operation: WhatsAppAction.Operation) async {
+  package func inspect(_ operation: WhatsAppAction.Operation) async {
     guard let account, let chat, !busy else { return }
     let token = generation
     busy = true
@@ -68,7 +67,7 @@ import MakoshWhatsApp
       if generation == token { info = value }
     } catch { if generation == token { self.error = error.localizedDescription } }
   }
-  @discardableResult func perform(
+  @discardableResult package func perform(
     _ action: WhatsAppAction, expectedAccount: UUID, expectedChat: String
   ) async -> WhatsAppOutgoing? {
     guard contextMatches(account: expectedAccount, chat: expectedChat) else {
@@ -95,7 +94,7 @@ import MakoshWhatsApp
       return nil
     }
   }
-  func download(_ message: WhatsAppMessage, expectedAccount: UUID) async -> WhatsAppFileLease? {
+  package func download(_ message: WhatsAppMessage, expectedAccount: UUID) async -> WhatsAppFileLease? {
     guard contextMatches(account: expectedAccount, chat: message.chat), let account, !busy else {
       return nil
     }

@@ -1,13 +1,12 @@
 import Foundation
 import MakoshCore
-import MakoshTeams
 
-enum TeamsSyntheticLaunchPolicy {
-    struct ServiceModes {
-        let telegramSynthetic = true, mailSynthetic = true, whatsappSynthetic = true, startOtherWorkers = false
+package enum TeamsSyntheticLaunchPolicy {
+    package struct ServiceModes {
+        package let telegramSynthetic = true, mailSynthetic = true, whatsappSynthetic = true, startOtherWorkers = false
     }
-    static let serviceModes = ServiceModes()
-    static func admits(arguments: [String], configuration: ContactWorkspaceConfiguration) -> Bool {
+    package static let serviceModes = ServiceModes()
+    package static func admits(arguments: [String], configuration: ContactWorkspaceConfiguration) -> Bool {
         guard arguments.contains("--teams-synthetic-preview"), let index = arguments.firstIndex(of: "--database-config"),
               arguments.indices.contains(index + 1), !arguments[index + 1].hasPrefix("--"),
               let archive = configuration.archiveSchema else { return false }

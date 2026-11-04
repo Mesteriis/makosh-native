@@ -1,19 +1,18 @@
 import Combine
 import Foundation
-import MakoshTeams
 
-@MainActor final class TeamsComposerModel: ObservableObject {
-    @Published var text = "" { didSet { revision = UUID() } }
-    @Published var attachments: [TeamsPreparedFile] = [] { didSet { revision = UUID(); accessPlan = nil } }
-    @Published private(set) var accessPlan: TeamsFileAccessPlan?
-    @Published private(set) var sending = false
-    @Published private(set) var preparing = false
-    @Published private(set) var reviewing = false
-    @Published private(set) var outbox: [TeamsOutgoing] = []
-    @Published private(set) var outboxBusy = false
-    @Published private(set) var outboxHasMore = false
-    @Published var error: String?
-    @Published private(set) var notice: String?
+@MainActor package final class TeamsComposerModel: ObservableObject {
+    @Published package var text = "" { didSet { revision = UUID() } }
+    @Published package var attachments: [TeamsPreparedFile] = [] { didSet { revision = UUID(); accessPlan = nil } }
+    @Published package private(set) var accessPlan: TeamsFileAccessPlan?
+    @Published package private(set) var sending = false
+    @Published package private(set) var preparing = false
+    @Published package private(set) var reviewing = false
+    @Published package private(set) var outbox: [TeamsOutgoing] = []
+    @Published package private(set) var outboxBusy = false
+    @Published package private(set) var outboxHasMore = false
+    @Published package var error: String?
+    @Published package private(set) var notice: String?
     private let worker: any TeamsServing
     private let synthetic: Bool
     private var scope: TeamsScope?
@@ -23,10 +22,10 @@ import MakoshTeams
     private var drafts: [TeamsScope: Draft] = [:]
     private var pending = Set<TeamsScope>()
     private var outboxCursor: TeamsOutgoingCursor?
-    var isSynthetic: Bool { synthetic }
-    var canSend: Bool { !sending && !preparing && !reviewing && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && (attachments.isEmpty || accessPlan != nil) }
-    init(worker: any TeamsServing, synthetic: Bool) { self.worker = worker; self.synthetic = synthetic }
-    func setContext(_ scope: TeamsScope?) {
+    package var isSynthetic: Bool { synthetic }
+    package var canSend: Bool { !sending && !preparing && !reviewing && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && (attachments.isEmpty || accessPlan != nil) }
+    package init(worker: any TeamsServing, synthetic: Bool) { self.worker = worker; self.synthetic = synthetic }
+    package func setContext(_ scope: TeamsScope?) {
         guard scope != self.scope else { return }
         if let previous = self.scope { drafts[previous] = Draft(text: text, files: attachments, revision: revision) }
         generation &+= 1; self.scope = scope
@@ -35,7 +34,7 @@ import MakoshTeams
         sending = scope.map { pending.contains($0) } ?? false; preparing = false; reviewing = false
         outbox = []; outboxCursor = nil; outboxHasMore = false; outboxBusy = false; error = nil; notice = nil
     }
-    func attach(_ files: [URL]) async {
+    package func attach(_ files: [URL]) async {
         guard let source = scope, !preparing, attachments.count + files.count <= 10, !files.isEmpty else { error = "Можно подготовить до десяти файлов."; return }
         let token = generation; preparing = true
         defer { if token == generation { preparing = false } }
@@ -50,7 +49,7 @@ import MakoshTeams
             attachments += prepared
         } catch { if generation == token { self.error = teamsFailureMessage(error) } }
     }
-    func reviewFiles(destination: TeamsFileDestination) async {
+    package func reviewFiles(destination: TeamsFileDestination) async {
         guard let source = scope, !attachments.isEmpty, !reviewing else { return }
         let token = generation, ids = attachments.map(\.id); reviewing = true; accessPlan = nil
         defer { if token == generation { reviewing = false } }
@@ -60,7 +59,7 @@ import MakoshTeams
             accessPlan = plan
         } catch { if generation == token { self.error = teamsFailureMessage(error) } }
     }
-    func send() async {
+    package func send() async {
         guard let source = scope, canSend, !pending.contains(source) else { return }
         let content = TeamsDraft(text: text, fileIDs: attachments.map(\.id)), plan = accessPlan
         let token = generation, version = revision
@@ -86,7 +85,7 @@ import MakoshTeams
             await loadOutbox(reset: true)
         } catch { if token == generation { self.error = teamsFailureMessage(error) } }
     }
-    func loadOutbox(reset: Bool) async {
+    package func loadOutbox(reset: Bool) async {
         guard let source = scope, !outboxBusy, reset || outboxHasMore else { return }
         let token = generation; outboxBusy = true
         defer { if token == generation { outboxBusy = false } }
@@ -96,7 +95,7 @@ import MakoshTeams
             outbox = reset ? page.values : outbox + page.values; outboxCursor = page.next; outboxHasMore = page.next != nil
         } catch { if token == generation { self.error = teamsFailureMessage(error) } }
     }
-    func resolve(_ outgoing: TeamsOutgoing, sent: Bool) async {
+    package func resolve(_ outgoing: TeamsOutgoing, sent: Bool) async {
         guard let source = scope, outgoing.scope.accountID == source.accountID else { return }
         let token = generation
         do {
@@ -104,7 +103,7 @@ import MakoshTeams
             guard token == generation else { return }; await loadOutbox(reset: true)
         } catch { if token == generation { self.error = teamsFailureMessage(error) } }
     }
-    func resume(_ outgoing: TeamsOutgoing) async {
+    package func resume(_ outgoing: TeamsOutgoing) async {
         guard let source = scope, outgoing.scope.accountID == source.accountID, outgoing.state == .prepared else { return }
         let token = generation
         do {
@@ -112,7 +111,7 @@ import MakoshTeams
             guard token == generation else { return }; await loadOutbox(reset: true)
         } catch { if token == generation { self.error = teamsFailureMessage(error) } }
     }
-    func copy(_ outgoing: TeamsOutgoing) async {
+    package func copy(_ outgoing: TeamsOutgoing) async {
         guard let source = scope, outgoing.scope.accountID == source.accountID, outgoing.state == .notSent, outgoing.fileSubmission == nil else { return }
         let token = generation
         do {
@@ -122,7 +121,7 @@ import MakoshTeams
     }
 }
 
-func teamsFailureMessage(_ error: any Error) -> String {
+package func teamsFailureMessage(_ error: any Error) -> String {
     guard let failure = error as? TeamsFailure else { return error is CancellationError ? "Операция отменена." : "Не удалось завершить операцию Teams." }
     switch failure {
     case .forbidden: return "Недостаточно прав. Предоставьте нужное разрешение для этого аккаунта."

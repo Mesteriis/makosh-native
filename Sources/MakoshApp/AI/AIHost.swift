@@ -3,6 +3,8 @@ import MakoshAI
 import MakoshCore
 import MakoshMail
 import MakoshTeams
+import MakoshTelegram
+import MakoshWhatsApp
 
 /// One AI worker per process, shared by the workspace window and the
 /// settings scene. The workspace hands over the database configuration once
@@ -46,7 +48,9 @@ import MakoshTeams
     /// sources, the access flags and the vector store, all off the main actor.
     func start(
         configuration: ContactWorkspaceConfiguration, contacts: ContactWorkspaceWorker?,
-        keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open, mail: Bool = true
+        keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open, mail: Bool = true,
+        telegram: @escaping @MainActor () -> (any TelegramAIContextReading)? = { nil },
+        whatsapp: @escaping @MainActor () -> (any WhatsAppServing)? = { nil }
     ) async {
         guard self.configuration == nil else { return }
         self.configuration = configuration
@@ -63,12 +67,13 @@ import MakoshTeams
                         authorKeys: ["teams": TeamsPerson.archiveAuthorKey])
                 ]
                 // MailRepository connects in its initializer; keep it off the main actor.
-                if mail {
-                    sources.append(MailAIIndexSource(repository: MailRepository(configuration: configuration, keyProvider: keyProvider)))
-                }
-                return (AIArchiveAccessProvider(store: store, contacts: contacts), sources)
+                let repository = mail ? MailRepository(configuration: configuration, keyProvider: keyProvider) : nil
+                if let repository { sources.append(MailAIIndexSource(repository: repository)) }
+                return (AIArchiveAccessProvider(store: store, contacts: contacts), sources, repository)
             }
             let sources = opened.1
+            await worker.attachContext(
+                AIContextBridge(telegram: telegram, whatsapp: whatsapp, mail: opened.2, contacts: contacts, access: opened.0))
             let vectors = AIVectorStore(keyProvider: keyProvider)
             try await vectors.open(configuration: configuration)
             await worker.attachRetrieval(vectors: vectors, access: opened.0)

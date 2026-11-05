@@ -189,7 +189,11 @@ struct WorkspaceView: View {
         .task {
             await model.load()
             if let configuration = model.mailConfiguration, ordinaryLaunch {
-                Task { await ai.start(configuration: configuration, contacts: model.dossierWorker) }
+                Task {
+                    await ai.start(
+                        configuration: configuration, contacts: model.dossierWorker, telegram: { [telegram] in telegram.aiContextReader },
+                        whatsapp: { [whatsapp] in whatsapp.service })
+                }
             }
             if ordinaryLaunch { telegram.connectIfRemembered() }
             if let configuration = model.mailConfiguration {

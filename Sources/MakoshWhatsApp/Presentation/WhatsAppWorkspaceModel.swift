@@ -71,6 +71,8 @@ import SwiftUI
     }
   }
   package var selectedChat: WhatsAppChat? { chats.first { $0.id == selectedChatID } }
+  /// The service, for reading a chat's local history as AI context.
+  package var service: any WhatsAppServing { worker }
   package func load(configuration: ContactWorkspaceConfiguration) async {
     guard !loaded, !loading else { return }
     loading = true

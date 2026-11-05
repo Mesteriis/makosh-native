@@ -1,3 +1,4 @@
+import Combine
 import MakoshCore
 import MakoshWhatsApp
 import XCTest
@@ -137,5 +138,21 @@ private actor DelayedRestoreService: WhatsAppServing {
         await old.value
         XCTAssertEqual(model.selectedAccountID, second.id)
         XCTAssertEqual(model.messages.map(\.id), ["second"])
+    }
+
+    /// A failure that repeats on every refresh keeps its banner on screen: a
+    /// banner that blinks off and on shifts the chat list each refresh.
+    func testRepeatingNotificationFailureDoesNotBlink() async throws {
+        let model = WhatsAppWorkspaceModel(worker: BurstService(), polling: false)
+        await model.load(configuration: .init(connectionString: "synthetic stub"))
+        await model.refresh()
+        XCTAssertNotNil(model.notificationError)
+        var published: [String?] = []
+        let subscription = model.$notificationError.dropFirst().sink { published.append($0) }
+        await model.refresh()
+        await model.refresh()
+        subscription.cancel()
+        XCTAssertFalse(published.contains(nil), "banner disappeared between refreshes: \(published)")
+        XCTAssertNotNil(model.notificationError)
     }
 }

@@ -173,15 +173,19 @@ import SwiftUI
       chats = WhatsAppChatListProjection.visible(value.chats)
       archiveError = value.archiveError
       var incoming: [WhatsAppNotificationEvent] = []
-      notificationError = nil
+      // Published once below: clearing first would blink the banner and shift the list each refresh.
+      var failure: String?
       do {
         for (id, call) in try await worker.callSnapshots() { calls.observe(call, account: id) }
-      } catch { notificationError = "Не удалось обновить состояние звонков WhatsApp." }
+      } catch {
+        failure = "Не удалось обновить состояние звонков WhatsApp."
+      }
       for id in accounts.map(\.id) {
         do { incoming += try await worker.claimNotifications(accountID: id) } catch {
-          notificationError = "Не удалось получить уведомления WhatsApp."
+          failure = "Не удалось получить уведомления WhatsApp."
         }
       }
+      if notificationError != failure { notificationError = failure }
       if !incoming.isEmpty { notificationEvents = incoming }
       guard selectedAccountID == account, accountGeneration == generation else { return }
       if !syntheticPairing {

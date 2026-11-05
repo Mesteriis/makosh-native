@@ -21,33 +21,47 @@ public protocol WhatsAppServing: Sendable {
   func addAccount(name: String) async throws -> WhatsAppAccount
   func snapshot(accountID: UUID) async throws -> WhatsAppWorkspaceSnapshot
   func openChat(accountID: UUID, chat: String) async throws
-  func messages(accountID: UUID, chat: String, before: WhatsAppCursor?) async throws
+  func messages(
+    accountID: UUID, chat: String, before: WhatsAppCursor?
+  ) async throws
     -> [WhatsAppMessage]
   func connect(accountID: UUID) async throws
   func disconnect(accountID: UUID) async throws
-  func send(accountID: UUID, chat: String, content: WhatsAppOutgoingContent) async throws
+  func send(
+    accountID: UUID, chat: String, content: WhatsAppOutgoingContent
+  ) async throws
     -> WhatsAppOutgoing
   func sendBatch(accountID: UUID, chat: String, content: WhatsAppOutgoingContent) async throws -> WhatsAppBatchSnapshot
   func continueBatch(accountID: UUID, id: UUID) async throws -> WhatsAppBatchSnapshot
   func batch(accountID: UUID, id: UUID) async throws -> WhatsAppBatchSnapshot
-  func perform(accountID: UUID, chat: String, action: WhatsAppAction) async throws
+  func perform(
+    accountID: UUID, chat: String, action: WhatsAppAction
+  ) async throws
     -> WhatsAppOutgoing
   func resumeOutgoing(accountID: UUID, id: UUID) async throws -> WhatsAppOutgoing
   func copyOutgoing(accountID: UUID, id: UUID) async throws -> WhatsAppOutgoing
   func outgoingPage(accountID: UUID, before: WhatsAppOutgoingCursor?) async throws -> WhatsAppOutgoingPage
   func outgoing(accountID: UUID) async throws -> [WhatsAppOutgoing]
   func resolveOutgoing(accountID: UUID, id: UUID, sent: Bool) async throws
-  func prepareVoice(accountID: UUID, chat: String, samples: [Int16]) async throws
+  func prepareVoice(
+    accountID: UUID, chat: String, samples: [Int16]
+  ) async throws
     -> WhatsAppPreparedFile
-  func capturePhoto(accountID: UUID,chat: String,file: URL) async throws -> WhatsAppPhotoDraft
-  func savePhotoRecipe(id: UUID,accountID: UUID,chat: String,expectedRevision: UInt64,recipe: WhatsAppPhotoRecipe) async throws -> WhatsAppPhotoDraft
-  func photoPreview(id: UUID,accountID: UUID,chat: String,expectedRevision: UInt64) async throws -> WhatsAppPhotoPreview
-  func renderPhoto(id: UUID,accountID: UUID,chat: String,expectedRevision: UInt64,mode: WhatsAppPhotoMode) async throws -> WhatsAppPreparedFile
-  func photoDrafts(accountID: UUID,chat: String) async throws -> [WhatsAppPhotoDraft]
-  func saveComposeDraft(_ draft: WhatsAppComposeDraft,expectedRevision: UInt64?) async throws -> WhatsAppComposeDraft
-  func composeDraft(accountID: UUID,chat: String) async throws -> WhatsAppComposeDraft?
-  func preparedFile(accountID: UUID,chat: String,id: UUID) async throws -> WhatsAppPreparedFile
-  func prepareFile(accountID: UUID, chat: String, file: URL, kind: String, mime: String)
+  func capturePhoto(accountID: UUID, chat: String, file: URL) async throws -> WhatsAppPhotoDraft
+  func savePhotoRecipe(
+    id: UUID, accountID: UUID, chat: String, expectedRevision: UInt64, recipe: WhatsAppPhotoRecipe
+  ) async throws -> WhatsAppPhotoDraft
+  func photoPreview(id: UUID, accountID: UUID, chat: String, expectedRevision: UInt64) async throws -> WhatsAppPhotoPreview
+  func renderPhoto(
+    id: UUID, accountID: UUID, chat: String, expectedRevision: UInt64, mode: WhatsAppPhotoMode
+  ) async throws -> WhatsAppPreparedFile
+  func photoDrafts(accountID: UUID, chat: String) async throws -> [WhatsAppPhotoDraft]
+  func saveComposeDraft(_ draft: WhatsAppComposeDraft, expectedRevision: UInt64?) async throws -> WhatsAppComposeDraft
+  func composeDraft(accountID: UUID, chat: String) async throws -> WhatsAppComposeDraft?
+  func preparedFile(accountID: UUID, chat: String, id: UUID) async throws -> WhatsAppPreparedFile
+  func prepareFile(
+    accountID: UUID, chat: String, file: URL, kind: String, mime: String
+  )
     async throws -> WhatsAppPreparedFile
   func savingFiles(accountID: UUID, chat: String) async throws -> Bool
   func setSavingFiles(accountID: UUID, chat: String, enabled: Bool) async throws
@@ -55,12 +69,17 @@ public protocol WhatsAppServing: Sendable {
     accountID: UUID, chat: String, id: String, resource: String, kind: String, name: String
   ) async throws -> WhatsAppFileLease
   func download(accountID: UUID, chat: String, id: String) async throws -> WhatsAppFileLease
-  func info(accountID: UUID, chat: String, operation: WhatsAppAction.Operation) async throws
+  func info(
+    accountID: UUID, chat: String, operation: WhatsAppAction.Operation
+  ) async throws
     -> WhatsAppPeerInfo
   func avatar(accountID: UUID, jid: String, refresh: Bool) async throws -> WhatsAppAvatarImage?
-  func savedNotificationRule(accountID: UUID?, chat: String?) async throws
+  func savedNotificationRule(
+    accountID: UUID?, chat: String?
+  ) async throws
     -> WhatsAppNotificationRule
-  func setNotificationRule(_ rule: WhatsAppNotificationRule, accountID: UUID?, chat: String?)
+  func setNotificationRule(
+    _ rule: WhatsAppNotificationRule, accountID: UUID?, chat: String?)
     async throws
   func notificationRule(accountID: UUID, chat: String) async throws -> WhatsAppNotificationRule
   func claimNotifications(accountID: UUID) async throws -> [WhatsAppNotificationEvent]
@@ -69,13 +88,17 @@ public protocol WhatsAppServing: Sendable {
     accountID: UUID, chat: String, query: String, filter: WhatsAppHistoryFilter,
     before: WhatsAppCursor?
   ) async throws -> WhatsAppSearchPage
-  func archivePage(accountID: UUID, chat: String, before: Int64?) async throws
+  func archivePage(
+    accountID: UUID, chat: String, before: Int64?
+  ) async throws
     -> [MessageArchiveRecord]
   func exportChat(accountID: UUID, chat: String) async throws -> WhatsAppFileLease
-  func startGroupCall(accountID: UUID,groupJID: String,participants: [String],video: Bool) async throws -> WhatsAppOutgoing
-  func startGroupCall(accountID: UUID,groupJID: String,participants: [String],video: Bool,callContext:UUID?) async throws -> WhatsAppOutgoing
-  func inviteCallParticipant(accountID: UUID,callID: String,epoch: UInt64,jid: String,ringOnly: Bool) async throws -> WhatsAppOutgoing
-  func cancelAcceptedCall(accountID:UUID,outgoingID:UUID) async throws
+  func startGroupCall(accountID: UUID, groupJID: String, participants: [String], video: Bool) async throws -> WhatsAppOutgoing
+  func startGroupCall(
+    accountID: UUID, groupJID: String, participants: [String], video: Bool, callContext: UUID?
+  ) async throws -> WhatsAppOutgoing
+  func inviteCallParticipant(accountID: UUID, callID: String, epoch: UInt64, jid: String, ringOnly: Bool) async throws -> WhatsAppOutgoing
+  func cancelAcceptedCall(accountID: UUID, outgoingID: UUID) async throws
   func callSnapshots() async throws -> [UUID: WhatsAppCallSnapshot]
   func callMedia(accountID: UUID, request: WhatsAppCallExchange) async throws -> WhatsAppCallOutput
   func activateNotification(token: String) async throws -> WhatsAppNotificationEvent?
@@ -83,7 +106,7 @@ public protocol WhatsAppServing: Sendable {
 }
 public actor WhatsAppWorker: WhatsAppServing {
   let synthetic: Bool
-  var qaRoot:URL?
+  var qaRoot: URL?
   var repository: WhatsAppRepository?
   var sessions: [UUID: any WhatsAppTransport] = [:]
   var revisions: [UUID: UInt64] = [:]
@@ -146,9 +169,12 @@ public actor WhatsAppWorker: WhatsAppServing {
     }
     if synthetic, try await repository.accounts().isEmpty { try await seed(repository) }
     if avatars == nil, !synthetic {
-      let root = try FileManager.default.url(for: .applicationSupportDirectory,
-        in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("Makosh/WhatsApp/Avatars")
-      avatars = WhatsAppAvatars(root: root, http: WhatsAppAvatarHTTP(),
+      let root = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask, appropriateFor: nil, create: true
+      ).appendingPathComponent("Makosh/WhatsApp/Avatars")
+      avatars = WhatsAppAvatars(
+        root: root, http: WhatsAppAvatarHTTP(),
         keyProvider: { account in try await repository.avatarCacheKey(accountID: account) },
         descriptor: { [weak self] scope in
           guard let self else { throw WhatsAppFailure.closed }
@@ -199,9 +225,13 @@ public actor WhatsAppWorker: WhatsAppServing {
       try await session.close()
       throw CancellationError()
     }
-    avatarEpochs[accountID] = nil; avatarRevisions[accountID] = nil
+    avatarEpochs[accountID] = nil
+    avatarRevisions[accountID] = nil
     await avatars?.invalidateAccount(accountID)
-    guard revisions[accountID] == revision else { try await session.close(); throw CancellationError() }
+    guard revisions[accountID] == revision else {
+      try await session.close()
+      throw CancellationError()
+    }
     sessions[accountID] = session
     do {
       try await session.connect()
@@ -216,7 +246,7 @@ public actor WhatsAppWorker: WhatsAppServing {
       throw CancellationError()
     }
   }
-  var acceptedCalls:[UUID:(id:UUID,generation:UInt64)]=[:]
+  var acceptedCalls: [UUID: (id: UUID, generation: UInt64)] = [:]
   var callRevisions: [UUID: UInt64] = [:]
   var archiveTasks: [UUID: Task<Void, Never>] = [:]
   var archiveTaskTokens: [UUID: UUID] = [:]
@@ -226,7 +256,8 @@ public actor WhatsAppWorker: WhatsAppServing {
     archiveTaskTokens.removeValue(forKey: accountID)
     revisions[accountID, default: 0] &+= 1
     let session = sessions.removeValue(forKey: accountID)
-    avatarEpochs[accountID] = nil; avatarRevisions[accountID] = nil
+    avatarEpochs[accountID] = nil
+    avatarRevisions[accountID] = nil
     materialized[accountID] = nil
     failures[accountID] = nil
     await avatars?.invalidateAccount(accountID)
@@ -245,7 +276,7 @@ public actor WhatsAppWorker: WhatsAppServing {
         if revisions[id] == revision {
           var failed = WhatsAppConnectionStatus()
           failed.state = "failed"
-          failed.error = "service"
+          failed.error = WhatsAppFailure.diagnostic(error)
           failures[id] = failed
         }
       }
@@ -303,7 +334,9 @@ public actor WhatsAppWorker: WhatsAppServing {
       materialized[accountID] = status.revision
     }
   }
-  public func messages(accountID: UUID, chat: String, before: WhatsAppCursor?) async throws
+  public func messages(
+    accountID: UUID, chat: String, before: WhatsAppCursor?
+  ) async throws
     -> [WhatsAppMessage]
   {
     guard let repository else { throw WhatsAppFailure.storage }
@@ -317,8 +350,10 @@ public actor WhatsAppWorker: WhatsAppServing {
     sessions.removeAll()
     failures.removeAll()
     for id in active.keys { revisions[id, default: 0] &+= 1 }
-    await avatars?.close(); avatars = nil
-    avatarEpochs.removeAll(); avatarRevisions.removeAll()
+    await avatars?.close()
+    avatars = nil
+    avatarEpochs.removeAll()
+    avatarRevisions.removeAll()
     for session in active.values { try? await session.close() }
   }
   private func seed(_ repository: WhatsAppRepository) async throws {

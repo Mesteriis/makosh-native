@@ -9,7 +9,9 @@ public struct WhatsAppIncomingFileJob: Codable, Equatable, Identifiable, Sendabl
   public var nextTry: Date = .distantPast
 }
 extension WhatsAppRepository {
-  func reserveIncomingFile(accountID: UUID, message: WhatsAppMessage) throws
+  func reserveIncomingFile(
+    accountID: UUID, message: WhatsAppMessage
+  ) throws
     -> WhatsAppIncomingFileJob
   {
     guard let resource = message.details?.resourceID else { throw WhatsAppFailure.invalid }
@@ -110,7 +112,7 @@ extension WhatsAppWorker {
         } catch {
           guard !Task.isCancelled, revisions[accountID] == generation else { return }
           archiveFailures[accountID] =
-            "Не удалось сохранить вложение WhatsApp. Повтор запланирован."
+            "Не удалось сохранить вложение WhatsApp (\(WhatsAppFailure.diagnostic(error))). Повтор запланирован."
           job.attempts += 1
           job.nextTry = Date().addingTimeInterval(min(300, Double(1 << min(job.attempts, 8))))
         }
@@ -118,7 +120,9 @@ extension WhatsAppWorker {
         try await repository.saveIncomingFileJob(job)
       }
     } catch {
-      if !Task.isCancelled, revisions[accountID] == generation { archiveFailures[accountID] = "Не удалось обработать архив файлов WhatsApp." }
+      if !Task.isCancelled, revisions[accountID] == generation {
+        archiveFailures[accountID] = "Не удалось обработать архив файлов WhatsApp (\(WhatsAppFailure.diagnostic(error)))."
+      }
     }
   }
 }

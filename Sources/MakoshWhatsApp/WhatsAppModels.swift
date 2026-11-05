@@ -3,6 +3,12 @@ import Foundation
 
 public enum WhatsAppFailure: Error, LocalizedError, Equatable, Sendable {
   case storage, key, owned, protocolFailure, unavailable, invalid, closed, notAdmitted
+  /// A short cause for a banner: the failure case, or another error's type
+  /// name, never its message (which may hold private data).
+  public static func diagnostic(_ error: any Error) -> String {
+    if let failure = error as? WhatsAppFailure { return String(describing: failure) }
+    return String(reflecting: type(of: error)).split(separator: ".").last.map(String.init) ?? "error"
+  }
   public var errorDescription: String? {
     switch self {
     case .storage: "Не удалось открыть или сохранить данные WhatsApp. История и сеанс сохранены."
@@ -158,7 +164,7 @@ public struct WhatsAppConnectionStatus: Codable, Equatable, Sendable {
     case "reconnecting": "Восстановление соединения…"
     case "stopping": "Отключение…"
     case "logged_out": "Связь с телефоном отозвана"
-    case "failed": "Ошибка подключения"
+    case "failed": error.map { "Ошибка подключения (\($0))" } ?? "Ошибка подключения"
     default: "Офлайн · сохранённая история"
     }
   }

@@ -199,11 +199,11 @@ import SwiftUI
       do {
         for (id, call) in try await worker.callSnapshots() { calls.observe(call, account: id) }
       } catch {
-        failure = "Не удалось обновить состояние звонков WhatsApp."
+        failure = "Не удалось обновить состояние звонков WhatsApp (\(WhatsAppFailure.diagnostic(error)))."
       }
       for id in accounts.map(\.id) {
         do { incoming += try await worker.claimNotifications(accountID: id) } catch {
-          failure = "Не удалось получить уведомления WhatsApp."
+          failure = "Не удалось получить уведомления WhatsApp (\(WhatsAppFailure.diagnostic(error)))."
         }
       }
       if notificationError != failure { notificationError = failure }

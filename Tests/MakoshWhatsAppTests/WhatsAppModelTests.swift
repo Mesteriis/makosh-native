@@ -156,6 +156,20 @@ private actor DelayedRestoreService: WhatsAppServing {
         XCTAssertNotNil(model.notificationError)
     }
 
+    func testNotificationFailureNamesItsCause() async throws {
+        let model = WhatsAppWorkspaceModel(worker: BurstService(), polling: false)
+        await model.load(configuration: .init(connectionString: "synthetic stub"))
+        await model.refresh()
+        // The default service refuses notifications as `unavailable`; the banner says which failure it was.
+        XCTAssertEqual(model.notificationError, "Не удалось получить уведомления WhatsApp (unavailable).")
+    }
+
+    func testDiagnosticNamesFailureWithoutItsMessage() {
+        XCTAssertEqual(WhatsAppFailure.diagnostic(WhatsAppFailure.key), "key")
+        struct Private: Error { let text = "secret chat text" }
+        XCTAssertEqual(WhatsAppFailure.diagnostic(Private()), "Private")
+    }
+
     func testRememberedAccountsReconnectAndExplicitDisconnectForgets() async throws {
         let suite = "makosh.tests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

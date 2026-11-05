@@ -24,6 +24,17 @@ import MakoshAI
     let whatsappSettings = WhatsAppSettingsRegistry()
     let teamsSettings = TeamsSettingsRegistry()
     lazy var ai = AIHost()
+    private var instanceLock: MakoshInstanceLock?
+    /// One running copy per bundle: a second launch brings the first one forward and quits.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard let identifier = Bundle.main.bundleIdentifier else { return }
+        instanceLock = MakoshInstanceLock.acquire(at: MakoshInstanceLock.defaultURL(bundleIdentifier: identifier))
+        guard instanceLock == nil else { return }
+        let current = ProcessInfo.processInfo.processIdentifier
+        NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+            .first { $0.processIdentifier != current }?.activate()
+        exit(0)
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)

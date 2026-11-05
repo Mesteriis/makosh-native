@@ -1,4 +1,5 @@
 import Foundation
+import MakoshCore
 import Security
 
 public struct AIKeychainAccess: Sendable {
@@ -21,22 +22,13 @@ public struct AIKeychainAccess: Sendable {
             ]
         }
         return Self(
-            read: { id in
-                var attributes = query(id)
-                attributes[kSecReturnData as String] = true
-                attributes[kSecMatchLimit as String] = kSecMatchLimitOne
-                var result: CFTypeRef?
-                let status = SecItemCopyMatching(attributes as CFDictionary, &result)
-                return (status, result as? Data)
-            },
+            read: { id in MakoshSecretStore.shared.copyData(query(id)) },
             write: { id, data in
-                let attributes: [String: Any] = [
-                    kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-                ]
-                let status = SecItemUpdate(query(id) as CFDictionary, attributes as CFDictionary)
+                let attributes: [String: Any] = [kSecValueData as String: data]
+                let status = MakoshSecretStore.shared.updateItem(query(id), attributes)
                 if status != errSecItemNotFound { return status }
-                return SecItemAdd(query(id).merging(attributes) { _, new in new } as CFDictionary, nil)
-            }, remove: { id in SecItemDelete(query(id) as CFDictionary) })
+                return MakoshSecretStore.shared.addItem(query(id).merging(attributes) { _, new in new })
+            }, remove: { id in MakoshSecretStore.shared.deleteItem(query(id)) })
     }
 }
 

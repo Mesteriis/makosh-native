@@ -1,29 +1,23 @@
 import Foundation
 import Security
 
-/// A separate archive key in the macOS login Keychain, with its normal OS ACL.
+/// A separate archive key, kept in the shared Makosh Keychain item (`MakoshSecretStore`).
 /// Ad-hoc development apps cannot use the entitlement-gated data-protection
 /// Keychain. This deliberately selects the supported macOS store, with no
 /// automatic fallback or claim of iOS device-only/lock-screen accessibility.
 /// Called only by an explicitly opened archive/connection, never by a view initializer.
 public enum MessageArchiveKeychain {
     public static func existing(vaultID: UUID) throws -> Data? {
-        try existing(vaultID: vaultID, lookup: { query in
-            var result: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            return (status, result as? Data)
-        })
+        try existing(vaultID: vaultID, lookup: { MakoshSecretStore.shared.copyData($0) })
     }
     public static func install(vaultID: UUID, key: Data) throws {
-        try install(vaultID: vaultID, key: key, lookup: { query in
-            var result: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            return (status, result as? Data)
-        }, add: { SecItemAdd($0 as CFDictionary, nil) })
+        try install(
+            vaultID: vaultID, key: key, lookup: { MakoshSecretStore.shared.copyData($0) }, add: { MakoshSecretStore.shared.addItem($0) })
     }
     static func existing(vaultID: UUID, lookup: ([String: Any]) -> (OSStatus, Data?)) throws -> Data? {
         var query = baseQuery(vaultID)
-        query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         let (status, value) = lookup(query)
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let value, value.count == 32 else { throw MessageArchiveError.keyUnavailable }
@@ -39,30 +33,29 @@ public enum MessageArchiveKeychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "org.makosh.message-archive",
             kSecAttrAccount as String: vaultID.uuidString.lowercased(),
-            kSecAttrSynchronizable as String: false
+            kSecAttrSynchronizable as String: false,
         ]
     }
     public static func open(vaultID: UUID, allowCreation: Bool) throws -> Data {
-        try open(vaultID: vaultID, allowCreation: allowCreation,
-                 lookup: { query in
-                     var result: CFTypeRef?
-                     let status = SecItemCopyMatching(query as CFDictionary, &result)
-                     return (status, result as? Data)
-                 }, add: { SecItemAdd($0 as CFDictionary, nil) },
-                 random: {
-                     var bytes = Data(count: 32)
-                     guard bytes.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }) == errSecSuccess else {
-                         throw MessageArchiveError.keyUnavailable
-                     }
-                     return bytes
-                 })
+        try open(
+            vaultID: vaultID, allowCreation: allowCreation,
+            lookup: { MakoshSecretStore.shared.copyData($0) }, add: { MakoshSecretStore.shared.addItem($0) },
+            random: {
+                var bytes = Data(count: 32)
+                guard bytes.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }) == errSecSuccess else {
+                    throw MessageArchiveError.keyUnavailable
+                }
+                return bytes
+            })
     }
 
     // Injected system operations let tests prove missing/existing/duplicate/locked
     // behavior without opening the user's Keychain or creating a real item.
-    static func open(vaultID: UUID, allowCreation: Bool,
-                     lookup: ([String: Any]) -> (OSStatus, Data?),
-                     add: ([String: Any]) -> OSStatus, random: () throws -> Data) throws -> Data {
+    static func open(
+        vaultID: UUID, allowCreation: Bool,
+        lookup: ([String: Any]) -> (OSStatus, Data?),
+        add: ([String: Any]) -> OSStatus, random: () throws -> Data
+    ) throws -> Data {
         let query = baseQuery(vaultID)
         var read = query
         read[kSecReturnData as String] = true

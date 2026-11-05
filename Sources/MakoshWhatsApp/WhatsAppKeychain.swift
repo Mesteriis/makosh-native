@@ -1,4 +1,5 @@
 import Foundation
+import MakoshCore
 import Security
 
 enum WhatsAppKeychain {
@@ -9,13 +10,9 @@ enum WhatsAppKeychain {
       kSecAttrAccount as String: account.uuidString.lowercased(),
       kSecAttrSynchronizable as String: false,
     ]
-    var query = base
-    query[kSecReturnData as String] = true
-    query[kSecMatchLimit as String] = kSecMatchLimitOne
-    var value: CFTypeRef?
-    let status = SecItemCopyMatching(query as CFDictionary, &value)
+    let (status, value) = MakoshSecretStore.shared.copyData(base)
     if status == errSecSuccess {
-      guard let data = value as? Data, data.count == 32 else { throw WhatsAppFailure.key }
+      guard let data = value, data.count == 32 else { throw WhatsAppFailure.key }
       return data
     }
     guard status == errSecItemNotFound, allowCreation else { throw WhatsAppFailure.key }
@@ -27,7 +24,7 @@ enum WhatsAppKeychain {
     var add = base
     add[kSecValueData as String] = key
     add[kSecAttrLabel as String] = "Макош · WhatsApp session"
-    let added = SecItemAdd(add as CFDictionary, nil)
+    let added = MakoshSecretStore.shared.addItem(add)
     if added == errSecDuplicateItem { return try open(account: account, allowCreation: false) }
     guard added == errSecSuccess else { throw WhatsAppFailure.key }
     return key

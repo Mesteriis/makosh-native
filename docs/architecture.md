@@ -252,3 +252,24 @@ HNSW expression index; chunk text and references are AES-GCM, vectors are clear.
 Retrieval re-checks access for every match and sends permitted chunks as a leading
 system turn; answers record `AISourceReference`s. The app's `AIArchiveAccessProvider`
 joins archive flags with dossier contacts; `MakoshAI` still imports no service module.
+
+## ADR-015: One shared Keychain item and one running copy — 2026-11-05
+
+The app is ad-hoc signed, so every rebuild is a new code identity and each
+login-Keychain item asks for access separately. All Makosh secrets (archive
+keys, mail passwords, Telegram session and proxy, WhatsApp session, AI,
+Teams and Telemost tokens) now live in one non-synchronizable generic
+password, `org.makosh.secrets`/`v1`, readable after first unlock on this Mac,
+so a new build asks once. `MakoshSecretStore` (MakoshCore) reads it once per
+process and caches it; each write re-reads the item and changes only its own
+entry. Vaults keep their own fail-closed handling through `SecItem`-shaped
+adapters that return Keychain status codes; a refused prompt is an error, never
+a missing key. Older per-service items stay in place: a secret missing from the
+shared item is read from its old item once and copied; a deletion is recorded
+so the old item cannot bring it back, and the old item is deleted best-effort.
+Tokens that used "when unlocked" now share the item's "after first unlock".
+
+`MakoshInstanceLock` holds an exclusive `flock` on
+`~/Library/Application Support/Makosh/<bundle id>.lock`; a second launch of the
+same bundle activates the first and exits. QA bundles have their own identifiers
+and locks.

@@ -24,7 +24,9 @@
   лёгкий вызов `markRead` без записи в «Исходящих»; приватность отчётов о
   прочтении применяет движок (`read_receipts_disabled`). Тесты:
   `testOpenChatInActiveWindowIsMarkedReadOnce`, `testInactiveWindowDoesNotMarkRead`,
-  `testNewIncomingMessageIsMarkedAgain`. Живая проверка ожидается.
+  `testNewIncomingMessageIsMarkedAgain`. Живая проверка пользователем
+  2026-11-05: работает. Баннеры «(closed)» после исправления гибели процесса
+  больше не появлялись (оба процесса WhatsApp стабильны).
 
 ## Панель ИИ в чате и контекст беседы — 2026-11-05
 

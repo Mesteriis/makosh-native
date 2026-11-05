@@ -25,6 +25,7 @@ public actor AIWorker {
     private var deleted: Set<UUID> = []
     private var retrievalVectors: AIVectorStore?
     private var retrievalAccess: (any AIAccessProvider)?
+    private var contextProvider: (any AIContextProvider)?
 
     public init(
         repository: AIRepository = .init(), client: any AIServing = AIClient(), vault: any AITokenStoring = AITokenVault(),
@@ -91,10 +92,55 @@ public actor AIWorker {
 
     // MARK: Conversations
 
-    public func createConversation() async throws -> AIConversation {
-        let conversation = AIConversation(title: "", createdAt: now(), updatedAt: now())
+    public func createConversation() async throws -> AIConversation { try await createConversation(anchor: nil) }
+
+    /// A conversation of a chat's panel starts with that chat attached.
+    public func createConversation(anchor: AIContextCard?) async throws -> AIConversation {
+        let conversation = AIConversation(
+            title: "", createdAt: now(), updatedAt: now(), anchor: anchor, cards: anchor.map { [$0] } ?? [])
         try await repository.save(conversation)
         return conversation
+    }
+
+    /// Reads attached cards; set once the services exist.
+    public func attachContext(_ provider: any AIContextProvider) { contextProvider = provider }
+
+    public func setCards(_ cards: [AIContextCard], conversationID: UUID) async throws {
+        guard var conversation = try await repository.conversations().first(where: { $0.id == conversationID }) else {
+            throw AIFailure.invalidConfiguration
+        }
+        conversation.cards = cards
+        try await repository.save(conversation)
+    }
+
+    /// All conversations, or those of one chat's panel (the period does not matter).
+    public func conversations(anchoredTo card: AIContextCard?) async throws -> [AIConversation] {
+        let all = try await repository.conversations()
+        guard let card else { return all }
+        return all.filter { $0.anchor?.id == card.id }
+    }
+
+    /// What the attached cards would send now, for the counts on the cards.
+    public func preview(conversationID: UUID) async throws -> [AIContextMaterial] {
+        guard let conversation = try await repository.conversations().first(where: { $0.id == conversationID }) else {
+            throw AIFailure.invalidConfiguration
+        }
+        return try await materials(conversation.cards)
+    }
+
+    private func materials(_ cards: [AIContextCard]) async throws -> [AIContextMaterial] {
+        guard !cards.isEmpty else { return [] }
+        guard let provider = contextProvider else { throw AIFailure.contextUnavailable("Источники контекста ещё не готовы.") }
+        var result: [AIContextMaterial] = []
+        for card in cards { result.append(try await provider.material(for: card)) }
+        return result
+    }
+
+    /// The attached-sources turn; throws before anything is saved or sent.
+    private func contextTurn(_ cards: [AIContextCard], history: [AIChatTurn]) async throws -> AIChatTurn? {
+        let materials = try await materials(cards)
+        return try AIContextBuilder.turn(
+            materials, historyCharacters: history.reduce(0) { $0 + $1.text.count }, limit: AIContextBuilder.defaultLimit)
     }
     /// Enables answering from permitted Makosh data; attached after the indexer exists.
     public func attachRetrieval(vectors: AIVectorStore, access: any AIAccessProvider) {
@@ -207,7 +253,8 @@ public actor AIWorker {
         guard !trimmed.isEmpty else { throw AIFailure.invalidConfiguration }
         let (connection, token, model) = try await resolve(.chat)
         let path = AIMessage.path(try await repository.messages(conversationID: conversationID))
-        let version = AIMessageVersion(text: trimmed, state: .complete, model: nil, createdAt: now())
+        let cards = try await repository.conversations().first(where: { $0.id == conversationID })?.cards ?? []
+        let version = AIMessageVersion(text: trimmed, state: .complete, model: nil, createdAt: now(), context: cards)
         var question: AIMessage
         var history: [AIMessage]
         if let editing {
@@ -224,15 +271,18 @@ public actor AIWorker {
                 versions: [version])
             history = path
         }
+        // Read attached sources first: an unavailable or oversized context saves and sends nothing.
+        let context = try await contextTurn(cards, history: Self.turns(history + [question]))
         try await repository.save(question)
         history.append(question)
         try await touch(conversationID, title: trimmed)
         let retrieved = await retrieve(trimmed, conversationID: conversationID)
         let answer = AIMessage(
             conversationID: conversationID, parentID: question.id, parentVersionID: version.id, author: .assistant,
-            versions: [.init(text: "", state: .streaming, model: model, createdAt: now(), sources: retrieved.sources)])
+            versions: [.init(text: "", state: .streaming, model: model, createdAt: now(), sources: retrieved.sources, context: cards)])
         try await repository.save(answer)
-        return (answer, (retrieved.turn.map { [$0] } ?? []) + Self.turns(history), model, connection, token)
+        let leading = (context.map { [$0] } ?? []) + (retrieved.turn.map { [$0] } ?? [])
+        return (answer, leading + Self.turns(history), model, connection, token)
     }
 
     private func prepareRegenerate(_ messageID: UUID, conversationID: UUID) async throws -> Preparation {
@@ -242,13 +292,20 @@ public actor AIWorker {
             throw AIFailure.invalidConfiguration
         }
         var answer = path[index]
-        let question = path[..<index].last { $0.author == .user }?.current?.text ?? ""
+        let asked = path[..<index].last { $0.author == .user }?.current
+        let question = asked?.text ?? ""
+        // The composition the question was asked with, not the cards attached now.
+        let cards = asked?.context ?? []
+        let history = Self.turns(Array(path[..<index]))
+        let context = try await contextTurn(cards, history: history)
         let retrieved = question.isEmpty ? (turn: nil, sources: []) : await retrieve(question, conversationID: conversationID)
-        answer.versions.append(.init(text: "", state: .streaming, model: model, createdAt: now(), sources: retrieved.sources))
+        answer.versions.append(
+            .init(text: "", state: .streaming, model: model, createdAt: now(), sources: retrieved.sources, context: cards))
         answer.selectedVersion = answer.versions.count - 1
         try await repository.save(answer)
         try await touch(conversationID, title: nil)
-        return (answer, (retrieved.turn.map { [$0] } ?? []) + Self.turns(Array(path[..<index])), model, connection, token)
+        let leading = (context.map { [$0] } ?? []) + (retrieved.turn.map { [$0] } ?? [])
+        return (answer, leading + history, model, connection, token)
     }
 
     private static func turns(_ path: [AIMessage]) -> [AIChatTurn] {

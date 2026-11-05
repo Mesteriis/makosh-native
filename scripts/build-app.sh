@@ -23,8 +23,9 @@ python3 scripts/verify-mail-dependencies.py
 python3 scripts/verify-teams-dependencies.py
 python3 scripts/verify-telemost-dependencies.py
 python3 scripts/prepare-postgres-client.py
-swift build --product Makosh -j 4
-makosh_bin_dir="$(swift build --show-bin-path)"
+# The app bundle is an optimized build; tests keep the debug configuration.
+swift build -c release --product Makosh -j 4
+makosh_bin_dir="$(swift build -c release --show-bin-path)"
 makosh_stage="$(mktemp -d "$PWD/.build/Makosh-package.XXXXXX")"
 trap 'rm -rf -- "$makosh_stage"' EXIT
 makosh_bundle="$makosh_stage/Makosh.app"

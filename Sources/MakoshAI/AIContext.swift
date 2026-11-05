@@ -24,3 +24,90 @@ public enum AIContextCard: Codable, Hashable, Sendable, Identifiable {
         }
     }
 }
+
+/// One message or letter of an attached source, ready for the provider.
+public struct AIContextLine: Sendable, Equatable {
+    public let author: String
+    public let isOutgoing: Bool
+    public let date: Date
+    public let text: String
+    public init(author: String, isOutgoing: Bool, date: Date, text: String) {
+        self.author = author
+        self.isOutgoing = isOutgoing
+        self.date = date
+        self.text = text
+    }
+}
+
+/// What an attached card contributes, after access rules removed what may
+/// not leave; the counts are shown on the card.
+public struct AIContextMaterial: Sendable, Equatable {
+    public let card: AIContextCard
+    public let lines: [AIContextLine]
+    public let hiddenForbidden: Int
+    public let hiddenProtected: Int
+    /// Messages available locally for the card's period.
+    public let available: Int
+    /// The `latest(n)` count asked for, if any.
+    public let requested: Int?
+    public init(
+        card: AIContextCard, lines: [AIContextLine], hiddenForbidden: Int, hiddenProtected: Int, available: Int, requested: Int?
+    ) {
+        self.card = card
+        self.lines = lines
+        self.hiddenForbidden = hiddenForbidden
+        self.hiddenProtected = hiddenProtected
+        self.available = available
+        self.requested = requested
+    }
+}
+
+/// Reads an attached source. Throws `AIFailure.contextUnavailable` for a
+/// source that may never be sent (secret chat, forbidden contact) or is gone.
+public protocol AIContextProvider: Sendable {
+    func material(for card: AIContextCard) async throws -> AIContextMaterial
+}
+
+/// The system turn carrying attached sources.
+public enum AIContextBuilder {
+    /// Characters of history plus context; a conservative default for the chat role.
+    public static let defaultLimit = 100_000
+
+    /// Nil without cards. Over the limit it throws instead of cutting anything.
+    public static func turn(_ materials: [AIContextMaterial], historyCharacters: Int, limit: Int) throws -> AIChatTurn? {
+        guard !materials.isEmpty else { return nil }
+        var text = """
+            Ниже — переписка и письма, которые пользователь сам прикрепил к беседе. \
+            Отвечай по ним; если ответа в них нет, так и скажи. \
+            Реплики пользователя помечены «пользователь».
+            """
+        for material in materials {
+            text += "\n\n=== \(heading(material.card)) ==="
+            for line in material.lines {
+                let date = line.date.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
+                let author = line.isOutgoing ? "пользователь" : line.author
+                text += "\n[\(date)] \(author): \(line.text)"
+            }
+        }
+        let total = historyCharacters + text.count
+        guard total <= limit else { throw AIFailure.contextTooLarge(characters: total, limit: limit) }
+        return AIChatTurn(author: .system, text: text)
+    }
+
+    private static func heading(_ card: AIContextCard) -> String {
+        switch card {
+        case .chat(let service, _, _, let title, let range): "Чат «\(title)» (\(service), \(describe(range)))"
+        case .letter(_, let title): "Письмо «\(title)»"
+        case .contact(_, let title): "Контакт «\(title)»"
+        }
+    }
+
+    private static func describe(_ range: AIContextRange) -> String {
+        switch range {
+        case .latest(let count): "последние \(count) сообщений"
+        case .lastDays(let days): "за \(days) дн."
+        case .between(let from, let to):
+            "с \(from.formatted(.iso8601.year().month().day())) по \(to.formatted(.iso8601.year().month().day()))"
+        }
+    }
+}

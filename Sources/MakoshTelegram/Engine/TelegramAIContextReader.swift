@@ -19,12 +19,7 @@ import TelegramCore
     init(account: Account) { self.account = account }
 
     func page(chatID: Int64, range: AIContextRange) async throws -> TelegramAIContextPage {
-        let signal = Self.read(postbox: account.postbox, peerID: PeerId(chatID), range: range)
-        let once = TelegramAIContextOnce()
-        return try await withCheckedThrowingContinuation { continuation in
-            once.set(continuation)
-            _ = signal.start(next: { once.resume(.success($0)) }, completed: { once.resume(.failure(TelegramAIContextReadError.ended)) })
-        }
+        try await telegramAIContextFirst(Self.read(postbox: account.postbox, peerID: PeerId(chatID), range: range))
     }
 
     /// Built outside the main actor so the transaction closure never inherits its isolation.
@@ -39,17 +34,32 @@ import TelegramCore
 enum TelegramAIContextReadError: Error { case ended }
 
 /// Resumes a continuation exactly once, whichever signal event comes first.
-private final class TelegramAIContextOnce: @unchecked Sendable {
+private final class TelegramAIContextOnce<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<TelegramAIContextPage, Error>?
-    func set(_ value: CheckedContinuation<TelegramAIContextPage, Error>) { lock.withLock { continuation = value } }
-    func resume(_ result: Result<TelegramAIContextPage, Error>) {
-        let pending = lock.withLock { () -> CheckedContinuation<TelegramAIContextPage, Error>? in
+    private var continuation: CheckedContinuation<T, Error>?
+    func set(_ value: CheckedContinuation<T, Error>) { lock.withLock { continuation = value } }
+    func resume(_ result: Result<T, Error>) {
+        let pending = lock.withLock { () -> CheckedContinuation<T, Error>? in
             defer { continuation = nil }
             return continuation
         }
         pending?.resume(with: result)
     }
+}
+
+/// The first value of a signal that may deliver on any queue.
+@MainActor func telegramAIContextFirst<T: Sendable>(_ signal: Signal<T, NoError>) async throws -> T {
+    let once = TelegramAIContextOnce<T>()
+    return try await withCheckedThrowingContinuation { continuation in
+        once.set(continuation)
+        telegramAIContextSubscribe(signal, once)
+    }
+}
+
+/// The subscriber closures are formed here, outside any actor: formed on the
+/// main actor they would trap when Postbox calls them on its own queue.
+nonisolated private func telegramAIContextSubscribe<T: Sendable>(_ signal: Signal<T, NoError>, _ once: TelegramAIContextOnce<T>) {
+    _ = signal.start(next: { once.resume(.success($0)) }, completed: { once.resume(.failure(TelegramAIContextReadError.ended)) })
 }
 
 func telegramAIContextPage(transaction: Transaction, peerID: PeerId, range: AIContextRange, now: Date) -> TelegramAIContextPage {

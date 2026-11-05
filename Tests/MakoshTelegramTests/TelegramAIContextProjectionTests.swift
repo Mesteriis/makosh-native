@@ -32,3 +32,31 @@ final class TelegramAIContextProjectionTests: XCTestCase {
         XCTAssertEqual(TelegramAIContextProjection.select([media], range: .standard, now: now).first?.text, "[вложение]")
     }
 }
+
+import SwiftSignalKit
+
+@MainActor final class TelegramAIContextSignalTests: XCTestCase {
+    /// Postbox delivers on its own queue; awaiting from the main actor must not trap.
+    func testValueDeliveredOnAnotherQueueReachesTheMainActorCaller() async throws {
+        let signal = Signal<Int, NoError> { subscriber in
+            DispatchQueue.global().async {
+                subscriber.putNext(7)
+                subscriber.putCompletion()
+            }
+            return EmptyDisposable
+        }
+        let value = try await telegramAIContextFirst(signal)
+        XCTAssertEqual(value, 7)
+    }
+
+    func testCompletionWithoutValueThrowsInsteadOfHanging() async {
+        let signal = Signal<Int, NoError> { subscriber in
+            DispatchQueue.global().async { subscriber.putCompletion() }
+            return EmptyDisposable
+        }
+        do {
+            _ = try await telegramAIContextFirst(signal)
+            XCTFail("no value")
+        } catch {}
+    }
+}

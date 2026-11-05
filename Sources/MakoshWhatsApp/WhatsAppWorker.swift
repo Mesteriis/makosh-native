@@ -189,10 +189,31 @@ public actor WhatsAppWorker: WhatsAppServing {
     try await repository.saveAccount(account)
     return account
   }
-  public func connect(accountID: UUID) async throws {
+  /// When an account's worker process is lost, the account is reconnected in
+  /// the background, at most once per 30 seconds, instead of staying "closed"
+  /// until the user reconnects by hand.
+  private var recoveries: [UUID: ContinuousClock.Instant] = [:]
+  private func recoverLostSession(_ id: UUID) {
+    let now = ContinuousClock.now
+    if let last = recoveries[id], now - last < .seconds(30) { return }
+    recoveries[id] = now
+    let revision = revisions[id]
+    Task { [weak self] in await self?.recover(id, revision: revision) }
+  }
+  /// Skipped when the user disconnected or reconnected meanwhile.
+  private func recover(_ id: UUID, revision: UInt64?) async {
+    try? await connect(accountID: id, onlyAtRevision: revision)
+  }
+
+  public func connect(accountID: UUID) async throws { try await connect(accountID: accountID, onlyAtRevision: nil) }
+
+  /// `onlyAtRevision` (recovery): give up if the account was disconnected or
+  /// reconnected since, checked with no suspension before taking it over.
+  private func connect(accountID: UUID, onlyAtRevision expected: UInt64??) async throws {
     guard let repository, !synthetic,
       try await repository.accounts().contains(where: { $0.id == accountID })
     else { throw WhatsAppFailure.invalid }
+    if let expected, revisions[accountID] != expected || sessions[accountID] == nil { throw CancellationError() }
     archiveTasks.removeValue(forKey: accountID)?.cancel()
     archiveTaskTokens.removeValue(forKey: accountID)
     revisions[accountID, default: 0] &+= 1
@@ -277,6 +298,10 @@ public actor WhatsAppWorker: WhatsAppServing {
           var failed = WhatsAppConnectionStatus()
           failed.state = "failed"
           failed.error = WhatsAppFailure.diagnostic(error)
+          if error as? WhatsAppFailure == .closed {
+            if let reason = await session.lostReason { failed.error = "closed: " + reason }
+            recoverLostSession(id)
+          }
           failures[id] = failed
         }
       }

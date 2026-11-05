@@ -11,6 +11,11 @@ public protocol WhatsAppTransport: Sendable {
   func close() async throws
   func callMedia(_ request: WhatsAppCallExchange) async throws -> WhatsAppCallOutput
   func perform(chat: String, action: WhatsAppAction) async throws -> WhatsAppMutationResult
+  /// How the worker process was lost, once it has been: "exit N", "signal N" or "no reply".
+  var lostReason: String? { get async }
+}
+extension WhatsAppTransport {
+  public var lostReason: String? { get async { nil } }
 }
 private struct NativeRequest: Encodable {
   let version = 1
@@ -32,6 +37,7 @@ public actor WhatsAppNativeSession: WhatsAppTransport {
   }
   private let executable: URL
   private var child: WhatsAppChild?
+  public private(set) var lostReason: String?
   public init(executable: URL) { self.executable = executable }
   public func open(directory: URL, key: Data) throws {
     guard child == nil, key.count == 32 else { throw WhatsAppFailure.invalid }
@@ -129,6 +135,8 @@ public actor WhatsAppNativeSession: WhatsAppTransport {
     let response: Data
     do { response = try child.exchange(frame) } catch {
       child.stop()
+      // Kept for the status line: whether the worker exited, crashed or stopped answering.
+      lostReason = child.exitDescription ?? "no reply"
       self.child = nil
       throw Task.isCancelled ? CancellationError() : WhatsAppFailure.protocolFailure
     }
@@ -168,6 +176,8 @@ private final class WhatsAppChild: @unchecked Sendable {
   private let process = Process(), input = Pipe(), output = Pipe()
   private var pid: pid_t = 0
   private var exited = false
+  /// "exit N" or "signal N" once the process has been reaped.
+  private(set) var exitDescription: String?
   init(executable: URL) throws {
     guard executable.isFileURL, FileManager.default.isExecutableFile(atPath: executable.path) else {
       throw WhatsAppFailure.unavailable
@@ -208,6 +218,10 @@ private final class WhatsAppChild: @unchecked Sendable {
       let result = waitpid(pid, &status, WNOHANG)
       if result == pid || (result < 0 && errno == ECHILD) {
         exited = true
+        if result == pid {
+          let signal = status & 0x7f
+          exitDescription = signal == 0 ? "exit \((status >> 8) & 0xff)" : "signal \(signal)"
+        }
         return true
       }
       if result < 0 && errno == EINTR { continue }

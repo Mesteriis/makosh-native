@@ -171,6 +171,8 @@ impl Cache {
                 CREATE TABLE IF NOT EXISTS mk_controls(chat TEXT NOT NULL,id TEXT NOT NULL,field TEXT NOT NULL,actor TEXT NOT NULL,value TEXT NOT NULL,stamp BIGINT NOT NULL,PRIMARY KEY(chat,id,field,actor));
                 CREATE TABLE IF NOT EXISTS mk_poll_votes(chat TEXT NOT NULL,id TEXT NOT NULL,actor TEXT NOT NULL,payload TEXT NOT NULL,stamp BIGINT NOT NULL,PRIMARY KEY(chat,id,actor));
                 CREATE TABLE IF NOT EXISTS mk_names(id TEXT PRIMARY KEY,name TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS mk_contact_names(id TEXT PRIMARY KEY,name TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS mk_aliases(id TEXT NOT NULL,alias TEXT NOT NULL,PRIMARY KEY(id,alias));
                 CREATE INDEX IF NOT EXISTS mk_message_page ON mk_messages(chat,ts DESC,id DESC);
                 CREATE TABLE IF NOT EXISTS mk_journal(sequence INTEGER PRIMARY KEY AUTOINCREMENT,token TEXT NOT NULL UNIQUE,payload TEXT NOT NULL,raw BLOB NOT NULL);
                 CREATE TABLE IF NOT EXISTS mk_checkpoint(id INTEGER PRIMARY KEY CHECK(id=1),sequence BIGINT NOT NULL);
@@ -218,6 +220,7 @@ impl Cache {
         rows: Vec<Observation>,
         chats: Vec<Chat>,
         names: Vec<(String, String)>,
+        aliases: Vec<(String, String)>,
     ) -> Result<(), &'static str> {
         self.shared
             .run(move |conn| {
@@ -225,6 +228,9 @@ impl Cache {
                     Self::write_chats(conn, chats)?;
                     for (id, name) in names {
                         Self::write_name(conn, &id, &name, true)?;
+                    }
+                    for (id, alias) in aliases {
+                        Self::write_alias(conn, &id, &alias)?;
                     }
                     for row in rows {
                         Self::insert(conn, row)?;
@@ -238,6 +244,103 @@ impl Cache {
             .map(|()| {
                 self.mark_changed();
             })
+    }
+    /// The LID and phone-number identifiers of one person, stored both ways.
+    pub(crate) fn write_alias(conn: &mut diesel::SqliteConnection, id: &str, alias: &str) -> QueryResult<()> {
+        let person = |jid: &str| jid.ends_with("@lid") || jid.ends_with("@s.whatsapp.net");
+        if id == alias || !person(id) || !person(alias) {
+            return Ok(());
+        }
+        for (a, b) in [(id, alias), (alias, id)] {
+            diesel::sql_query("INSERT INTO mk_aliases VALUES(?1,?2) ON CONFLICT DO NOTHING")
+                .bind::<Text, _>(a)
+                .bind::<Text, _>(b)
+                .execute(conn)?;
+        }
+        Ok(())
+    }
+    /// The name the user saved in the phone's address book.
+    pub(crate) fn write_contact_name(conn: &mut diesel::SqliteConnection, id: &str, name: &str) -> QueryResult<()> {
+        if name.is_empty() || id.ends_with("@g.us") {
+            return Ok(());
+        }
+        diesel::sql_query("INSERT INTO mk_contact_names VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET name=excluded.name")
+            .bind::<Text, _>(id)
+            .bind::<Text, _>(name)
+            .execute(conn)
+            .map(|_| ())
+    }
+    /// A person's display name: the address-book name before their own push
+    /// name, each looked up under the identifier and its LID/phone alias.
+    pub(crate) fn resolved_name(conn: &mut diesel::SqliteConnection, id: &str) -> QueryResult<Option<String>> {
+        let mut ids = vec![id.to_string()];
+        ids.extend(
+            diesel::sql_query("SELECT alias AS payload FROM mk_aliases WHERE id=?1")
+                .bind::<Text, _>(id)
+                .load::<Payload>(conn)?
+                .into_iter()
+                .map(|r| r.payload),
+        );
+        for table in ["mk_contact_names", "mk_names"] {
+            for candidate in &ids {
+                if let Some(row) = diesel::sql_query(format!("SELECT name AS payload FROM {table} WHERE id=?1"))
+                    .bind::<Text, _>(candidate)
+                    .load::<Payload>(conn)?
+                    .into_iter()
+                    .next()
+                    && !row.payload.is_empty()
+                {
+                    return Ok(Some(row.payload));
+                }
+            }
+        }
+        Ok(None)
+    }
+    /// An address-book contact under all of its identifiers.
+    pub async fn record_contact(&self, ids: Vec<String>, name: Option<String>) -> Result<(), &'static str> {
+        self.shared
+            .run(move |conn| {
+                conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                    for (index, id) in ids.iter().enumerate() {
+                        for alias in &ids[index + 1..] {
+                            Self::write_alias(conn, id, alias)?;
+                        }
+                        if let Some(name) = &name {
+                            Self::write_contact_name(conn, id, name)?;
+                        }
+                    }
+                    Ok(())
+                })
+                .map_err(db_error)
+            })
+            .await
+            .map_err(|_| "storage")
+            .map(|()| self.mark_changed())
+    }
+    pub async fn record_push_name(&self, id: String, name: String) -> Result<(), &'static str> {
+        self.shared
+            .run(move |conn| Self::write_name(conn, &id, &name, false).map_err(db_error))
+            .await
+            .map_err(|_| "storage")
+            .map(|()| self.mark_changed())
+    }
+    /// One-to-one LID chats that still show their bare identifier.
+    pub async fn unnamed_lid_chats(&self) -> Result<Vec<String>, &'static str> {
+        self.shared
+            .read(move |conn| {
+                let ids = diesel::sql_query("SELECT id AS payload FROM mk_chats WHERE id LIKE '%@lid'")
+                    .load::<Payload>(conn)
+                    .map_err(db_error)?;
+                let mut unnamed = Vec::new();
+                for row in ids {
+                    if Self::resolved_name(conn, &row.payload).map_err(db_error)?.is_none() {
+                        unnamed.push(row.payload);
+                    }
+                }
+                Ok(unnamed)
+            })
+            .await
+            .map_err(|_| "storage")
     }
     pub(crate) fn write_name(
         conn: &mut diesel::SqliteConnection,
@@ -467,7 +570,12 @@ impl Cache {
             let cursor=before.unwrap_or(Cursor{timestamp:i64::MAX,id:String::new()});
             let rows=diesel::sql_query("SELECT ts AS value,payload FROM mk_chats WHERE ts<?1 OR (ts=?1 AND id<?2) ORDER BY ts DESC,id DESC LIMIT ?3")
                 .bind::<BigInt,_>(cursor.timestamp).bind::<Text,_>(cursor.id).bind::<BigInt,_>(limit).load::<ChatRow>(conn).map_err(db_error)?;
-            rows.into_iter().map(|r| { let mut chat:Chat=serde_json::from_str(&r.payload).map_err(|e|StoreError::Database(Box::new(e)))?;chat.timestamp=r.value;Ok(chat) }).collect()
+            rows.into_iter().map(|r| {
+                let mut chat:Chat=serde_json::from_str(&r.payload).map_err(|e|StoreError::Database(Box::new(e)))?;
+                chat.timestamp=r.value;
+                if !chat.group && let Some(name)=Self::resolved_name(conn,&chat.id).map_err(db_error)? { chat.name=name; }
+                Ok(chat)
+            }).collect()
         }).await.map_err(|_|"storage")
     }
     pub async fn messages(

@@ -4,6 +4,7 @@ import MakoshCore
 
 @MainActor package final class MailWorkspaceModel: ObservableObject {
     @Published package private(set) var accounts: [MailAccount] = []
+    private var autoConnect: MakoshAutoConnect?
     @Published package private(set) var folders: [MailFolder] = []
     @Published package private(set) var letters: [MailLetter] = []
     @Published package private(set) var drafts: [MailDraft] = []
@@ -128,6 +129,7 @@ import MakoshCore
             }
             try await reload()
             ready = true
+            if !synthetic { reconnectRemembered(MakoshAutoConnect(scope: configuration.schema)) }
             if synthetic, let folder = folders.first(where: { $0.kind == .inbox }) ?? folders.first {
                 selectedFolder = folder
                 selectedID = displayed.first?.id
@@ -148,16 +150,29 @@ import MakoshCore
             let worker = try worker(account)
             _ = try await worker.connect(imapPassword: imapPassword, smtpPassword: smtpPassword)
             connected.insert(account.id)
+            autoConnect?.remember("mail", account: account.id)
             try await reload()
             accountSheet = false
             startInboxWatching(account)
             if let folder = folders.first(where: { $0.accountID == account.id && $0.kind == .inbox }) { selectFolder(folder) }
         } catch { self.error = error.localizedDescription }
     }
+    /// Accounts left connected at the last quit reconnect one after another
+    /// once loading finishes; a failure keeps the account remembered.
+    private func reconnectRemembered(_ store: MakoshAutoConnect) {
+        autoConnect = store
+        let remembered = store.remembered("mail")
+        let targets = accounts.filter { remembered.contains($0.id) }
+        guard !targets.isEmpty else { return }
+        Task { [weak self] in
+            for account in targets { await self?.connect(account) }
+        }
+    }
     package func connect(_ account: MailAccount) async {
         await run {
             _ = try await self.worker(account).connect()
             self.connected.insert(account.id)
+            self.autoConnect?.remember("mail", account: account.id)
         }
         if connected.contains(account.id) { startInboxWatching(account) }
         if connected.contains(account.id), let folder = folders.first(where: { $0.accountID == account.id && $0.kind == .inbox }) {
@@ -165,6 +180,7 @@ import MakoshCore
         }
     }
     package func disconnect(_ account: MailAccount) async {
+        autoConnect?.forget("mail", account: account.id)
         if selectedFolder?.accountID == account.id {
             watchTask?.cancel()
             watchTask = nil

@@ -35,6 +35,8 @@ import SwiftUI
   private var loaded = false, loading = false, refreshing = false, syntheticPairing = false
   private var accountGeneration: UInt64 = 0, chatGeneration: UInt64 = 0
   private var pollTask: Task<Void, Never>?, operationTask: Task<Void, Never>?
+  private let autoConnectOverride: MakoshAutoConnect?
+  private var autoConnect: MakoshAutoConnect?
   package init(synthetic: Bool = false) {
     isSynthetic = synthetic
     let service = WhatsAppWorker(synthetic: synthetic)
@@ -43,10 +45,12 @@ import SwiftUI
     actions = .init(worker: service)
     calls = .init(worker: service, synthetic: synthetic)
     polling = true
+    autoConnectOverride = nil
   }
-  package init(worker: any WhatsAppServing, polling: Bool, synthetic: Bool = false) {
+  package init(worker: any WhatsAppServing, polling: Bool, synthetic: Bool = false, autoConnect: MakoshAutoConnect? = nil) {
     self.worker = worker
     self.polling = polling
+    autoConnectOverride = autoConnect
     isSynthetic = synthetic
     composer = .init(worker: worker, synthetic: synthetic)
     actions = .init(worker: worker)
@@ -74,7 +78,9 @@ import SwiftUI
     do {
       accounts = try await worker.load(configuration: configuration)
       loaded = true
+      if !isSynthetic { autoConnect = autoConnectOverride ?? MakoshAutoConnect(scope: configuration.schema) }
       if let first = accounts.first { await selectAccount(first.id) }
+      reconnectRemembered()
       if polling {
         pollTask = Task { [weak self] in
           while !Task.isCancelled {
@@ -84,6 +90,19 @@ import SwiftUI
         }
       }
     } catch { report(error) }
+  }
+  /// Accounts left connected at the last quit reconnect in the background;
+  /// a failure keeps the account remembered for the next launch.
+  private func reconnectRemembered() {
+    guard let remembered = autoConnect?.remembered("whatsapp") else { return }
+    let worker = worker
+    for account in accounts where remembered.contains(account.id.uuidString) {
+      let id = account.id
+      Task { [weak self] in
+        do { try await worker.connect(accountID: id) } catch { return }
+        await self?.refresh()
+      }
+    }
   }
   package func selectAccount(_ id: UUID) async {
     guard accounts.contains(where: { $0.id == id }) else { return }
@@ -237,7 +256,10 @@ import SwiftUI
     status.state = "connecting"
     let worker = worker
     operationTask = Task { [weak self] in
-      do { try await worker.connect(accountID: account) } catch {
+      do {
+        try await worker.connect(accountID: account)
+        self?.autoConnect?.remember("whatsapp", account: account.uuidString)
+      } catch {
         if let self, self.accountGeneration == generation, !Task.isCancelled { self.report(error) }
       }
       guard let self, self.accountGeneration == generation else { return }
@@ -247,6 +269,7 @@ import SwiftUI
   }
   package func disconnect() async {
     guard let account = selectedAccountID else { return }
+    autoConnect?.forget("whatsapp", account: account.uuidString)
     if calls.accountID == account { await calls.end() }
     operationTask?.cancel()
     accountGeneration &+= 1

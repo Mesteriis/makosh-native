@@ -735,7 +735,7 @@ fn server_chat_rules_survive_late_history_and_encrypted_reopen() {
             .await
             .unwrap();
         cache
-            .ingest_history(Vec::new(), old, Vec::new())
+            .ingest_history(Vec::new(), old, Vec::new(), Vec::new())
             .await
             .unwrap();
         let chat = cache.chats(None, 50).await.unwrap().remove(0);
@@ -1436,4 +1436,75 @@ fn remote_terminal_revokes_queued_acceptance_and_pending_setup() {
         calls.observe(&Event::IncomingCall(late)).await;
         assert_eq!(calls.snapshot().await.unwrap().state,"ended","late acceptance cannot resurrect a terminated call");
     });
+}
+
+#[test]
+fn lid_chats_take_names_from_aliases_contacts_and_display_names() {
+    use crate::{cache::Cache, protocol::persist_history};
+    use whatsapp_rust::{
+        types::events::{ContactUpdate, Event, LazyHistorySync},
+        waproto::{buffa::Message as _, whatsapp as wa},
+    };
+    let dir = test_dir();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        let conversation = |id: &str, display: Option<&str>, pn: Option<&str>| wa::Conversation {
+            id: id.into(),
+            display_name: display.map(Into::into),
+            pn_jid: pn.map(Into::into),
+            conversation_timestamp: Some(10),
+            ..Default::default()
+        };
+        let history = wa::HistorySync {
+            conversations: vec![
+                conversation("111@lid", None, Some("555@s.whatsapp.net")),
+                conversation("222@lid", Some("Shown name"), None),
+                conversation("333@lid", None, None),
+            ],
+            pushnames: vec![wa::Pushname {
+                id: Some("555@s.whatsapp.net".into()),
+                pushname: Some("Push peer".into()),
+            }],
+            ..Default::default()
+        };
+        let bytes = history.encode_to_vec();
+        let lazy = LazyHistorySync::new(compressed_fixture(&bytes).into(), bytes.len(), 0, None, None);
+        let cache = Cache::open(dir.join("names.db").to_str().unwrap(), vec![7; 32])
+            .await
+            .unwrap();
+        persist_history(&cache, &lazy).await.unwrap();
+        let names = |chats: Vec<crate::cache::Chat>| {
+            chats.into_iter().map(|c| (c.id, c.name)).collect::<std::collections::BTreeMap<_, _>>()
+        };
+        let before = names(cache.chats(None, 50).await.unwrap());
+        assert_eq!(before["111@lid"], "Push peer", "push name reaches the LID chat through its phone alias");
+        assert_eq!(before["222@lid"], "Shown name");
+        assert_eq!(before["333@lid"], "333@lid");
+        // An address-book contact beats a push name, for both of its identifiers.
+        let status = std::sync::Arc::new(std::sync::Mutex::new(crate::protocol::ConnectionStatus::default()));
+        let event = Event::ContactUpdate(
+            ContactUpdate::builder()
+                .jid("555@s.whatsapp.net".parse().unwrap())
+                .timestamp(whatsapp_rust::chrono::Utc::now())
+                .action(Box::new(wa::sync_action_value::ContactAction {
+                    full_name: Some("Saved contact".into()),
+                    lid_jid: Some("111@lid".into()),
+                    ..Default::default()
+                }))
+                .from_full_sync(true)
+                .build(),
+        );
+        crate::protocol::handle_event(&cache, &status, &event).await;
+        let after = names(cache.chats(None, 50).await.unwrap());
+        assert_eq!(after["111@lid"], "Saved contact");
+        drop(cache);
+        let reopened = Cache::open(dir.join("names.db").to_str().unwrap(), vec![7; 32])
+            .await
+            .unwrap();
+        assert_eq!(names(reopened.chats(None, 50).await.unwrap())["111@lid"], "Saved contact");
+    });
+    std::fs::remove_dir_all(dir).unwrap();
 }

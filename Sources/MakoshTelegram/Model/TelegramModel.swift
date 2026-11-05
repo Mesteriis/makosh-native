@@ -55,6 +55,8 @@ public final class TelegramModel: ObservableObject {
     public let autoDownloadSettings: TelegramAutoDownloadSettings
     public let cache = TelegramCacheController()
     public let cacheMaintenance: TelegramCacheMaintenance
+    /// Whether the local session reconnects at launch (`connectIfRemembered`).
+    let autoConnect: MakoshAutoConnect
     public let proxy: TelegramProxyController
     var proxyClientID = UUID()
     lazy var automaticDownloads = TelegramAutoDownloadQueue(settings: autoDownloadSettings, media: media)
@@ -272,6 +274,7 @@ public final class TelegramModel: ObservableObject {
         self.calls = calls ?? TelegramCallController()
         autoDownloadSettings = TelegramAutoDownloadSettings(defaults: autoDownloadDefaults)
         cacheMaintenance = TelegramCacheMaintenance(defaults: autoDownloadDefaults)
+        autoConnect = MakoshAutoConnect(scope: "telegram", defaults: autoDownloadDefaults)
         self.proxy = proxy ?? TelegramProxyController()
         callControlObservation = self.calls.$call.combineLatest(self.calls.$isReleasingMedia, self.calls.$captureReserved).sink {
             [weak self] _, _, _ in self?.objectWillChange.send()

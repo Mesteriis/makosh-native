@@ -191,8 +191,13 @@ struct WorkspaceView: View {
             if let configuration = model.mailConfiguration, ordinaryLaunch {
                 Task { await ai.start(configuration: configuration, contacts: model.dossierWorker) }
             }
+            if ordinaryLaunch { telegram.connectIfRemembered() }
             if let configuration = model.mailConfiguration {
                 if !whatsapp.isSynthetic && !teams.isSynthetic && !telemost.isSynthetic { await mail.load(configuration: configuration) }
+                // Remembered WhatsApp accounts reconnect at launch, not only when the tab opens.
+                if ordinaryLaunch, !MakoshAutoConnect(scope: configuration.schema).remembered("whatsapp").isEmpty {
+                    await whatsapp.load(configuration: configuration)
+                }
                 if destination == .whatsapp && !teams.isSynthetic && !telemost.isSynthetic {
                     await whatsapp.load(configuration: configuration)
                 }

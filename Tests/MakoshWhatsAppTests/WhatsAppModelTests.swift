@@ -155,4 +155,37 @@ private actor DelayedRestoreService: WhatsAppServing {
         XCTAssertFalse(published.contains(nil), "banner disappeared between refreshes: \(published)")
         XCTAssertNotNil(model.notificationError)
     }
+
+    func testRememberedAccountsReconnectAndExplicitDisconnectForgets() async throws {
+        let suite = "makosh.tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = MakoshAutoConnect(scope: "makosh", defaults: defaults)
+        let service = ConnectRecordingService()
+        store.remember("whatsapp", account: service.second.id.uuidString)
+        let model = WhatsAppWorkspaceModel(worker: service, polling: false, autoConnect: store)
+        await model.load(configuration: .init(connectionString: "synthetic stub"))
+        for _ in 0..<100 where await service.connected.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let reconnected = await service.connected
+        XCTAssertEqual(reconnected, [service.second.id], "only the remembered account reconnects")
+        model.connect()
+        for _ in 0..<100 where !store.remembered("whatsapp").contains(service.first.id.uuidString) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(store.remembered("whatsapp").contains(service.first.id.uuidString))
+        await model.disconnect()
+        XCTAssertEqual(store.remembered("whatsapp"), [service.second.id.uuidString])
+    }
+}
+
+private actor ConnectRecordingService: WhatsAppServing {
+    let first = WhatsAppAccount(name: "First"), second = WhatsAppAccount(name: "Second")
+    var connected: [UUID] = []
+    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
+    func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
+    func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot { .init(accountID: accountID, status: .init(), chats: []) }
+    func messages(accountID: UUID, chat: String, before: WhatsAppCursor?) -> [WhatsAppMessage] { [] }
+    func connect(accountID: UUID) { connected.append(accountID) }
+    func disconnect(accountID: UUID) {}
+    func shutdown() {}
 }

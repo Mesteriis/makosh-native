@@ -208,6 +208,18 @@ extension TelegramModel {
                     }))
     }
 
+    /// Reconnects the local session at launch when the user left it connected.
+    public func connectIfRemembered() {
+        guard !isSyntheticPreview, autoConnect.remembered("telegram").contains("session") else { return }
+        connect()
+    }
+
+    /// The user's explicit stop: the session stays, but it no longer reconnects at launch.
+    public func stopConnection() {
+        autoConnect.forget("telegram", account: "session")
+        disconnect()
+    }
+
     public func disconnect() {
         unauthorized?.shouldBeServiceTaskMaster.set(.single(.never))
         proxy.unregister(clientID: proxyClientID)
@@ -433,6 +445,7 @@ extension TelegramModel {
         self.authState.set(nil)
         self.isBusy = false
         self.phase = .ready
+        self.autoConnect.remember("telegram", account: "session")
         self.refreshCallSelection()
         account.shouldBeServiceTaskMaster.set(.single(.always))
         account.shouldKeepOnlinePresence.set(.single(false))

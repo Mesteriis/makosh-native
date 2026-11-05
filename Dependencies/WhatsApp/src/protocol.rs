@@ -115,13 +115,16 @@ pub async fn build_bot(
                 }
             }
         })
-        .on_event(move |event, _| {
+        .on_event(move |event, client| {
             let cache = event_cache.clone();
             let status = event_status.clone();
             let calls = calls.clone();
             async move {
                 calls.observe(&event).await;
                 handle_event(&cache, &status, &event).await;
+                if matches!(*event, Event::Connected(_)) {
+                    learn_phone_aliases(&cache, &client).await;
+                }
             }
         })
         .build()
@@ -201,7 +204,19 @@ fn inbound_one(inbound: &InboundMessage) -> Option<Observation> {
     row.notify = !info.is_offline && !source.is_from_me;
     Some(row)
 }
-async fn handle_event(cache: &Cache, status: &Arc<Mutex<ConnectionStatus>>, event: &Event) {
+/// LID chats without a name get the person's phone identifier from the
+/// engine's LID-PN mapping, so names stored under the phone number apply.
+async fn learn_phone_aliases(cache: &Cache, client: &whatsapp_rust::Client) {
+    let Ok(chats) = cache.unnamed_lid_chats().await else { return };
+    for chat in chats {
+        let Ok(jid) = chat.parse::<Jid>() else { continue };
+        if let Ok(Some(entry)) = client.get_lid_pn_entry(&jid).await {
+            let phone = format!("{}@s.whatsapp.net", entry.phone_number);
+            let _ = cache.record_contact(vec![chat, phone], None).await;
+        }
+    }
+}
+pub(crate) async fn handle_event(cache: &Cache, status: &Arc<Mutex<ConnectionStatus>>, event: &Event) {
     // Teardown callbacks cannot republish a QR/connected state.
     if status.lock().map(|s| s.state == "stopping").unwrap_or(true) {
         return;
@@ -232,6 +247,19 @@ async fn handle_event(cache: &Cache, status: &Arc<Mutex<ConnectionStatus>>, even
                 s.set("reconnecting");
             }
             Ok(())
+        }
+        Event::ContactUpdate(update) => {
+            let action = &update.action;
+            let ids = std::iter::once(update.jid.to_non_ad().to_string())
+                .chain(action.lid_jid.clone())
+                .chain(action.pn_jid.clone())
+                .filter(|id| !id.is_empty())
+                .collect();
+            let name = action.full_name.clone().or_else(|| action.first_name.clone()).filter(|n| !n.is_empty());
+            cache.record_contact(ids, name).await
+        }
+        Event::PushNameUpdate(update) if !update.new_push_name.is_empty() => {
+            cache.record_push_name(update.jid.to_non_ad().to_string(), update.new_push_name.clone()).await
         }
         Event::Messages(batch) if !batch.hook_committed => {
             cache.ingest(batch.iter().flat_map(inbound).collect()).await
@@ -389,8 +417,16 @@ pub(crate) async fn persist_history(
     if let Some(history) = lazy.get() {
         let mut chats = Vec::new();
         let mut rows = Vec::new();
+        let mut aliases = Vec::new();
+        let mut shown = Vec::new();
         for conversation in &history.conversations {
             let chat = &conversation.id;
+            for alias in [&conversation.pn_jid, &conversation.lid_jid].into_iter().flatten() {
+                aliases.push((chat.clone(), alias.clone()));
+            }
+            if let Some(name) = conversation.display_name.clone().filter(|n| !n.is_empty()) {
+                shown.push((chat.clone(), name));
+            }
             chats.push(Chat {
                 id: chat.clone(),
                 name: conversation
@@ -439,8 +475,9 @@ pub(crate) async fn persist_history(
             .pushnames
             .iter()
             .filter_map(|n| Some((n.id.clone()?, n.pushname.clone()?)))
+            .chain(shown)
             .collect();
-        cache.ingest_history(rows, chats, names).await
+        cache.ingest_history(rows, chats, names, aliases).await
     } else {
         Err("history")
     }

@@ -65,4 +65,17 @@ final class AIChunkerTests: XCTestCase {
     func testRemovedItemsAreNeverChunked() {
         XCTAssertTrue(AIChunker.chunks([aiItem(1, text: "", removed: true)], generation: 1) { _ in true }.isEmpty)
     }
+
+    func testEditedMessageKeepsItsPlaceInConversation() {
+        let edited = AIIndexItem(
+            sequence: 10, identity: MessageArchiveIdentity(service: "telegram", accountID: "acc", conversationID: "c", messageID: "2"),
+            scope: .conversation(service: "telegram", accountID: "acc", conversationID: "c"), author: nil, isOutgoing: false,
+            date: Date(timeIntervalSince1970: 1_002), title: "", text: "middle", removed: false)
+        let chunks = AIChunker.chunks([aiItem(1, text: "start"), aiItem(3, text: "end"), edited], generation: 1) { _ in true }
+        XCTAssertEqual(chunks.count, 1)
+        let text = chunks[0].text
+        let start = text.range(of: "start")!.lowerBound, middle = text.range(of: "middle")!.lowerBound,
+            end = text.range(of: "end")!.lowerBound
+        XCTAssertTrue(start < middle && middle < end)
+    }
 }

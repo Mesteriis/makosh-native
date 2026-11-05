@@ -49,7 +49,7 @@ public struct AIClient: AIServing {
                         "messages": turns.map { ["role": $0.author.rawValue, "content": $0.text] },
                     ])
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                    let (bytes, response) = try await session.bytes(for: request)
+                    let (bytes, response) = try await session.bytes(for: request, delegate: AIRedirectRefusal.shared)
                     try Self.check(response)
                     var parser = AIServerSentEvents()
                     // An unparsable line is only an error when more follows; as the
@@ -165,7 +165,7 @@ public struct AIClient: AIServing {
 
     private func load(_ request: URLRequest, limit: Int) async throws -> Data {
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: AIRedirectRefusal.shared)
             try Self.check(response)
             guard data.count <= limit else { throw AIFailure.malformedResponse }
             return data
@@ -191,4 +191,14 @@ public struct AIClient: AIServing {
         if error is CancellationError || (error as? URLError)?.code == .cancelled { return .cancelled }
         return .network
     }
+}
+
+/// The endpoint was validated as HTTPS (or loopback HTTP); a redirect could
+/// carry the prompt and retrieved context elsewhere, so none is followed and
+/// the redirect status surfaces as a server error.
+final class AIRedirectRefusal: NSObject, URLSessionTaskDelegate, Sendable {
+    static let shared = AIRedirectRefusal()
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest
+    ) async -> URLRequest? { nil }
 }

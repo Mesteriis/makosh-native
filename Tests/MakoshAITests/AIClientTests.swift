@@ -7,6 +7,7 @@ final class AIStubProtocol: URLProtocol, @unchecked Sendable {
         let status: Int
         let chunks: [Data]
         let fail: Bool
+        var redirect: URL? = nil
     }
     nonisolated(unsafe) static var reply = Reply(status: 200, chunks: [], fail: false)
     nonisolated(unsafe) static var requests: [URLRequest] = []
@@ -29,6 +30,17 @@ final class AIStubProtocol: URLProtocol, @unchecked Sendable {
             Self.bodies.append(request.httpBody ?? Data())
         }
         let reply = Self.reply
+        if let target = reply.redirect, request.url?.host != target.host {
+            var next = request
+            next.url = target
+            let redirect = HTTPURLResponse(
+                url: request.url!, statusCode: 307, httpVersion: "HTTP/1.1", headerFields: ["Location": target.absoluteString])!
+            client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: redirect)
+            // A refused redirect completes with the redirect response itself.
+            client?.urlProtocol(self, didReceive: redirect, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         client?.urlProtocol(
             self, didReceive: HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: nil)!,
             cacheStoragePolicy: .notAllowed)
@@ -181,5 +193,18 @@ final class AIClientTests: XCTestCase {
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: AIStubProtocol.bodies[0]) as? [String: Any])
         XCTAssertEqual(body["voice"] as? String, "alloy")
         XCTAssertEqual(body["response_format"] as? String, "mp3")
+    }
+
+    func testRedirectToAnotherOriginIsRefused() async throws {
+        AIStubProtocol.reply = .init(
+            status: 200, chunks: [Data("data: [DONE]\n".utf8)], fail: false,
+            redirect: URL(string: "http://evil.example/v1/chat/completions")!)
+        let (_, error) = await collect(chat())
+        XCTAssertNotNil(error)
+        do {
+            _ = try await client.models(connection: connection, token: "sk-1")
+            XCTFail("redirected request accepted")
+        } catch {}
+        XCTAssertFalse(AIStubProtocol.requests.contains { $0.url?.host == "evil.example" })
     }
 }

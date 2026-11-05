@@ -19,7 +19,8 @@ enum AIChunker {
         let admitted = latest.filter { !$0.removed && !$0.text.isEmpty && admits($0) }
         let byScope = Dictionary(grouping: admitted, by: \.scope)
         for scope in byScope.keys.sorted(by: { "\($0)" < "\($1)" }) {
-            let group = byScope[scope, default: []].sorted { $0.sequence < $1.sequence }
+            // Conversation order, so an edited message keeps its neighbours.
+            let group = byScope[scope, default: []].sorted { ($0.date, $0.sequence) < ($1.date, $1.sequence) }
             let made: [AIChunk]
             if case .mailAccount = scope {
                 made = group.flatMap { letter($0, generation: generation) }

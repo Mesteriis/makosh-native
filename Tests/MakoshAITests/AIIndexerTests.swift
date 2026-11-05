@@ -298,4 +298,66 @@ final class AIIndexerTests: XCTestCase {
         XCTAssertEqual(status.failure, .roleUnassigned(.embeddings))
         XCTAssertTrue(service.embedded.isEmpty)
     }
+
+    private func removal(_ sequence: Int64, of messageID: String) -> AIIndexItem {
+        AIIndexItem(
+            sequence: sequence,
+            identity: MessageArchiveIdentity(service: "telegram", accountID: "acc", conversationID: "c", messageID: messageID),
+            scope: chat, author: nil, isOutgoing: false, date: Date(), title: "", text: "", removed: true)
+    }
+
+    func testDeletionInSamePassIsNeverEmbedded() async throws {
+        await access.setScope(chat, enabled: true)
+        let indexer = indexer()
+        _ = try await indexer.runOnce()
+        await source.add([aiItem(1, text: "sent by mistake"), removal(2, of: "1")])
+        _ = try await indexer.runOnce()
+        XCTAssertFalse(embeddedText().contains("sent by mistake"))
+        let texts = try await indexedTexts()
+        XCTAssertTrue(texts.isEmpty)
+    }
+
+    func testUnchangedNewVersionIsNotReembedded() async throws {
+        await source.add([aiItem(1, text: "same words")])
+        await access.setScope(chat, enabled: true)
+        let indexer = indexer()
+        _ = try await indexer.runOnce()
+        let calls = service.embedded.count
+        // A read-state or flag change makes a new version with identical text.
+        await source.edit(messageID: "1", sequence: 2, text: "same words")
+        _ = try await indexer.runOnce()
+        XCTAssertEqual(service.embedded.count, calls)
+        let texts = try await indexedTexts()
+        XCTAssertEqual(texts.count, 1)
+    }
+
+    func testOlderVersionReadLateIsNotTreatedAsEdit() async throws {
+        await source.add([aiItem(1, text: "first")])
+        await access.setScope(chat, enabled: true)
+        let indexer = indexer()
+        _ = try await indexer.runOnce()
+        await source.edit(messageID: "1", sequence: 5, text: "final")
+        _ = try await indexer.runOnce()
+        let calls = service.embedded.count
+        // A version committed late inside the re-read window, older than the indexed one.
+        await source.edit(messageID: "1", sequence: 3, text: "middle")
+        _ = try await indexer.runOnce()
+        XCTAssertEqual(service.embedded.count, calls)
+        let texts = try await indexedTexts().joined()
+        XCTAssertTrue(texts.contains("final"))
+        XCTAssertFalse(texts.contains("middle"))
+    }
+
+    func testDeletionKeepsNeighboursIndexed() async throws {
+        await source.add([aiItem(1, text: "before it"), aiItem(2, text: "doomed"), aiItem(3, text: "after it")])
+        await access.setScope(chat, enabled: true)
+        let indexer = indexer()
+        _ = try await indexer.runOnce()
+        await source.add([removal(4, of: "2")])
+        _ = try await indexer.runOnce()
+        let texts = try await indexedTexts().joined()
+        XCTAssertFalse(texts.contains("doomed"))
+        XCTAssertTrue(texts.contains("before it"))
+        XCTAssertTrue(texts.contains("after it"))
+    }
 }

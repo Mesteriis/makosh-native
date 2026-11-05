@@ -19,6 +19,8 @@ python3 scripts/prepare-rlottie.py
 python3 scripts/prepare-vpx.py
 python3 scripts/prepare-telegram-voip.py
 python3 scripts/prepare-whatsapp.py --test
+# Process-lease tests load this pinned libpq in a separate process.
+python3 scripts/prepare-postgres-client.py
 python3 scripts/test-whatsapp-adaptation.py
 python3 scripts/test-whatsapp-opus.py
 python3 scripts/test-whatsapp-qa.py

@@ -188,6 +188,7 @@ public actor AIIndexer {
         // New journal entries, re-reading a window below each cursor.
         var items: [AIIndexItem] = []
         var edited = Set<AIAccessScope>()
+        var removedAt: [MessageArchiveIdentity: Int64] = [:]
         for source in sources {
             let cursor = state.cursors[source.name, default: 0]
             var seen = Set(state.recent[source.name, default: []])
@@ -196,13 +197,19 @@ public actor AIIndexer {
                 let page = try await source.items(after: after, limit: Self.pageSize)
                 for item in page where seen.insert(item.sequence).inserted {
                     if item.removed {
+                        removedAt[item.identity] = max(removedAt[item.identity] ?? item.sequence, item.sequence)
+                        // Its windows also held neighbours: rebuild them from the current state.
+                        if try await vectors.hasMessage(item.identity) { edited.insert(item.scope) }
                         try await vectors.delete(message: item.identity)
-                    } else if try await vectors.hasMessage(item.identity) {
+                        continue
+                    }
+                    switch try await vectors.indexedVersion(of: item) {
+                    case .unknown: items.append(item)
+                    case .current: continue
+                    case .outdated:
                         // An edit: drop chunks with the old text and rebuild the conversation from its current state.
                         try await vectors.delete(message: item.identity)
                         edited.insert(item.scope)
-                    } else {
-                        items.append(item)
                     }
                 }
                 highest = max(highest, page.last?.sequence ?? highest)
@@ -212,6 +219,8 @@ public actor AIIndexer {
             state.cursors[source.name] = highest
             state.recent[source.name] = seen.filter { $0 > highest - Self.overlap }.sorted()
         }
+        // A message deleted later in the same pass is never sent to the provider.
+        items.removeAll { item in removedAt[item.identity].map { item.sequence < $0 } ?? false }
         for scope in edited.intersection(enabled) where !state.backfill.contains(where: { $0.scope == scope }) {
             state.backfill.append(.init(scope: scope))
         }
@@ -261,6 +270,10 @@ public actor AIIndexer {
                 try await vectors.insert(kept.map { ($0.0, $0.1) }, generation: generation)
                 if pace > .zero { try await Task.sleep(for: pace) }
             }
+        }
+        if destination.generation != nil {
+            let latest = Dictionary(grouping: admitted, by: \.identity).compactMap { $0.value.max { $0.sequence < $1.sequence } }
+            try await vectors.recordIndexed(latest)
         }
         if state.building != nil { state.building = destination } else if state.ready != nil { state.ready = destination }
 

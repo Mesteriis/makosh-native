@@ -33,6 +33,10 @@ public struct AIChunk: Codable, Sendable, Equatable {
     }
 }
 
+public enum AIIndexedVersion: Sendable, Equatable {
+    case unknown, current, outdated
+}
+
 public struct AIChunkMatch: Sendable, Equatable {
     public let chunk: AIChunk
     public let distance: Double
@@ -88,6 +92,11 @@ public actor AIVectorStore {
             try db.query("CREATE INDEX IF NOT EXISTS ai_chunks_scope ON \(db.prefix)ai_chunks(scope_token)")
             try db.query("CREATE INDEX IF NOT EXISTS ai_chunks_authors ON \(db.prefix)ai_chunks USING gin(author_tokens)")
             try db.query("CREATE INDEX IF NOT EXISTS ai_chunks_messages ON \(db.prefix)ai_chunks USING gin(message_tokens)")
+            // The newest version of each message the index reflects, as a keyed digest of its indexed content.
+            try db.query(
+                "CREATE TABLE IF NOT EXISTS \(db.prefix)ai_index_messages(message_token TEXT PRIMARY KEY,scope_token TEXT NOT NULL,sequence BIGINT NOT NULL,digest TEXT NOT NULL)"
+            )
+            try db.query("CREATE INDEX IF NOT EXISTS ai_index_messages_scope ON \(db.prefix)ai_index_messages(scope_token)")
         }
         prepared = true
         return true
@@ -169,7 +178,11 @@ public actor AIVectorStore {
 
     public func delete(scope: AIAccessScope) throws {
         let db = try preparedDatabase()
-        try db.query("DELETE FROM \(db.prefix)ai_chunks WHERE scope_token=$1", [try scopeToken(scope, db: db)])
+        let token = try scopeToken(scope, db: db)
+        try db.transaction {
+            try db.query("DELETE FROM \(db.prefix)ai_chunks WHERE scope_token=$1", [token])
+            try db.query("DELETE FROM \(db.prefix)ai_index_messages WHERE scope_token=$1", [token])
+        }
     }
 
     public func delete(author: ServiceIdentity) throws {
@@ -187,8 +200,42 @@ public actor AIVectorStore {
 
     public func delete(message: MessageArchiveIdentity) throws {
         let db = try preparedDatabase()
-        try db.query(
-            "DELETE FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[]", [Self.array([try messageToken(message, db: db)])])
+        let token = try messageToken(message, db: db)
+        try db.transaction {
+            try db.query("DELETE FROM \(db.prefix)ai_chunks WHERE message_tokens && $1::text[]", [Self.array([token])])
+            try db.query("DELETE FROM \(db.prefix)ai_index_messages WHERE message_token=$1", [token])
+        }
+    }
+
+    /// Whether a journal version still needs indexing: nil for a message the
+    /// index has not seen, otherwise the stored version is compared so an
+    /// older or content-identical version (a read or flag change) is skipped.
+    public func indexedVersion(of item: AIIndexItem) throws -> AIIndexedVersion {
+        let db = try preparedDatabase()
+        guard
+            let row = try db.query(
+                "SELECT sequence,digest FROM \(db.prefix)ai_index_messages WHERE message_token=$1",
+                [try messageToken(item.identity, db: db)]
+            ).first, let sequence = Int64(row[0])
+        else { return .unknown }
+        if try sequence >= item.sequence || row[1] == digest(item, db: db) { return .current }
+        return .outdated
+    }
+
+    /// Records the versions just reflected in the index; a newer stored version is kept.
+    public func recordIndexed(_ items: [AIIndexItem]) throws {
+        guard !items.isEmpty else { return }
+        let db = try preparedDatabase()
+        try db.transaction {
+            for item in items {
+                try db.query(
+                    "INSERT INTO \(db.prefix)ai_index_messages AS m VALUES($1,$2,$3::bigint,$4) ON CONFLICT(message_token) DO UPDATE SET scope_token=excluded.scope_token,sequence=excluded.sequence,digest=excluded.digest WHERE m.sequence<excluded.sequence",
+                    [
+                        try messageToken(item.identity, db: db), try scopeToken(item.scope, db: db), String(item.sequence),
+                        try digest(item, db: db),
+                    ])
+            }
+        }
     }
 
     public func count(generation: Int64) throws -> Int {
@@ -253,6 +300,12 @@ public actor AIVectorStore {
     }
     private func authorToken(_ author: ServiceIdentity, db: AIPostgres) throws -> String {
         try db.token(["author", author.service, author.accountID, author.externalID])
+    }
+    private func digest(_ item: AIIndexItem, db: AIPostgres) throws -> String {
+        try db.token([
+            "content", item.title, item.text, item.removed ? "removed" : "", item.isOutgoing ? "outgoing" : "",
+            item.author.map { "\($0.service)|\($0.accountID)|\($0.externalID)" } ?? "",
+        ])
     }
     private func messageToken(_ message: MessageArchiveIdentity, db: AIPostgres) throws -> String {
         try db.token(["message", message.service, message.accountID, message.conversationID, message.messageID])

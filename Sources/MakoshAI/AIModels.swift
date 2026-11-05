@@ -61,14 +61,23 @@ public struct AIConversation: Codable, Equatable, Identifiable, Sendable {
     public var updatedAt: Date
     /// Whether questions in this conversation search permitted Makosh data.
     public var searchMyData: Bool
-    public init(id: UUID = UUID(), title: String, createdAt: Date, updatedAt: Date, searchMyData: Bool = true) {
+    /// The chat whose panel this conversation belongs to.
+    public var anchor: AIContextCard?
+    /// Sources sent with every question until the user removes them.
+    public var cards: [AIContextCard]
+    public init(
+        id: UUID = UUID(), title: String, createdAt: Date, updatedAt: Date, searchMyData: Bool = true, anchor: AIContextCard? = nil,
+        cards: [AIContextCard] = []
+    ) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.searchMyData = searchMyData
+        self.anchor = anchor
+        self.cards = cards
     }
-    private enum CodingKeys: String, CodingKey { case id, title, createdAt, updatedAt, searchMyData }
+    private enum CodingKeys: String, CodingKey { case id, title, createdAt, updatedAt, searchMyData, anchor, cards }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -76,6 +85,8 @@ public struct AIConversation: Codable, Equatable, Identifiable, Sendable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         searchMyData = try c.decodeIfPresent(Bool.self, forKey: .searchMyData) ?? true
+        anchor = try c.decodeIfPresent(AIContextCard.self, forKey: .anchor)
+        cards = try c.decodeIfPresent([AIContextCard].self, forKey: .cards) ?? []
     }
 }
 
@@ -114,9 +125,12 @@ public struct AIMessageVersion: Codable, Equatable, Identifiable, Sendable {
     public var image: AIImageReference?
     /// Makosh messages and letters the answer was given from.
     public var sources: [AISourceReference]
+    /// The attached cards this question was asked with or this answer was
+    /// given from; their text is never copied here.
+    public var context: [AIContextCard]
     public init(
         id: UUID = UUID(), text: String, state: AIMessageState, model: String?, createdAt: Date, image: AIImageReference? = nil,
-        sources: [AISourceReference] = []
+        sources: [AISourceReference] = [], context: [AIContextCard] = []
     ) {
         self.id = id
         self.text = text
@@ -125,8 +139,9 @@ public struct AIMessageVersion: Codable, Equatable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.image = image
         self.sources = sources
+        self.context = context
     }
-    private enum CodingKeys: String, CodingKey { case id, text, state, model, createdAt, image, sources }
+    private enum CodingKeys: String, CodingKey { case id, text, state, model, createdAt, image, sources, context }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -136,6 +151,7 @@ public struct AIMessageVersion: Codable, Equatable, Identifiable, Sendable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         image = try c.decodeIfPresent(AIImageReference.self, forKey: .image)
         sources = try c.decodeIfPresent([AISourceReference].self, forKey: .sources) ?? []
+        context = try c.decodeIfPresent([AIContextCard].self, forKey: .context) ?? []
     }
 }
 
@@ -184,4 +200,8 @@ public enum AIFailure: Error, Equatable, Sendable {
     /// The provider refused the request itself (400, 404, 422): its short,
     /// redacted explanation, so a wrong model name can be fixed in settings.
     case rejected(status: Int, reason: String)
+    /// The attached cards and history exceed the chat role's limit; nothing was sent.
+    case contextTooLarge(characters: Int, limit: Int)
+    /// An attached source cannot be sent (secret chat, forbidden contact, gone).
+    case contextUnavailable(String)
 }

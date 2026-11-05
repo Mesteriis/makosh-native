@@ -1,0 +1,39 @@
+import Foundation
+import MakoshCore
+import XCTest
+@testable import MakoshAI
+
+final class AIContextModelTests: XCTestCase {
+    func testLegacyConversationDecodesWithoutCards() throws {
+        let json = #"{"id":"5A0B5C46-0000-4000-8000-000000000001","title":"t","createdAt":0,"updatedAt":0}"#
+        let value = try JSONDecoder().decode(AIConversation.self, from: Data(json.utf8))
+        XCTAssertNil(value.anchor)
+        XCTAssertEqual(value.cards, [])
+        XCTAssertTrue(value.searchMyData)
+    }
+
+    func testLegacyVersionDecodesWithoutContext() throws {
+        let json = #"{"id":"5A0B5C46-0000-4000-8000-000000000002","text":"x","state":"complete","createdAt":0}"#
+        XCTAssertEqual(try JSONDecoder().decode(AIMessageVersion.self, from: Data(json.utf8)).context, [])
+    }
+
+    func testCardRoundTripsAndHasStableID() throws {
+        let card = AIContextCard.chat(service: "telegram", accountID: "1", chatID: "2", title: "Мария", range: .standard)
+        let again = try JSONDecoder().decode(AIContextCard.self, from: JSONEncoder().encode(card))
+        XCTAssertEqual(again, card)
+        XCTAssertEqual(card.id, "chat:telegram:1:2")
+        XCTAssertEqual(AIContextCard.letter(id: "L", title: "Тема").id, "letter:L")
+        let range = AIContextCard.chat(
+            service: "telegram", accountID: "1", chatID: "2", title: "Мария", range: .between(Date(timeIntervalSince1970: 0), .now))
+        XCTAssertEqual(range.id, card.id, "changing the period keeps the same card")
+    }
+
+    func testConversationWithCardsRoundTrips() throws {
+        let card = AIContextCard.chat(service: "whatsapp", accountID: "a", chatID: "c", title: "Чат", range: .lastDays(7))
+        var conversation = AIConversation(title: "t", createdAt: .now, updatedAt: .now)
+        conversation.anchor = card
+        conversation.cards = [card, .contact(id: UUID(), title: "Иван")]
+        let again = try JSONDecoder().decode(AIConversation.self, from: JSONEncoder().encode(conversation))
+        XCTAssertEqual(again, conversation)
+    }
+}

@@ -152,6 +152,9 @@ extension AIFailure {
         case .busy: "Дождитесь окончания текущего ответа или остановите его."
         case .vectorUnavailable: "Поиск по данным недоступен: в PostgreSQL нет расширения pgvector."
         case .dimensionsTooLarge: "Модель эмбеддингов даёт векторы длиннее 2000 — выберите другую модель поиска."
+        case .contextTooLarge(let characters, let limit):
+            "Слишком много контекста: \(characters) символов при лимите \(limit). Сузьте период или уберите карточку."
+        case .contextUnavailable(let reason): reason
         }
     }
 }

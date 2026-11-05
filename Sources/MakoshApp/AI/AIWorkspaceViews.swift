@@ -7,6 +7,8 @@ import SwiftUI
 struct AIConversationListView: View {
     @ObservedObject var model: AIWorkspaceModel
     var synthetic = false
+    /// Opens the chat a conversation belongs to.
+    var openChat: (AIContextCard) -> Void = { _ in }
     @State private var pendingDeletion: AIConversation?
 
     var body: some View {
@@ -20,11 +22,28 @@ struct AIConversationListView: View {
                     Image(systemName: "square.and.pencil")
                 }.help("Новая беседа").disabled(!model.ready).accessibilityIdentifier("ai.newConversation")
             }
+            Picker("Беседы", selection: $model.filter) {
+                Text("Все").tag(AIConversationFilter.all)
+                Text("Без привязки").tag(AIConversationFilter.unanchored)
+                Text("По чатам").tag(AIConversationFilter.anchored)
+            }
+            .pickerStyle(.segmented).labelsHidden().controlSize(.small).accessibilityIdentifier("ai.conversations.filter")
             List(selection: Binding(get: { model.selectedConversationID }, set: { id in Task { await model.select(id) } })) {
-                ForEach(model.conversations) { conversation in
+                ForEach(model.visibleConversations) { conversation in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(conversation.title.isEmpty ? "Новая беседа" : conversation.title).lineLimit(1)
-                        Text(conversation.updatedAt, style: .relative).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            if let anchor = conversation.anchor {
+                                Button {
+                                    openChat(anchor)
+                                } label: {
+                                    Label(anchor.title, systemImage: "bubble.left.and.bubble.right").lineLimit(1)
+                                }
+                                .buttonStyle(.borderless).help("Открыть чат")
+                                .accessibilityIdentifier("ai.conversation.anchor.\(conversation.id.uuidString)")
+                            }
+                            Text(conversation.updatedAt, style: .relative)
+                        }.font(.caption).foregroundStyle(.secondary)
                     }
                     .tag(conversation.id)
                     .contextMenu { Button("Удалить беседу…", role: .destructive) { pendingDeletion = conversation } }

@@ -29,7 +29,8 @@ actor AIArchiveAccessProvider: AIAccessProvider {
     func isEnabled(_ scope: AIAccessScope) throws -> Bool { try store.aiAccessEnabled(scope) }
 }
 
-private let aiAccessExplanation = "Сообщения отсюда могут уходить провайдеру модели ИИ для поиска и ответов."
+private let aiAccessExplanation =
+    "Открывает переписку для фонового поиска ИИ: сообщения отсюда могут уходить провайдеру модели. Явно прикреплённый в панели ИИ чат отправляется и без этого флага."
 
 /// «Доступно для ИИ» for one chat or mailbox, as a form toggle.
 struct AIAccessToggle: View {

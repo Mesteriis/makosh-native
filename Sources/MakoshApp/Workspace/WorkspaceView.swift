@@ -386,7 +386,7 @@ struct WorkspaceView: View {
         } else if destination == .whatsapp {
             WhatsAppSidebarView(model: whatsapp, navigation: whatsappNavigation).frame(minWidth: 300, idealWidth: 350, maxWidth: 440)
         } else if destination == .ai {
-            AIConversationListView(model: ai.workspace).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
+            AIConversationListView(model: ai.workspace, openChat: openAICard).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 Label(destination?.rawValue ?? "", systemImage: destination?.symbol ?? "square").font(.title2.bold())

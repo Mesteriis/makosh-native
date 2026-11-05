@@ -2225,3 +2225,13 @@ The pinned engine's public AccountViewTracker/TelegramEngine/ChatListFilterPredi
 surfaces were source-confirmed after XERJ searches. No outer TelegramSwift UI code
 was copied; its GPLv2-only UI remains excluded. Current design QA is in the root
 report, with the earlier mail report retained at design/mail-reading-qa.md.
+
+## Панель ИИ в чате Telegram — 2026-11-05
+
+Собственный дизайн Макоша (`docs/superpowers/specs/2026-11-05-ai-chat-panel-design.md`):
+у TelegramSwift такой панели нет. Кнопка ✦ в шапке чата открывает правую колонку
+300–440 pt на месте досье (одна правая колонка; кнопка досье закрывает ИИ). В
+панели — беседы этого чата, ряд карточек контекста над полем ввода (период,
+счётчики «скрыто N», крестик), «+» с поиском и «@» в поле ввода. Секретные чаты —
+без кнопки. Отличия от референса не применимы; визуальная сверка — в
+`docs/development-status.md`.

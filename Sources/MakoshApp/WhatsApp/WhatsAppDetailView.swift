@@ -237,6 +237,7 @@ struct WhatsAppDetailView: View {
                         .frame(width: 264).background { WorkspaceBackdrop(intensity: 0.55) }
                     }
                 }
+                .modifier(WhatsAppReadMarker(model: model))
             } else {
                 ContentUnavailableView(
                     "Выберите чат", systemImage: "bubble.left.and.bubble.right",

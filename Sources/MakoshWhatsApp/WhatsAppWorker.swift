@@ -83,6 +83,10 @@ public protocol WhatsAppServing: Sendable {
     async throws
   func notificationRule(accountID: UUID, chat: String) async throws -> WhatsAppNotificationRule
   func claimNotifications(accountID: UUID) async throws -> [WhatsAppNotificationEvent]
+  /// Sends read receipts for the chat's unread messages. Idempotent, so it
+  /// leaves no durable outgoing record; the engine honours the account's
+  /// read-receipt privacy setting.
+  func markRead(accountID: UUID, chat: String) async throws
   func notificationIsCurrent(_ event: WhatsAppNotificationEvent) async throws -> Bool
   func search(
     accountID: UUID, chat: String, query: String, filter: WhatsAppHistoryFilter,

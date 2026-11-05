@@ -5,16 +5,24 @@ extension WhatsAppServing {
     guard before == nil else { return .init(values: [], next: nil) }
     return try await .init(values: outgoing(accountID: accountID), next: nil)
   }
-  public func info(accountID: UUID, chat: String, operation: WhatsAppAction.Operation) async throws
+  public func info(
+    accountID: UUID, chat: String, operation: WhatsAppAction.Operation
+  ) async throws
     -> WhatsAppPeerInfo
   { throw WhatsAppFailure.unavailable }
-  public func savedNotificationRule(accountID: UUID?, chat: String?) async throws
+  public func savedNotificationRule(
+    accountID: UUID?, chat: String?
+  ) async throws
     -> WhatsAppNotificationRule
   { throw WhatsAppFailure.unavailable }
-  public func setNotificationRule(_ rule: WhatsAppNotificationRule, accountID: UUID?, chat: String?)
+  public func setNotificationRule(
+    _ rule: WhatsAppNotificationRule, accountID: UUID?, chat: String?
+  )
     async throws
   { throw WhatsAppFailure.unavailable }
-  public func notificationRule(accountID: UUID, chat: String) async throws
+  public func notificationRule(
+    accountID: UUID, chat: String
+  ) async throws
     -> WhatsAppNotificationRule
   { throw WhatsAppFailure.unavailable }
   public func claimNotifications(accountID: UUID) async throws -> [WhatsAppNotificationEvent] {
@@ -23,13 +31,22 @@ extension WhatsAppServing {
   public func notificationIsCurrent(_ event: WhatsAppNotificationEvent) async throws -> Bool {
     false
   }
+  public func markRead(accountID: UUID, chat: String) async throws { throw WhatsAppFailure.unavailable }
 }
 extension WhatsAppWorker {
-  public func info(accountID: UUID, chat: String, operation: WhatsAppAction.Operation) async throws
+  public func markRead(accountID: UUID, chat: String) async throws {
+    guard !synthetic, let session = sessions[accountID] else { throw WhatsAppFailure.closed }
+    let generation = revisions[accountID]
+    guard try await session.status().linked, revisions[accountID] == generation else { throw WhatsAppFailure.closed }
+    _ = try await session.perform(chat: chat, action: WhatsAppAction(.read))
+  }
+  public func info(
+    accountID: UUID, chat: String, operation: WhatsAppAction.Operation
+  ) async throws
     -> WhatsAppPeerInfo
   {
     #if DEBUG
-    if let value=try await qaInfo(accountID:accountID,chat:chat,operation:operation) {return value}
+    if let value = try await qaInfo(accountID: accountID, chat: chat, operation: operation) { return value }
     #endif
     guard [.profile, .userInfo, .privacy, .groupInfo, .groupLink, .avatar].contains(operation),
       let session = sessions[accountID], !synthetic
@@ -40,19 +57,25 @@ extension WhatsAppWorker {
     guard let value = result.info else { throw WhatsAppFailure.protocolFailure }
     return value
   }
-  public func savedNotificationRule(accountID: UUID?, chat: String?) async throws
+  public func savedNotificationRule(
+    accountID: UUID?, chat: String?
+  ) async throws
     -> WhatsAppNotificationRule
   {
     guard let repository else { throw WhatsAppFailure.storage }
     return try await repository.savedNotificationRule(accountID: accountID, chat: chat)
   }
-  public func setNotificationRule(_ rule: WhatsAppNotificationRule, accountID: UUID?, chat: String?)
+  public func setNotificationRule(
+    _ rule: WhatsAppNotificationRule, accountID: UUID?, chat: String?
+  )
     async throws
   {
     guard let repository else { throw WhatsAppFailure.storage }
     try await repository.setNotificationRule(rule, accountID: accountID, chat: chat)
   }
-  public func notificationRule(accountID: UUID, chat: String) async throws
+  public func notificationRule(
+    accountID: UUID, chat: String
+  ) async throws
     -> WhatsAppNotificationRule
   {
     guard let repository else { throw WhatsAppFailure.storage }

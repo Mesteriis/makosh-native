@@ -339,6 +339,35 @@ import SwiftUI
     else { return nil }
     return CIContext().pngRepresentation(of: image, format: .RGBA8, colorSpace: space)
   }
+  /// The latest incoming message already marked read, per account and chat,
+  /// and when a failed mark may be retried.
+  private var readMarks: [String: String] = [:]
+  private var readRetryAfter: [String: Date] = [:]
+
+  /// Marks the open chat read while the window shows it, as WhatsApp does:
+  /// once per unread state, again when a new incoming message arrives. The
+  /// engine applies the account's read-receipt privacy setting.
+  package func markVisibleRead(windowIsActive: Bool) async {
+    guard windowIsActive, loaded, !isSynthetic, let account = selectedAccountID, let chat = selectedChatID, status.linked
+    else { return }
+    let latest = messages.first { !$0.outgoing }?.id
+    let unread = chats.first { $0.id == chat }?.unread ?? 0
+    let key = account.uuidString + ":" + chat
+    guard unread > 0 || (latest != nil && readMarks[key] != latest) else { return }
+    if let retry = readRetryAfter[key], retry > Date() { return }
+    let generation = accountGeneration, selection = chatGeneration
+    do {
+      try await worker.markRead(accountID: account, chat: chat)
+      guard accountGeneration == generation, chatGeneration == selection else { return }
+      readMarks[key] = latest
+      readRetryAfter[key] = nil
+      if let index = chats.firstIndex(where: { $0.id == chat }) { chats[index].unread = 0 }
+    } catch {
+      // Quiet: the next visible change retries, not every refresh.
+      if accountGeneration == generation { readRetryAfter[key] = Date().addingTimeInterval(10) }
+    }
+  }
+
   private func report(_ error: Error) {
     self.error = (error as? WhatsAppFailure ?? .storage).localizedDescription
   }

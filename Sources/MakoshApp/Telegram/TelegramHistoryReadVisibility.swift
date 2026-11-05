@@ -19,9 +19,11 @@ struct TelegramHistoryReadRow: View {
     let context: TelegramHistoryReadContext?
     var body: some View {
         GeometryReader { geometry in
-            Color.clear.preference(key: HistoryReadFrames.self, value: context.map {
-                [HistoryReadFrame(id: id, context: $0, rect: geometry.frame(in: .global))]
-            } ?? [])
+            Color.clear.preference(
+                key: HistoryReadFrames.self,
+                value: context.map {
+                    [HistoryReadFrame(id: id, context: $0, rect: geometry.frame(in: .global))]
+                } ?? [])
         }.allowsHitTesting(false).accessibilityHidden(true)
     }
 }
@@ -38,25 +40,48 @@ struct TelegramHistoryReadViewport: ViewModifier {
     func body(content: Content) -> some View {
         content.background {
             GeometryReader { geometry in
-                Color.clear.preference(key: HistoryReadFrames.self, value: context.map {
-                    [HistoryReadFrame(id: nil, context: $0, rect: geometry.frame(in: .global))]
-                } ?? [])
+                Color.clear.preference(
+                    key: HistoryReadFrames.self,
+                    value: context.map {
+                        [HistoryReadFrame(id: nil, context: $0, rect: geometry.frame(in: .global))]
+                    } ?? [])
             }.allowsHitTesting(false).accessibilityHidden(true)
         }.background {
             HistoryReadWindowGate(publicationID: generation) { check in
-                guard mounted else { eligibility = nil; return }
-                eligibility = check; schedule()
+                guard mounted else {
+                    eligibility = nil
+                    return
+                }
+                eligibility = check
+                schedule()
             }
-                .allowsHitTesting(false).accessibilityHidden(true)
+            .allowsHitTesting(false).accessibilityHidden(true)
         }
-        .onPreferenceChange(HistoryReadFrames.self) { frames = $0; schedule() }
-        .onChange(of: context) { _, _ in model.cancelAutomaticDownloads(); generation = UUID(); schedule() }
-        .onAppear { generation = UUID(); mounted = true; schedule() }
+        .onPreferenceChange(HistoryReadFrames.self) {
+            frames = $0
+            schedule()
+        }
+        .onChange(of: context) { _, _ in
+            model.cancelAutomaticDownloads()
+            generation = UUID()
+            schedule()
+        }
+        .onAppear {
+            generation = UUID()
+            mounted = true
+            schedule()
+        }
         .onDisappear {
-            mounted = false; eligibility = nil; generation = UUID(); frames = []
-            evaluation?.cancel(); evaluation = nil
+            mounted = false
+            eligibility = nil
+            generation = UUID()
+            frames = []
+            evaluation?.cancel()
+            evaluation = nil
             if let context { _ = model.markVisibleHistoryRead(messageIDs: [], context: context, windowIsActive: false) }
-            if let context { model.setVisibleAutomaticDownloads(messageIDs: [], context: context, windowIsActive: false, eligibility: { false }) }
+            if let context {
+                model.setVisibleAutomaticDownloads(messageIDs: [], context: context, windowIsActive: false, eligibility: { false })
+            }
         }
     }
     private func schedule() {
@@ -69,22 +94,29 @@ struct TelegramHistoryReadViewport: ViewModifier {
             let viewport = matching.first { $0.id == nil }?.rect
             let ids: Set<String>
             if let viewport {
-                ids = Set(matching.compactMap { frame in
-                    guard let id = frame.id,
-                          TelegramHistoryReadVisibility.isVisible(row: frame.rect, viewport: viewport) else { return nil }
-                    return id
-                })
-            } else { ids = [] }
+                ids = Set(
+                    matching.compactMap { frame in
+                        guard let id = frame.id,
+                            TelegramHistoryReadVisibility.isVisible(row: frame.rect, viewport: viewport)
+                        else { return nil }
+                        return id
+                    })
+            } else {
+                ids = []
+            }
             // Notifications trigger reevaluation; only the current native state
             // authorizes it. No await may separate this check and the model call.
             let active = eligibility?() == true
-            model.setVisibleAutomaticDownloads(messageIDs: ids, context: context, windowIsActive: active, eligibility: eligibility ?? { false })
+            model.setVisibleAutomaticDownloads(
+                messageIDs: ids, context: context, windowIsActive: active, eligibility: eligibility ?? { false })
             _ = model.markVisibleHistoryRead(messageIDs: active ? ids : [], context: context, windowIsActive: active)
         }
     }
 }
 
-private struct HistoryReadWindowGate: NSViewRepresentable {
+/// Reports whether this view's window may count as "the user is looking":
+/// key, visible, not miniaturised, app active. Shared by Telegram and WhatsApp read marking.
+struct HistoryReadWindowGate: NSViewRepresentable {
     let publicationID: UUID
     let changed: @MainActor (@escaping @MainActor () -> Bool) -> Void
     func makeNSView(context: Context) -> GateView { GateView() }
@@ -105,14 +137,16 @@ private struct HistoryReadWindowGate: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            stopObservers(); generation = UUID(); lastValue = nil
+            stopObservers()
+            generation = UUID()
+            lastValue = nil
             if window != nil {
                 let names: [Notification.Name] = [
                     NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
                     NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                     NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
                     NSWindow.didChangeOcclusionStateNotification, NSWindow.willBeginSheetNotification,
-                    NSWindow.didEndSheetNotification, NSWindow.willCloseNotification
+                    NSWindow.didEndSheetNotification, NSWindow.willCloseNotification,
                 ]
                 observers = names.map { name in
                     NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -122,9 +156,18 @@ private struct HistoryReadWindowGate: NSViewRepresentable {
             }
             schedule()
         }
-        override func viewDidHide() { super.viewDidHide(); schedule() }
-        override func viewDidUnhide() { super.viewDidUnhide(); schedule() }
-        override func layout() { super.layout(); schedule() }
+        override func viewDidHide() {
+            super.viewDidHide()
+            schedule()
+        }
+        override func viewDidUnhide() {
+            super.viewDidUnhide()
+            schedule()
+        }
+        override func layout() {
+            super.layout()
+            schedule()
+        }
         func schedule() {
             let token = generation
             Task { @MainActor [weak self] in
@@ -132,14 +175,15 @@ private struct HistoryReadWindowGate: NSViewRepresentable {
                 guard let self, token == self.generation else { return }
                 let value = self.isEligible()
                 guard self.lastValue != value else { return }
-                self.lastValue = value; self.publishEligibility()
+                self.lastValue = value
+                self.publishEligibility()
             }
         }
         private func isEligible() -> Bool {
             guard !stopped, let window else { return false }
-            return NSApp.isActive && window.isKeyWindow && window.isVisible && !window.isMiniaturized &&
-                window.occlusionState.contains(.visible) && window.attachedSheet == nil && NSApp.modalWindow == nil &&
-                !isHiddenOrHasHiddenAncestor && visibleRect.width > 0 && visibleRect.height > 0
+            return NSApp.isActive && window.isKeyWindow && window.isVisible && !window.isMiniaturized
+                && window.occlusionState.contains(.visible) && window.attachedSheet == nil && NSApp.modalWindow == nil
+                && !isHiddenOrHasHiddenAncestor && visibleRect.width > 0 && visibleRect.height > 0
         }
         func setPublicationID(_ id: UUID) {
             guard publicationID != id else { return }
@@ -160,7 +204,14 @@ private struct HistoryReadWindowGate: NSViewRepresentable {
             for observer in observers { NotificationCenter.default.removeObserver(observer) }
             observers = []
         }
-        func stop() { stopped = true; generation = UUID(); stopObservers(); changed = nil; publicationID = nil; lastValue = nil }
+        func stop() {
+            stopped = true
+            generation = UUID()
+            stopObservers()
+            changed = nil
+            publicationID = nil
+            lastValue = nil
+        }
         isolated deinit { stopObservers() }
     }
 }

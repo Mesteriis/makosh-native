@@ -170,6 +170,42 @@ private actor DelayedRestoreService: WhatsAppServing {
         XCTAssertEqual(WhatsAppFailure.diagnostic(Private()), "Private")
     }
 
+    func testOpenChatInActiveWindowIsMarkedReadOnce() async throws {
+        let service = ReadRecordingService()
+        let model = WhatsAppWorkspaceModel(worker: service, polling: false)
+        await model.load(configuration: .init(connectionString: "synthetic stub"))
+        await model.selectChat("peer@lid")
+        await model.markVisibleRead(windowIsActive: true)
+        await model.markVisibleRead(windowIsActive: true)
+        let marks = await service.marks
+        XCTAssertEqual(marks, ["peer@lid"], "the same unread state is marked once")
+        XCTAssertEqual(model.chats.first?.unread, 0, "the badge clears without waiting for the next refresh")
+    }
+
+    func testInactiveWindowDoesNotMarkRead() async throws {
+        let service = ReadRecordingService()
+        let model = WhatsAppWorkspaceModel(worker: service, polling: false)
+        await model.load(configuration: .init(connectionString: "synthetic stub"))
+        await model.selectChat("peer@lid")
+        await model.markVisibleRead(windowIsActive: false)
+        let marks = await service.marks
+        XCTAssertTrue(marks.isEmpty)
+        XCTAssertEqual(model.chats.first?.unread, 3)
+    }
+
+    func testNewIncomingMessageIsMarkedAgain() async throws {
+        let service = ReadRecordingService()
+        let model = WhatsAppWorkspaceModel(worker: service, polling: false)
+        await model.load(configuration: .init(connectionString: "synthetic stub"))
+        await model.selectChat("peer@lid")
+        await model.markVisibleRead(windowIsActive: true)
+        await service.arrive()
+        await model.refresh()
+        await model.markVisibleRead(windowIsActive: true)
+        let marks = await service.marks
+        XCTAssertEqual(marks.count, 2)
+    }
+
     func testRememberedAccountsReconnectAndExplicitDisconnectForgets() async throws {
         let suite = "makosh.tests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -190,6 +226,32 @@ private actor DelayedRestoreService: WhatsAppServing {
         await model.disconnect()
         XCTAssertEqual(store.remembered("whatsapp"), [service.second.id.uuidString])
     }
+}
+
+/// One chat with unread incoming messages; records every read mark.
+private actor ReadRecordingService: WhatsAppServing {
+    let account = WhatsAppAccount(name: "Reader")
+    private(set) var marks: [String] = []
+    private var latest: Int64 = 3
+    func arrive() { latest += 1 }
+    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
+    func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
+    func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
+        var status = WhatsAppConnectionStatus()
+        status.state = "connected"
+        return .init(accountID: accountID, status: status, chats: [.init(id: "peer@lid", name: "Peer", unread: marks.isEmpty ? 3 : 0)])
+    }
+    func messages(accountID: UUID, chat: String, before: WhatsAppCursor?) -> [WhatsAppMessage] {
+        (1...latest).reversed().map { n in
+            .init(
+                chat: chat, id: String(n), stanza: String(n), sender: "peer", timestamp: n, outgoing: n == 2, text: String(n),
+                kind: "text", edited: false, deleted: false)
+        }
+    }
+    func markRead(accountID: UUID, chat: String) { marks.append(chat) }
+    func connect(accountID: UUID) {}
+    func disconnect(accountID: UUID) {}
+    func shutdown() {}
 }
 
 private actor ConnectRecordingService: WhatsAppServing {

@@ -55,9 +55,13 @@ import MakoshCore
         path = []
         isStreaming = false
         failure = nil
+        previews = [:]
+        previewFailures = [:]
         guard let id else { return }
         await refresh(id, token: token)
         if selection == token { isStreaming = await worker.isStreaming(conversationID: id) }
+        // Cards show what will be sent wherever the conversation is open.
+        if selection == token { await refreshPreviews(token: anchoring) }
     }
 
     package var selectedConversation: AIConversation? { conversations.first { $0.id == selectedConversationID } }
@@ -108,24 +112,27 @@ import MakoshCore
 
     package func add(_ card: AIContextCard) async {
         guard !cards.contains(where: { $0.id == card.id }) else { return }
-        await setCards(cards + [card])
+        await changeCards { worker, id in try await worker.addCard(card, conversationID: id) }
     }
 
-    package func remove(_ cardID: String) async { await setCards(cards.filter { $0.id != cardID }) }
+    package func remove(_ cardID: String) async {
+        await changeCards { worker, id in try await worker.removeCard(cardID, conversationID: id) }
+    }
 
     package func setRange(_ range: AIContextRange, for cardID: String) async {
-        await setCards(
-            cards.map { card in
-                guard card.id == cardID, case .chat(let service, let accountID, let chatID, let title, _) = card else { return card }
-                return .chat(service: service, accountID: accountID, chatID: chatID, title: title, range: range)
-            })
+        guard let card = cards.first(where: { $0.id == cardID }), case .chat(let service, let accountID, let chatID, let title, _) = card
+        else { return }
+        let changed = AIContextCard.chat(service: service, accountID: accountID, chatID: chatID, title: title, range: range)
+        await changeCards { worker, id in try await worker.addCard(changed, conversationID: id) }
     }
 
-    private func setCards(_ cards: [AIContextCard]) async {
+    /// Each change is applied by the worker to the stored list, so quick
+    /// changes from the panel and the AI section never overwrite each other.
+    private func changeCards(_ change: @Sendable (AIWorker, UUID) async throws -> Void) async {
         guard let id = selectedConversationID else { return }
         let token = anchoring
         do {
-            try await worker.setCards(cards, conversationID: id)
+            try await change(worker, id)
             await reload()
             await refreshPreviews(token: token)
         } catch { failure = error as? AIFailure ?? .storage }

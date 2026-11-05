@@ -78,12 +78,7 @@ struct AIConversationView: View {
     @State private var adding = false
 
     /// The "@word" being typed at the end of the draft.
-    private var mention: String? {
-        guard contextSearch != nil, let at = draft.lastIndex(of: "@") else { return nil }
-        if at != draft.startIndex, !draft[draft.index(before: at)].isWhitespace { return nil }
-        let query = draft[draft.index(after: at)...]
-        return query.contains(where: \.isNewline) ? nil : String(query)
-    }
+    private var mention: String? { contextSearch == nil ? nil : AIMention.query(in: draft) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -126,8 +121,9 @@ struct AIConversationView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Attached cards are always visible where the conversation is open: they are what gets sent.
+            AIContextCardsView(model: model, open: openCard).padding(.horizontal, -12)
             if let contextSearch {
-                AIContextCardsView(model: model, open: openCard).padding(.horizontal, -12)
                 if mention != nil {
                     AIContextSuggestionsList(search: contextSearch) { suggestion in attachMention(suggestion) }
                         .background(WorkspaceStyle.surface, in: .rect(cornerRadius: 8))
@@ -216,7 +212,7 @@ struct AIConversationView: View {
 
     /// Replaces the typed "@word" with the chosen source as a card.
     private func attachMention(_ suggestion: AIContextSuggestion) {
-        if let at = draft.lastIndex(of: "@") { draft = String(draft[..<at]) }
+        draft = AIMention.removing(from: draft)
         Task { await model.add(suggestion.card) }
     }
 

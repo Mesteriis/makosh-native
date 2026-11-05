@@ -96,8 +96,9 @@ public actor AIWorker {
 
     /// A conversation of a chat's panel starts with that chat attached.
     public func createConversation(anchor: AIContextCard?) async throws -> AIConversation {
+        // A chat's panel sends only attached cards: no search of other permitted data.
         let conversation = AIConversation(
-            title: "", createdAt: now(), updatedAt: now(), anchor: anchor, cards: anchor.map { [$0] } ?? [])
+            title: "", createdAt: now(), updatedAt: now(), searchMyData: anchor == nil, anchor: anchor, cards: anchor.map { [$0] } ?? [])
         try await repository.save(conversation)
         return conversation
     }
@@ -105,12 +106,23 @@ public actor AIWorker {
     /// Reads attached cards; set once the services exist.
     public func attachContext(_ provider: any AIContextProvider) { contextProvider = provider }
 
-    public func setCards(_ cards: [AIContextCard], conversationID: UUID) async throws {
-        guard var conversation = try await repository.conversations().first(where: { $0.id == conversationID }) else {
-            throw AIFailure.invalidConfiguration
+    /// Attaches a card once; attaching it again replaces its period.
+    public func addCard(_ card: AIContextCard, conversationID: UUID) async throws {
+        try await mutate(conversationID) { conversation in
+            if let index = conversation.cards.firstIndex(where: { $0.id == card.id }) {
+                conversation.cards[index] = card
+            } else {
+                conversation.cards.append(card)
+            }
         }
-        conversation.cards = cards
-        try await repository.save(conversation)
+    }
+
+    public func removeCard(_ id: String, conversationID: UUID) async throws {
+        try await mutate(conversationID) { $0.cards.removeAll { $0.id == id } }
+    }
+
+    public func setCards(_ cards: [AIContextCard], conversationID: UUID) async throws {
+        try await mutate(conversationID) { $0.cards = cards }
     }
 
     /// All conversations, or those of one chat's panel (the period does not matter).
@@ -138,7 +150,14 @@ public actor AIWorker {
         guard !cards.isEmpty else { return [] }
         guard let provider = contextProvider else { throw AIFailure.contextUnavailable("Источники контекста ещё не готовы.") }
         var result: [AIContextMaterial] = []
-        for card in cards { result.append(try await provider.material(for: card)) }
+        for card in cards {
+            let material = try await provider.material(for: card)
+            // Nothing is cut silently: a period only partly read locally is not sent.
+            guard !material.truncated else {
+                throw AIFailure.contextUnavailable("Для «\(card.title)» локально доступна только часть периода — сузьте период.")
+            }
+            result.append(material)
+        }
         return result
     }
 
@@ -155,11 +174,7 @@ public actor AIWorker {
     }
 
     public func setSearchMyData(_ enabled: Bool, conversationID: UUID) async throws {
-        guard var conversation = try await repository.conversations().first(where: { $0.id == conversationID }) else {
-            throw AIFailure.invalidConfiguration
-        }
-        conversation.searchMyData = enabled
-        try await repository.save(conversation)
+        try await mutate(conversationID) { $0.searchMyData = enabled }
     }
 
     /// Permitted chunks for a question. Every match is checked against a
@@ -168,7 +183,8 @@ public actor AIWorker {
     private func retrieve(_ question: String, conversationID: UUID) async -> (turn: AIChatTurn?, sources: [AISourceReference]) {
         guard let vectors = retrievalVectors, let access = retrievalAccess else { return (nil, []) }
         do {
-            guard try await repository.conversations().first(where: { $0.id == conversationID })?.searchMyData != false,
+            let conversation = try await repository.conversations().first(where: { $0.id == conversationID })
+            guard conversation?.searchMyData != false, conversation?.anchor == nil,
                 let generation = try await vectors.activeGeneration()
             else { return (nil, []) }
             // Unassigning the embeddings role turns search off; otherwise the
@@ -322,11 +338,27 @@ public actor AIWorker {
     }
 
     private func touch(_ conversationID: UUID, title: String?) async throws {
-        guard var conversation = try await repository.conversations().first(where: { $0.id == conversationID }) else {
+        let now = now()
+        try await mutate(conversationID) { conversation in
+            conversation.updatedAt = now
+            if conversation.title.isEmpty, let title { conversation.title = String(title.prefix(60)) }
+        }
+    }
+
+    // MARK: Conversation record writes
+
+    private var writing = false
+    private var writeWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// One read-modify-write of a conversation record at a time, so a card
+    /// change and a send's timestamp never undo each other across awaits.
+    private func mutate(_ id: UUID, _ change: (inout AIConversation) -> Void) async throws {
+        if writing { await withCheckedContinuation { writeWaiters.append($0) } } else { writing = true }
+        defer { if writeWaiters.isEmpty { writing = false } else { writeWaiters.removeFirst().resume() } }
+        guard var conversation = try await repository.conversations().first(where: { $0.id == id }) else {
             throw AIFailure.invalidConfiguration
         }
-        conversation.updatedAt = now()
-        if conversation.title.isEmpty, let title { conversation.title = String(title.prefix(60)) }
+        change(&conversation)
         try await repository.save(conversation)
     }
 

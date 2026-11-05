@@ -59,6 +59,8 @@ private struct AIContextCardChip: View {
     @ViewBuilder private var status: some View {
         if let failure = model.previewFailures[card.id] {
             Text(failure.message).foregroundStyle(.orange)
+        } else if let material = model.previews[card.id], material.truncated {
+            Text("Локально доступна только часть периода — сузьте период").foregroundStyle(.orange)
         } else if let material = model.previews[card.id] {
             Text(Self.counts(material))
         } else {

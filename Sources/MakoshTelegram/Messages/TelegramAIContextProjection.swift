@@ -29,12 +29,17 @@ public struct TelegramAIContextPage: Sendable, Equatable {
     public let messages: [TelegramAIContextMessage]
     /// Messages read locally before the period was applied.
     public let available: Int
-    public init(isSecret: Bool, isPrivate: Bool, peerID: Int64, messages: [TelegramAIContextMessage], available: Int) {
+    /// The read stopped at its cap before reaching the start of the period.
+    public let truncated: Bool
+    public init(
+        isSecret: Bool, isPrivate: Bool, peerID: Int64, messages: [TelegramAIContextMessage], available: Int, truncated: Bool = false
+    ) {
         self.isSecret = isSecret
         self.isPrivate = isPrivate
         self.peerID = peerID
         self.messages = messages
         self.available = available
+        self.truncated = truncated
     }
 }
 

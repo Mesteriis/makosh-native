@@ -8,10 +8,10 @@ actor AIFakeContextProvider: AIContextProvider {
     private var materials: [String: AIContextMaterial] = [:]
     private var failures: [String: AIFailure] = [:]
     private(set) var reads: [String] = []
-    func set(_ card: AIContextCard, text: String) {
+    func set(_ card: AIContextCard, text: String, truncated: Bool = false) {
         materials[card.id] = AIContextMaterial(
             card: card, lines: [.init(author: "Мария", isOutgoing: false, date: Date(timeIntervalSince1970: 0), text: text)],
-            hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: 200)
+            hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: 200, truncated: truncated)
     }
     func fail(_ card: AIContextCard, _ failure: AIFailure) { failures[card.id] = failure }
     func material(for card: AIContextCard) async throws -> AIContextMaterial {
@@ -112,5 +112,45 @@ final class AIWorkerContextTests: XCTestCase {
         XCTAssertNotEqual(service.turns.last?.first?.author, .system)
         let reads = await provider.reads
         XCTAssertTrue(reads.isEmpty)
+    }
+
+    func testTruncatedPeriodBlocksSend() async throws {
+        await provider.set(chatA, text: "a", truncated: true)
+        let conversation = try await worker.createConversation(anchor: chatA)
+        let (_, error) = await aiDrain(await worker.send("Оцени", conversationID: conversation.id, editing: nil))
+        guard case .contextUnavailable? = error as? AIFailure else { return XCTFail("\(String(describing: error))") }
+        XCTAssertTrue(service.turns.isEmpty)
+    }
+
+    func testAnchoredConversationDoesNotSearchOtherData() async throws {
+        let anchored = try await worker.createConversation(anchor: chatA)
+        XCTAssertFalse(anchored.searchMyData)
+        let plain = try await worker.createConversation()
+        XCTAssertTrue(plain.searchMyData)
+    }
+
+    func testConcurrentCardChangesKeepBoth() async throws {
+        let conversation = try await worker.createConversation(anchor: chatA)
+        let worker = self.worker!, chatB = self.chatB
+        let letter = AIContextCard.letter(id: "L", title: "Счёт")
+        async let first: Void = worker.addCard(chatB, conversationID: conversation.id)
+        async let second: Void = worker.addCard(letter, conversationID: conversation.id)
+        _ = try await (first, second)
+        let cards = try await worker.conversations(anchoredTo: chatA).first?.cards.map(\.id)
+        XCTAssertEqual(Set(cards ?? []), [chatA.id, chatB.id, letter.id])
+    }
+
+    func testCardChangeDuringSendIsNotUndone() async throws {
+        await provider.set(chatA, text: "a")
+        await provider.set(chatB, text: "b")
+        let conversation = try await worker.createConversation(anchor: chatA)
+        try await worker.addCard(chatB, conversationID: conversation.id)
+        let worker = self.worker!, chatB = self.chatB
+        async let sent = aiDrain(await worker.send("Вопрос", conversationID: conversation.id, editing: nil))
+        async let removed: Void = worker.removeCard(chatB.id, conversationID: conversation.id)
+        _ = await sent
+        try await removed
+        let cards = try await worker.conversations(anchoredTo: chatA).first?.cards.map(\.id)
+        XCTAssertEqual(cards, [chatA.id])
     }
 }

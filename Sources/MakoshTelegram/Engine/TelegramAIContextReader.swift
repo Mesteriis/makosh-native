@@ -19,13 +19,36 @@ import TelegramCore
     init(account: Account) { self.account = account }
 
     func page(chatID: Int64, range: AIContextRange) async throws -> TelegramAIContextPage {
-        let peerID = PeerId(chatID)
-        let signal = account.postbox.transaction { transaction -> TelegramAIContextPage in
+        let signal = Self.read(postbox: account.postbox, peerID: PeerId(chatID), range: range)
+        let once = TelegramAIContextOnce()
+        return try await withCheckedThrowingContinuation { continuation in
+            once.set(continuation)
+            _ = signal.start(next: { once.resume(.success($0)) }, completed: { once.resume(.failure(TelegramAIContextReadError.ended)) })
+        }
+    }
+
+    /// Built outside the main actor so the transaction closure never inherits its isolation.
+    nonisolated private static func read(postbox: Postbox, peerID: PeerId, range: AIContextRange) -> Signal<TelegramAIContextPage, NoError>
+    {
+        postbox.transaction { transaction -> TelegramAIContextPage in
             telegramAIContextPage(transaction: transaction, peerID: peerID, range: range, now: Date())
         }
-        return await withCheckedContinuation { continuation in
-            _ = signal.start(next: { continuation.resume(returning: $0) })
+    }
+}
+
+enum TelegramAIContextReadError: Error { case ended }
+
+/// Resumes a continuation exactly once, whichever signal event comes first.
+private final class TelegramAIContextOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<TelegramAIContextPage, Error>?
+    func set(_ value: CheckedContinuation<TelegramAIContextPage, Error>) { lock.withLock { continuation = value } }
+    func resume(_ result: Result<TelegramAIContextPage, Error>) {
+        let pending = lock.withLock { () -> CheckedContinuation<TelegramAIContextPage, Error>? in
+            defer { continuation = nil }
+            return continuation
         }
+        pending?.resume(with: result)
     }
 }
 
@@ -37,6 +60,8 @@ func telegramAIContextPage(transaction: Transaction, peerID: PeerId, range: AICo
     let channel = peer as? TelegramChannel, group = peer as? TelegramGroup
     let chatProtected = channel?.flags.contains(.copyProtectionEnabled) == true || group?.flags.contains(.copyProtectionEnabled) == true
     var read: [TelegramAIContextMessage] = []
+    var scanned = 0, reachedStart = false
+    let end: Date? = { if case .between(_, let to) = range { return to } else { return nil } }()
     let start: Date? = {
         switch range {
         case .latest: return nil
@@ -46,9 +71,18 @@ func telegramAIContextPage(transaction: Transaction, peerID: PeerId, range: AICo
     }()
     transaction.scanTopMessages(peerId: peerID, namespace: Namespaces.Message.Cloud, limit: TelegramEngineAIContextReader.limit) {
         message in
+        scanned += 1
         let date = Date(timeIntervalSince1970: TimeInterval(message.timestamp))
-        if let start, date < start { return false }
-        if case .latest(let count) = range, read.count >= count { return false }
+        if let start, date < start {
+            reachedStart = true
+            return false
+        }
+        if case .latest(let count) = range, read.count >= count {
+            reachedStart = true
+            return false
+        }
+        // Newer than the period: skipped, never offered.
+        if let end, date > end { return true }
         guard !message.flags.contains(.Unsent), !message.flags.contains(.Failed) else { return true }
         let author = message.author ?? message.peers[message.id.peerId]
         read.append(
@@ -60,7 +94,8 @@ func telegramAIContextPage(transaction: Transaction, peerID: PeerId, range: AICo
     }
     return TelegramAIContextPage(
         isSecret: false, isPrivate: peer is TelegramUser, peerID: peerID.toInt64(),
-        messages: TelegramAIContextProjection.select(read, range: range, now: now), available: read.count)
+        messages: TelegramAIContextProjection.select(read, range: range, now: now), available: read.count,
+        truncated: !reachedStart && scanned >= TelegramEngineAIContextReader.limit)
 }
 
 private func telegramAIContextName(_ peer: Peer?) -> String {

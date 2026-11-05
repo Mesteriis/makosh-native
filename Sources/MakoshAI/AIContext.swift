@@ -50,8 +50,11 @@ public struct AIContextMaterial: Sendable, Equatable {
     public let available: Int
     /// The `latest(n)` count asked for, if any.
     public let requested: Int?
+    /// The local read stopped at its cap before covering the period.
+    public let truncated: Bool
     public init(
-        card: AIContextCard, lines: [AIContextLine], hiddenForbidden: Int, hiddenProtected: Int, available: Int, requested: Int?
+        card: AIContextCard, lines: [AIContextLine], hiddenForbidden: Int, hiddenProtected: Int, available: Int, requested: Int?,
+        truncated: Bool = false
     ) {
         self.card = card
         self.lines = lines
@@ -59,6 +62,7 @@ public struct AIContextMaterial: Sendable, Equatable {
         self.hiddenProtected = hiddenProtected
         self.available = available
         self.requested = requested
+        self.truncated = truncated
     }
 }
 
@@ -109,5 +113,21 @@ public enum AIContextBuilder {
         case .between(let from, let to):
             "с \(from.formatted(.iso8601.year().month().day())) по \(to.formatted(.iso8601.year().month().day()))"
         }
+    }
+}
+
+/// The "@word" typed at the end of a draft.
+public enum AIMention {
+    /// Nil unless the draft ends in "@" plus a word with no spaces, and the
+    /// "@" starts a word (so an e-mail address is not a mention).
+    public static func query(in draft: String) -> String? {
+        guard let at = draft.lastIndex(of: "@") else { return nil }
+        if at != draft.startIndex, !draft[draft.index(before: at)].isWhitespace { return nil }
+        let word = draft[draft.index(after: at)...]
+        return word.contains(where: \.isWhitespace) ? nil : String(word)
+    }
+    public static func removing(from draft: String) -> String {
+        guard let at = draft.lastIndex(of: "@") else { return draft }
+        return String(draft[..<at])
     }
 }

@@ -94,4 +94,23 @@ import XCTest
         model.filter = .all
         XCTAssertEqual(Set(model.visibleConversations.map(\.id)), [anchored, plain.id])
     }
+
+    func testSelectingConversationWithCardsLoadsPreviewsOutsideThePanel() async throws {
+        let conversation = try await worker.createConversation(anchor: chatA)
+        await model.reload()
+        await model.select(conversation.id)
+        XCTAssertNil(model.anchor)
+        XCTAssertEqual(model.previews[chatA.id]?.lines.first?.text, "a")
+    }
+
+    func testSwitchingPanelConversationRefreshesPreviews() async throws {
+        await model.open(anchor: chatA)
+        let first = try XCTUnwrap(model.selectedConversationID)
+        await model.newConversation()
+        await model.add(chatB)
+        XCTAssertNotNil(model.previews[chatB.id])
+        await model.select(first)
+        XCTAssertNil(model.previews[chatB.id])
+        XCTAssertNotNil(model.previews[chatA.id])
+    }
 }

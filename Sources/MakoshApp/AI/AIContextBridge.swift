@@ -83,7 +83,7 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
         let result = try AIContextAccess.apply(candidates, privatePeer: page.isPrivate ? identity(page.peerID) : nil, snapshot: snapshot)
         return AIContextMaterial(
             card: card, lines: result.lines, hiddenForbidden: result.hiddenForbidden, hiddenProtected: result.hiddenProtected,
-            available: page.available, requested: Self.requested(range))
+            available: page.available, requested: Self.requested(range), truncated: page.truncated)
     }
 
     private func whatsappMaterial(
@@ -101,12 +101,22 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
             }
         var read: [WhatsAppMessage] = []
         var cursor: WhatsAppCursor?
+        var covered = false
         while read.count < Self.whatsappLimit {
             let page = try await service.messages(accountID: account, chat: chatID, before: cursor)
             read += page.filter { !$0.deleted }
-            guard let last = page.last else { break }
-            if case .latest(let count) = range, read.count >= count { break }
-            if let start, Date(timeIntervalSince1970: TimeInterval(last.timestamp)) < start { break }
+            guard let last = page.last else {
+                covered = true
+                break
+            }
+            if case .latest(let count) = range, read.count >= count {
+                covered = true
+                break
+            }
+            if let start, Date(timeIntervalSince1970: TimeInterval(last.timestamp)) < start {
+                covered = true
+                break
+            }
             cursor = last.cursor
         }
         let group = chatID.hasSuffix("@g.us")
@@ -127,19 +137,34 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
         let result = try AIContextAccess.apply(candidates, privatePeer: peer, snapshot: snapshot)
         return AIContextMaterial(
             card: card, lines: result.lines, hiddenForbidden: result.hiddenForbidden, hiddenProtected: result.hiddenProtected,
-            available: read.count, requested: Self.requested(range))
+            available: read.count, requested: Self.requested(range), truncated: !covered)
     }
 
     private func letterMaterial(_ card: AIContextCard, id: String, snapshot: AIAccessSnapshot) async throws -> AIContextMaterial {
         guard let mail, let letter = try await mail.letter(id) else { throw AIFailure.contextUnavailable("Письмо не найдено.") }
-        try AIContextAccess.requireOpen(
-            ServiceIdentity(service: "mail", accountID: letter.key.accountID, externalID: letter.sender.lowercased()), snapshot: snapshot,
-            what: "письмо")
+        // Like a private chat: a letter from or to a forbidden contact is not sent.
+        let addresses = [letter.sender] + Self.addresses([letter.recipient, letter.cc ?? "", letter.bcc ?? ""].joined(separator: ","))
+        for address in addresses {
+            try AIContextAccess.requireOpen(
+                ServiceIdentity(service: "mail", accountID: letter.key.accountID, externalID: address.lowercased()), snapshot: snapshot,
+                what: "письмо")
+        }
         let author = letter.senderName.isEmpty ? letter.sender : "\(letter.senderName) <\(letter.sender)>"
         let line = AIContextLine(
             author: author, isOutgoing: false, date: letter.date,
             text: "Тема: \(letter.subject)\nКому: \(letter.recipient)\n\n\(letter.plainBody)")
         return AIContextMaterial(card: card, lines: [line], hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: nil)
+    }
+
+    /// Bare addresses from header text such as "Иван <ivan@example.test>, b@example.test".
+    static func addresses(_ header: String) -> [String] {
+        header.split(whereSeparator: { ",;".contains($0) }).compactMap { part in
+            let text = part.trimmingCharacters(in: .whitespaces)
+            if let open = text.lastIndex(of: "<"), let close = text.lastIndex(of: ">"), open < close {
+                return String(text[text.index(after: open)..<close])
+            }
+            return text.contains("@") ? text : nil
+        }
     }
 
     private func contactMaterial(_ card: AIContextCard, id: UUID, snapshot: AIAccessSnapshot) async throws -> AIContextMaterial {

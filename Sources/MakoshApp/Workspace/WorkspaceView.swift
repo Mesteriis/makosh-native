@@ -33,6 +33,8 @@ private struct EditorSelection: Identifiable {
 struct WorkspaceView: View {
     @EnvironmentObject private var callWindows: TelegramCallWindows
     @EnvironmentObject private var ai: AIHost
+    /// Sources for the chat panel's "+" and "@"; made once the window appears.
+    @State private var aiContextSearch: AIContextSearch?
     @StateObject private var systemAppearance = TelegramSystemAppearance()
     @AppStorage(TelegramAppearancePreferences.preferenceKey) private var appearanceRaw = ""
     @Environment(\.colorScheme) private var colorScheme
@@ -163,6 +165,9 @@ struct WorkspaceView: View {
             }.sharedBackgroundVisibility(.hidden)
         }
         .onAppear {
+            if aiContextSearch == nil {
+                aiContextSearch = AIContextSearch(telegram: telegram, whatsapp: whatsapp, mail: mail) { [model] in model.contacts }
+            }
             if !isolatedWhatsApp && !teams.isSynthetic && !telemost.isSynthetic {
                 callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview, avatars: telegram.avatars)
             }
@@ -260,6 +265,45 @@ struct WorkspaceView: View {
         }
         .frame(minWidth: destination == .telegram || destination == .whatsapp ? 1160 : destination == .mail ? 1040 : nil)
     }
+    /// The AI panel beside a Telegram chat, when the AI and the account are ready.
+    private var telegramAIPanel: ((Int64, String, @escaping () -> Void) -> AnyView)? {
+        guard let search = aiContextSearch, ai.configuration != nil, let account = telegram.aiContextAccountID else { return nil }
+        return { chatID, title, close in
+            AnyView(
+                AIChatPanelView(
+                    model: ai.panel, search: search,
+                    anchor: .chat(service: "telegram", accountID: String(account), chatID: String(chatID), title: title, range: .standard),
+                    openCard: openAICard,
+                    openInSection: {
+                        let id = ai.panel.selectedConversationID
+                        destination = .ai
+                        Task {
+                            await ai.workspace.reload()
+                            await ai.workspace.select(id)
+                        }
+                    }, close: close))
+        }
+    }
+
+    /// Opens an attached source in its own section.
+    private func openAICard(_ card: AIContextCard) {
+        switch card {
+        case .chat("telegram", let accountID, let chatID, _, _):
+            guard String(telegram.aiContextAccountID ?? 0) == accountID, let id = Int64(chatID) else { return }
+            destination = .telegram
+            telegram.selectedChatID = id
+        case .chat("whatsapp", _, let chatID, _, _):
+            destination = .whatsapp
+            Task { await whatsapp.selectChat(chatID) }
+        case .chat: break
+        case .letter:
+            // The letter itself is not yet selected there.
+            destination = .mail
+        case .contact(let id, _):
+            Task { if await model.selectContact(id) { destination = .contacts } }
+        }
+    }
+
     /// AI starts only in the ordinary app; every service QA preview keeps it off.
     private var ordinaryLaunch: Bool {
         !isolatedWhatsApp && !mail.synthetic && !whatsapp.isSynthetic && !teams.isSynthetic && !telemost.isSynthetic
@@ -380,9 +424,10 @@ struct WorkspaceView: View {
                         }
                     }
                 } else if destination == .telegram {
-                    TelegramDetailView(model: telegram, dossier: model) { id in
-                        Task { if await model.selectContact(id) { destination = .contacts } }
-                    }
+                    TelegramDetailView(
+                        model: telegram, dossier: model,
+                        openDossier: { id in Task { if await model.selectContact(id) { destination = .contacts } } },
+                        aiPanel: telegramAIPanel)
                 } else if destination == .whatsapp {
                     WhatsAppDetailView(
                         model: whatsapp,
@@ -425,7 +470,7 @@ struct WorkspaceView: View {
                         }
                     }
                 } else if destination == .ai {
-                    AIConversationView(model: ai.workspace) { source in
+                    AIConversationView(model: ai.workspace, openCard: openAICard) { source in
                         // Opens the source's section; the message itself is not yet selected there.
                         switch source.service {
                         case "telegram": destination = .telegram

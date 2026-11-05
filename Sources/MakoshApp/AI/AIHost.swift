@@ -12,6 +12,8 @@ import MakoshWhatsApp
 @MainActor final class AIHost: ObservableObject {
     let worker: AIWorker
     let workspace: AIWorkspaceModel
+    /// The chat panel's own selection, so it never moves the AI section's.
+    let panel: AIWorkspaceModel
     let settings: AISettingsModel
     @Published private(set) var configuration: ContactWorkspaceConfiguration?
     @Published private(set) var indexStatus = AIIndexStatus()
@@ -25,9 +27,11 @@ import MakoshWhatsApp
     init(worker: AIWorker, synthetic: Bool = false) {
         self.worker = worker
         workspace = AIWorkspaceModel(worker: worker)
+        panel = AIWorkspaceModel(worker: worker)
         settings = AISettingsModel(worker: worker)
         isSynthetic = synthetic
         workspace.follow(settings)
+        panel.follow(settings)
     }
 
     convenience init() {
@@ -55,6 +59,7 @@ import MakoshWhatsApp
         guard self.configuration == nil else { return }
         self.configuration = configuration
         await workspace.start(configuration: configuration)
+        await panel.start(configuration: configuration)
         await settings.start(configuration: configuration)
         do {
             let archiveSchema = configuration.archiveSchema ?? configuration.schema

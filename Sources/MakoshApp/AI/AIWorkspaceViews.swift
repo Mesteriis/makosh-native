@@ -47,12 +47,24 @@ struct AIConversationListView: View {
 
 struct AIConversationView: View {
     @ObservedObject var model: AIWorkspaceModel
+    /// In a chat's panel: sources for "+" and "@", and where a card opens.
+    var contextSearch: AIContextSearch?
+    var openCard: (AIContextCard) -> Void = { _ in }
     /// Opens a cited Makosh message in its own section.
     var openSource: (MessageArchiveIdentity) -> Void = { _ in }
     @StateObject private var voice = AIVoiceInput()
     @State private var draft = ""
     @State private var editing: UUID?
     @State private var player: AVAudioPlayer?
+    @State private var adding = false
+
+    /// The "@word" being typed at the end of the draft.
+    private var mention: String? {
+        guard contextSearch != nil, let at = draft.lastIndex(of: "@") else { return nil }
+        if at != draft.startIndex, !draft[draft.index(before: at)].isWhitespace { return nil }
+        let query = draft[draft.index(after: at)...]
+        return query.contains(where: \.isNewline) ? nil : String(query)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,7 +81,7 @@ struct AIConversationView: View {
                                     edit: { text in
                                         editing = message.id
                                         draft = text
-                                    }, speak: { speak(message.id) }, openSource: openSource
+                                    }, speak: { speak(message.id) }, openSource: openSource, openCard: openCard
                                 ).id(message.id)
                             }
                         }.padding(20)
@@ -95,6 +107,13 @@ struct AIConversationView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let contextSearch {
+                AIContextCardsView(model: model, open: openCard).padding(.horizontal, -12)
+                if mention != nil {
+                    AIContextSuggestionsList(search: contextSearch) { suggestion in attachMention(suggestion) }
+                        .background(WorkspaceStyle.surface, in: .rect(cornerRadius: 8))
+                }
+            }
             if editing != nil {
                 HStack {
                     Label("Изменение сообщения", systemImage: "pencil").font(.caption)
@@ -106,9 +125,27 @@ struct AIConversationView: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Спросите модель…", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain).lineLimit(1...8).onSubmit(send)
-                    .accessibilityIdentifier("ai.composer")
+                if let contextSearch {
+                    Button {
+                        adding = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .help("Добавить в контекст чат, письмо или контакт").accessibilityIdentifier("ai.context.add")
+                    .popover(isPresented: $adding) {
+                        AIContextAddPopover(search: contextSearch) { suggestion in
+                            adding = false
+                            Task { await model.add(suggestion.card) }
+                        }
+                    }
+                }
+                TextField(
+                    contextSearch == nil ? "Спросите модель…" : "Спросите о переписке… (@ — добавить источник)", text: $draft,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain).lineLimit(1...8).onSubmit(send)
+                .onChange(of: draft) { _, _ in if let mention { contextSearch?.update(query: mention) } }
+                .accessibilityIdentifier("ai.composer")
                 Button {
                     toggleDictation()
                 } label: {
@@ -144,16 +181,24 @@ struct AIConversationView: View {
             if voice.denied {
                 Text("Нет доступа к микрофону: разрешите его в Системных настройках.").font(.caption).foregroundStyle(.secondary)
             }
-            Toggle(
-                "Искать в моих данных",
-                isOn: Binding(get: { model.searchMyData }, set: { value in Task { await model.setSearchMyData(value) } })
-            )
-            .toggleStyle(.switch).controlSize(.mini).font(.caption)
-            .help("Подмешивать в вопрос фрагменты чатов, ящиков и контактов, открытых для ИИ")
-            .disabled(model.roles[.embeddings] == nil)
-            .accessibilityIdentifier("ai.searchMyData")
+            if contextSearch == nil {
+                Toggle(
+                    "Искать в моих данных",
+                    isOn: Binding(get: { model.searchMyData }, set: { value in Task { await model.setSearchMyData(value) } })
+                )
+                .toggleStyle(.switch).controlSize(.mini).font(.caption)
+                .help("Подмешивать в вопрос фрагменты чатов, ящиков и контактов, открытых для ИИ")
+                .disabled(model.roles[.embeddings] == nil)
+                .accessibilityIdentifier("ai.searchMyData")
+            }
         }
         .padding(12)
+    }
+
+    /// Replaces the typed "@word" with the chosen source as a card.
+    private func attachMention(_ suggestion: AIContextSuggestion) {
+        if let at = draft.lastIndex(of: "@") { draft = String(draft[..<at]) }
+        Task { await model.add(suggestion.card) }
     }
 
     private func send() {
@@ -195,6 +240,7 @@ private struct AIMessageRow: View {
     let edit: (String) -> Void
     let speak: () -> Void
     let openSource: (MessageArchiveIdentity) -> Void
+    let openCard: (AIContextCard) -> Void
     @State private var image: NSImage?
 
     var body: some View {
@@ -238,6 +284,15 @@ private struct AIMessageRow: View {
                 if message.author == .user { Button("Изменить") { edit(version?.text ?? "") }.disabled(model.isStreaming) }
             }
             .buttonStyle(.borderless).font(.caption)
+            if message.author == .assistant, let context = version?.context, !context.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("По источникам").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(context) { card in
+                        Button(card.title) { openCard(card) }.buttonStyle(.link).font(.caption).lineLimit(1)
+                            .accessibilityIdentifier("ai.contextSource.\(card.id)")
+                    }
+                }
+            }
             if let sources = version?.sources, !sources.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Источники").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)

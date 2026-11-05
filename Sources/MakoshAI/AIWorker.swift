@@ -128,6 +128,12 @@ public actor AIWorker {
         return try await materials(conversation.cards)
     }
 
+    /// One card's material, for its counts in the panel.
+    public func preview(card: AIContextCard) async throws -> AIContextMaterial {
+        guard let material = try await materials([card]).first else { throw AIFailure.invalidConfiguration }
+        return material
+    }
+
     private func materials(_ cards: [AIContextCard]) async throws -> [AIContextMaterial] {
         guard !cards.isEmpty else { return [] }
         guard let provider = contextProvider else { throw AIFailure.contextUnavailable("Источники контекста ещё не готовы.") }

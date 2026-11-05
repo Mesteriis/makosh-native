@@ -42,7 +42,14 @@ struct TelegramDetailView: View {
     @State private var messageSearchFocusRequest = UUID()
     private let dossier: WorkspaceModel?
     private let openDossier: (UUID) -> Void
-    init(model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in }) {
+    /// The AI panel for the open chat (id, title, close); nil where the AI is unavailable.
+    private let aiPanel: ((Int64, String, @escaping () -> Void) -> AnyView)?
+    @AppStorage("makosh.aiPanel.telegram") private var aiPanelPresented = false
+    init(
+        model: TelegramModel, dossier: WorkspaceModel? = nil, openDossier: @escaping (UUID) -> Void = { _ in },
+        aiPanel: ((Int64, String, @escaping () -> Void) -> AnyView)? = nil
+    ) {
+        self.aiPanel = aiPanel
         self.model = model
         self.qrLogin = model.qrLogin
         self.search = model.search
@@ -146,7 +153,12 @@ struct TelegramDetailView: View {
                     TelegramLocalTheme(preference: telegramTheme).chatBackground
                 }
             }
-            if dossierPresented, let dossier, model.phase == .ready, model.selectedChat != nil,
+            if aiPanelPresented, let aiPanel, model.phase == .ready, let chat = model.selectedChat,
+                model.conversationCapabilities?.secret == nil
+            {
+                Divider()
+                aiPanel(chat.id, chat.title) { aiPanelPresented = false }
+            } else if dossierPresented, let dossier, model.phase == .ready, model.selectedChat != nil,
                 model.conversationCapabilities?.secret == nil
             {
                 TelegramWorkspaceDossier(model: model, workspace: dossier, close: { dossierPresented = false }, open: openDossier)
@@ -356,8 +368,18 @@ struct TelegramDetailView: View {
                     }.buttonStyle(.plain).foregroundStyle(messageSearchPresented ? Color.accentColor : Color.secondary)
                         .help("Поиск сообщений (⌘F)").accessibilityLabel("Поиск сообщений в диалоге")
                         .accessibilityIdentifier("telegram.messageSearch.toggle")
+                    if aiPanel != nil, model.conversationCapabilities?.secret == nil {
+                        Button {
+                            aiPanelPresented.toggle()
+                        } label: {
+                            Image(systemName: "sparkles").frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain).foregroundStyle(aiPanelPresented ? Color.accentColor : Color.secondary)
+                        .help("Спросить ИИ об этом чате").accessibilityLabel("Панель ИИ").accessibilityIdentifier("telegram.ai.toggle")
+                    }
                     if dossier != nil, model.conversationCapabilities?.secret == nil {
                         Button {
+                            aiPanelPresented = false
                             dossierPresented.toggle()
                         } label: {
                             Image(systemName: "sidebar.right")

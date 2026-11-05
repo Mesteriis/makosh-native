@@ -14,7 +14,14 @@ import MakoshCore
     @Published package private(set) var failure: AIFailure?
     @Published package private(set) var roles: [AIRole: AIRoleAssignment] = [:]
     @Published package private(set) var ready = false
+    /// The chat whose panel this model shows; nil in the AI section.
+    @Published package private(set) var anchor: AIContextCard?
+    /// Material of each attached card, by card id, and cards that cannot be sent.
+    @Published package private(set) var previews: [String: AIContextMaterial] = [:]
+    @Published package private(set) var previewFailures: [String: AIFailure] = [:]
+    @Published package var filter: AIConversationFilter = .all
     private var selection: UInt64 = 0
+    private var anchoring: UInt64 = 0
     private var subscriptions: Set<AnyCancellable> = []
 
     package init(worker: AIWorker) { self.worker = worker }
@@ -53,7 +60,99 @@ import MakoshCore
         if selection == token { isStreaming = await worker.isStreaming(conversationID: id) }
     }
 
+    package var selectedConversation: AIConversation? { conversations.first { $0.id == selectedConversationID } }
+    package var cards: [AIContextCard] { selectedConversation?.cards ?? [] }
+
+    /// In a chat's panel only that chat's conversations; in the AI section by filter.
+    package var visibleConversations: [AIConversation] {
+        if let anchor { return conversations.filter { $0.anchor?.id == anchor.id } }
+        switch filter {
+        case .all: return conversations
+        case .unanchored: return conversations.filter { $0.anchor == nil }
+        case .anchored: return conversations.filter { $0.anchor != nil }
+        }
+    }
+
+    /// Shows a chat's panel: its latest conversation, or a new one with the
+    /// chat attached. A later call wins over an earlier one still loading.
+    package func open(anchor card: AIContextCard) async {
+        anchoring &+= 1
+        let token = anchoring
+        anchor = card
+        previews = [:]
+        previewFailures = [:]
+        do {
+            let existing = try await worker.conversations(anchoredTo: card).max { $0.updatedAt < $1.updatedAt }
+            guard anchoring == token else { return }
+            let conversation: AIConversation
+            if let existing {
+                conversation = existing
+            } else {
+                conversation = try await worker.createConversation(anchor: card)
+            }
+            guard anchoring == token else { return }
+            await reload()
+            guard anchoring == token else { return }
+            await select(conversation.id)
+            await refreshPreviews(token: token)
+        } catch { if anchoring == token { failure = error as? AIFailure ?? .storage } }
+    }
+
+    /// Back to the AI section's view of all conversations.
+    package func leaveAnchor() async {
+        anchoring &+= 1
+        anchor = nil
+        previews = [:]
+        previewFailures = [:]
+    }
+
+    package func add(_ card: AIContextCard) async {
+        guard !cards.contains(where: { $0.id == card.id }) else { return }
+        await setCards(cards + [card])
+    }
+
+    package func remove(_ cardID: String) async { await setCards(cards.filter { $0.id != cardID }) }
+
+    package func setRange(_ range: AIContextRange, for cardID: String) async {
+        await setCards(
+            cards.map { card in
+                guard card.id == cardID, case .chat(let service, let accountID, let chatID, let title, _) = card else { return card }
+                return .chat(service: service, accountID: accountID, chatID: chatID, title: title, range: range)
+            })
+    }
+
+    private func setCards(_ cards: [AIContextCard]) async {
+        guard let id = selectedConversationID else { return }
+        let token = anchoring
+        do {
+            try await worker.setCards(cards, conversationID: id)
+            await reload()
+            await refreshPreviews(token: token)
+        } catch { failure = error as? AIFailure ?? .storage }
+    }
+
+    private func refreshPreviews(token: UInt64) async {
+        var materials: [String: AIContextMaterial] = [:], failures: [String: AIFailure] = [:]
+        for card in cards {
+            do { materials[card.id] = try await worker.preview(card: card) } catch {
+                failures[card.id] = error as? AIFailure ?? .storage
+            }
+            guard anchoring == token else { return }
+        }
+        previews = materials
+        previewFailures = failures
+    }
+
     package func newConversation() async {
+        if let anchor {
+            do {
+                let conversation = try await worker.createConversation(anchor: anchor)
+                await reload()
+                await select(conversation.id)
+                await refreshPreviews(token: anchoring)
+            } catch { failure = error as? AIFailure ?? .storage }
+            return
+        }
         do {
             let conversation = try await worker.createConversation()
             await reload()
@@ -174,3 +273,6 @@ import MakoshCore
         } catch { if selection == token { failure = error as? AIFailure ?? .storage } }
     }
 }
+
+/// Which conversations the AI section lists.
+package enum AIConversationFilter: CaseIterable, Sendable { case all, unanchored, anchored }

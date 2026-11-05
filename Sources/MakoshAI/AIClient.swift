@@ -166,7 +166,7 @@ public struct AIClient: AIServing {
     private func load(_ request: URLRequest, limit: Int) async throws -> Data {
         do {
             let (data, response) = try await session.data(for: request, delegate: AIRedirectRefusal.shared)
-            try Self.check(response)
+            try Self.check(response, body: data)
             guard data.count <= limit else { throw AIFailure.malformedResponse }
             return data
         } catch { throw Self.map(error) }
@@ -176,14 +176,31 @@ public struct AIClient: AIServing {
         do { return try JSONDecoder().decode(T.self, from: data) } catch { throw AIFailure.malformedResponse }
     }
 
-    private static func check(_ response: URLResponse) throws {
+    private static func check(_ response: URLResponse, body: Data = Data()) throws {
         guard let response = response as? HTTPURLResponse else { throw AIFailure.malformedResponse }
         switch response.statusCode {
         case 200..<300: return
         case 401, 403: throw AIFailure.unauthorized
         case 429: throw AIFailure.rateLimited
+        case 400, 404, 422: throw AIFailure.rejected(status: response.statusCode, reason: rejectionReason(body))
         default: throw AIFailure.server(status: response.statusCode)
         }
+    }
+
+    /// `error.message` of an OpenAI-style error body, on one line, with
+    /// token-like words cut and at most 160 characters. Other statuses keep
+    /// the body out entirely.
+    static func rejectionReason(_ body: Data) -> String {
+        guard body.count <= 16_384, let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+            let message = (object["error"] as? [String: Any])?["message"] as? String ?? object["message"] as? String
+        else { return "" }
+        let words = message.split(whereSeparator: \.isWhitespace).map { word -> String in
+            if word.hasPrefix("sk-") || word.hasPrefix("Bearer") { return "sk-…" }
+            if word.count >= 24, word.allSatisfy({ $0.isLetter || $0.isNumber || "-_=+/".contains($0) }) { return "…" }
+            return String(word)
+        }
+        let line = words.joined(separator: " ")
+        return line.count > 160 ? String(line.prefix(159)) + "…" : line
     }
 
     private static func map(_ error: Error) -> AIFailure {

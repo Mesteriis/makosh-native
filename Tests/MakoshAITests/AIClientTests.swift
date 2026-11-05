@@ -131,6 +131,22 @@ final class AIClientTests: XCTestCase {
         }
     }
 
+    func testRejectedRequestKeepsShortRedactedReason() async {
+        reply(["{\"error\":{\"message\":\"Model emb is not an embedding model; key sk-abcdef1234567890 rejected\\nmore\"}}"], status: 400)
+        do {
+            _ = try await client.embeddings(connection: connection, token: nil, model: "emb", inputs: ["a"])
+            XCTFail("rejection accepted")
+        } catch {
+            XCTAssertEqual(
+                error as? AIFailure, .rejected(status: 400, reason: "Model emb is not an embedding model; key sk-… rejected more"))
+        }
+        reply(["not json"], status: 404)
+        do {
+            _ = try await client.embeddings(connection: connection, token: nil, model: "emb", inputs: ["a"])
+            XCTFail("rejection accepted")
+        } catch { XCTAssertEqual(error as? AIFailure, .rejected(status: 404, reason: "")) }
+    }
+
     func testTokenTrimmedAndEmptyOmitsHeader() async throws {
         reply(["{\"data\":[]}"])
         _ = try await client.models(connection: connection, token: " sk-2\n")

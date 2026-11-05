@@ -33,6 +33,9 @@ public struct AIIndexStatus: Sendable, Equatable {
     public var pending = 0
     public var paused = false
     public var failure: AIFailure?
+    /// Where an error outside `AIFailure` came from and its type, never its
+    /// message, which may carry private data.
+    public var failureDetail: String?
     public init() {}
 }
 
@@ -128,11 +131,21 @@ public actor AIIndexer {
         do {
             try await cycle()
             current.failure = nil
+            current.failureDetail = nil
         } catch let failure as AIFailure {
             current.failure = failure
+            current.failureDetail = nil
             if failure == .unauthorized { current.paused = true }
         } catch is CancellationError {
             current.failure = .cancelled
+            current.failureDetail = nil
+        } catch let failure as SourceFailure {
+            // Any other error used to escape and vanish in the loop's `try?`.
+            current.failure = .storage
+            current.failureDetail = failure.source + ": " + Self.typeName(failure.underlying)
+        } catch {
+            current.failure = .storage
+            current.failureDetail = "index: " + Self.typeName(error)
         }
         return current
     }
@@ -194,7 +207,7 @@ public actor AIIndexer {
             var seen = Set(state.recent[source.name, default: []])
             var after = max(0, cursor - Self.overlap), highest = cursor
             for _ in 0..<Self.livePages {
-                let page = try await source.items(after: after, limit: Self.pageSize)
+                let page = try await Self.read(source) { try await source.items(after: after, limit: Self.pageSize) }
                 for item in page where seen.insert(item.sequence).inserted {
                     if item.removed {
                         removedAt[item.identity] = max(removedAt[item.identity] ?? item.sequence, item.sequence)
@@ -229,7 +242,8 @@ public actor AIIndexer {
                 var after = state.backfill[index].cursors[source.name, default: 0]
                 var finished = false
                 for _ in 0..<Self.backfillPages {
-                    let page = try await source.items(in: state.backfill[index].scope, after: after, limit: Self.pageSize)
+                    let scope = state.backfill[index].scope
+                    let page = try await Self.read(source) { try await source.items(in: scope, after: after, limit: Self.pageSize) }
                     items += page.filter { !$0.removed }
                     after = page.last?.sequence ?? after
                     if page.count < Self.pageSize {
@@ -290,6 +304,21 @@ public actor AIIndexer {
         } else {
             current.indexed = 0
         }
+    }
+
+    private struct SourceFailure: Error {
+        let source: String
+        let underlying: any Error
+    }
+
+    private static func typeName(_ error: any Error) -> String {
+        String(reflecting: type(of: error)).split(separator: ".").dropFirst().joined(separator: ".")
+    }
+
+    private static func read(_ source: any AIIndexSource, _ body: () async throws -> [AIIndexItem]) async throws -> [AIIndexItem] {
+        do { return try await body() } catch let failure as AIFailure { throw failure } catch is CancellationError {
+            throw CancellationError()
+        } catch { throw SourceFailure(source: source.name, underlying: error) }
     }
 
     private static func belongs(_ identity: ServiceIdentity, to scope: AIAccessScope) -> Bool {

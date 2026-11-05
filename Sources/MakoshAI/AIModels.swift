@@ -181,4 +181,7 @@ public enum AIFailure: Error, Equatable, Sendable {
     case invalidConnection, invalidConfiguration, storage, keyUnavailable, roleUnassigned(AIRole)
     case unauthorized, rateLimited, server(status: Int), network, malformedResponse, cancelled, busy
     case vectorUnavailable, dimensionsTooLarge
+    /// The provider refused the request itself (400, 404, 422): its short,
+    /// redacted explanation, so a wrong model name can be fixed in settings.
+    case rejected(status: Int, reason: String)
 }

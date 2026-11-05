@@ -11,7 +11,8 @@ struct AISettingsView: View {
         } else {
             VStack(spacing: 0) {
                 AISettingsForm(model: host.settings)
-                AIIndexSection()
+                // Two scrolling forms share the height; keep the index status visible in a short window.
+                AIIndexSection().frame(minHeight: 230)
             }
         }
     }
@@ -34,6 +35,7 @@ struct AIIndexSection: View {
                 if host.indexStatus.pending > 0 { LabeledContent("Догружается источников", value: "\(host.indexStatus.pending)") }
                 if let failure = host.indexStatus.failure, failure != .roleUnassigned(.embeddings) || !host.enabledScopes.isEmpty {
                     Text(failure.message).font(.caption).foregroundStyle(.orange)
+                    if let detail = host.indexStatus.failureDetail { Text(detail).font(.caption2).foregroundStyle(.secondary) }
                 }
                 Toggle(
                     "Пауза индексации",

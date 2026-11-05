@@ -144,6 +144,8 @@ extension AIFailure {
         case .unauthorized: "Провайдер отклонил токен. Проверьте подключение."
         case .rateLimited: "Провайдер ограничил частоту запросов. Попробуйте позже."
         case .server(let status): "Провайдер вернул ошибку \(status)."
+        case .rejected(let status, let reason):
+            reason.isEmpty ? "Провайдер отклонил запрос (\(status))." : "Провайдер отклонил запрос (\(status)): \(reason)"
         case .network: "Соединение с провайдером прервалось."
         case .malformedResponse: "Провайдер вернул ответ в неожиданном формате."
         case .cancelled: "Запрос остановлен."

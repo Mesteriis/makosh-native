@@ -360,4 +360,20 @@ final class AIIndexerTests: XCTestCase {
         XCTAssertTrue(texts.contains("before it"))
         XCTAssertTrue(texts.contains("after it"))
     }
+
+    func testSourceErrorIsReportedNotSwallowed() async throws {
+        await access.setScope(chat, enabled: true)
+        let indexer = AIIndexer(worker: worker, vectors: vectors, sources: [AIFailingIndexSource()], access: access, pace: .zero)
+        let status = try await indexer.runOnce()
+        XCTAssertEqual(status.failure, .storage)
+        XCTAssertEqual(status.failureDetail, "mail: AIFailingIndexSource.Broken")
+    }
+}
+
+/// A source whose storage fails with an error outside `AIFailure`.
+struct AIFailingIndexSource: AIIndexSource {
+    enum Broken: Error { case decrypt }
+    let name = "mail"
+    func items(after sequence: Int64, limit: Int) async throws -> [AIIndexItem] { throw Broken.decrypt }
+    func items(in scope: AIAccessScope, after sequence: Int64, limit: Int) async throws -> [AIIndexItem] { throw Broken.decrypt }
 }

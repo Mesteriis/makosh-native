@@ -101,10 +101,7 @@ public actor WhatsAppNativeSession: WhatsAppTransport {
           op: "call", request: NativeRequest(command: "command_result", ticket: action.attempt))
       }
     } catch {
-      if Task.isCancelled {
-        child?.stop()
-        child = nil
-      }
+      // Cancellation between polls abandons the ticket only; the worker stays up.
       throw error
     }
   }
@@ -128,6 +125,10 @@ public actor WhatsAppNativeSession: WhatsAppTransport {
   }
   private func rpc<T: Encodable>(op: String, request: T) throws -> Data {
     guard let child else { throw WhatsAppFailure.closed }
+    // A cancelled task gives up before writing, or after a complete exchange:
+    // never half-way, which would desynchronise the stream, and never by
+    // stopping the worker, which every other call of the account shares.
+    try Task.checkCancellation()
     var frame = Data("{\"op\":\"\(op)\",\"request\":".utf8)
     frame.append(try JSONEncoder().encode(request))
     frame.append(contentsOf: [125])
@@ -138,8 +139,9 @@ public actor WhatsAppNativeSession: WhatsAppTransport {
       // Kept for the status line: whether the worker exited, crashed or stopped answering.
       lostReason = child.exitDescription ?? "no reply"
       self.child = nil
-      throw Task.isCancelled ? CancellationError() : WhatsAppFailure.protocolFailure
+      throw WhatsAppFailure.protocolFailure
     }
+    try Task.checkCancellation()
     guard let object = try JSONSerialization.jsonObject(with: response) as? [String: Any],
       object["version"] as? Int == 1, let ok = object["ok"] as? Bool
     else { throw WhatsAppFailure.protocolFailure }
@@ -249,7 +251,6 @@ private final class WhatsAppChild: @unchecked Sendable {
   }
   private func ready(_ descriptor: Int32, events: Int16, deadline: UInt64) throws {
     while true {
-      try Task.checkCancellation()
       guard DispatchTime.now().uptimeNanoseconds < deadline else {
         throw WhatsAppFailure.protocolFailure
       }

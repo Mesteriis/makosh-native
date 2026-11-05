@@ -271,8 +271,11 @@ private struct AIMessageRow: View {
                 }.task(id: reference.objectID) { image = await model.image(reference).flatMap(NSImage.init(data:)) }
             }
             if let text = version?.text, !text.isEmpty {
-                Text(text).textSelection(.enabled).padding(10)
-                    .background(message.author == .user ? WorkspaceStyle.outgoing : WorkspaceStyle.surface, in: .rect(cornerRadius: 10))
+                Group {
+                    if message.author == .assistant { AIMarkdownView(text: text) } else { Text(text).textSelection(.enabled) }
+                }
+                .padding(10)
+                .background(message.author == .user ? WorkspaceStyle.outgoing : WorkspaceStyle.surface, in: .rect(cornerRadius: 10))
             } else if version?.state == .streaming {
                 ProgressView().controlSize(.small)
             }

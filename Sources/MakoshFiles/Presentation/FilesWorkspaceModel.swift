@@ -101,6 +101,7 @@ public struct PaperlessLists: Equatable, Sendable {
             if token == generation { self.error = Self.describe(error) }
         }
         submissions = await sender.submissions()
+        for connection in connections where storageStatus[connection.id] == nil { await test(connection.id) }
     }
 
     public func startPolling() {
@@ -274,8 +275,10 @@ public struct PaperlessLists: Equatable, Sendable {
 
     // MARK: - Sending
 
-    public func send(_ handoff: FileHandoff, to connectionID: UUID, options: PaperlessUpload) async -> PaperlessSubmission {
-        let result = await sender.send(handoff, to: connectionID, options: options) { submission in
+    public func send(
+        _ handoff: FileHandoff, to connectionID: UUID, options: PaperlessUpload, id: UUID = UUID()
+    ) async -> PaperlessSubmission {
+        let result = await sender.send(handoff, to: connectionID, options: options, id: id) { submission in
             Task { @MainActor [weak self] in self?.apply(submission) }
         }
         apply(result)

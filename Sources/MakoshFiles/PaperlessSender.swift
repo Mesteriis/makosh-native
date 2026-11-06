@@ -106,11 +106,12 @@ public actor PaperlessSender {
 
     /// Exports, uploads and polls; every state change reaches the journal before `progress`.
     public func send(
-        _ handoff: FileHandoff, to connectionID: UUID, options: PaperlessUpload, progress: @Sendable (PaperlessSubmission) -> Void
+        _ handoff: FileHandoff, to connectionID: UUID, options: PaperlessUpload, id: UUID = UUID(),
+        progress: @Sendable (PaperlessSubmission) -> Void
     ) async -> PaperlessSubmission {
         load()
         var submission = PaperlessSubmission(
-            connectionID: connectionID, fileName: handoff.name, title: options.title, state: .uploading, startedAt: Date(),
+            id: id, connectionID: connectionID, fileName: handoff.name, title: options.title, state: .uploading, startedAt: Date(),
             updatedAt: Date())
         guard let client = await client(connectionID) else {
             return update(submission, .failed(reason: describe(FilesFailure.storageMissing)), progress)
@@ -136,7 +137,7 @@ public actor PaperlessSender {
         do {
             submission.taskID = try await server.upload(file: file, name: handoff.name, options: options)
         } catch let failure as FilesFailure {
-            if case .unreachable = failure { return update(submission, .unknown, progress) }
+            if case .unreachable(let code) = failure, Self.bodyMayHaveArrived(code) { return update(submission, .unknown, progress) }
             return update(submission, .failed(reason: describe(failure)), progress)
         } catch {
             return update(submission, .failed(reason: describe(error)), progress)
@@ -186,6 +187,13 @@ public actor PaperlessSender {
             do { try await sleep(Self.pollInterval) } catch { return submission }
             elapsed += Self.pollInterval
         }
+    }
+
+    /// Only a connection that was open can have delivered the body; a host that
+    /// was never reached, a refused connection or a failed TLS handshake cannot.
+    static func bodyMayHaveArrived(_ code: String) -> Bool {
+        !["cannotFindHost", "cannotConnectToHost", "notConnectedToInternet", "secureConnectionFailed", "serverCertificateUntrusted"]
+            .contains(code)
     }
 
     static func settle(_ state: PaperlessTaskState) -> PaperlessSubmission.State? {

@@ -18,6 +18,8 @@ struct PaperlessSendSheet: View {
     @State private var submission: PaperlessSubmission?
     @State private var sending = false
     @State private var prepared = false
+    /// Chosen before sending, so the sheet follows exactly its own submission.
+    @State private var submissionID = UUID()
 
     private var connections: [PaperlessConnection] {
         model.connections.compactMap { if case .paperless(let value) = $0 { value } else { nil } }
@@ -90,7 +92,7 @@ struct PaperlessSendSheet: View {
             await prepare()
         }
         .onReceive(model.$submissions) { all in
-            if let current = submission, let updated = all.first(where: { $0.id == current.id }) { submission = updated }
+            if let updated = all.first(where: { $0.id == submissionID }) { submission = updated }
         }
     }
 
@@ -106,24 +108,16 @@ struct PaperlessSendSheet: View {
     }
 
     private func send() {
-        guard let id = connectionID else { return }
+        guard let connectionID else { return }
         sending = true
         let options = PaperlessUpload(
             title: String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(PaperlessUpload.titleLimit)),
             created: hasDate ? created : nil, documentType: documentType, tags: tags.sorted())
-        let handoff = request.handoff
+        let handoff = request.handoff, id = submissionID
         Task {
-            // The first progress event arrives through the model's submissions.
-            let result = await model.send(handoff, to: id, options: options)
+            let result = await model.send(handoff, to: connectionID, options: options, id: id)
             submission = result
             sending = false
-        }
-        Task { @MainActor in
-            // Show the uploading state at once, before the sender reports.
-            for _ in 0..<20 where submission == nil {
-                try? await Task.sleep(for: .milliseconds(50))
-                if let first = model.submissions.last(where: { $0.fileName == handoff.name && !$0.isSettled }) { submission = first }
-            }
         }
     }
 }

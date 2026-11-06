@@ -94,17 +94,20 @@ public actor FileCatalogue {
             while true {
                 let page = try store.fileEvents(after: cursor, limit: Self.pageSize)
                 for event in page {
-                    cursor = event.sequence
                     let record = event.record
-                    guard record.attachment.id != Self.rawLetterAttachment else { continue }
-                    let message = try store.latestRecord(identity: record.identity)
-                    var date: Date?, author: String?
-                    if case .message(let content)? = message?.observation.event {
-                        date = content.date
-                        author = content.author
+                    if record.attachment.id != Self.rawLetterAttachment {
+                        // The message row is read before the cursor moves: a damaged
+                        // row keeps failing visibly instead of dropping the file.
+                        let message = try store.latestRecord(identity: record.identity)
+                        var date: Date?, author: String?
+                        if case .message(let content)? = message?.observation.event {
+                            date = content.date
+                            author = content.author
+                        }
+                        latest[Self.key(record)] = FileCatalogueItem(record: record, messageDate: date, author: author)
+                        changed.append(record.identity)
                     }
-                    latest[Self.key(record)] = FileCatalogueItem(record: record, messageDate: date, author: author)
-                    changed.append(record.identity)
+                    cursor = event.sequence
                 }
                 if page.count < Self.pageSize { break }
             }
@@ -112,7 +115,9 @@ public actor FileCatalogue {
             throw Self.failure(error)
         }
         if let resolver {
-            for identity in changed where titles[identity] == nil {
+            // Unknown titles are asked again: a service may have loaded its chats since.
+            let pending = Set(changed + titles.compactMap { $0.value == nil ? $0.key : nil })
+            for identity in pending where (titles[identity] ?? nil) == nil {
                 titles[identity] = .some(await resolver.sourceTitle(for: identity))
             }
         }

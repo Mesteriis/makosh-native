@@ -8,6 +8,20 @@ private struct TitleStub: FileSourceResolving {
     func sourceTitle(for identity: MessageArchiveIdentity) async -> String? { titles[identity.conversationID] }
 }
 
+/// Answers nil until `titles` is filled, like a service whose chats load later.
+private final class LateTitleStub: FileSourceResolving, @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [String: String] = [:]
+    private(set) var asked = 0
+    func fill(_ titles: [String: String]) { lock.withLock { answers = titles } }
+    func sourceTitle(for identity: MessageArchiveIdentity) async -> String? {
+        lock.withLock {
+            asked += 1
+            return answers[identity.conversationID]
+        }
+    }
+}
+
 final class FileCatalogueTests: XCTestCase {
     private func catalogue(_ db: FilesTestDatabase) -> FileCatalogue {
         FileCatalogue(connectionString: db.connectionString, schema: db.schema) { _, _ in filesTestKey }
@@ -84,6 +98,44 @@ final class FileCatalogueTests: XCTestCase {
             _ = try await catalogue(db).refresh(resolver: nil)
             XCTFail("tampered row must not be skipped")
         } catch let error as FilesFailure { XCTAssertEqual(error, .integrity) }
+    }
+
+    func testTamperedMessageRowKeepsFailingInsteadOfDroppingTheFile() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        let a = try storedFile(store, message: "1", attachment: "x", name: "a.pdf")
+        _ = try store.append([
+            MessageArchiveObservation(
+                identity: a.identity, source: .synthetic,
+                event: .message(.init(date: Date(timeIntervalSince1970: 1), text: "t", author: "Иван", isOutgoing: false)))
+        ])
+        // A newer, unreadable version of that message: its token is copied from the real row.
+        let token = try XCTUnwrap(db.execute("SELECT message_token FROM \"\(db.schema)\".archive_events LIMIT 1").first?.first)
+        try db.execute(
+            "INSERT INTO \"\(db.schema)\".archive_events(observation,account_token,stream_token,message_token,event_digest,ciphertext) VALUES(gen_random_uuid(),'a','s','\(token)','d','AAAA')"
+        )
+        let reader = catalogue(db)
+        for _ in 0..<2 {
+            do {
+                _ = try await reader.refresh(resolver: nil)
+                XCTFail("the damaged message must keep the error visible")
+            } catch let error as FilesFailure { XCTAssertEqual(error, .integrity) }
+        }
+        let kept = await reader.items
+        XCTAssertEqual(kept, [], "nothing is shown as if the archive were fine")
+    }
+
+    func testUnknownTitlesAreAskedAgainOnTheNextRefresh() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        _ = try storedFile(store, chat: "c", message: "1", attachment: "x", name: "a.pdf")
+        let reader = catalogue(db), resolver = LateTitleStub()
+        let first = try await reader.refresh(resolver: resolver)
+        XCTAssertEqual(first.first?.sourceTitle, nil)
+        resolver.fill(["c": "Мария"])
+        let second = try await reader.refresh(resolver: resolver)
+        XCTAssertEqual(second.first?.sourceTitle, "Мария")
+        let third = try await reader.refresh(resolver: resolver)
+        XCTAssertEqual(third.first?.sourceTitle, "Мария")
+        XCTAssertEqual(resolver.asked, 2, "a known title is not asked again")
     }
 
     func testCategoryByExtensionAndKind() {

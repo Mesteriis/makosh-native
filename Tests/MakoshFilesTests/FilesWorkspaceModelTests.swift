@@ -174,6 +174,18 @@ final class CatalogueStub: FileCatalogueReading, @unchecked Sendable {
         XCTAssertEqual(model.submissions.map(\.state), [result.state])
     }
 
+    func testRefreshProbesEachStorageOnce() async throws {
+        scripts[a.id]!.statusResult = .success(PaperlessStatus(documentCount: 7, version: nil))
+        scripts[b.id]!.statusResult = .failure(.unreachable("cannotConnectToHost"))
+        let model = model()
+        await model.refresh()
+        XCTAssertEqual(model.storageStatus[a.id], .success(PaperlessStatus(documentCount: 7, version: nil)))
+        XCTAssertEqual(model.storageStatus[b.id], .failure(.unreachable("cannotConnectToHost")))
+        scripts[a.id]!.statusResult = .success(PaperlessStatus(documentCount: 8, version: nil))
+        await model.refresh()
+        XCTAssertEqual(model.storageStatus[a.id]?.map(\.documentCount), .success(7), "a known status is not probed again by polling")
+    }
+
     func testPollingRefreshesWhileActiveOnly() async throws {
         let model = model(pollInterval: .milliseconds(5))
         model.startPolling()

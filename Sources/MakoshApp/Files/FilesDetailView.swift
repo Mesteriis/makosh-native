@@ -20,6 +20,11 @@ struct FilesDetailView: View {
             Divider()
             if case .storage(let id) = model.source {
                 PaperlessDocumentsView(model: model, connectionID: id)
+            } else if model.items.isEmpty, model.loading {
+                ContentUnavailableView(
+                    "Читаем архив…", systemImage: "folder", description: Text("Первое заполнение большого архива занимает время.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if model.items.isEmpty {
                 ContentUnavailableView(
                     "Файлов пока нет", systemImage: "folder",

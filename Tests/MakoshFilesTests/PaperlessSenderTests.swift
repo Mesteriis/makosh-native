@@ -131,6 +131,24 @@ final class PaperlessSenderTests: XCTestCase {
         XCTAssertEqual(result.state, .duplicate(existingID: 120))
     }
 
+    func testUnreachableBeforeTheBodyLeftIsFailedNotUnknown() async throws {
+        for code in [
+            "cannotConnectToHost", "cannotFindHost", "notConnectedToInternet", "secureConnectionFailed", "serverCertificateUntrusted",
+        ] {
+            script.uploads = [.failure(.unreachable(code))]
+            let result = await sender().send(handoff, to: connection.id, options: options) { _ in }
+            XCTAssertEqual(result.state, .failed(reason: FilesFailure.unreachable(code).errorDescription!), code)
+        }
+    }
+
+    func testSendUsesTheGivenSubmissionID() async throws {
+        script.uploads = [.success("t1")]
+        script.tasks = [.success(.success(documentID: 5))]
+        let id = UUID()
+        let result = await sender().send(handoff, to: connection.id, options: options, id: id) { _ in }
+        XCTAssertEqual(result.id, id)
+    }
+
     func testUnreachableAfterUploadIsUnknownAndNeverResent() async throws {
         script.uploads = [.failure(.unreachable("timedOut"))]
         let sender = sender()

@@ -16,7 +16,8 @@ public struct TelegramMediaDimensions: Sendable, Equatable {
     public let height: Int32
     public init?(width: Int32, height: Int32) {
         guard width > 0, height > 0 else { return nil }
-        self.width = width; self.height = height
+        self.width = width
+        self.height = height
     }
     public var aspectRatio: Double { Double(width) / Double(height) }
 }
@@ -34,10 +35,14 @@ public struct TelegramAttachment: Identifiable, Sendable, Equatable {
     public let isSpoiler: Bool
     public var paidMedia: TelegramPaidMediaState? = nil
     public var location: TelegramLocationAttachment? = nil
+    /// Inherited from the message: copy-protected or secret content.
+    public var isProtected = false
 
-    public init(id: String, kind: TelegramAttachmentKind, name: String, byteCount: Int64?,
-                mimeType: String?, hasPreview: Bool, canDownload: Bool,
-                playback: TelegramPlaybackKind? = nil, dimensions: TelegramMediaDimensions? = nil, isSpoiler: Bool = false) {
+    public init(
+        id: String, kind: TelegramAttachmentKind, name: String, byteCount: Int64?,
+        mimeType: String?, hasPreview: Bool, canDownload: Bool,
+        playback: TelegramPlaybackKind? = nil, dimensions: TelegramMediaDimensions? = nil, isSpoiler: Bool = false
+    ) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -131,19 +136,24 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
             size = file.size
             mimeType = file.mimeType
             contentType = MediaResourceUserContentType(file: file)
-            dimensions = file.attributes.compactMap { attribute -> TelegramMediaDimensions? in
-                switch attribute {
-                case let .Video(_, size, _, _, _, _), let .ImageSize(size):
-                    return TelegramMediaDimensions(width: size.width, height: size.height)
-                default: return nil
-                }
-            }.first
+            dimensions =
+                file.attributes.compactMap { attribute -> TelegramMediaDimensions? in
+                    switch attribute {
+                    case let .Video(_, size, _, _, _, _), let .ImageSize(size):
+                        return TelegramMediaDimensions(width: size.width, height: size.height)
+                    default: return nil
+                    }
+                }.first
         } else if let map = media as? TelegramMediaMap, let location = TelegramLocationAttachment(map) {
             kind = .location
             playback = nil
             name = location.archiveDescription
-            fullResource = nil; previewResource = nil; size = nil; mimeType = nil
-            contentType = .other; dimensions = nil
+            fullResource = nil
+            previewResource = nil
+            size = nil
+            mimeType = nil
+            contentType = .other
+            dimensions = nil
         } else {
             // Paid/locked and unknown media are intentionally not recursively expanded.
             kind = .unsupported
@@ -169,13 +179,15 @@ func telegramAttachments(_ message: Message) -> [TelegramAttachmentSource] {
         let digest = SHA256.hash(data: Data(framed.utf8)).map { String(format: "%02x", $0) }.joined()
         let mediaKey = media.id.map { "\($0.namespace):\($0.id)" } ?? "none"
         let id = "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id):\(ordinal):\(mediaKey):\(digest)"
-        var attachment = TelegramAttachment(id: id, kind: kind, name: name,
+        var attachment = TelegramAttachment(
+            id: id, kind: kind, name: name,
             byteCount: size.flatMap { $0 >= 0 ? $0 : nil }, mimeType: mimeType,
             hasPreview: preview != nil, canDownload: full != nil, playback: playback, dimensions: dimensions,
             isSpoiler: message.attributes.contains { $0 is MediaSpoilerMessageAttribute })
         attachment.paidMedia = (media as? TelegramMediaPaidContent).flatMap(telegramPaidMediaState)
         attachment.location = (media as? TelegramMediaMap).flatMap(TelegramLocationAttachment.init)
-        return TelegramAttachmentSource(attachment: attachment, messageID: message.id, full: full, preview: preview,
+        return TelegramAttachmentSource(
+            attachment: attachment, messageID: message.id, full: full, preview: preview,
             location: .peer(message.id.peerId), contentType: contentType)
     }
 }

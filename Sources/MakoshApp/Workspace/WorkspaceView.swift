@@ -261,6 +261,12 @@ struct WorkspaceView: View {
         }
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model).makoshAppearance() }
         .sheet(item: $files.pendingSend) { request in PaperlessSendSheet(model: files.model, request: request).makoshAppearance() }
+        .sheet(item: $files.pendingForward) { request in FileForwardSheet(request: request).makoshAppearance() }
+        .onChange(of: files.pendingAsk?.id) { _, _ in
+            guard let request = files.pendingAsk else { return }
+            files.pendingAsk = nil
+            askAI(request)
+        }
         .sheet(isPresented: $review) { MergeReviewView(model: model).makoshAppearance() }
         .alert("Макош", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("Понятно", role: .cancel) { model.error = nil }
@@ -298,6 +304,25 @@ struct WorkspaceView: View {
                             await ai.workspace.select(id)
                         }
                     }, close: close))
+        }
+    }
+
+    /// "Спросить ИИ…": a new conversation in the AI section with the file attached, nothing sent.
+    private func askAI(_ request: FileAskRequest) {
+        let files = files, ai = ai
+        Task {
+            let source: AIFileSource
+            if let known = request.source {
+                source = known
+            } else {
+                do { source = .staged(id: try await files.stage.stage(request.handoff).id) } catch {
+                    model.error = (error as? FilesFailure)?.errorDescription ?? "Не удалось подготовить файл для ИИ."
+                    return
+                }
+            }
+            destination = .ai
+            await ai.workspace.newConversation()
+            await ai.workspace.add(.file(source: source, title: request.handoff.name, pages: nil))
         }
     }
 

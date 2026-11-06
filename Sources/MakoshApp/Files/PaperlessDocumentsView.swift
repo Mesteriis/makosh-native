@@ -1,4 +1,5 @@
 import AppKit
+import MakoshAI
 import MakoshFiles
 import SwiftUI
 
@@ -11,6 +12,7 @@ struct PaperlessDocumentsView: View {
     @State private var preview: FilePreviewLease?
     @State private var busy = false
     @State private var failure: String?
+    @Environment(\.filesHost) private var host
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,6 +82,12 @@ struct PaperlessDocumentsView: View {
         Button("Сохранить как…") { save(document) }.disabled(busy)
         Button("Открыть в Paperless") {
             if let url = model.documentURL(id: document.id, in: connectionID) { NSWorkspace.shared.open(url) }
+        }
+        if let host {
+            Divider()
+            FileActionsMenu(
+                handoff: { host.handoff(connectionID: connectionID, document: document) },
+                source: .paperless(connectionID: connectionID, documentID: document.id))
         }
     }
 

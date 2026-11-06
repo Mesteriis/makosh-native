@@ -9,6 +9,18 @@ struct WhatsAppDetailView: View {
     var dossier: () -> Void = {}
     private let sourceAccount: UUID?
     private let sourceChat: String?
+    /// The bytes of a WhatsApp file message for Paperless, a chat, a letter or the AI.
+    private static func fileHandoff(_ message: WhatsAppMessage, model: WhatsAppWorkspaceModel, account: UUID) -> FileHandoff {
+        FileHandoff(
+            name: message.details?.name ?? "file", byteCount: message.details?.size.map(Int64.init),
+            date: Date(timeIntervalSince1970: TimeInterval(message.timestamp))
+        ) { url in
+            guard let lease = await model.actions.download(message, expectedAccount: account) else { throw WhatsAppFailure.unavailable }
+            defer { lease.remove() }
+            try FileManager.default.copyItem(at: lease.url, to: url)
+        }
+    }
+
     init(model: WhatsAppWorkspaceModel, dossier: @escaping () -> Void = {}) {
         self.model = model
         self.dossier = dossier
@@ -179,20 +191,9 @@ struct WhatsAppDetailView: View {
                                                 NSPasteboard.general.setString(message.text, forType: .string)
                                             }
                                             if let sourceAccount, message.details?.resourceID != nil, !message.deleted {
-                                                FileSendMenu(handoff: {
-                                                    FileHandoff(
-                                                        name: message.details?.name ?? "file",
-                                                        byteCount: message.details?.size.map(Int64.init),
-                                                        date: Date(timeIntervalSince1970: TimeInterval(message.timestamp))
-                                                    ) { [model] url in
-                                                        guard
-                                                            let lease = await model.actions.download(
-                                                                message, expectedAccount: sourceAccount)
-                                                        else { throw WhatsAppFailure.unavailable }
-                                                        defer { lease.remove() }
-                                                        try FileManager.default.copyItem(at: lease.url, to: url)
-                                                    }
-                                                })
+                                                FileActionsMenu(
+                                                    handoff: { Self.fileHandoff(message, model: model, account: sourceAccount) },
+                                                    protected: message.details?.protected == true)
                                             }
                                             MakoshMenu("Реакция") {
                                                 ForEach(["👍", "❤️", "😂", "😮", "😢", "🙏", ""], id: \.self) { emoji in

@@ -3,7 +3,9 @@ import TelegramCore
 import Postbox
 
 func telegramPeerTitle(_ peer: Peer) -> String {
-    if let user = peer as? TelegramUser { return [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ") }
+    if let user = peer as? TelegramUser {
+        return [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+    }
     if let group = peer as? TelegramGroup { return group.title }
     if let channel = peer as? TelegramChannel { return channel.title }
     return "Диалог \(peer.id.toInt64())"
@@ -15,9 +17,11 @@ extension TelegramMessage {
     }
 
     init(_ message: Message, isRead: Bool? = nil, accountID: Int64? = nil) {
-        self.init(id: "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id)",
+        self.init(
+            id: "\(message.id.peerId.toInt64()):\(message.id.namespace):\(message.id.id)",
             date: Date(timeIntervalSince1970: TimeInterval(message.timestamp)), text: message.text,
-            author: message.author.map(telegramPeerTitle) ?? "Telegram", isOutgoing: telegramMessageIsOutgoing(message, accountID: accountID),
+            author: message.author.map(telegramPeerTitle) ?? "Telegram",
+            isOutgoing: telegramMessageIsOutgoing(message, accountID: accountID),
             delivery: telegramMessageDelivery(message, isRead: isRead, accountID: accountID))
         attachments = telegramAttachments(message).map(\.attachment)
         let visual = attachments.first.map { $0.kind == .photo || $0.playback == .video } == true
@@ -27,7 +31,21 @@ extension TelegramMessage {
         albumGroupID = message.groupInfo?.stableId
         nativeGroupingKey = message.groupingKey
         canGroupMedia = !message.containsSecretMedia && !attachments.contains { $0.kind == .unsupported }
+        let peer = message.peers[message.id.peerId]
+        let chatProtected =
+            (peer as? TelegramChannel)?.flags.contains(.copyProtectionEnabled) == true
+            || (peer as? TelegramGroup)?.flags.contains(.copyProtectionEnabled) == true
+        if telegramMessageIsProtected(
+            flags: message.flags, containsSecretMedia: message.containsSecretMedia, chatCopyProtected: chatProtected)
+        {
+            markProtected()
+        }
     }
+}
+
+/// Telegram forbids copying such content; Makosh offers no forwarding, Paperless or AI for it.
+func telegramMessageIsProtected(flags: MessageFlags, containsSecretMedia: Bool, chatCopyProtected: Bool) -> Bool {
+    chatCopyProtected || containsSecretMedia || flags.contains(.CopyProtected)
 }
 
 nonisolated func telegramMessagePreview(_ message: Message?) -> String {

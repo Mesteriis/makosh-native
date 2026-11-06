@@ -26,6 +26,16 @@ public struct TelegramMessage: Identifiable, Equatable, Sendable {
     public var canGroupMedia = true
     /// Received placement for supported photo/video; an album caption may belong to another member.
     public var captionAboveMedia = false
+    /// Copy-protected or secret content: never forwarded, sent to Paperless or read by the AI.
+    public var isProtected = false
+    public mutating func markProtected() {
+        isProtected = true
+        attachments = attachments.map { attachment in
+            var value = attachment
+            value.isProtected = true
+            return value
+        }
+    }
     public var formattedTextForDisplay: TelegramFormattedText? {
         guard let metadata = actionMetadata else { return try? TelegramFormattedText(text: text) }
         guard let value = metadata.formattedText, value.text.utf8.elementsEqual(text.utf8) else { return nil }

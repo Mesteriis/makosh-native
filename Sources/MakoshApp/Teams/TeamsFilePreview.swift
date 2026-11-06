@@ -49,18 +49,16 @@ struct TeamsFilePreview: View {
     let name: String
     @Environment(\.dismiss) private var dismiss
     @State private var error: String?
-    @State private var send: FileSendRequest?
-    @Environment(\.filesHost) private var files
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text(name).font(.headline).lineLimit(1)
                 Spacer()
-                FileSendMenu(
-                    title: "В Paperless…",
-                    handoff: {
-                        FileHandoff(name: name) { [lease] url in try FileManager.default.copyItem(at: lease.url, to: url) }
-                    }, present: { send = $0 })
+                Menu("Ещё") {
+                    FileActionsMenu(
+                        handoff: { FileHandoff(name: name) { [lease] url in try FileManager.default.copyItem(at: lease.url, to: url) } },
+                        before: { dismiss() })
+                }.fixedSize().accessibilityIdentifier("teams.file.actions")
                 Button("Сохранить…") {
                     Task {
                         do { try await TeamsFilePanels.save(lease, name: URL(fileURLWithPath: name).lastPathComponent) } catch {
@@ -70,9 +68,6 @@ struct TeamsFilePreview: View {
                 }
                 Button("Закрыть") { dismiss() }
             }.padding(12)
-                .sheet(item: $send) { request in
-                    if let files { PaperlessSendSheet(model: files.model, request: request).makoshAppearance() }
-                }
             if let error { Text(error).foregroundStyle(.orange).padding(8) }
             TeamsQuickLook(url: lease.url)
         }.frame(minWidth: 650, minHeight: 500)

@@ -253,16 +253,18 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
                             .disabled(actions.isBusy || playback.isBusy)
                             .accessibilityIdentifier(prefix + ".playback")
                     }
-                    FileSendMenu(
-                        title: "В Paperless…",
-                        handoff: {
-                            FileHandoff(name: attachment.name, byteCount: attachment.byteCount) { [media] url in
-                                let available = try await media.withDownloadedFile(for: key) { source, size in
-                                    try await TelegramDownloadedFileIO.copy(source: source, expectedSize: size, destination: url)
+                    if !attachment.isProtected {
+                        Menu("Ещё") {
+                            FileActionsMenu(handoff: {
+                                FileHandoff(name: attachment.name, byteCount: attachment.byteCount) { [media] url in
+                                    let available = try await media.withDownloadedFile(for: key) { source, size in
+                                        try await TelegramDownloadedFileIO.copy(source: source, expectedSize: size, destination: url)
+                                    }
+                                    if !available { throw TelegramFileError.unavailable }
                                 }
-                                if !available { throw TelegramFileError.unavailable }
-                            }
-                        })
+                            })
+                        }.menuStyle(.borderlessButton).fixedSize().accessibilityIdentifier(prefix + ".actions")
+                    }
                 }
                 if purpose == .preview || attachment.kind == .photo {
                     Button("Посмотреть") { actions.showPreview(media: media, key: key) }

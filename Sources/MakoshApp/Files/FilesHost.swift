@@ -1,4 +1,5 @@
 import Foundation
+import MakoshAI
 import MakoshCore
 import MakoshFiles
 import SwiftUI
@@ -7,6 +8,22 @@ import SwiftUI
 struct FileSendRequest: Identifiable {
     let id = UUID()
     let handoff: FileHandoff
+}
+
+/// A file waiting on the forward sheet: to a chat or by mail.
+struct FileForwardRequest: Identifiable {
+    enum Mode { case chat, mail }
+    let id = UUID()
+    let handoff: FileHandoff
+    let mode: Mode
+}
+
+/// A file to attach to a new AI conversation; `source` avoids staging when the
+/// file already has an archive record or lives in Paperless.
+struct FileAskRequest: Identifiable {
+    let id = UUID()
+    let handoff: FileHandoff
+    let source: AIFileSource?
 }
 
 /// The Files host reaches every view through the environment; views shown
@@ -35,6 +52,8 @@ extension EnvironmentValues {
     @Published private(set) var configured = false
     /// Set by any "Отправить в Paperless…" item; the workspace shows the sheet.
     @Published var pendingSend: FileSendRequest?
+    @Published var pendingForward: FileForwardRequest?
+    @Published var pendingAsk: FileAskRequest?
     private var repository: ArchiveFileRepository?
     private var repositoryFactory: (@Sendable () throws -> ArchiveFileRepository)?
 

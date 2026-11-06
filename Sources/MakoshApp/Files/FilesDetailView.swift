@@ -1,4 +1,5 @@
 import AppKit
+import MakoshAI
 import MakoshCore
 import MakoshFiles
 import SwiftUI
@@ -108,7 +109,7 @@ struct FilesDetailView: View {
         Button("Сохранить как…") { save(item) }.disabled(busy)
         Button("Открыть источник") { openSource(item.identity) }
         Divider()
-        FileSendMenu(handoff: { host.handoff(item) })
+        FileActionsMenu(handoff: { host.handoff(item) }, source: .archive(recordID: item.id))
     }
 
     private func show(_ item: FileCatalogueItem) {

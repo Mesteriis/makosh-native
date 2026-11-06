@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MakoshCore
 import PDFKit
 import Vision
 
@@ -125,24 +126,29 @@ public actor FileTextExtractor {
             pages: chosen, pageCount: count, paginated: false, recognizedPages: text.isEmpty ? [] : Set(selected), truncatedOCR: false)
     }
 
-    /// Lines top to bottom, left to right, as Vision found them.
+    /// Lines top to bottom, left to right, as Vision found them. Vision runs
+    /// off the actor so other cards keep reading; cancellation stops the request.
     private func recognize(_ image: CGImage) async throws -> String {
         let languages = languages
-        return try await withCheckedThrowingContinuation { continuation in
-            let request = VNRecognizeTextRequest { request, error in
-                if let error { return continuation.resume(throwing: error) }
+        try Task.checkCancellation()
+        nonisolated(unsafe) let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = languages
+        request.usesLanguageCorrection = true
+        let lines: [String] = try await withTaskCancellationHandler {
+            try await BackgroundWork.run {
+                try VNImageRequestHandler(cgImage: image).perform([request])
                 let observations = (request.results as? [VNRecognizedTextObservation]) ?? []
-                let lines = observations.sorted {
-                    abs($0.boundingBox.midY - $1.boundingBox.midY) > 0.01
-                        ? $0.boundingBox.midY > $1.boundingBox.midY : $0.boundingBox.minX < $1.boundingBox.minX
+                return observations.sorted { a, b in
+                    let rowA = Int((a.boundingBox.midY * 100).rounded()), rowB = Int((b.boundingBox.midY * 100).rounded())
+                    return rowA != rowB ? rowA > rowB : a.boundingBox.minX < b.boundingBox.minX
                 }.compactMap { $0.topCandidates(1).first?.string }
-                continuation.resume(returning: lines.joined(separator: "\n"))
             }
-            request.recognitionLevel = .accurate
-            request.recognitionLanguages = languages
-            request.usesLanguageCorrection = true
-            do { try VNImageRequestHandler(cgImage: image).perform([request]) } catch { continuation.resume(throwing: error) }
+        } onCancel: {
+            request.cancel()
         }
+        try Task.checkCancellation()
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Text

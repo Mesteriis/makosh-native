@@ -17,7 +17,8 @@ struct MailComposeSheet: View {
     init(model: MailWorkspaceModel, draft: MailDraft) {
         self.model = model
         _draft = State(initialValue: draft)
-        _attachments = State(initialValue: model.takeComposerAttachments())
+        // Read only: a view may be built more than once; compose() resets the list.
+        _attachments = State(initialValue: model.composerAttachments)
         let initial: NSAttributedString
         if let data = draft.bodyRTF,
             let rich = try? NSAttributedString(

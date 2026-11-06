@@ -66,6 +66,27 @@ final class FileCatalogueTests: XCTestCase {
         XCTAssertEqual(items.map(\.id), [first.id, second.id], "message date orders ahead of capture date")
     }
 
+    func testMailAuthorIdentityIsLowercasedLikeTheDossier() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        let letter = try storedFile(store, service: "mail", message: "1:7", attachment: "0", name: "a.pdf")
+        let chat = try storedFile(store, service: "telegram", message: "0:9", attachment: "x", name: "b.pdf")
+        _ = try store.append([
+            MessageArchiveObservation(
+                identity: letter.identity, source: .synthetic,
+                event: .message(
+                    .init(
+                        date: Date(timeIntervalSince1970: 1), text: "t", author: "Иван", authorID: "Ivan.Petrov@Example.com",
+                        isOutgoing: false))),
+            MessageArchiveObservation(
+                identity: chat.identity, source: .synthetic,
+                event: .message(
+                    .init(date: Date(timeIntervalSince1970: 2), text: "t", author: "Иван", authorID: "777000", isOutgoing: false))),
+        ])
+        let items = try await catalogue(db).refresh(resolver: nil)
+        XCTAssertEqual(items.first { $0.id == letter.id }?.authorID, "ivan.petrov@example.com")
+        XCTAssertEqual(items.first { $0.id == chat.id }?.authorID, "777000", "other services keep their ids as they are")
+    }
+
     func testRefreshContinuesFromCursorAndKeepsEarlierItems() async throws {
         let db = try filesDatabase(), store = try archiveStore(db)
         _ = try storedFile(store, message: "1", attachment: "x", name: "a.pdf", capturedAt: 10)

@@ -19,6 +19,8 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
     private var files: FilesHost?
     private var extractor: FileTextExtractor?
     private var progress: (@Sendable (String, AIExtractionProgress?) -> Void)?
+    /// Extracted text and its fallback per card and page range, for the session.
+    private let fileCache = FileMaterialCache()
 
     /// File cards need the Files host (archive, Paperless, staging) and the extractor.
     func attachFiles(
@@ -69,19 +71,22 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
 
     /// Bytes come from the archive, Paperless or the staged copy into a private
     /// directory; text is read on the Mac, Paperless OCR only as a fallback.
+    /// A cached read is reused without downloading anything again.
     private func fileMaterial(
         _ card: AIContextCard, source: AIFileSource, pages: ClosedRange<Int>?, snapshot: AIAccessSnapshot
     ) async throws
         -> AIContextMaterial
     {
         guard let files, let extractor else { throw AIFailure.contextUnavailable("Файлы ещё не готовы.") }
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "makosh-ai-file-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let name: String, file: URL, fallback: String?, kind: String
+        let cardID = card.id, report = progress
+        let key = "\(cardID)|\(pages.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "all")"
+        let kind: String
         switch source {
-        case .archive(let recordID):
+        case .archive: kind = "archive"
+        case .paperless: kind = "paperless"
+        case .staged: kind = "staged"
+        }
+        if case .archive(let recordID) = source {
             guard let item = await files.record(id: recordID) else { throw AIFailure.contextUnavailable("Файл больше не в архиве.") }
             if let authorID = item.authorID {
                 try AIContextAccess.requireOpen(
@@ -89,51 +94,64 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
                     snapshot: snapshot,
                     what: "файл")
             }
+        }
+        if let cached = await fileCache.value(for: key) {
+            let result = try AIContextDocument.assemble(
+                pages: cached.text.pages, pageCount: cached.text.pageCount, paginated: cached.text.paginated,
+                recognizedPages: cached.text.recognizedPages, truncatedOCR: cached.text.truncatedOCR, selected: pages,
+                fallback: cached.fallback,
+                source: kind)
+            return AIContextMaterial.document(card, result.document)
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "makosh-ai-file-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let name: String, file: URL
+        var fallback: (() async throws -> String?)? = nil
+        switch source {
+        case .archive(let recordID):
+            guard let item = await files.record(id: recordID) else { throw AIFailure.contextUnavailable("Файл больше не в архиве.") }
             name = item.name
             file = directory.appendingPathComponent(FileHandoff(name: name) { _ in }.stagingBasename)
             try await files.handoff(item).produce(file)
-            fallback = nil
-            kind = "archive"
         case .paperless(let connectionID, let documentID):
-            let detail = try await files.paperlessDetail(connectionID: connectionID, documentID: documentID)
-            name = detail.originalFileName.map { URL(fileURLWithPath: $0).lastPathComponent } ?? (detail.title + ".pdf")
+            let title = card.title
+            name = (title as NSString).pathExtension.isEmpty ? title + ".pdf" : title
             file = directory.appendingPathComponent(FileHandoff(name: name) { _ in }.stagingBasename)
             try await files.downloadPaperless(connectionID: connectionID, documentID: documentID, to: file)
-            fallback = detail.content
-            kind = "paperless"
+            fallback = { try await files.paperlessDetail(connectionID: connectionID, documentID: documentID).content }
         case .staged(let id):
             guard let staged = await files.stage.url(id: id) else {
                 throw AIFailure.contextUnavailable("Копия недоступна — прикрепите файл заново.")
             }
             name = card.title
             file = staged
-            fallback = nil
-            kind = "staged"
         }
-        let cardID = card.id, report = progress
-        let key = "\(cardID)|\(pages.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "all")"
         let extracted: ExtractedText
-        if let cached = await extractor.cached(key: key) {
-            extracted = cached
-        } else {
-            do {
-                extracted = try await extractor.extract(file, name: name, pages: pages) { value in
-                    report?(cardID, AIExtractionProgress(done: value.done, total: value.total))
-                }
-            } catch let failure as FilesFailure {
-                report?(cardID, nil)
-                throw AIFailure.contextUnavailable(failure.errorDescription ?? "Не удалось прочитать файл.")
-            } catch {
-                report?(cardID, nil)
-                throw error
+        do {
+            extracted = try await extractor.extract(file, name: name, pages: pages) { value in
+                report?(cardID, AIExtractionProgress(done: value.done, total: value.total))
             }
-            await extractor.store(extracted, key: key)
+        } catch let failure as FilesFailure {
+            report?(cardID, nil)
+            throw AIFailure.contextUnavailable(failure.errorDescription ?? "Не удалось прочитать файл.")
+        } catch {
+            report?(cardID, nil)
+            throw error
         }
         report?(cardID, nil)
+        // Paperless OCR text is fetched only when the local read is thin.
+        var fallbackText: String?
+        let characters = extracted.pages.reduce(0) { $0 + $1.trimmingCharacters(in: .whitespacesAndNewlines).count }
+        if let fallback, characters < AIContextDocument.fallbackThreshold * max(extracted.pages.count, 1) {
+            fallbackText = try await fallback()
+        }
+        await fileCache.store(FileMaterialCache.Entry(text: extracted, fallback: fallbackText), for: key)
         let result = try AIContextDocument.assemble(
             pages: extracted.pages, pageCount: extracted.pageCount, paginated: extracted.paginated,
             recognizedPages: extracted.recognizedPages,
-            truncatedOCR: extracted.truncatedOCR, selected: pages, fallback: fallback, source: kind)
+            truncatedOCR: extracted.truncatedOCR, selected: pages, fallback: fallbackText, source: kind)
         return AIContextMaterial.document(card, result.document)
     }
 
@@ -268,4 +286,16 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
         let line = AIContextLine(author: "Досье", isOutgoing: false, date: Date(), text: text)
         return AIContextMaterial(card: card, lines: [line], hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: nil)
     }
+}
+
+/// Text read for a file card, kept for the session so previews and sends
+/// never download or OCR the same pages twice.
+actor FileMaterialCache {
+    struct Entry: Sendable {
+        let text: ExtractedText
+        let fallback: String?
+    }
+    private var entries: [String: Entry] = [:]
+    func value(for key: String) -> Entry? { entries[key] }
+    func store(_ entry: Entry, for key: String) { entries[key] = entry }
 }

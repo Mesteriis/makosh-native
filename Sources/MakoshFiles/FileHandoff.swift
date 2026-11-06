@@ -16,6 +16,12 @@ public struct FileHandoff: Sendable {
         self.produce = produce
     }
 
+    /// A hand-off that copies an existing file (a staged copy, a lease).
+    public init(copying source: URL, name: String, date: Date? = nil) {
+        let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+        self.init(name: name, byteCount: size, date: date) { url in try FileManager.default.copyItem(at: source, to: url) }
+    }
+
     /// A safe on-disk basename: a generic stem plus a short ASCII extension.
     public var stagingBasename: String {
         let suffix = (name as NSString).pathExtension

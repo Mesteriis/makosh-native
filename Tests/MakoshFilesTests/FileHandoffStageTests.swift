@@ -50,6 +50,22 @@ final class FileHandoffStageTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: staged.url.path), "staging works after clearing")
     }
 
+    func testStagedCopyOutlivesItsSource() async throws {
+        // A Teams lease is removed when its preview closes; the staged copy must not depend on it.
+        let lease = root.appendingPathComponent("lease-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: lease, withIntermediateDirectories: true)
+        let source = lease.appendingPathComponent("slides.pptx")
+        try Data("PK slides".utf8).write(to: source)
+        let stage = FileHandoffStage(root: root)
+        let staged = try await stage.stage(FileHandoff(copying: source, name: "Презентация.pptx"))
+        try FileManager.default.removeItem(at: lease)
+        let again = FileHandoff(copying: staged.url, name: staged.name)
+        let destination = root.appendingPathComponent("again.pptx")
+        try await again.produce(destination)
+        XCTAssertEqual(try Data(contentsOf: destination), Data("PK slides".utf8))
+        XCTAssertEqual(again.name, "Презентация.pptx")
+    }
+
     func testFailedProduceLeavesNothingBehind() async throws {
         let stage = FileHandoffStage(root: root)
         do {

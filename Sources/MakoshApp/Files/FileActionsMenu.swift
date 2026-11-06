@@ -12,7 +12,8 @@ struct FileActionsMenu: View {
     var protected = false
     /// Where a Paperless request goes; by default the workspace sheet.
     var present: ((FileSendRequest) -> Void)? = nil
-    /// Runs before any request is raised, e.g. to close the sheet the menu lives in.
+    /// Runs before any request is raised, e.g. to close the sheet the menu
+    /// lives in. The file is staged first, so a lease the sheet owns may go.
     var before: (() -> Void)? = nil
     @Environment(\.filesHost) private var files
 
@@ -32,14 +33,29 @@ struct FileActionsMenu: View {
     }
 
     private func perform(_ action: FileAction, in files: FilesHost) {
-        before?()
+        let original = handoff()
+        guard let before else { return raise(action, handoff: original, in: files) }
+        Task {
+            do {
+                let staged = try await files.stage.stage(original)
+                before()
+                raise(action, handoff: FileHandoff(copying: staged.url, name: original.name, date: original.date), in: files)
+            } catch {
+                files.model.error =
+                    (error as? FilesFailure)?.errorDescription ?? (error as? LocalizedError)?.errorDescription
+                    ?? "Не удалось подготовить файл."
+            }
+        }
+    }
+
+    private func raise(_ action: FileAction, handoff: FileHandoff, in files: FilesHost) {
         switch action {
         case .sendToPaperless:
-            let request = FileSendRequest(handoff: handoff())
+            let request = FileSendRequest(handoff: handoff)
             if let present { present(request) } else { files.pendingSend = request }
-        case .forwardToChat: files.pendingForward = FileForwardRequest(handoff: handoff(), mode: .chat)
-        case .forwardByMail: files.pendingForward = FileForwardRequest(handoff: handoff(), mode: .mail)
-        case .askAI: files.pendingAsk = FileAskRequest(handoff: handoff(), source: source)
+        case .forwardToChat: files.pendingForward = FileForwardRequest(handoff: handoff, mode: .chat)
+        case .forwardByMail: files.pendingForward = FileForwardRequest(handoff: handoff, mode: .mail)
+        case .askAI: files.pendingAsk = FileAskRequest(handoff: handoff, source: source)
         }
     }
 

@@ -161,6 +161,9 @@ extension EnvironmentValues {
     /// A catalogue row by its archive record id, after the catalogue has been read.
     func record(id: UUID) async -> FileCatalogueItem? {
         if let item = model.items.first(where: { $0.id == id }) { return item }
+        // A read already under way answers soon; a second refresh is a no-op while it runs.
+        for _ in 0..<200 where model.loading { try? await Task.sleep(for: .milliseconds(50)) }
+        if let item = model.items.first(where: { $0.id == id }) { return item }
         await model.refresh()
         return model.items.first { $0.id == id }
     }

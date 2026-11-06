@@ -106,7 +106,10 @@ public actor FileCatalogue {
                         if case .message(let content)? = message?.observation.event {
                             date = content.date
                             author = content.author
-                            authorID = content.isOutgoing ? nil : content.authorID
+                            // Mail identities in the dossier are lower-case addresses.
+                            authorID =
+                                content.isOutgoing
+                                ? nil : (record.identity.service == "mail" ? content.authorID?.lowercased() : content.authorID)
                         }
                         latest[Self.key(record)] = FileCatalogueItem(record: record, messageDate: date, author: author, authorID: authorID)
                         changed.append(record.identity)

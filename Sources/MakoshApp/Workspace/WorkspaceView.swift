@@ -177,7 +177,8 @@ struct WorkspaceView: View {
                         paperless: { connectionID, query in
                             guard let client = await filesModel.client(for: connectionID) else { return [] }
                             return try await client.documents(query: query, page: 1).items
-                        }, connections: { filesModel.connections.map(\.id) }))
+                        }, connections: { filesModel.connections.map(\.id) }),
+                    refreshCatalogue: { if filesModel.items.isEmpty { await filesModel.refresh() } })
                 aiContextSearch = search
             }
             if !isolatedWhatsApp && !teams.isSynthetic && !telemost.isSynthetic {

@@ -22,8 +22,13 @@ import MakoshWhatsApp
     private var filesObservation: AnyCancellable?
     private var query = ""
 
-    func attach(files: FilePickerSearch) {
+    func attach(files: FilePickerSearch, refreshCatalogue: @escaping @MainActor () async -> Void = {}) {
         self.files = files
+        // The catalogue fills when the Files section opens; "+" must not wait for that.
+        Task {
+            await refreshCatalogue()
+            files.update(query: self.query)
+        }
         filesObservation = files.$results.dropFirst().sink { [weak self] _ in
             guard let self else { return }
             self.suggestions = AIContextRanking.rank(self.candidates(), query: self.query, limit: Self.limit)

@@ -138,6 +138,34 @@ final class FileTextExtractorTests: XCTestCase {
         } catch is CancellationError {} catch { XCTFail("unexpected \(error)") }
     }
 
+    func testCancellationAfterTheFirstPageStopsEarly() async throws {
+        let url = file("scans6.pdf")
+        try Fixtures.pdf((1...6).map { .scan("PAGE \($0)") }, at: url)
+        let box = TaskBox()
+        let seen = Collector<ExtractionProgress>()
+        let task = Task {
+            try await FileTextExtractor().extract(url, name: "scans6.pdf", pages: nil) { progress in
+                seen.append(progress)
+                box.task?.cancel()
+            }
+        }
+        box.task = task
+        do {
+            _ = try await task.value
+            XCTFail("the extraction stops after the page that saw the cancellation")
+        } catch is CancellationError {} catch { XCTFail("unexpected \(error)") }
+        XCTAssertLessThanOrEqual(seen.values.count, 2, "no more than one page after the cancellation")
+    }
+
+    func testCorruptImageIsRefusedNotCrashing() async throws {
+        let url = file("broken.png")
+        try Data("not an image".utf8).write(to: url)
+        do {
+            _ = try await FileTextExtractor().extract(url, name: "broken.png", pages: nil)
+            XCTFail("a broken image is refused")
+        } catch let error as FilesFailure { XCTAssertEqual(error, .unsupportedText("png")) }
+    }
+
     func testCacheRoundTrip() async {
         let extractor = FileTextExtractor()
         let value = ExtractedText(pages: ["a"], pageCount: 1, paginated: true, recognizedPages: [], truncatedOCR: false)
@@ -147,6 +175,15 @@ final class FileTextExtractorTests: XCTestCase {
         await extractor.clear()
         let cleared = await extractor.cached(key: "k")
         XCTAssertNil(cleared)
+    }
+}
+
+final class TaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Task<ExtractedText, Error>?
+    var task: Task<ExtractedText, Error>? {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
     }
 }
 

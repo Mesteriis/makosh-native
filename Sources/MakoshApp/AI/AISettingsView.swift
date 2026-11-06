@@ -113,45 +113,62 @@ private struct AIRoleRow: View {
     let role: AIRole
     @ObservedObject var model: AISettingsModel
     @State private var modelName = ""
+    @State private var contextTokens = ""
 
     var body: some View {
         let assignment = model.roles[role]
-        HStack {
-            Text(role.title).frame(width: 170, alignment: .leading)
-            Picker(
-                "Подключение",
-                selection: Binding(
-                    get: { assignment?.connectionID },
-                    set: { id in
-                        Task {
-                            guard let id else { return await model.assign(role, connectionID: nil, model: "") }
-                            // Load the model list first so a fresh role gets a real model name.
-                            if model.availableModels[id] == nil { await model.test(id) }
-                            let name = modelName.isEmpty ? (model.availableModels[id]?.first ?? "") : modelName
-                            await model.assign(role, connectionID: id, model: name)
-                        }
-                    })
-            ) {
-                Text("Не назначено").tag(UUID?.none)
-                ForEach(model.connections) { Text($0.name).tag(Optional($0.id)) }
-            }.labelsHidden().frame(width: 170)
-            if let connectionID = assignment?.connectionID ?? nil, let models = model.availableModels[connectionID], !models.isEmpty {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(role.title).frame(width: 170, alignment: .leading)
                 Picker(
-                    "Модель",
+                    "Подключение",
                     selection: Binding(
-                        get: { assignment?.model ?? "" },
-                        set: { name in Task { await model.assign(role, connectionID: connectionID, model: name) } })
+                        get: { assignment?.connectionID },
+                        set: { id in
+                            Task {
+                                guard let id else { return await model.assign(role, connectionID: nil, model: "") }
+                                // Load the model list first so a fresh role gets a real model name.
+                                if model.availableModels[id] == nil { await model.test(id) }
+                                let name = modelName.isEmpty ? (model.availableModels[id]?.first ?? "") : modelName
+                                await model.assign(role, connectionID: id, model: name)
+                            }
+                        })
                 ) {
-                    ForEach(models, id: \.self) { Text($0).tag($0) }
-                }.labelsHidden()
-            } else {
-                TextField("Модель", text: $modelName).onSubmit {
-                    if let id = assignment?.connectionID { Task { await model.assign(role, connectionID: id, model: modelName) } }
+                    Text("Не назначено").tag(UUID?.none)
+                    ForEach(model.connections) { Text($0.name).tag(Optional($0.id)) }
+                }.labelsHidden().frame(width: 170)
+                if let connectionID = assignment?.connectionID ?? nil, let models = model.availableModels[connectionID], !models.isEmpty {
+                    Picker(
+                        "Модель",
+                        selection: Binding(
+                            get: { assignment?.model ?? "" },
+                            set: { name in Task { await model.assign(role, connectionID: connectionID, model: name) } })
+                    ) {
+                        ForEach(models, id: \.self) { Text($0).tag($0) }
+                    }.labelsHidden()
+                } else {
+                    TextField("Модель", text: $modelName).onSubmit {
+                        if let id = assignment?.connectionID { Task { await model.assign(role, connectionID: id, model: modelName) } }
+                    }
+                }
+            }
+            if role == .chat, assignment != nil {
+                HStack {
+                    Text("Контекст модели, токенов").frame(width: 170, alignment: .leading).font(.caption).foregroundStyle(.secondary)
+                    TextField("\(AITokenEstimate.defaultContextTokens)", text: $contextTokens)
+                        .frame(width: 120).onSubmit { Task { await model.setContextTokens(Int(contextTokens), role: role) } }
+                        .accessibilityIdentifier("ai.settings.contextTokens")
+                    Text("бюджет беседы — \(AITokenEstimate.budget(contextTokens: assignment?.contextTokens)) токенов").font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .onAppear { modelName = assignment?.model ?? "" }
+        .onAppear {
+            modelName = assignment?.model ?? ""
+            contextTokens = assignment?.contextTokens.map(String.init) ?? ""
+        }
         .onChange(of: assignment?.model) { _, value in modelName = value ?? "" }
+        .onChange(of: assignment?.contextTokens) { _, value in contextTokens = value.map(String.init) ?? "" }
         .accessibilityIdentifier("ai.settings.role.\(role.rawValue)")
     }
 }

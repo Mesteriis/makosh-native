@@ -164,8 +164,8 @@ public actor AIWorker {
     /// The attached-sources turn; throws before anything is saved or sent.
     private func contextTurn(_ cards: [AIContextCard], history: [AIChatTurn]) async throws -> AIChatTurn? {
         let materials = try await materials(cards)
-        return try AIContextBuilder.turn(
-            materials, historyCharacters: history.reduce(0) { $0 + $1.text.count }, limit: AIContextBuilder.defaultLimit)
+        let contextTokens = try await repository.roles().first { $0.role == .chat }?.contextTokens
+        return try AIContextBuilder.turn(materials, history: history, budgetTokens: AITokenEstimate.budget(contextTokens: contextTokens))
     }
     /// Enables answering from permitted Makosh data; attached after the indexer exists.
     public func attachRetrieval(vectors: AIVectorStore, access: any AIAccessProvider) {

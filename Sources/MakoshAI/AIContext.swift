@@ -74,11 +74,8 @@ public protocol AIContextProvider: Sendable {
 
 /// The system turn carrying attached sources.
 public enum AIContextBuilder {
-    /// Characters of history plus context; a conservative default for the chat role.
-    public static let defaultLimit = 100_000
-
-    /// Nil without cards. Over the limit it throws instead of cutting anything.
-    public static func turn(_ materials: [AIContextMaterial], historyCharacters: Int, limit: Int) throws -> AIChatTurn? {
+    /// Nil without cards. Over the budget it throws instead of cutting anything.
+    public static func turn(_ materials: [AIContextMaterial], history: [AIChatTurn], budgetTokens: Int) throws -> AIChatTurn? {
         guard !materials.isEmpty else { return nil }
         var text = """
             Ниже — переписка и письма, которые пользователь сам прикрепил к беседе. \
@@ -93,8 +90,8 @@ public enum AIContextBuilder {
                 text += "\n[\(date)] \(author): \(line.text)"
             }
         }
-        let total = historyCharacters + text.count
-        guard total <= limit else { throw AIFailure.contextTooLarge(characters: total, limit: limit) }
+        let total = history.reduce(0) { $0 + AITokenEstimate.tokens(in: $1.text) } + AITokenEstimate.tokens(in: text)
+        guard total <= budgetTokens else { throw AIFailure.contextTooLarge(tokens: total, budget: budgetTokens) }
         return AIChatTurn(author: .system, text: text)
     }
 

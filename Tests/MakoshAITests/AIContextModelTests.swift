@@ -12,6 +12,16 @@ final class AIContextModelTests: XCTestCase {
         XCTAssertTrue(value.searchMyData)
     }
 
+    func testRoleAssignmentDecodesWithoutContextTokens() throws {
+        let json = #"{"role":"chat","connectionID":"5A0B5C46-0000-4000-8000-000000000001","model":"m"}"#
+        let value = try JSONDecoder().decode(AIRoleAssignment.self, from: Data(json.utf8))
+        XCTAssertNil(value.contextTokens)
+        let again = try JSONDecoder().decode(
+            AIRoleAssignment.self,
+            from: JSONEncoder().encode(AIRoleAssignment(role: .chat, connectionID: value.connectionID, model: "m", contextTokens: 200_000)))
+        XCTAssertEqual(again.contextTokens, 200_000)
+    }
+
     func testLegacyVersionDecodesWithoutContext() throws {
         let json = #"{"id":"5A0B5C46-0000-4000-8000-000000000002","text":"x","state":"complete","createdAt":0}"#
         XCTAssertEqual(try JSONDecoder().decode(AIMessageVersion.self, from: Data(json.utf8)).context, [])

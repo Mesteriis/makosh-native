@@ -63,7 +63,7 @@ final class AIWorkerContextTests: XCTestCase {
     }
 
     func testTooLargeContextSavesNothingAndSendsNothing() async throws {
-        await provider.set(chatA, text: String(repeating: "x", count: AIContextBuilder.defaultLimit + 1))
+        await provider.set(chatA, text: String(repeating: "x", count: AITokenEstimate.budget(contextTokens: nil) * 4 + 4))
         let conversation = try await worker.createConversation(anchor: chatA)
         let (_, error) = await aiDrain(await worker.send("Оцени", conversationID: conversation.id, editing: nil))
         guard case .contextTooLarge? = error as? AIFailure else { return XCTFail("\(String(describing: error))") }

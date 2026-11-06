@@ -14,7 +14,7 @@ final class AIContextBuilderTests: XCTestCase {
             card: .letter(id: "L", title: "Счёт"),
             lines: [.init(author: "bank@example.test", isOutgoing: false, date: .now, text: "оплатить")],
             hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: nil)
-        let turn = try XCTUnwrap(AIContextBuilder.turn([material, letter], historyCharacters: 0, limit: 100_000))
+        let turn = try XCTUnwrap(AIContextBuilder.turn([material, letter], history: [], budgetTokens: 100_000))
         XCTAssertEqual(turn.author, .system)
         XCTAssertTrue(turn.text.contains("Мария"))
         XCTAssertTrue(turn.text.contains("привет"))
@@ -28,18 +28,21 @@ final class AIContextBuilderTests: XCTestCase {
         let material = AIContextMaterial(
             card: chat, lines: [.init(author: "Я", isOutgoing: true, date: .now, text: "ок")], hiddenForbidden: 0, hiddenProtected: 0,
             available: 1, requested: 200)
-        XCTAssertTrue(try XCTUnwrap(AIContextBuilder.turn([material], historyCharacters: 0, limit: 1_000)).text.contains("пользователь"))
+        XCTAssertTrue(try XCTUnwrap(AIContextBuilder.turn([material], history: [], budgetTokens: 1_000)).text.contains("пользователь"))
     }
 
-    func testOverLimitThrowsInsteadOfTruncating() {
-        let long = AIContextLine(author: "A", isOutgoing: false, date: .now, text: String(repeating: "x", count: 600))
+    func testOverBudgetThrowsWithTokenNumbers() {
+        // 1 000 Cyrillic characters ≈ 400 tokens; the history adds its own share.
+        let long = AIContextLine(author: "A", isOutgoing: false, date: .now, text: String(repeating: "я", count: 1_000))
         let material = AIContextMaterial(
             card: .letter(id: "L", title: "T"), lines: [long], hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: nil)
-        XCTAssertThrowsError(try AIContextBuilder.turn([material], historyCharacters: 500, limit: 1_000)) { error in
-            guard case .contextTooLarge(let characters, 1_000)? = error as? AIFailure else { return XCTFail("\(error)") }
-            XCTAssertGreaterThan(characters, 1_000)
+        let history = [AIChatTurn(author: .user, text: String(repeating: "q", count: 400))]
+        XCTAssertThrowsError(try AIContextBuilder.turn([material], history: history, budgetTokens: 100)) { error in
+            guard case .contextTooLarge(let tokens, 100)? = error as? AIFailure else { return XCTFail("\(error)") }
+            XCTAssertGreaterThan(tokens, 500, "cards plus history, in tokens")
         }
+        XCTAssertNoThrow(try AIContextBuilder.turn([material], history: history, budgetTokens: 2_000))
     }
 
-    func testNoCardsMeansNoTurn() throws { XCTAssertNil(try AIContextBuilder.turn([], historyCharacters: 0, limit: 10)) }
+    func testNoCardsMeansNoTurn() throws { XCTAssertNil(try AIContextBuilder.turn([], history: [], budgetTokens: 10)) }
 }

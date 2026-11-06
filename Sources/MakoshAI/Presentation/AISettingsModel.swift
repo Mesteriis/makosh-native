@@ -52,10 +52,20 @@ import MakoshCore
         }
     }
 
-    package func assign(_ role: AIRole, connectionID: UUID?, model: String) async {
+    package func assign(_ role: AIRole, connectionID: UUID?, model: String, contextTokens: Int? = nil) async {
         let assignment = connectionID.map {
-            AIRoleAssignment(role: role, connectionID: $0, model: model.trimmingCharacters(in: .whitespaces))
+            AIRoleAssignment(
+                role: role, connectionID: $0, model: model.trimmingCharacters(in: .whitespaces),
+                contextTokens: contextTokens ?? roles[role]?.contextTokens)
         }
+        await perform { try await self.worker.assign(assignment, role: role) }
+    }
+
+    /// The chat model's context window; nil or zero returns to the default.
+    package func setContextTokens(_ value: Int?, role: AIRole) async {
+        guard let current = roles[role] else { return }
+        let assignment = AIRoleAssignment(
+            role: role, connectionID: current.connectionID, model: current.model, contextTokens: (value ?? 0) > 0 ? value : nil)
         await perform { try await self.worker.assign(assignment, role: role) }
     }
 

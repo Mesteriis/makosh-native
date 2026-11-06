@@ -47,10 +47,13 @@ public struct AIRoleAssignment: Codable, Equatable, Sendable {
     public let role: AIRole
     public let connectionID: UUID
     public let model: String
-    public init(role: AIRole, connectionID: UUID, model: String) {
+    /// The model's context window in tokens; nil means the default.
+    public var contextTokens: Int?
+    public init(role: AIRole, connectionID: UUID, model: String, contextTokens: Int? = nil) {
         self.role = role
         self.connectionID = connectionID
         self.model = model
+        self.contextTokens = contextTokens
     }
 }
 
@@ -200,8 +203,8 @@ public enum AIFailure: Error, Equatable, Sendable {
     /// The provider refused the request itself (400, 404, 422): its short,
     /// redacted explanation, so a wrong model name can be fixed in settings.
     case rejected(status: Int, reason: String)
-    /// The attached cards and history exceed the chat role's limit; nothing was sent.
-    case contextTooLarge(characters: Int, limit: Int)
+    /// The attached cards and history exceed the chat model's budget; nothing was sent.
+    case contextTooLarge(tokens: Int, budget: Int)
     /// An attached source cannot be sent (secret chat, forbidden contact, gone).
     case contextUnavailable(String)
 }

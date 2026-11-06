@@ -12,6 +12,7 @@ struct MailComposeSheet: View {
     @State private var scheduleOpen = false
     @State private var sendAt = Date().addingTimeInterval(3600)
     @State private var applyingTemplate: MailReplyTemplate?
+    @State private var pickingFromFiles = false
     @Environment(\.dismiss) private var dismiss
     init(model: MailWorkspaceModel, draft: MailDraft) {
         self.model = model

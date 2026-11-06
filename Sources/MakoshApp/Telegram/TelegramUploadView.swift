@@ -33,8 +33,12 @@ struct TelegramAttachButtons: View {
     private let replySource: TelegramMessageActionSource?
     private let replyContextID: UUID?
     @State private var choosing = false
+    @State private var pickingFromFiles = false
     init(model: TelegramModel, replySource: TelegramMessageActionSource? = nil, replyContextID: UUID? = nil) {
-        self.model = model; upload = model.upload; self.replySource = replySource; self.replyContextID = replyContextID
+        self.model = model
+        upload = model.upload
+        self.replySource = replySource
+        self.replyContextID = replyContextID
     }
     var body: some View {
         MakoshMenu {
@@ -42,11 +46,27 @@ struct TelegramAttachButtons: View {
                 .accessibilityIdentifier("telegram.upload.chooseMedia")
             MakoshMenuItem("Файл", systemImage: "doc") { choose(.file) }
                 .accessibilityIdentifier("telegram.upload.chooseFile")
-        } label: { Image(systemName: "paperclip").font(.system(size: 22)).frame(width: 32, height: 32) }
-            .makoshMenuStyle(.plain).makoshMenuIndicator(.hidden).fixedSize()
-            .help("Прикрепить фото, видео или файл").accessibilityLabel("Прикрепить")
-            .accessibilityIdentifier("telegram.upload.attach")
-            .disabled(choosing || capturedTarget == nil || upload.phase != .idle || model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil)
+            MakoshMenuItem("Из Файлов…", systemImage: "folder") { pickingFromFiles = capturedTarget != nil }
+                .accessibilityIdentifier("telegram.upload.chooseFromFiles")
+        } label: {
+            Image(systemName: "paperclip").font(.system(size: 22)).frame(width: 32, height: 32)
+        }
+        .makoshMenuStyle(.plain).makoshMenuIndicator(.hidden).fixedSize()
+        .help("Прикрепить фото, видео или файл").accessibilityLabel("Прикрепить")
+        .accessibilityIdentifier("telegram.upload.attach")
+        .disabled(
+            choosing || capturedTarget == nil || upload.phase != .idle || model.isRestoringPendingUpload
+                || model.pendingUploadRecoveryError != nil || model.isRestoringComposerDraft || model.composerDraftRecoveryError != nil
+        )
+        .sheet(isPresented: $pickingFromFiles) {
+            FilePickerSheet { urls in
+                guard let target = capturedTarget else { return }
+                model.prepareUpload(
+                    sources: urls.map { .init(source: $0, mode: .file) }, isGrouped: urls.count > 1, target: target,
+                    captionInput: model.composerInput, contextID: replyContextID ?? model.uploadContextID,
+                    photoSize: .init(sendLargePhotos: sendLargePhotos))
+            }.makoshAppearance()
+        }
     }
     private var capturedTarget: TelegramUploadTarget? {
         model.uploadTarget(replyTo: replySource, contextID: replyContextID ?? model.uploadContextID)
@@ -59,7 +79,8 @@ struct TelegramAttachButtons: View {
         Task { @MainActor in
             defer { choosing = false }
             guard let selected = await TelegramUploadPanel.choose(choice) else { return }
-            model.prepareUpload(sources: selected, isGrouped: selected.count > 1, target: target, captionInput: captionInput,
+            model.prepareUpload(
+                sources: selected, isGrouped: selected.count > 1, target: target, captionInput: captionInput,
                 contextID: contextID, photoSize: .init(sendLargePhotos: sendLargePhotos))
         }
     }
@@ -69,7 +90,10 @@ struct TelegramAttachButtons: View {
 struct TelegramUploadView: View {
     @ObservedObject var model: TelegramModel
     @ObservedObject private var upload: TelegramUploadController
-    init(model: TelegramModel) { self.model = model; upload = model.upload }
+    init(model: TelegramModel) {
+        self.model = model
+        upload = model.upload
+    }
     var body: some View {
         let contextID = upload.preparationContextID
         VStack(alignment: .leading, spacing: 8) {
@@ -113,19 +137,25 @@ struct TelegramUploadView: View {
                 if upload.isRecordedVoice || upload.isRecordedRoundVideo {
                     let round = upload.isRecordedRoundVideo
                     let once = round ? upload.isOneTimeRoundVideo : upload.isOneTimeVoice
-                    Label(round ? (once ? "Одноразовое круглое видео" : "Круглое видео") : (once ? "Одноразовое голосовое сообщение" : "Голосовое сообщение"),
-                        systemImage: once ? "1.circle.fill" : round ? "video.fill" : "waveform")
-                        .font(.callout).accessibilityIdentifier(round ? "telegram.roundVideo.preparedMode" : "telegram.voice.preparedMode")
+                    Label(
+                        round
+                            ? (once ? "Одноразовое круглое видео" : "Круглое видео")
+                            : (once ? "Одноразовое голосовое сообщение" : "Голосовое сообщение"),
+                        systemImage: once ? "1.circle.fill" : round ? "video.fill" : "waveform"
+                    )
+                    .font(.callout).accessibilityIdentifier(round ? "telegram.roundVideo.preparedMode" : "telegram.voice.preparedMode")
                     if let status = upload.recoveryStatus {
                         HStack {
-                            Text(status).font(.caption).accessibilityIdentifier(round ? "telegram.roundVideo.recoveryStatus" : "telegram.voice.recoveryStatus")
+                            Text(status).font(.caption).accessibilityIdentifier(
+                                round ? "telegram.roundVideo.recoveryStatus" : "telegram.voice.recoveryStatus")
                             if upload.canRetryRecovery { Button("Повторить сохранение", action: upload.retryRecovery) }
                         }
                     }
                     if let contextID, upload.canCancel {
                         HStack {
                             Button("Отправить запись") { model.sendPreparedRecording(contextID: contextID) }
-                                .disabled(!upload.canSend).accessibilityIdentifier(round ? "telegram.roundVideo.sendPrepared" : "telegram.voice.sendPrepared")
+                                .disabled(!upload.canSend).accessibilityIdentifier(
+                                    round ? "telegram.roundVideo.sendPrepared" : "telegram.voice.sendPrepared")
                             Button("Отменить подготовку") { upload.dismissPreparation(contextID: contextID) }
                                 .accessibilityIdentifier(round ? "telegram.roundVideo.cancelPrepared" : "telegram.voice.cancelPrepared")
                         }
@@ -145,11 +175,18 @@ struct TelegramUploadView: View {
                 }
             }
         }
-        .padding(model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || upload.cancellationStatus != nil || upload.detachedRecoveryStatus != nil ? 16 :
-            upload.showsPreparationPreview || (upload.phase == .idle && upload.error == nil) ? 0 : 16)
-        .sheet(isPresented: Binding(get: { upload.showsPreparationPreview }, set: { shown in
-            if !shown, let contextID { upload.dismissPreparation(contextID: contextID) }
-        })) {
+        .padding(
+            model.isRestoringPendingUpload || model.pendingUploadRecoveryError != nil || upload.cancellationStatus != nil
+                || upload.detachedRecoveryStatus != nil
+                ? 16 : upload.showsPreparationPreview || (upload.phase == .idle && upload.error == nil) ? 0 : 16
+        )
+        .sheet(
+            isPresented: Binding(
+                get: { upload.showsPreparationPreview },
+                set: { shown in
+                    if !shown, let contextID { upload.dismissPreparation(contextID: contextID) }
+                })
+        ) {
             if let contextID {
                 TelegramUploadPreviewView(model: model, contextID: contextID).id(contextID)
             }
@@ -176,8 +213,10 @@ struct TelegramUploadStatusView: View {
         case .storing: "Сохранение вложения в кэше Telegram…"
         case .enqueuing: "Постановка в локальную очередь…"
         case .queued(let progress):
-            synthetic ? "Синтетическая очередь: отправки в Telegram нет." :
-                progress.map { "В локальной очереди • \(Int($0 * 100))%. Доставка не подтверждена." } ?? "В локальной очереди. Доставка не подтверждена."
+            synthetic
+                ? "Синтетическая очередь: отправки в Telegram нет."
+                : progress.map { "В локальной очереди • \(Int($0 * 100))%. Доставка не подтверждена." }
+                    ?? "В локальной очереди. Доставка не подтверждена."
         case .queueFailed: "Telegram сообщил об ошибке очереди. Автоматический повтор не выполняется."
         case .rejected: "Вложение не поставлено в очередь."
         case .uncertain: "Результат пока неизвестен. Не отправляйте вложение повторно."

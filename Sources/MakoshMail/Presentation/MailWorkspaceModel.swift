@@ -494,6 +494,11 @@ import MakoshCore
             return false
         }
     }
+    /// The attachment bytes for another destination; no notice, errors propagate.
+    package func exportAttachmentFile(_ attachment: MailAttachment, letter: MailLetter, to url: URL) async throws {
+        guard let account = accounts.first(where: { $0.id == letter.key.accountID }) else { throw MailFailure.invalidInput }
+        try await worker(account).exportAttachment(attachment, letter: letter, to: url)
+    }
     package func export(_ attachment: MailAttachment, letter: MailLetter, to url: URL) async {
         guard let account = accounts.first(where: { $0.id == letter.key.accountID }) else { return }
         await run {

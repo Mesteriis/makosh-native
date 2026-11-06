@@ -63,6 +63,22 @@ public struct PaperlessUpload: Equatable, Sendable {
     }
 }
 
+extension PaperlessUpload {
+    public static let titleLimit = 128
+
+    /// What the send sheet starts with: the file name without its extension,
+    /// the message date, and the connection's default type and tags.
+    public static func defaults(for handoff: FileHandoff, connection: PaperlessConnection) -> PaperlessUpload {
+        var title = handoff.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stem = (title as NSString).deletingPathExtension
+        if !stem.isEmpty { title = stem }
+        if title.isEmpty { title = "Документ" }
+        return PaperlessUpload(
+            title: String(title.prefix(titleLimit)), created: handoff.date, documentType: connection.defaultDocumentType,
+            tags: connection.defaultTags)
+    }
+}
+
 /// Paperless-ngx REST client: one token, one base URL, no redirects, bounded uploads.
 public actor PaperlessClient {
     public static let apiVersion = 9

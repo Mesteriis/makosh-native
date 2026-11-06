@@ -251,6 +251,7 @@ struct WorkspaceView: View {
             #endif
         }
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model).makoshAppearance() }
+        .sheet(item: $files.pendingSend) { request in PaperlessSendSheet(model: files.model, request: request).makoshAppearance() }
         .sheet(isPresented: $review) { MergeReviewView(model: model).makoshAppearance() }
         .alert("Макош", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("Понятно", role: .cancel) { model.error = nil }

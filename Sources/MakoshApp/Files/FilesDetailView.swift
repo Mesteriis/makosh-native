@@ -101,7 +101,7 @@ struct FilesDetailView: View {
         Button("Сохранить как…") { save(item) }.disabled(busy)
         Button("Открыть источник") { openSource(item.identity) }
         Divider()
-        FileSendMenu(host: host, handoff: { host.handoff(item) })
+        FileSendMenu(handoff: { host.handoff(item) })
     }
 
     private func show(_ item: FileCatalogueItem) {

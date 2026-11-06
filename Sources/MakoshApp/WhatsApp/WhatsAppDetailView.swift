@@ -1,3 +1,4 @@
+import MakoshFiles
 import MakoshWhatsApp
 // Layout adapted from WhatsApp Zen MainView.swift / Components.swift (MIT).
 // See LICENSES/WhatsApp-Zen-MIT.txt and docs/reference-interface.md.
@@ -176,6 +177,22 @@ struct WhatsAppDetailView: View {
                                             Button("Копировать") {
                                                 NSPasteboard.general.clearContents()
                                                 NSPasteboard.general.setString(message.text, forType: .string)
+                                            }
+                                            if let sourceAccount, message.details?.resourceID != nil, !message.deleted {
+                                                FileSendMenu(handoff: {
+                                                    FileHandoff(
+                                                        name: message.details?.name ?? "file",
+                                                        byteCount: message.details?.size.map(Int64.init),
+                                                        date: Date(timeIntervalSince1970: TimeInterval(message.timestamp))
+                                                    ) { [model] url in
+                                                        guard
+                                                            let lease = await model.actions.download(
+                                                                message, expectedAccount: sourceAccount)
+                                                        else { throw WhatsAppFailure.unavailable }
+                                                        defer { lease.remove() }
+                                                        try FileManager.default.copyItem(at: lease.url, to: url)
+                                                    }
+                                                })
                                             }
                                             MakoshMenu("Реакция") {
                                                 ForEach(["👍", "❤️", "😂", "😮", "😢", "🙏", ""], id: \.self) { emoji in

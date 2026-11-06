@@ -176,7 +176,7 @@ struct MakoshApp: App {
                 #endif
             }.makoshAppearance().environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
                 .environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(delegate.ai)
-                .environmentObject(delegate.files)
+                .environmentObject(delegate.files).environment(\.filesHost, delegate.files)
         }
         .defaultSize(width: 1200, height: 854)
         .windowResizability(.contentMinSize)

@@ -1,6 +1,26 @@
 import Foundation
 import MakoshCore
 import MakoshFiles
+import SwiftUI
+
+/// A file waiting on the send sheet.
+struct FileSendRequest: Identifiable {
+    let id = UUID()
+    let handoff: FileHandoff
+}
+
+/// The Files host reaches every view through the environment; views shown
+/// without it (tests, isolated previews) simply offer no sending.
+private struct FilesHostKey: EnvironmentKey {
+    static let defaultValue: FilesHost? = nil
+}
+
+extension EnvironmentValues {
+    var filesHost: FilesHost? {
+        get { self[FilesHostKey.self] }
+        set { self[FilesHostKey.self] = newValue }
+    }
+}
 
 /// One Files model per process, shared by the workspace window and the
 /// settings scene. The workspace hands over the database configuration once
@@ -11,6 +31,8 @@ import MakoshFiles
     let sender: PaperlessSender
     let model: FilesWorkspaceModel
     @Published private(set) var configured = false
+    /// Set by any "Отправить в Paperless…" item; the workspace shows the sheet.
+    @Published var pendingSend: FileSendRequest?
     private var repository: ArchiveFileRepository?
     private var repositoryFactory: (@Sendable () throws -> ArchiveFileRepository)?
 

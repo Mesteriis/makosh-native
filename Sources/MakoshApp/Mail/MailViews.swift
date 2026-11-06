@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MakoshFiles
 import MakoshMail
 import MakoshCore
 
@@ -367,6 +368,14 @@ struct MailReadingView: View {
                         .accessibilityIdentifier("mail.attachment.save.\(attachment.id)")
                         .disabled(model.synthetic || model.busy)
                     }.padding(12).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+                        .contextMenu {
+                            Button("Сохранить…") { export(attachment, letter: letter) }.disabled(model.synthetic || model.busy)
+                            FileSendMenu(handoff: {
+                                FileHandoff(name: attachment.filename, byteCount: Int64(attachment.byteCount), date: letter.date) { url in
+                                    try await model.exportAttachmentFile(attachment, letter: letter, to: url)
+                                }
+                            })
+                        }
                 }
             }
         }.accessibilityIdentifier("mail.attachments")

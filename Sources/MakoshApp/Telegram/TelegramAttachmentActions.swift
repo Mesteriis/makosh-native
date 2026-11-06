@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MakoshFiles
 import MakoshTelegram
 import MakoshCore
 
@@ -16,7 +17,10 @@ final class TelegramAttachmentActions: ObservableObject {
 
     func showPreview(media: TelegramMediaController, key: TelegramMediaKey) {
         guard !isBusy else { return }
-        guard let transfer = media.transfer(for:key) else { error = TelegramFileError.unavailable.localizedDescription; return }
+        guard let transfer = media.transfer(for: key) else {
+            error = TelegramFileError.unavailable.localizedDescription
+            return
+        }
         begin()
         task = Task { [weak self] in
             guard let self else { return }
@@ -28,14 +32,16 @@ final class TelegramAttachmentActions: ObservableObject {
                     self.preview = image
                 }
                 if !available { throw TelegramFileError.unavailable }
-            } catch is CancellationError { }
-            catch { report(error, media: media, key: key, transfer: transfer) }
+            } catch is CancellationError {} catch { report(error, media: media, key: key, transfer: transfer) }
         }
     }
 
     func save(media: TelegramMediaController, key: TelegramMediaKey, name: String, transfer: TelegramMediaTransfer? = nil) {
         guard !isBusy else { return }
-        guard let transfer = transfer ?? media.transfer(for:key) else { error = TelegramFileError.unavailable.localizedDescription; return }
+        guard let transfer = transfer ?? media.transfer(for: key) else {
+            error = TelegramFileError.unavailable.localizedDescription
+            return
+        }
         begin()
         task = Task { [weak self] in
             guard let self else { return }
@@ -49,25 +55,25 @@ final class TelegramAttachmentActions: ObservableObject {
                     self.saved = true
                 }
                 if !available { throw TelegramFileError.unavailable }
-            } catch is CancellationError { }
-            catch { report(error, media: media, key: key, transfer: transfer) }
+            } catch is CancellationError {} catch { report(error, media: media, key: key, transfer: transfer) }
         }
     }
 
-    func saveArchived(files: TelegramFileArchiveController,record: ArchiveFileRecord) {
+    func saveArchived(files: TelegramFileArchiveController, record: ArchiveFileRecord) {
         guard !isBusy else { return }
         begin()
         task = Task { [weak self] in
             guard let self else { return }
             defer { finish() }
             do {
-                guard let destination = await chooseDestination(name: record.attachment.name,title: "Сохранить файл из архива S3") else { return }
+                guard let destination = await chooseDestination(name: record.attachment.name, title: "Сохранить файл из архива S3") else {
+                    return
+                }
                 try Task.checkCancellation()
-                try await files.export(record,to: destination)
+                try await files.export(record, to: destination)
                 try Task.checkCancellation()
                 self.saved = true
-            } catch is CancellationError { }
-            catch {
+            } catch is CancellationError {} catch {
                 guard !Task.isCancelled else { return }
                 self.error = "Не удалось получить и проверить копию файла из S3. Существующий файл не заменён."
             }
@@ -84,8 +90,7 @@ final class TelegramAttachmentActions: ObservableObject {
                 let preview = try await files.preview(record)
                 try Task.checkCancellation()
                 archivedPreview = preview
-            } catch is CancellationError { }
-            catch {
+            } catch is CancellationError {} catch {
                 guard !Task.isCancelled else { return }
                 self.error = "Не удалось получить и проверить копию файла из S3. Повторите просмотр после восстановления хранилища."
             }
@@ -95,12 +100,22 @@ final class TelegramAttachmentActions: ObservableObject {
     func cancel() {
         task?.cancel()
         panel?.cancel(nil)
-        preview = nil; archivedPreview = nil; error = nil; saved = false
+        preview = nil
+        archivedPreview = nil
+        error = nil
+        saved = false
         // Keep busy until the worker has stopped; rapid clicks cannot multiply decoders.
     }
 
-    private func begin() { isBusy = true; error = nil; saved = false }
-    private func finish() { task = nil; isBusy = false }
+    private func begin() {
+        isBusy = true
+        error = nil
+        saved = false
+    }
+    private func finish() {
+        task = nil
+        isBusy = false
+    }
     private func report(_ error: Error, media: TelegramMediaController, key: TelegramMediaKey, transfer: TelegramMediaTransfer) {
         guard !Task.isCancelled else { return }
         let safe = error as? TelegramFileError ?? .unavailable
@@ -108,7 +123,7 @@ final class TelegramAttachmentActions: ObservableObject {
         if safe == .unavailable { _ = media.invalidateTransfer(transfer) }
     }
 
-    private func chooseDestination(name: String,title: String = "Сохранить вложение Telegram") async -> URL? {
+    private func chooseDestination(name: String, title: String = "Сохранить вложение Telegram") async -> URL? {
         guard !Task.isCancelled else { return nil }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = telegramAttachmentName(name)
@@ -123,12 +138,16 @@ final class TelegramAttachmentActions: ObservableObject {
             if var window = NSApp.keyWindow ?? NSApp.mainWindow {
                 while let child = window.attachedSheet { window = child }
                 panel.beginSheetModal(for: window, completionHandler: complete)
+            } else {
+                panel.begin(completionHandler: complete)
             }
-            else { panel.begin(completionHandler: complete) }
         }
     }
 
-    isolated deinit { task?.cancel(); panel?.cancel(nil) }
+    isolated deinit {
+        task?.cancel()
+        panel?.cancel(nil)
+    }
 }
 
 struct TelegramAttachmentRow<MenuContent: View>: View {
@@ -157,11 +176,14 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
                 .accessibilityIdentifier("telegram.location." + attachment.id)
         } else if attachment.kind == .photo || attachment.playback == .video {
             TelegramSingleMediaLayout(attachment: attachment, hasCaption: hasCaption) {
-                TelegramVisualMediaView(attachment: attachment, contextID: contextID, media: media, actions: actions,
+                TelegramVisualMediaView(
+                    attachment: attachment, contextID: contextID, media: media, actions: actions,
                     playback: playback, identifierPrefix: "telegram.visual", contentMode: .fit, menu: menu)
             }.clipShape(RoundedRectangle(cornerRadius: 8))
                 .accessibilityIdentifier("telegram.attachment." + attachment.id)
-        } else { fileCard }
+        } else {
+            fileCard
+        }
     }
 
     private var fileCard: some View {
@@ -172,9 +194,12 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
                 Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
             }
             if let paid = attachment.paidMedia {
-                Label(paid.access == .full ? "Оплачено" : "Платные медиа · \(paid.amount) Stars", systemImage: paid.access == .full ? "checkmark.seal" : "lock.fill")
-                    .font(.callout.weight(.medium))
-                    .accessibilityIdentifier("telegram.attachment.paid." + attachment.id)
+                Label(
+                    paid.access == .full ? "Оплачено" : "Платные медиа · \(paid.amount) Stars",
+                    systemImage: paid.access == .full ? "checkmark.seal" : "lock.fill"
+                )
+                .font(.callout.weight(.medium))
+                .accessibilityIdentifier("telegram.attachment.paid." + attachment.id)
                 Text("Вложений: \(paid.itemCount)").font(.caption).foregroundStyle(.secondary)
             } else if attachment.kind == .unsupported {
                 Text("Этот тип вложения пока недоступен.").font(.caption).foregroundStyle(.secondary)
@@ -211,8 +236,12 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             case .downloading(let progress):
-                if let progress { ProgressView(value: progress).frame(width: 90); Text(progress, format: .percent.precision(.fractionLength(0))).font(.caption) }
-                else { ProgressView().controlSize(.mini) }
+                if let progress {
+                    ProgressView(value: progress).frame(width: 90)
+                    Text(progress, format: .percent.precision(.fractionLength(0))).font(.caption)
+                } else {
+                    ProgressView().controlSize(.mini)
+                }
                 Button("Отменить") { media.cancel(key) }.accessibilityIdentifier(prefix + ".cancel")
             case .ready, .capturing:
                 Text(purpose == .full ? "Файл загружен" : "Превью загружено").font(.caption).foregroundStyle(.secondary)
@@ -224,6 +253,16 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
                             .disabled(actions.isBusy || playback.isBusy)
                             .accessibilityIdentifier(prefix + ".playback")
                     }
+                    FileSendMenu(
+                        title: "В Paperless…",
+                        handoff: {
+                            FileHandoff(name: attachment.name, byteCount: attachment.byteCount) { [media] url in
+                                let available = try await media.withDownloadedFile(for: key) { source, size in
+                                    try await TelegramDownloadedFileIO.copy(source: source, expectedSize: size, destination: url)
+                                }
+                                if !available { throw TelegramFileError.unavailable }
+                            }
+                        })
                 }
                 if purpose == .preview || attachment.kind == .photo {
                     Button("Посмотреть") { actions.showPreview(media: media, key: key) }
@@ -241,7 +280,8 @@ private struct TelegramSingleMediaLayout: Layout {
         TelegramSingleMediaPresentation.size(attachment, availableWidth: Double(proposal.width ?? 420), hasCaption: hasCaption) ?? .zero
     }
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+        subviews.first?.place(
+            at: bounds.origin, anchor: .topLeading,
             proposal: .init(width: bounds.width, height: bounds.height))
     }
 }

@@ -1,12 +1,25 @@
 import MakoshFiles
 import SwiftUI
 
-/// "Send to Paperless…" for any file; filled in by the sending task.
+/// "Отправить в Paperless…" for any file. Without a connection it points to
+/// the settings; without a Files host (isolated previews, tests) it is nothing.
 struct FileSendMenu: View {
-    @ObservedObject var host: FilesHost
+    var title = "Отправить в Paperless…"
     let handoff: () -> FileHandoff
+    /// Where the request goes; by default the workspace sheet.
+    var present: ((FileSendRequest) -> Void)? = nil
+    @Environment(\.filesHost) private var files
 
     var body: some View {
-        EmptyView()
+        if let files {
+            if files.model.connections.isEmpty {
+                SettingsLink { Text("Подключить Paperless…") }.accessibilityIdentifier("files.send.connect")
+            } else {
+                Button(title) {
+                    let request = FileSendRequest(handoff: handoff())
+                    if let present { present(request) } else { files.pendingSend = request }
+                }.accessibilityIdentifier("files.send.paperless")
+            }
+        }
     }
 }

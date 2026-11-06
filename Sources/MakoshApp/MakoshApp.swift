@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 import MakoshMail
 import MakoshTelemost
 import MakoshAI
+import MakoshFiles
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var telegramNotificationRouter = TelegramSystemNotificationRouter(
@@ -24,6 +25,7 @@ import MakoshAI
     let whatsappSettings = WhatsAppSettingsRegistry()
     let teamsSettings = TeamsSettingsRegistry()
     lazy var ai = AIHost()
+    lazy var files = FilesHost()
     private var instanceLock: MakoshInstanceLock?
     /// One running copy per bundle: a second launch brings the first one forward and quits.
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -174,6 +176,7 @@ struct MakoshApp: App {
                 #endif
             }.makoshAppearance().environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
                 .environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(delegate.ai)
+                .environmentObject(delegate.files)
         }
         .defaultSize(width: 1200, height: 854)
         .windowResizability(.contentMinSize)
@@ -207,7 +210,7 @@ struct MakoshApp: App {
                 }
             }.environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(
                 delegate.telegramNotificationRouter
-            ).environmentObject(delegate.ai)
+            ).environmentObject(delegate.ai).environmentObject(delegate.files)
         }
     }
 }

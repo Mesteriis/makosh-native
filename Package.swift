@@ -108,7 +108,9 @@ let package = Package(
             ]),
         .executableTarget(
             name: "MakoshApp",
-            dependencies: ["MakoshAI", "MakoshTelemost", "MakoshTeams", "MakoshCore", "MakoshTelegram", "MakoshMail", "MakoshWhatsApp"]),
+            dependencies: [
+                "MakoshAI", "MakoshFiles", "MakoshTelemost", "MakoshTeams", "MakoshCore", "MakoshTelegram", "MakoshMail", "MakoshWhatsApp",
+            ]),
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),
         .target(
             name: "MakoshJPEGFaultFixture", dependencies: [.product(name: "CMozjpeg", package: "MakoshMozjpeg")],

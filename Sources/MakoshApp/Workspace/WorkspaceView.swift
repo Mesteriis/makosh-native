@@ -7,11 +7,12 @@ import MakoshWhatsApp
 import MakoshTeams
 import MakoshTelemost
 import MakoshAI
+import MakoshFiles
 import UniformTypeIdentifiers
 
 private enum Destination: String, CaseIterable, Identifiable {
-    case contacts = "Контакты", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи", ai =
-        "ИИ"
+    case contacts = "Контакты", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи",
+        files = "Файлы", ai = "ИИ"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -21,6 +22,7 @@ private enum Destination: String, CaseIterable, Identifiable {
         case .whatsapp: "message"
         case .teams: "person.3"
         case .meetings: "video"
+        case .files: "folder"
         case .ai: "sparkles"
         }
     }
@@ -33,6 +35,7 @@ private struct EditorSelection: Identifiable {
 struct WorkspaceView: View {
     @EnvironmentObject private var callWindows: TelegramCallWindows
     @EnvironmentObject private var ai: AIHost
+    @EnvironmentObject private var files: FilesHost
     /// Sources for the chat panel's "+" and "@"; made once the window appears.
     @State private var aiContextSearch: AIContextSearch?
     @StateObject private var systemAppearance = TelegramSystemAppearance()
@@ -62,6 +65,7 @@ struct WorkspaceView: View {
         telegramAppearance.effectivePalette(isDark: resolvedTelegramScheme == .dark).map { telegramPaletteColor($0, "accent", $0.accent) }
             ?? TelegramAccent(preference: telegramAccent).color
     }
+    @Environment(\.openSettings) private var openSettings
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
@@ -194,6 +198,9 @@ struct WorkspaceView: View {
         .task {
             await model.load()
             if let configuration = model.mailConfiguration, ordinaryLaunch {
+                files.start(
+                    configuration: configuration,
+                    resolver: FileSourceBridge(telegram: telegram, whatsapp: whatsapp, mail: mail, teams: teams))
                 Task {
                     await ai.start(
                         configuration: configuration, contacts: model.dossierWorker, telegram: { [telegram] in telegram.aiContextReader },
@@ -282,6 +289,23 @@ struct WorkspaceView: View {
                             await ai.workspace.select(id)
                         }
                     }, close: close))
+        }
+    }
+
+    /// Opens the chat or section a catalogue file came from.
+    private func openFileSource(_ identity: MessageArchiveIdentity) {
+        switch identity.service {
+        case "telegram":
+            guard String(telegram.aiContextAccountID ?? 0) == identity.accountID, let id = Int64(identity.conversationID) else { return }
+            destination = .telegram
+            telegram.selectedChatID = id
+        case "whatsapp":
+            guard whatsapp.selectedAccountID?.uuidString == identity.accountID else { return }
+            destination = .whatsapp
+            Task { await whatsapp.selectChat(identity.conversationID) }
+        case "mail": destination = .mail
+        case "teams": destination = .teams
+        default: break
         }
     }
 
@@ -385,6 +409,8 @@ struct WorkspaceView: View {
             TelemostCatalogueView(model: telemost).frame(minWidth: 300, idealWidth: 340, maxWidth: 440)
         } else if destination == .whatsapp {
             WhatsAppSidebarView(model: whatsapp, navigation: whatsappNavigation).frame(minWidth: 300, idealWidth: 350, maxWidth: 440)
+        } else if destination == .files {
+            FilesSidebarView(model: files.model, addStorage: { openSettings() }).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else if destination == .ai {
             AIConversationListView(model: ai.workspace, openChat: openAICard).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else {
@@ -469,6 +495,8 @@ struct WorkspaceView: View {
                             if id != nil { destination = .contacts }
                         }
                     }
+                } else if destination == .files {
+                    FilesDetailView(model: files.model, host: files, openSource: openFileSource)
                 } else if destination == .ai {
                     AIConversationView(model: ai.workspace, openCard: openAICard) { source in
                         // Opens the source's section; the message itself is not yet selected there.

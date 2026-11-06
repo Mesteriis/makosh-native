@@ -50,10 +50,10 @@ public struct PaperlessLists: Equatable, Sendable {
     @Published public private(set) var lists: [UUID: PaperlessLists] = [:]
 
     public let sender: PaperlessSender
-    private let catalogue: (any FileCatalogueReading)?
+    private var catalogue: (any FileCatalogueReading)?
     private let registry: FileStorageRegistry
     private let vault: FileStorageTokenVault
-    private let resolver: (any FileSourceResolving)?
+    private var resolver: (any FileSourceResolving)?
     private let clientFactory: PaperlessSender.ClientFactory
     private let pollInterval: Duration
     private var generation = 0
@@ -78,6 +78,12 @@ public struct PaperlessLists: Equatable, Sendable {
     }
 
     // MARK: - Catalogue
+
+    /// The archive opens after the database configuration is known.
+    public func attach(catalogue: any FileCatalogueReading, resolver: (any FileSourceResolving)?) {
+        self.catalogue = catalogue
+        self.resolver = resolver
+    }
 
     /// Reads the catalogue; the list is global, so it always applies, but the
     /// error belongs to the selection that asked.

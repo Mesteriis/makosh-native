@@ -13,6 +13,8 @@ public enum FilesFailure: LocalizedError, Equatable, Sendable {
     case tooLarge
     case duplicate(existingID: Int?)
     case unexpectedResponse
+    case unsupportedText(String)
+    case pagesOutOfRange(pageCount: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -28,6 +30,8 @@ public enum FilesFailure: LocalizedError, Equatable, Sendable {
         case .tooLarge: "Сервер не принимает файл такого размера."
         case .duplicate(let id): id.map { "Такой документ уже есть в Paperless (#\($0))." } ?? "Такой документ уже есть в Paperless."
         case .unexpectedResponse: "Paperless ответил не так, как ожидалось. Проверьте адрес подключения."
+        case .unsupportedText(let kind): "Текст из файлов «\(kind)» не извлекается."
+        case .pagesOutOfRange(let count): "В файле \(count) страниц — выберите страницы в этих пределах."
         }
     }
 }

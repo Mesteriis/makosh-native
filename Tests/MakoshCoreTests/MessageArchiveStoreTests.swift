@@ -6,15 +6,21 @@ final class MessageArchiveStoreTests: XCTestCase {
     func testMetadataOnlySourcePayloadChangeIsRetainedAndReplayDeduplicates() throws {
         let db = try database(), archive = try store(db)
         let base = observation("unchanged visible text")
-        let first = MessageArchiveObservation(identity: base.identity, observedAt: base.observedAt, source: .update,
+        let first = MessageArchiveObservation(
+            identity: base.identity, observedAt: base.observedAt, source: .update,
             event: base.event, sourcePayload: Data("{\"importance\":\"normal\"}".utf8))
-        let second = MessageArchiveObservation(identity: base.identity, observedAt: base.observedAt, source: .update,
+        let second = MessageArchiveObservation(
+            identity: base.identity, observedAt: base.observedAt, source: .update,
             event: base.event, sourcePayload: Data("{\"importance\":\"high\"}".utf8))
         XCTAssertEqual(try archive.append([first]), 1)
         XCTAssertEqual(try archive.append([second]), 1)
         XCTAssertEqual(try archive.append([second]), 0)
-        XCTAssertEqual(try archive.append([MessageArchiveObservation(identity: second.identity, source: .update,
-            event: second.event, sourcePayload: second.sourcePayload)]), 0)
+        XCTAssertEqual(
+            try archive.append([
+                MessageArchiveObservation(
+                    identity: second.identity, source: .update,
+                    event: second.event, sourcePayload: second.sourcePayload)
+            ]), 0)
         let retained = try records(archive)
         XCTAssertEqual(retained.count, 2)
         XCTAssertEqual(retained.first?.observation.sourcePayload, second.sourcePayload)
@@ -32,12 +38,17 @@ final class MessageArchiveStoreTests: XCTestCase {
     private func store(_ db: PostgresTestDatabase) throws -> MessageArchiveStore {
         try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, _ in self.key }
     }
-    private func observation(_ text: String, account: String = "account", chat: String = "chat", message: String = "cloud:1") -> MessageArchiveObservation {
-        MessageArchiveObservation(identity: MessageArchiveIdentity(service: "telegram", accountID: account,
-            conversationID: chat, messageID: message), observedAt: Date(timeIntervalSince1970: 10), source: .synthetic,
+    private func observation(
+        _ text: String, account: String = "account", chat: String = "chat", message: String = "cloud:1"
+    ) -> MessageArchiveObservation {
+        MessageArchiveObservation(
+            identity: MessageArchiveIdentity(
+                service: "telegram", accountID: account,
+                conversationID: chat, messageID: message), observedAt: Date(timeIntervalSince1970: 10), source: .synthetic,
             event: .message(MessageArchiveContent(date: Date(timeIntervalSince1970: 1), text: text, author: "author", isOutgoing: false)))
     }
-    private func records(_ store: MessageArchiveStore, account: String = "account", chat: String = "chat") throws -> [MessageArchiveRecord] {
+    private func records(_ store: MessageArchiveStore, account: String = "account", chat: String = "chat") throws -> [MessageArchiveRecord]
+    {
         try store.records(service: "telegram", accountID: account, conversationID: chat)
     }
 
@@ -55,16 +66,18 @@ final class MessageArchiveStoreTests: XCTestCase {
     func testRestartOriginalEditDeletionAndAToBToAStayAppendOnly() throws {
         let db = try database(), first = try store(db)
         let a = observation("original"), b = observation("edit")
-        XCTAssertEqual(try first.append([a,a]), 1)
+        XCTAssertEqual(try first.append([a, a]), 1)
         XCTAssertEqual(try first.append([observation("original")]), 0)
-        XCTAssertEqual(try first.append([b,observation("original")]), 2)
+        XCTAssertEqual(try first.append([b, observation("original")]), 2)
         let deleted = MessageArchiveObservation(identity: a.identity, source: .update, event: .deleted)
         XCTAssertEqual(try first.append([deleted]), 1)
         let reopened = try store(db), rows = try records(reopened)
-        XCTAssertEqual(rows.count, 4); XCTAssertEqual(rows.first?.observation.event, .deleted)
+        XCTAssertEqual(rows.count, 4)
+        XCTAssertEqual(rows.first?.observation.event, .deleted)
         XCTAssertEqual(rows.last?.observation.event, a.event)
         XCTAssertEqual(rows.map(\.sequence), rows.map(\.sequence).sorted(by: >))
-        let page = try reopened.records(service: "telegram", accountID: "account", conversationID: "chat", before: rows[1].sequence, limit: 1)
+        let page = try reopened.records(
+            service: "telegram", accountID: "account", conversationID: "chat", before: rows[1].sequence, limit: 1)
         XCTAssertEqual(page.first?.sequence, rows[2].sequence)
         XCTAssertThrowsError(try reopened.records(service: "telegram", accountID: "account", conversationID: "chat", limit: 201))
     }
@@ -72,9 +85,10 @@ final class MessageArchiveStoreTests: XCTestCase {
     func testNoopObservationReceiptPreventsDelayedRetryBecomingNewVersion() throws {
         let db = try database(), archive = try store(db)
         let a = observation("A"), duplicate = observation("A"), b = observation("B")
-        XCTAssertEqual(try archive.append([a,duplicate,b]), 2)
+        XCTAssertEqual(try archive.append([a, duplicate, b]), 2)
         XCTAssertEqual(try archive.append([duplicate]), 0)
-        let conflicting = MessageArchiveObservation(id: duplicate.id, identity: duplicate.identity,
+        let conflicting = MessageArchiveObservation(
+            id: duplicate.id, identity: duplicate.identity,
             observedAt: duplicate.observedAt, source: duplicate.source, event: b.event)
         XCTAssertThrowsError(try archive.append([conflicting]))
         XCTAssertEqual(try records(archive).count, 2)
@@ -82,9 +96,11 @@ final class MessageArchiveStoreTests: XCTestCase {
 
     func testExactUTF8AccountChatAndNamespaceIdentityIsolation() throws {
         let db = try database(), archive = try store(db)
-        let observations = [observation("é"), observation("e\u{301}"), observation("other", account: "other"),
+        let observations = [
+            observation("é"), observation("e\u{301}"), observation("other", account: "other"),
             observation("other", chat: "other"), observation("namespace", message: "local:1"),
-            observation("unicode", account: "é"), observation("unicode", account: "e\u{301}")]
+            observation("unicode", account: "é"), observation("unicode", account: "e\u{301}"),
+        ]
         XCTAssertEqual(try archive.append(observations), observations.count)
         XCTAssertEqual(try records(archive).count, 3)
         XCTAssertEqual(try records(archive, account: "other").count, 1)
@@ -99,16 +115,23 @@ final class MessageArchiveStoreTests: XCTestCase {
     func testMissingWrongAndShortKeysNeverPermitCreationOnExistingEmptyVault() throws {
         let db = try database()
         var creation: [Bool] = []
-        _ = try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, allowed in creation.append(allowed); return self.key }
+        _ = try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, allowed in
+            creation.append(allowed)
+            return self.key
+        }
         XCTAssertEqual(creation, [true])
         for candidate in [Data(), Data(repeating: 2, count: 32)] {
-            XCTAssertThrowsError(try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, allowed in
-                XCTAssertFalse(allowed); return candidate
-            })
+            XCTAssertThrowsError(
+                try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, allowed in
+                    XCTAssertFalse(allowed)
+                    return candidate
+                })
         }
-        XCTAssertThrowsError(try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, allowed in
-            XCTAssertFalse(allowed); throw MessageArchiveError.keyUnavailable
-        })
+        XCTAssertThrowsError(
+            try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, allowed in
+                XCTAssertFalse(allowed)
+                throw MessageArchiveError.keyUnavailable
+            })
         XCTAssertEqual(try records(store(db)).count, 0)
     }
 
@@ -118,14 +141,22 @@ final class MessageArchiveStoreTests: XCTestCase {
         let before = try db.execute("SELECT ciphertext FROM \"\(db.schema)\".archive_events")
         try db.execute("UPDATE \"\(db.schema)\".archive_metadata SET version=999")
         XCTAssertThrowsError(try records(archive))
-        XCTAssertThrowsError(try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, _ in XCTFail("Future schema requested key"); return self.key })
+        XCTAssertThrowsError(
+            try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, _ in
+                XCTFail("Future schema requested key")
+                return self.key
+            })
         XCTAssertEqual(try db.execute("SELECT ciphertext FROM \"\(db.schema)\".archive_events"), before)
     }
 
     func testBatchRollbackAndRewriteTriggers() throws {
         let db = try database(), archive = try store(db)
-        try db.execute("CREATE FUNCTION \"\(db.schema)\".reject_archive() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic failure'; END $$")
-        try db.execute("CREATE TRIGGER reject_archive BEFORE INSERT ON \"\(db.schema)\".archive_events FOR EACH ROW EXECUTE FUNCTION \"\(db.schema)\".reject_archive()")
+        try db.execute(
+            "CREATE FUNCTION \"\(db.schema)\".reject_archive() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic failure'; END $$"
+        )
+        try db.execute(
+            "CREATE TRIGGER reject_archive BEFORE INSERT ON \"\(db.schema)\".archive_events FOR EACH ROW EXECUTE FUNCTION \"\(db.schema)\".reject_archive()"
+        )
         let value = observation("never committed")
         XCTAssertThrowsError(try archive.append([value]))
         XCTAssertTrue(try records(archive).isEmpty)
@@ -133,7 +164,10 @@ final class MessageArchiveStoreTests: XCTestCase {
         try db.execute("DROP TRIGGER reject_archive ON \"\(db.schema)\".archive_events")
         XCTAssertEqual(try archive.append([value]), 1)
         for sql in ["UPDATE", "DELETE", "TRUNCATE"] {
-            let statement = sql == "UPDATE" ? "UPDATE \"\(db.schema)\".archive_events SET ciphertext='changed'" : sql == "DELETE" ? "DELETE FROM \"\(db.schema)\".archive_events" : "TRUNCATE \"\(db.schema)\".archive_events"
+            let statement =
+                sql == "UPDATE"
+                ? "UPDATE \"\(db.schema)\".archive_events SET ciphertext='changed'"
+                : sql == "DELETE" ? "DELETE FROM \"\(db.schema)\".archive_events" : "TRUNCATE \"\(db.schema)\".archive_events"
             XCTAssertThrowsError(try db.execute(statement))
         }
         XCTAssertEqual(try records(archive).count, 1)
@@ -158,15 +192,97 @@ final class MessageArchiveStoreTests: XCTestCase {
             let store: MessageArchiveStore
             let value: MessageArchiveObservation
             var result: Result<Int, Error>?
-            init(_ store: MessageArchiveStore, _ value: MessageArchiveObservation) { self.store = store; self.value = value }
+            init(_ store: MessageArchiveStore, _ value: MessageArchiveObservation) {
+                self.store = store
+                self.value = value
+            }
         }
-        let work = [Work(first,value),Work(second,value)], group = DispatchGroup()
+        let work = [Work(first, value), Work(second, value)], group = DispatchGroup()
         for item in work {
             group.enter()
-            DispatchQueue.global().async { item.result = Result { try item.store.append([item.value]) }; group.leave() }
+            DispatchQueue.global().async {
+                item.result = Result { try item.store.append([item.value]) }
+                group.leave()
+            }
         }
         XCTAssertEqual(group.wait(timeout: .now() + 10), .success)
         let counts = try work.map { try XCTUnwrap($0.result).get() }
-        XCTAssertEqual(counts.sorted(), [0,1]); XCTAssertEqual(try records(first).count, 1)
+        XCTAssertEqual(counts.sorted(), [0, 1])
+        XCTAssertEqual(try records(first).count, 1)
+    }
+}
+
+final class MessageArchiveFileEventTests: XCTestCase {
+    private let key = Data(repeating: 0x42, count: 32)
+    private func database() throws -> PostgresTestDatabase {
+        let database = try PostgresTestDatabase()
+        addTeardownBlock { try database.cleanup() }
+        return database
+    }
+    private func store(_ db: PostgresTestDatabase) throws -> MessageArchiveStore {
+        try MessageArchiveStore(connectionString: db.connectionString, schema: db.schema) { _, _ in self.key }
+    }
+    private func identity(_ message: String) -> MessageArchiveIdentity {
+        MessageArchiveIdentity(service: "telegram", accountID: "a", conversationID: "c", messageID: message)
+    }
+    /// A synthetic receipt: the catalogue reads metadata only, the bytes never exist.
+    private func record(
+        _ store: MessageArchiveStore, message: String, attachment: String, state: ArchiveFileRecord.State
+    ) throws -> ArchiveFileRecord {
+        let id = UUID(), vault = try store.fileVault()
+        let hash = String(repeating: "ab", count: 32)
+        let receipt = ArchiveFileEnvelopeReceipt(byteCount: 2048, sha256: hash, plaintextByteCount: 1024, plaintextSHA256: hash)
+        let value = ArchiveFileRecord(
+            id: id, identity: identity(message), attachment: .init(id: attachment, kind: "document", name: "\(attachment).pdf", size: 1024),
+            objectKey: "vaults/\(vault.id.uuidString.lowercased())/files/\(id.uuidString.lowercased())", storageID: hash,
+            receipt: receipt, capturedAt: Date(timeIntervalSince1970: 30), state: state, purpose: .conversation(defaultEnabled: true))
+        _ = try store.appendFile(value)
+        return value
+    }
+
+    func testFileEventsPageOldestFirstAndOnlyStored() throws {
+        let db = try database(), archive = try store(db)
+        let a = try record(archive, message: "1", attachment: "x", state: .pending)
+        var stored = a
+        stored.state = .stored
+        _ = try archive.appendFile(stored)
+        let b = try record(archive, message: "2", attachment: "y", state: .stored)
+        _ = try record(archive, message: "3", attachment: "z", state: .pending)
+        let page = try archive.fileEvents(after: 0, limit: 200)
+        XCTAssertEqual(page.map(\.record.id), [a.id, b.id])
+        XCTAssertEqual(page.map(\.record.state), [.stored, .stored])
+        XCTAssertEqual(try archive.fileEvents(after: page[0].sequence, limit: 200).map(\.record.id), [b.id])
+        XCTAssertThrowsError(try archive.fileEvents(after: 0, limit: 0))
+        XCTAssertThrowsError(try archive.fileEvents(after: 0, limit: 201))
+    }
+
+    func testFileEventsTamperedRowIsIntegrityError() throws {
+        let db = try database(), archive = try store(db)
+        _ = try record(archive, message: "1", attachment: "x", state: .stored)
+        try db.execute(
+            "INSERT INTO \"\(db.schema)\".archive_file_events(object,state,attachment_token,ciphertext) VALUES(gen_random_uuid(),'stored','x','AAAA')"
+        )
+        XCTAssertThrowsError(try archive.fileEvents(after: 0, limit: 200)) { XCTAssertEqual($0 as? MessageArchiveError, .integrity) }
+    }
+
+    func testLatestRecordReturnsNewestVersionOfThatMessageOnly() throws {
+        let db = try database(), archive = try store(db)
+        func observation(_ message: String, _ text: String) -> MessageArchiveObservation {
+            MessageArchiveObservation(
+                identity: identity(message), observedAt: Date(timeIntervalSince1970: 10), source: .synthetic,
+                event: .message(MessageArchiveContent(date: Date(timeIntervalSince1970: 1), text: text, author: "Иван", isOutgoing: false)))
+        }
+        XCTAssertEqual(try archive.append([observation("m", "v1"), observation("n", "other"), observation("m", "v2")]), 3)
+        let latest = try archive.latestRecord(identity: identity("m"))
+        XCTAssertEqual(latest?.observation.event, observation("m", "v2").event)
+        XCTAssertEqual(try archive.latestRecord(identity: identity("n"))?.observation.event, observation("n", "other").event)
+        XCTAssertNil(try archive.latestRecord(identity: identity("none")))
+    }
+
+    func testMessageSequenceIndexExists() throws {
+        let db = try database()
+        _ = try store(db)
+        XCTAssertEqual(
+            try db.execute("SELECT 1 FROM pg_indexes WHERE schemaname='\(db.schema)' AND indexname='archive_message_sequence'").count, 1)
     }
 }

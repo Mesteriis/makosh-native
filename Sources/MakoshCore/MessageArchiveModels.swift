@@ -8,16 +8,20 @@ public struct MessageArchiveIdentity: Codable, Equatable, Hashable, Sendable {
     public let conversationID: String
     public let messageID: String
     public init(service: String, accountID: String, conversationID: String, messageID: String) {
-        self.service = service; self.accountID = accountID
-        self.conversationID = conversationID; self.messageID = messageID
+        self.service = service
+        self.accountID = accountID
+        self.conversationID = conversationID
+        self.messageID = messageID
     }
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.service.utf8.elementsEqual(rhs.service.utf8) && lhs.accountID.utf8.elementsEqual(rhs.accountID.utf8)
             && lhs.conversationID.utf8.elementsEqual(rhs.conversationID.utf8) && lhs.messageID.utf8.elementsEqual(rhs.messageID.utf8)
     }
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(Data(service.utf8)); hasher.combine(Data(accountID.utf8))
-        hasher.combine(Data(conversationID.utf8)); hasher.combine(Data(messageID.utf8))
+        hasher.combine(Data(service.utf8))
+        hasher.combine(Data(accountID.utf8))
+        hasher.combine(Data(conversationID.utf8))
+        hasher.combine(Data(messageID.utf8))
     }
 }
 
@@ -27,7 +31,10 @@ public struct MessageArchiveAttachment: Codable, Equatable, Sendable {
     public let name: String
     public let size: Int64?
     public init(id: String, kind: String, name: String, size: Int64?) {
-        self.id = id; self.kind = kind; self.name = name; self.size = size
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.size = size
     }
 }
 
@@ -39,10 +46,17 @@ public struct MessageArchiveContent: Codable, Equatable, Sendable {
     public let authorID: String?
     public let isOutgoing: Bool
     public let attachments: [MessageArchiveAttachment]
-    public init(date: Date, editedAt: Date? = nil, text: String, author: String, authorID: String? = nil,
-                isOutgoing: Bool, attachments: [MessageArchiveAttachment] = []) {
-        self.date = date; self.editedAt = editedAt; self.text = text; self.author = author
-        self.authorID = authorID; self.isOutgoing = isOutgoing; self.attachments = attachments
+    public init(
+        date: Date, editedAt: Date? = nil, text: String, author: String, authorID: String? = nil,
+        isOutgoing: Bool, attachments: [MessageArchiveAttachment] = []
+    ) {
+        self.date = date
+        self.editedAt = editedAt
+        self.text = text
+        self.author = author
+        self.authorID = authorID
+        self.isOutgoing = isOutgoing
+        self.attachments = attachments
     }
 }
 
@@ -69,9 +83,16 @@ public struct MessageArchiveObservation: Codable, Equatable, Sendable, Identifia
     /// Optional service-owned version metadata, encrypted with this observation.
     /// Contains protocol metadata only; attachment payload bytes stay in S3.
     public let sourcePayload: Data?
-    public init(id: UUID = UUID(), identity: MessageArchiveIdentity, observedAt: Date = Date(),
-                source: MessageArchiveSource, event: MessageArchiveEvent, sourcePayload: Data? = nil) {
-        self.id = id; self.identity = identity; self.observedAt = observedAt; self.source = source; self.event = event; self.sourcePayload = sourcePayload
+    public init(
+        id: UUID = UUID(), identity: MessageArchiveIdentity, observedAt: Date = Date(),
+        source: MessageArchiveSource, event: MessageArchiveEvent, sourcePayload: Data? = nil
+    ) {
+        self.id = id
+        self.identity = identity
+        self.observedAt = observedAt
+        self.source = source
+        self.event = event
+        self.sourcePayload = sourcePayload
     }
 }
 
@@ -80,7 +101,18 @@ public struct MessageArchiveRecord: Equatable, Sendable, Identifiable {
     public let observation: MessageArchiveObservation
     public var id: UUID { observation.id }
     public init(sequence: Int64, observation: MessageArchiveObservation) {
-        self.sequence = sequence; self.observation = observation
+        self.sequence = sequence
+        self.observation = observation
+    }
+}
+
+/// One stored file receipt with its journal position, for cursor readers.
+public struct ArchiveFileEvent: Equatable, Sendable {
+    public let sequence: Int64
+    public let record: ArchiveFileRecord
+    public init(sequence: Int64, record: ArchiveFileRecord) {
+        self.sequence = sequence
+        self.record = record
     }
 }
 

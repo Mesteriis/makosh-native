@@ -128,6 +128,8 @@ public final class MessageArchiveStore {
                 _ = try query(
                     "CREATE INDEX IF NOT EXISTS archive_file_attachment ON \(prefix)archive_file_events(attachment_token,sequence DESC)")
                 _ = try query("CREATE INDEX IF NOT EXISTS archive_stream_sequence ON \(prefix)archive_events(stream_token,sequence DESC)")
+                _ = try query(
+                    "CREATE INDEX IF NOT EXISTS archive_message_sequence ON \(prefix)archive_events(message_token,sequence DESC)")
                 if let restoring { try restoreBackupRows(restoring) }
             }
             initialized = true
@@ -304,6 +306,50 @@ public final class MessageArchiveStore {
                 else { throw MessageArchiveError.integrity }
                 return record
             }
+        }
+    }
+
+    /// Stored file receipts after `sequence`, oldest first, for a catalogue cursor.
+    public func fileEvents(after sequence: Int64, limit: Int) throws -> [ArchiveFileEvent] {
+        guard (1...200).contains(limit) else { throw MessageArchiveError.invalid }
+        lock.lock()
+        defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let rows = try query(
+                "SELECT sequence,object,state,ciphertext FROM \(prefix)archive_file_events WHERE state='stored' AND sequence>$1::bigint ORDER BY sequence LIMIT $2::int",
+                [String(sequence), String(limit)])
+            return try rows.map { row in
+                guard let position = Int64(row[0]) else { throw MessageArchiveError.integrity }
+                let record: ArchiveFileRecord
+                do {
+                    record = try JSONDecoder().decode(
+                        ArchiveFileRecord.self, from: open(row[3], aad: binding("file-\(row[1].uppercased())-\(row[2])", 0)))
+                } catch { throw MessageArchiveError.integrity }
+                guard record.id.uuidString.lowercased() == row[1], record.state == .stored else { throw MessageArchiveError.integrity }
+                return ArchiveFileEvent(sequence: position, record: record)
+            }
+        }
+    }
+
+    /// The newest retained version of one message, or nil when it was never archived.
+    public func latestRecord(identity: MessageArchiveIdentity) throws -> MessageArchiveRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+        return try transaction {
+            _ = try metadata()
+            let message = token([identity.service, identity.accountID, identity.conversationID, identity.messageID])
+            let rows = try query(
+                "SELECT sequence,message_token,ciphertext FROM \(prefix)archive_events WHERE message_token=$1 ORDER BY sequence DESC LIMIT 1",
+                [message])
+            guard let row = rows.first else { return nil }
+            guard let sequence = Int64(row[0]), row[1] == message else { throw MessageArchiveError.integrity }
+            let observation: MessageArchiveObservation
+            do {
+                observation = try JSONDecoder().decode(MessageArchiveObservation.self, from: open(row[2], aad: binding(row[1], sequence)))
+            } catch { throw MessageArchiveError.integrity }
+            guard observation.identity == identity else { throw MessageArchiveError.integrity }
+            return MessageArchiveRecord(sequence: sequence, observation: observation)
         }
     }
 

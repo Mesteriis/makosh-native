@@ -1,0 +1,97 @@
+import Foundation
+import MakoshCore
+import XCTest
+@testable import MakoshFiles
+
+private struct TitleStub: FileSourceResolving {
+    let titles: [String: String]
+    func sourceTitle(for identity: MessageArchiveIdentity) async -> String? { titles[identity.conversationID] }
+}
+
+final class FileCatalogueTests: XCTestCase {
+    private func catalogue(_ db: FilesTestDatabase) -> FileCatalogue {
+        FileCatalogue(connectionString: db.connectionString, schema: db.schema) { _, _ in filesTestKey }
+    }
+
+    func testCatalogueListsStoredFilesNewestFirstWithoutRawLetterCopies() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        let a = try storedFile(store, message: "1", attachment: "x", name: "a.pdf", capturedAt: 10)
+        try storedFile(store, service: "mail", message: "2", attachment: "rfc822-source", name: "message.eml", capturedAt: 15)
+        let c = try storedFile(store, service: "mail", message: "3", attachment: "0", name: "c.pdf", capturedAt: 20)
+        let items = try await catalogue(db).refresh(resolver: nil)
+        XCTAssertEqual(items.map(\.id), [c.id, a.id])
+        XCTAssertEqual(items.map(\.service), ["mail", "telegram"])
+        XCTAssertEqual(items.first?.byteCount, 1024)
+    }
+
+    func testOneRowPerAttachmentKeepsLatestRecord() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        _ = try storedFile(store, message: "1", attachment: "x", name: "first.pdf", capturedAt: 10)
+        let again = try storedFile(store, message: "1", attachment: "x", name: "second.pdf", capturedAt: 11)
+        let items = try await catalogue(db).refresh(resolver: nil)
+        XCTAssertEqual(items.map(\.id), [again.id])
+        XCTAssertEqual(items.first?.name, "second.pdf")
+    }
+
+    func testMessageDateAndAuthorComeFromArchiveEvents() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        let a = try storedFile(store, message: "1", attachment: "x", name: "a.pdf", capturedAt: 10)
+        let c = try storedFile(store, message: "2", attachment: "y", name: "c.pdf", capturedAt: 20)
+        _ = try store.append([
+            MessageArchiveObservation(
+                identity: a.identity, source: .synthetic,
+                event: .message(.init(date: Date(timeIntervalSince1970: 1_700_000_000), text: "t", author: "Иван", isOutgoing: false)))
+        ])
+        let items = try await catalogue(db).refresh(resolver: nil)
+        let first = try XCTUnwrap(items.first { $0.id == a.id }), second = try XCTUnwrap(items.first { $0.id == c.id })
+        XCTAssertEqual(first.messageDate, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(first.author, "Иван")
+        XCTAssertEqual(first.date, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertNil(second.messageDate)
+        XCTAssertEqual(second.date, c.capturedAt)
+        XCTAssertEqual(items.map(\.id), [first.id, second.id], "message date orders ahead of capture date")
+    }
+
+    func testRefreshContinuesFromCursorAndKeepsEarlierItems() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        _ = try storedFile(store, message: "1", attachment: "x", name: "a.pdf", capturedAt: 10)
+        let reader = catalogue(db)
+        let first = try await reader.refresh(resolver: nil)
+        XCTAssertEqual(first.count, 1)
+        let later = try storedFile(store, message: "2", attachment: "y", name: "b.pdf", capturedAt: 50)
+        let items = try await reader.refresh(resolver: nil)
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items.first?.id, later.id)
+        let kept = await reader.items
+        XCTAssertEqual(kept.count, 2)
+    }
+
+    func testResolverFillsSourceTitles() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        _ = try storedFile(store, chat: "c", message: "1", attachment: "x", name: "a.pdf")
+        _ = try storedFile(store, chat: "other", message: "1", attachment: "x", name: "b.pdf")
+        let items = try await catalogue(db).refresh(resolver: TitleStub(titles: ["c": "Мария"]))
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.sourceTitle) }), ["a.pdf": "Мария", "b.pdf": nil])
+    }
+
+    func testTamperedRowSurfacesIntegrityFailure() async throws {
+        let db = try filesDatabase(), store = try archiveStore(db)
+        _ = try storedFile(store, message: "1", attachment: "x", name: "a.pdf")
+        try db.execute(
+            "INSERT INTO \"\(db.schema)\".archive_file_events(object,state,attachment_token,ciphertext) VALUES(gen_random_uuid(),'stored','x','AAAA')"
+        )
+        do {
+            _ = try await catalogue(db).refresh(resolver: nil)
+            XCTFail("tampered row must not be skipped")
+        } catch let error as FilesFailure { XCTAssertEqual(error, .integrity) }
+    }
+
+    func testCategoryByExtensionAndKind() {
+        XCTAssertEqual(FileCategory.classify(name: "Счёт.PDF", kind: "document"), .document)
+        XCTAssertEqual(FileCategory.classify(name: "file", kind: "photo"), .image)
+        XCTAssertEqual(FileCategory.classify(name: "clip.MOV", kind: "file"), .video)
+        XCTAssertEqual(FileCategory.classify(name: "note.ogg", kind: "voice"), .audio)
+        XCTAssertEqual(FileCategory.classify(name: "pack.tar.gz", kind: "file"), .archive)
+        XCTAssertEqual(FileCategory.classify(name: "x.bin", kind: "file"), .other)
+    }
+}

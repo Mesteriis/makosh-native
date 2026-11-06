@@ -32,6 +32,18 @@ final class AIContextSearchRankingTests: XCTestCase {
         XCTAssertEqual(ranked.map(\.card.title), ["Чат 1", "Чат 2", "Чат 3", "Чат 4", "Чат 5"], "stable order among equals")
     }
 
+    func testFilesRankWithChatsAndMatchBySubtitle() {
+        let file = AIContextSuggestion(
+            card: .file(source: .archive(recordID: UUID()), title: "Счёт за ноябрь.pdf", pages: nil), subtitle: "Файл · Почта")
+        let paperless = AIContextSuggestion(
+            card: .file(source: .paperless(connectionID: UUID(), documentID: 3), title: "Договор аренды", pages: nil), subtitle: "Paperless"
+        )
+        let items = [chat("Мария"), file, paperless]
+        XCTAssertEqual(AIContextRanking.rank(items, query: "счет", limit: 10).map(\.card.title), ["Счёт за ноябрь.pdf"])
+        XCTAssertEqual(AIContextRanking.rank(items, query: "paperless", limit: 10).map(\.card.title), ["Договор аренды"])
+        XCTAssertEqual(AIContextRanking.rank(items, query: "", limit: 10).count, 3)
+    }
+
     func testEmptyQueryKeepsOrder() {
         let items = [chat("Б"), chat("А")]
         XCTAssertEqual(AIContextRanking.rank(items, query: " ", limit: 10).map(\.card.title), ["Б", "А"])

@@ -169,7 +169,16 @@ struct WorkspaceView: View {
         }
         .onAppear {
             if aiContextSearch == nil {
-                aiContextSearch = AIContextSearch(telegram: telegram, whatsapp: whatsapp, mail: mail) { [model] in model.contacts }
+                let search = AIContextSearch(telegram: telegram, whatsapp: whatsapp, mail: mail) { [model] in model.contacts }
+                let filesModel = files.model
+                search.attach(
+                    files: FilePickerSearch(
+                        catalogue: { filesModel.items },
+                        paperless: { connectionID, query in
+                            guard let client = await filesModel.client(for: connectionID) else { return [] }
+                            return try await client.documents(query: query, page: 1).items
+                        }, connections: { filesModel.connections.map(\.id) }))
+                aiContextSearch = search
             }
             if !isolatedWhatsApp && !teams.isSynthetic && !telemost.isSynthetic {
                 callWindows.register(telegram.calls, synthetic: telegram.isSyntheticPreview, avatars: telegram.avatars)
@@ -320,7 +329,15 @@ struct WorkspaceView: View {
             destination = .whatsapp
             Task { await whatsapp.selectChat(chatID) }
         case .chat: break
-        case .file: destination = .files
+        case .file(let source, _, _):
+            destination = .files
+            switch source {
+            case .archive(let recordID):
+                files.model.source = .all
+                files.model.highlighted = recordID
+            case .paperless(let connectionID, _): files.model.source = .storage(connectionID)
+            case .staged: break
+            }
         case .letter:
             // The letter itself is not yet selected there.
             destination = .mail

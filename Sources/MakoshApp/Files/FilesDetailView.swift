@@ -51,7 +51,9 @@ struct FilesDetailView: View {
         .task {
             await model.refresh()
             model.startPolling()
+            if let highlighted = model.highlighted { selection = [highlighted] }
         }
+        .onChange(of: model.highlighted) { _, value in if let value { selection = [value] } }
         .onDisappear(perform: model.stopPolling)
         .sheet(item: $preview) { lease in FilePreviewView(lease: lease).makoshAppearance() }
     }

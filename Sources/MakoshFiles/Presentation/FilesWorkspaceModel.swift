@@ -48,6 +48,8 @@ public struct PaperlessLists: Equatable, Sendable {
     @Published public var error: String?
     @Published public private(set) var submissions: [PaperlessSubmission] = []
     @Published public private(set) var lists: [UUID: PaperlessLists] = [:]
+    /// A catalogue row to select when the section opens (from an AI card).
+    @Published public var highlighted: UUID?
 
     public let sender: PaperlessSender
     private var catalogue: (any FileCatalogueReading)?

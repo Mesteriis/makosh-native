@@ -1,6 +1,8 @@
+import Combine
 import Foundation
 import MakoshAI
 import MakoshCore
+import MakoshFiles
 import MakoshMail
 import MakoshTelegram
 import MakoshWhatsApp
@@ -15,6 +17,18 @@ import MakoshWhatsApp
     private let mail: MailWorkspaceModel
     private let contacts: () -> [Contact]
     static let limit = 30
+    /// Files of the archive and Paperless; their late answers re-rank the list.
+    private var files: FilePickerSearch?
+    private var filesObservation: AnyCancellable?
+    private var query = ""
+
+    func attach(files: FilePickerSearch) {
+        self.files = files
+        filesObservation = files.$results.dropFirst().sink { [weak self] _ in
+            guard let self else { return }
+            self.suggestions = AIContextRanking.rank(self.candidates(), query: self.query, limit: Self.limit)
+        }
+    }
 
     init(telegram: TelegramModel, whatsapp: WhatsAppWorkspaceModel, mail: MailWorkspaceModel, contacts: @escaping () -> [Contact]) {
         self.telegram = telegram
@@ -24,6 +38,8 @@ import MakoshWhatsApp
     }
 
     func update(query: String) {
+        self.query = query
+        files?.update(query: query)
         suggestions = AIContextRanking.rank(candidates(), query: query, limit: Self.limit)
     }
 
@@ -49,6 +65,19 @@ import MakoshWhatsApp
         }
         for contact in contacts() where contact.aiAccess != .forbidden {
             result.append(.init(card: .contact(id: contact.id, title: contact.displayName), subtitle: "Контакт"))
+        }
+        for pick in files?.results ?? [] {
+            switch pick.kind {
+            case .archive(let item):
+                result.append(
+                    .init(card: .file(source: .archive(recordID: item.id), title: item.name, pages: nil), subtitle: pick.subtitle))
+            case .paperless(let connectionID, let document):
+                result.append(
+                    .init(
+                        card: .file(
+                            source: .paperless(connectionID: connectionID, documentID: document.id), title: document.title, pages: nil),
+                        subtitle: pick.subtitle))
+            }
         }
         for letter in mail.letters {
             let sender = letter.senderName.isEmpty ? letter.sender : letter.senderName

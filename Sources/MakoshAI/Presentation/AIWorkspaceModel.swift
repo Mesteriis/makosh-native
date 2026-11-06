@@ -136,6 +136,13 @@ import MakoshCore
         await changeCards { worker, id in try await worker.addCard(changed, conversationID: id) }
     }
 
+    /// A file card's page range; nil means the whole file. The card keeps its id and place.
+    package func setPages(_ pages: ClosedRange<Int>?, for cardID: String) async {
+        guard let card = cards.first(where: { $0.id == cardID }), case .file(let source, let title, _) = card else { return }
+        let changed = AIContextCard.file(source: source, title: title, pages: pages)
+        await changeCards { worker, id in try await worker.addCard(changed, conversationID: id) }
+    }
+
     /// Each change is applied by the worker to the stored list, so quick
     /// changes from the panel and the AI section never overwrite each other.
     private func changeCards(_ change: @Sendable (AIWorker, UUID) async throws -> Void) async {

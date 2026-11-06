@@ -54,6 +54,23 @@ import XCTest
         XCTAssertEqual(model.cards.first?.id, chatB.id)
     }
 
+    func testRemovingACardCancelsItsPreview() async throws {
+        await model.open(anchor: chatA)
+        await provider.hold(chatB)
+        let model = self.model!, chatB = self.chatB, provider = self.provider!
+        let adding = Task { @MainActor in await model.add(chatB) }
+        while await !provider.reads.contains(chatB.id) { await Task.yield() }
+        model.reportExtraction(cardID: chatB.id, progress: AIExtractionProgress(done: 1, total: 9))
+        XCTAssertEqual(model.extraction[chatB.id], AIExtractionProgress(done: 1, total: 9))
+        await model.remove(chatB.id)
+        XCTAssertEqual(model.cards.map(\.id), [chatA.id], "removal does not wait for the held read")
+        XCTAssertNil(model.extraction[chatB.id])
+        await provider.release(chatB)
+        await adding.value
+        XCTAssertNil(model.previews[chatB.id], "the late material of a removed card never lands")
+        XCTAssertEqual(model.previews[chatA.id]?.lines.first?.text, "a")
+    }
+
     func testRemovingAndAddingCardsUpdatesConversation() async throws {
         await model.open(anchor: chatA)
         await model.add(chatB)
@@ -71,6 +88,22 @@ import XCTest
         await model.setRange(.lastDays(7), for: chatA.id)
         guard case .chat(_, _, _, _, let range)? = model.cards.first else { return XCTFail() }
         XCTAssertEqual(range, .lastDays(7))
+    }
+
+    func testSetPagesKeepsCardIdentityAndRefreshesPreview() async throws {
+        let file = AIContextCard.file(source: .staged(id: UUID()), title: "Договор.pdf", pages: nil)
+        await provider.set(file, text: "текст")
+        await model.open(anchor: chatA)
+        await model.add(file)
+        let before = await provider.reads.filter { $0 == file.id }.count
+        await model.setPages(2...3, for: file.id)
+        guard case .file(_, _, let pages)? = model.cards.first(where: { $0.id == file.id }) else { return XCTFail("\(model.cards)") }
+        XCTAssertEqual(pages, 2...3)
+        XCTAssertEqual(model.cards.map(\.id), [chatA.id, file.id], "the card keeps its place and id")
+        let after = await provider.reads.filter { $0 == file.id }.count
+        XCTAssertGreaterThan(after, before, "the preview is read again for the new pages")
+        await model.setPages(nil, for: file.id)
+        guard case .file(_, _, nil)? = model.cards.first(where: { $0.id == file.id }) else { return XCTFail("\(model.cards)") }
     }
 
     func testUnavailableCardShowsFailureOnItsPreview() async throws {

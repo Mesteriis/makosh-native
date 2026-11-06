@@ -27,6 +27,7 @@ private struct AIContextCardChip: View {
     @ObservedObject var model: AIWorkspaceModel
     let open: (AIContextCard) -> Void
     @State private var customRange = false
+    @State private var customPages = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
@@ -43,6 +44,14 @@ private struct AIContextCardChip: View {
                     .menuStyle(.borderlessButton).fixedSize().font(.caption2)
                     .accessibilityIdentifier("ai.context.range.\(card.id)")
                 }
+                if case .file(_, _, let pages) = card {
+                    Menu(Self.describe(pages, count: model.previews[card.id]?.document?.pageCount)) {
+                        Button("Весь файл") { setPages(nil) }
+                        Button("Страницы…") { customPages = true }
+                    }
+                    .menuStyle(.borderlessButton).fixedSize().font(.caption2)
+                    .accessibilityIdentifier("ai.context.pages.\(card.id)")
+                }
                 status.font(.caption2).foregroundStyle(.secondary)
             }
             Button {
@@ -50,14 +59,31 @@ private struct AIContextCardChip: View {
             } label: {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain).help("Убрать из контекста").accessibilityIdentifier("ai.context.remove.\(card.id)")
+            .buttonStyle(.plain).help(model.extraction[card.id] == nil ? "Убрать из контекста" : "Отменить и убрать")
+            .accessibilityIdentifier("ai.context.remove.\(card.id)")
         }
         .padding(8).background(WorkspaceStyle.surface, in: .rect(cornerRadius: 8))
         .popover(isPresented: $customRange) { AIContextRangePicker { range in set(range) } }
+        .popover(isPresented: $customPages) {
+            AIFilePagesPicker(pageCount: model.previews[card.id]?.document?.pageCount, current: currentPages) { pages in setPages(pages) }
+        }
+    }
+
+    private var currentPages: ClosedRange<Int>? {
+        if case .file(_, _, let pages) = card { return pages }
+        return nil
+    }
+    private func setPages(_ pages: ClosedRange<Int>?) { Task { await model.setPages(pages, for: card.id) } }
+
+    static func describe(_ pages: ClosedRange<Int>?, count: Int?) -> String {
+        if let pages { return "страницы \(pages.lowerBound)–\(pages.upperBound)" }
+        return count.map { "весь файл · \($0) стр." } ?? "весь файл"
     }
 
     @ViewBuilder private var status: some View {
-        if let failure = model.previewFailures[card.id] {
+        if let progress = model.extraction[card.id] {
+            Text("Извлекается… \(progress.done) из \(progress.total)")
+        } else if let failure = model.previewFailures[card.id] {
             Text(failure.message).foregroundStyle(.orange)
         } else if let material = model.previews[card.id], material.truncated {
             Text("Локально доступна только часть периода — сузьте период").foregroundStyle(.orange)
@@ -112,6 +138,39 @@ private struct AIContextCardChip: View {
         case .letter: "envelope"
         case .contact: "person.text.rectangle"
         case .file: "doc.text"
+        }
+    }
+}
+
+/// Page bounds for a file card; empty fields mean the whole file.
+private struct AIFilePagesPicker: View {
+    let pageCount: Int?
+    let current: ClosedRange<Int>?
+    let apply: (ClosedRange<Int>?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var from = ""
+    @State private var to = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(pageCount.map { "В файле \($0) стр." } ?? "Число страниц ещё не известно").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                TextField("С", text: $from).frame(width: 60).accessibilityIdentifier("ai.context.pages.from")
+                TextField("По", text: $to).frame(width: 60).accessibilityIdentifier("ai.context.pages.to")
+            }
+            HStack {
+                Spacer()
+                Button("Отмена") { dismiss() }
+                Button("Применить") {
+                    if let lower = Int(from), let upper = Int(to), lower >= 1, upper >= lower { apply(lower...upper) } else { apply(nil) }
+                    dismiss()
+                }.keyboardShortcut(.defaultAction).accessibilityIdentifier("ai.context.pages.apply")
+            }
+        }
+        .padding(12).frame(width: 220)
+        .onAppear {
+            from = current.map { String($0.lowerBound) } ?? ""
+            to = current.map { String($0.upperBound) } ?? ""
         }
     }
 }

@@ -286,3 +286,15 @@ every submission lives in a private journal so a restart cannot lose
 "processing". Uploads reuse `FileHandoff`, which later parts reuse for chats,
 letters and AI cards. Paperless documents never enter the AI context or index.
 Details: [files.md](files.md).
+
+## ADR-017: Files reach chats, letters and the AI through one hand-off — 2026-11-06
+
+`FileHandoff` carries a file from wherever it is shown (archive, Paperless,
+a mail attachment, a chat download, a Teams lease) to a destination; a
+`FileHandoffStage` under Application Support holds private copies for
+composers and AI cards until the app quits. Text for the AI is read on the
+Mac (`FileTextExtractor`: PDFKit, Vision, `NSAttributedString`) and never
+persisted; Paperless OCR is only a fallback. The conversation budget comes
+from the chat model's context window (`AITokenEstimate`), replacing the fixed
+100 000-character limit of ADR-013's panel. Protected Telegram/WhatsApp content
+offers no file actions at all. Details: [files.md](files.md).

@@ -23,6 +23,19 @@ final class FilesQAIsolationTests: XCTestCase {
             try FilesQAIsolation.validate(configuration: configuration(), arguments: arguments + ["--telegram-synthetic-preview"]))
     }
 
+    func testSyntheticSampleDocumentIsStagedWithReadableText() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-qa-stage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stage = FileHandoffStage(root: root)
+        let staged = try await FilesSyntheticSeed.stageSampleContract(in: stage)
+        XCTAssertEqual(staged.name, "Договор на обслуживание.pdf")
+        let text = try await FileTextExtractor().extract(staged.url, name: staged.name, pages: nil)
+        XCTAssertEqual(text.pageCount, 2)
+        XCTAssertTrue(text.paginated)
+        XCTAssertTrue(text.pages.joined().contains("1 200"), text.pages.joined())
+        XCTAssertEqual(text.recognizedPages, [], "the sample has a real text layer, no OCR")
+    }
+
     func testSyntheticSeedProducesSixItemsAcrossCategoriesOnce() async throws {
         let db = try filesDatabase(), store = try archiveStore(db)
         try FilesSyntheticSeed.seed(store)

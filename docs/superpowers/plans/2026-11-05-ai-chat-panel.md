@@ -1,3 +1,5 @@
+> Примечание 2026-11-06: фиксированный лимит 100 000 символов (`AIContextBuilder.defaultLimit`) заменён бюджетом от контекста модели (`AITokenEstimate`, план `2026-11-06-files-forwarding-ai.md`).
+
 # Панель ИИ в чате и контекст беседы — план реализации
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

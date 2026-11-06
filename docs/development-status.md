@@ -1,5 +1,38 @@
 # Development status — 2026-11-06
 
+## Файлы, часть 3: пересылка и карточка «файл» для ИИ — 2026-11-06
+
+План `docs/superpowers/plans/2026-11-06-files-forwarding-ai.md` (ветка
+`files-forwarding-ai`), спека
+`docs/superpowers/specs/2026-11-06-files-forwarding-ai-design.md`,
+описание в `docs/files.md`.
+
+- Бюджет контекста от модели (`AITokenEstimate`, поле у роли «чат»); константа
+  100 000 символов удалена — `AITokenEstimateTests`, `AIContextBuilderTests`.
+- Карточка `.file` (архив / Paperless / временная копия), документ в системном
+  ходе постранично/частями — `AIContextModelTests`, `AIContextBuilderTests`,
+  `AIFileMaterialTests`.
+- `FileTextExtractor`: PDFKit, Vision (ru/es/en), Word/RTF, CP1251, части,
+  лимит OCR, отмена — `FileTextExtractorTests` (13 тестов на фикстурах,
+  созданных в тесте; Vision работает в тестах).
+- Стейджинг, `document(id:)` Paperless, поиски адресатов и файлов —
+  `FileHandoffStageTests`, `FileSearchesTests`.
+- Мост ИИ читает файлы с правилами доступа и ходом извлечения; удаление
+  карточки отменяет чтение — `AIWorkspacePanelTests`.
+- Карточка в UI со страницами, файлы в «+»/«@», «Спросить ИИ…», признак
+  защищённого контента Telegram (`TelegramMappingProtectedTests`), набор
+  действий (`FileActionsTests`), пересылка в составители
+  (`MailComposeAttachmentsTests`), «Из Файлов…» в трёх составителях.
+- QA ИИ (`qa_ai_`) получает собственный хост «Файлов» и синтетический
+  двухстраничный договор, прикреплённый карточкой к новой беседе.
+- Полный `scripts/test.sh` — exit 0 (все 8 бандлов XCTest, Rust, Python);
+  `scripts/build-app.sh` — exit 0. Отладочный QA-бандл собран из
+  `.build/debug/Makosh`; QA ИИ запущен (`scripts/run-ai-qa.py --bundle … --launch`),
+  осмотр окна мной не выполнялся — пользователь отклонил доступ к окну;
+  окно оставлено для его осмотра. QA «Файлов» с новыми пунктами меню не
+  запускался. Живая проверка (договор → ИИ, форма → чат) — задача 11, по
+  команде пользователя.
+
 ## Раздел «Файлы» и Paperless — 2026-11-06
 
 План `docs/superpowers/plans/2026-11-06-files-section-paperless.md` (ветка

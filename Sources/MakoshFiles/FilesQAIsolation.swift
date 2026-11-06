@@ -1,4 +1,6 @@
+import AppKit
 import CPostgres
+import CoreText
 import Foundation
 import MakoshCore
 
@@ -94,6 +96,51 @@ public enum FilesSyntheticSeed {
                 receipt: receipt, capturedAt: date.addingTimeInterval(5), state: .stored, purpose: .conversation(defaultEnabled: true))
             _ = try store.appendFile(record)
         }
+    }
+}
+
+extension FilesSyntheticSeed {
+    public static let sampleContractName = "Договор на обслуживание.pdf"
+    static let sampleContractPages = [
+        [
+            "ДОГОВОР НА ОБСЛУЖИВАНИЕ № 17", "",
+            "1. Исполнитель оказывает услуги технического обслуживания.",
+            "2. Стоимость услуг составляет 1 200 € в месяц, НДС включён.",
+            "3. Оплата до 5 числа каждого месяца.",
+        ],
+        [
+            "4. Срок действия — 12 месяцев с автоматическим продлением.",
+            "5. Расторжение — уведомление за 30 дней.",
+            "6. Штраф за просрочку — 0,5 % в день, не более 10 %.",
+        ],
+    ]
+
+    /// A two-page PDF with a real text layer, staged like any file for the synthetic AI preview.
+    public static func stageSampleContract(in stage: FileHandoffStage) async throws -> StagedFile {
+        try await stage.stage(
+            FileHandoff(name: sampleContractName, date: Date(timeIntervalSince1970: 1_800_000_000)) { url in
+                try writeSampleContract(to: url)
+            })
+    }
+
+    static func writeSampleContract(to url: URL) throws {
+        var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+        guard let consumer = CGDataConsumer(url: url as CFURL), let context = CGContext(consumer: consumer, mediaBox: &box, nil) else {
+            throw FilesFailure.unexpectedResponse
+        }
+        let font = CTFontCreateWithName("Helvetica" as CFString, 14, nil)
+        for page in sampleContractPages {
+            context.beginPDFPage(nil)
+            var y: CGFloat = 780
+            for line in page {
+                let text = CTLineCreateWithAttributedString(NSAttributedString(string: line, attributes: [.font: font]))
+                context.textPosition = CGPoint(x: 56, y: y)
+                CTLineDraw(text, context)
+                y -= 24
+            }
+            context.endPDFPage()
+        }
+        context.closePDF()
     }
 }
 

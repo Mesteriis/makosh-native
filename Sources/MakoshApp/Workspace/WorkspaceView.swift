@@ -262,10 +262,6 @@ struct WorkspaceView: View {
         }
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model).makoshAppearance() }
         .sheet(item: $files.pendingSend) { request in PaperlessSendSheet(model: files.model, request: request).makoshAppearance() }
-        .sheet(item: $files.pendingForward) { request in
-            FileForwardSheet(request: request, destinations: forwardDestinations(request.mode), perform: { await forward(request, to: $0) })
-                .makoshAppearance()
-        }
         .onChange(of: files.pendingAsk?.id) { _, _ in
             guard let request = files.pendingAsk else { return }
             files.pendingAsk = nil
@@ -340,7 +336,7 @@ struct WorkspaceView: View {
     }
 
     /// Stages the file and hands it to the destination's composer; the person sends.
-    private func forward(_ request: FileForwardRequest, to destination: FileDestination) async -> String? {
+    private func forward(_ request: FileForwardRequest, _ destination: FileDestination) async -> String? {
         let staged: StagedFile
         do { staged = try await files.stage.stage(request.handoff) } catch {
             return (error as? FilesFailure)?.errorDescription ?? (error as? LocalizedError)?.errorDescription
@@ -624,6 +620,8 @@ struct WorkspaceView: View {
                         description: Text("Здесь появится работа с сервисом после реализации и явного подключения аккаунта."))
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                // The forward chooser sits beside the section's content, like the AI panel beside a chat.
+                .modifier(FileForwardColumn(host: files, destinations: forwardDestinations, perform: forward))
         }
         // Chat themes stay local to the selected service; window chrome stays Makosh.
         .tint(destination == .telegram ? resolvedTelegramAccent : WorkspaceStyle.accent)

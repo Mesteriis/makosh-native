@@ -47,9 +47,26 @@ public struct PaperlessSubmission: Codable, Equatable, Identifiable, Sendable {
         self.updatedAt = updatedAt
     }
     public var isSettled: Bool {
-        switch state {
+        state.isSettled
+    }
+}
+
+extension PaperlessSubmission.State {
+    public var isSettled: Bool {
+        switch self {
         case .accepted, .duplicate, .failed: true
         case .uploading, .processing, .unknown: false
+        }
+    }
+    /// What the person reads on the send sheet and in the catalogue.
+    public var title: String {
+        switch self {
+        case .uploading: "Загружается…"
+        case .processing: "Обрабатывается…"
+        case .accepted(let id): id.map { "Документ принят · #\($0)" } ?? "Документ принят"
+        case .duplicate(let id): FilesFailure.duplicate(existingID: id).errorDescription ?? ""
+        case .failed(let reason): "Не отправлено: \(reason)"
+        case .unknown: "Результат неизвестен — проверьте в Paperless"
         }
     }
 }

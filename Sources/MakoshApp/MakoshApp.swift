@@ -205,6 +205,7 @@ struct MakoshApp: App {
                         TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }
                         WhatsAppCommonSettingsView().tabItem { Label("WhatsApp", systemImage: "message") }
                         TeamsCommonSettingsView().tabItem { Label("Teams", systemImage: "person.3") }
+                        FilesSettingsView().tabItem { Label("Файлы", systemImage: "folder") }
                         AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }
                     }
                 }

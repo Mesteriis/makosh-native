@@ -65,7 +65,6 @@ struct WorkspaceView: View {
         telegramAppearance.effectivePalette(isDark: resolvedTelegramScheme == .dark).map { telegramPaletteColor($0, "accent", $0.accent) }
             ?? TelegramAccent(preference: telegramAccent).color
     }
-    @Environment(\.openSettings) private var openSettings
     @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
@@ -410,7 +409,7 @@ struct WorkspaceView: View {
         } else if destination == .whatsapp {
             WhatsAppSidebarView(model: whatsapp, navigation: whatsappNavigation).frame(minWidth: 300, idealWidth: 350, maxWidth: 440)
         } else if destination == .files {
-            FilesSidebarView(model: files.model, addStorage: { openSettings() }).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
+            FilesSidebarView(model: files.model, host: files).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else if destination == .ai {
             AIConversationListView(model: ai.workspace, openChat: openAICard).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else {

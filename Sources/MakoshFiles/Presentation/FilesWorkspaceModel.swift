@@ -151,6 +151,20 @@ public struct PaperlessLists: Equatable, Sendable {
 
     // MARK: - Storages
 
+    public func save(_ connection: FileStorageConnection, token: String?) async throws {
+        try await registry.save(connection, token: token)
+        storageStatus[connection.id] = nil
+        lists[connection.id] = nil
+        reloadConnections()
+    }
+
+    public func remove(_ id: UUID) async throws {
+        try await registry.remove(id)
+        storageStatus[id] = nil
+        lists[id] = nil
+        reloadConnections()
+    }
+
     public func reloadConnections() {
         connections = registry.connections()
         if case .storage(let id) = source, !connections.contains(where: { $0.id == id }) { source = .all }

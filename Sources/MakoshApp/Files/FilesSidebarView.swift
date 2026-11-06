@@ -4,7 +4,8 @@ import SwiftUI
 /// Sources on top, storages below; the "+" opens the storage editor.
 struct FilesSidebarView: View {
     @ObservedObject var model: FilesWorkspaceModel
-    var addStorage: () -> Void = {}
+    @ObservedObject var host: FilesHost
+    @State private var adding = false
     static let services: [(id: String, title: String, symbol: String)] = [
         ("mail", "Почта", "envelope"), ("telegram", "Telegram", "paperplane"), ("whatsapp", "WhatsApp", "message"),
         ("teams", "Teams", "person.3"),
@@ -42,12 +43,17 @@ struct FilesSidebarView: View {
                     HStack {
                         Text("Хранилища")
                         Spacer()
-                        Button(action: addStorage) { Image(systemName: "plus") }
-                            .buttonStyle(.borderless).help("Добавить хранилище").accessibilityIdentifier("files.storage.add")
+                        Button {
+                            adding = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.borderless).help("Добавить хранилище").accessibilityIdentifier("files.storage.add")
                     }
                 }
             }.listStyle(.inset).scrollContentBackground(.hidden)
         }.frame(maxHeight: .infinity, alignment: .top)
+            .sheet(isPresented: $adding) { FileStorageEditor(model: model, original: nil).makoshAppearance() }
     }
 
     private func status(_ id: UUID) -> String {

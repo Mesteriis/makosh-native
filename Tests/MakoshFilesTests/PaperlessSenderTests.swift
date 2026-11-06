@@ -9,6 +9,21 @@ final class PaperlessScript: PaperlessServing, @unchecked Sendable {
     var tasks: [Result<PaperlessTaskState, FilesFailure>] = []
     private(set) var uploadCalls: [(name: String, options: PaperlessUpload, bytes: Int)] = []
     private(set) var taskCalls: [String] = []
+    var statusResult: Result<PaperlessStatus, FilesFailure> = .success(PaperlessStatus(documentCount: 0, version: nil))
+    var pages: [Int: PaperlessPage<PaperlessDocument>] = [:]
+    var tagList: [PaperlessNamed] = []
+    var typeList: [PaperlessNamed] = []
+    /// When set, `documents` waits here until `release()`.
+    private var gate: CheckedContinuation<Void, Never>?
+    var holdDocuments = false
+    private(set) var documentCalls: [(query: String, page: Int)] = []
+    func release() {
+        let pending = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            defer { gate = nil }
+            return gate
+        }
+        pending?.resume()
+    }
 
     func upload(file: URL, name: String, options: PaperlessUpload) async throws -> String {
         let bytes = (try? Data(contentsOf: file))?.count ?? -1
@@ -25,10 +40,17 @@ final class PaperlessScript: PaperlessServing, @unchecked Sendable {
             return try tasks.removeFirst().get()
         }
     }
-    func status() async throws -> PaperlessStatus { PaperlessStatus(documentCount: 0, version: nil) }
-    func tags() async throws -> [PaperlessNamed] { [] }
-    func documentTypes() async throws -> [PaperlessNamed] { [] }
-    func documents(query: String, page: Int) async throws -> PaperlessPage<PaperlessDocument> { .init(items: [], hasMore: false) }
+    func status() async throws -> PaperlessStatus { try lock.withLock { statusResult }.get() }
+    func tags() async throws -> [PaperlessNamed] { lock.withLock { tagList } }
+    func documentTypes() async throws -> [PaperlessNamed] { lock.withLock { typeList } }
+    func documents(query: String, page: Int) async throws -> PaperlessPage<PaperlessDocument> {
+        let hold = lock.withLock { () -> Bool in
+            documentCalls.append((query, page))
+            return holdDocuments
+        }
+        if hold { await withCheckedContinuation { continuation in lock.withLock { gate = continuation } } }
+        return lock.withLock { pages[page] } ?? .init(items: [], hasMore: false)
+    }
     func download(id: Int, original: Bool, to destination: URL) async throws {}
     nonisolated func documentURL(id: Int) -> URL { URL(string: "https://doc.example/documents/\(id)/details")! }
 }

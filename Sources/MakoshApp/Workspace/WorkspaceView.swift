@@ -261,7 +261,10 @@ struct WorkspaceView: View {
         }
         .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model).makoshAppearance() }
         .sheet(item: $files.pendingSend) { request in PaperlessSendSheet(model: files.model, request: request).makoshAppearance() }
-        .sheet(item: $files.pendingForward) { request in FileForwardSheet(request: request).makoshAppearance() }
+        .sheet(item: $files.pendingForward) { request in
+            FileForwardSheet(request: request, destinations: forwardDestinations(request.mode), perform: { await forward(request, to: $0) })
+                .makoshAppearance()
+        }
         .onChange(of: files.pendingAsk?.id) { _, _ in
             guard let request = files.pendingAsk else { return }
             files.pendingAsk = nil
@@ -304,6 +307,69 @@ struct WorkspaceView: View {
                             await ai.workspace.select(id)
                         }
                     }, close: close))
+        }
+    }
+
+    /// Chats and addresses a file can go to: loaded Telegram chats, the open
+    /// WhatsApp account's chats, contacts with an email.
+    private func forwardDestinations(_ mode: FileForwardRequest.Mode) -> [FileDestination] {
+        var result: [FileDestination] = []
+        switch mode {
+        case .chat:
+            if let account = telegram.aiContextAccountID {
+                result += telegram.aiContextChats.map {
+                    FileDestination(kind: .telegram(accountID: String(account), chatID: $0.id), title: $0.title, subtitle: "Telegram")
+                }
+            }
+            if let account = whatsapp.selectedAccountID {
+                result += whatsapp.chats.map {
+                    FileDestination(kind: .whatsapp(accountID: account, chatID: $0.id), title: $0.name, subtitle: "WhatsApp")
+                }
+            }
+        case .mail:
+            for contact in model.contacts {
+                for address in contact.emails where !address.isEmpty {
+                    result.append(
+                        FileDestination(kind: .mail(address: address, contactID: contact.id), title: contact.displayName, subtitle: address)
+                    )
+                }
+            }
+        }
+        return result
+    }
+
+    /// Stages the file and hands it to the destination's composer; the person sends.
+    private func forward(_ request: FileForwardRequest, to destination: FileDestination) async -> String? {
+        let staged: StagedFile
+        do { staged = try await files.stage.stage(request.handoff) } catch {
+            return (error as? FilesFailure)?.errorDescription ?? (error as? LocalizedError)?.errorDescription
+                ?? "Не удалось подготовить файл."
+        }
+        switch destination.kind {
+        case .telegram(let accountID, let chatID):
+            guard String(telegram.aiContextAccountID ?? 0) == accountID else { return "Этот аккаунт Telegram сейчас не открыт." }
+            self.destination = .telegram
+            telegram.selectedChatID = chatID
+            for _ in 0..<100 {
+                if let target = telegram.uploadTarget, target.chatID == chatID {
+                    telegram.prepareUpload(
+                        source: staged.url, mode: .file, target: target, caption: "", contextID: telegram.uploadContextID)
+                    return nil
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            return "Чат Telegram не готов принять файл — откройте его и попробуйте снова."
+        case .whatsapp(let accountID, let chatID):
+            guard whatsapp.selectedAccountID == accountID else { return "Этот аккаунт WhatsApp сейчас не открыт." }
+            self.destination = .whatsapp
+            await whatsapp.selectChat(chatID)
+            guard whatsapp.selectedChatID == chatID else { return "Чат WhatsApp не открылся." }
+            await whatsapp.composer.attach([staged.url], asFiles: true, targetAccount: accountID, targetChat: chatID)
+            return nil
+        case .mail(let address, _):
+            self.destination = .mail
+            mail.compose(to: address, attachments: [staged.url])
+            return mail.composer == nil ? "Нет почтового аккаунта для письма." : nil
         }
     }
 

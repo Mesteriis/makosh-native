@@ -25,6 +25,8 @@ import MakoshCore
     @Published package var editingAccount: MailAccount?
     @Published package var accountSheet = false
     @Published package var composer: MailDraft?
+    /// Files for the next compose sheet; the sheet takes them once when it opens.
+    @Published package private(set) var composerAttachments: [URL] = []
     @Published package private(set) var ready = false
     @Published package private(set) var busy = false
     @Published package private(set) var connected = Set<String>()
@@ -365,7 +367,24 @@ import MakoshCore
             if self.actionFolder?.id == folder.id { self.saveFiles = enabled }
         }
     }
+    /// A new letter to an address with files already attached (forwarding a file).
+    package func compose(to address: String, attachments: [URL]) {
+        composerAttachments = []
+        compose()
+        guard var draft = composer else { return }
+        draft.to = address
+        composer = draft
+        composerAttachments = attachments
+    }
+
+    package func takeComposerAttachments() -> [URL] {
+        let value = composerAttachments
+        composerAttachments = []
+        return value
+    }
+
     package func compose(reply: Bool = false, forward: Bool = false) {
+        composerAttachments = []
         let accountID = (reply || forward) ? selected?.key.accountID : selectedFolder?.accountID
         guard let account = accounts.first(where: { $0.id == accountID }) ?? ((reply || forward) ? nil : accounts.first) else {
             accountSheet = true

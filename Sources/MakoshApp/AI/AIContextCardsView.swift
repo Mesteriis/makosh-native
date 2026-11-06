@@ -80,6 +80,15 @@ private struct AIContextCardChip: View {
             }
         case .letter: parts = ["письмо целиком"]
         case .contact: parts = ["досье"]
+        case .file:
+            if let document = material.document {
+                let unit = document.paginated ? "страницы" : "части"
+                parts = ["\(unit) \(document.selected.lowerBound)–\(document.selected.upperBound) из \(document.pageCount)"]
+                if document.recognized { parts.append("распознано со скана") }
+                if document.truncatedOCR { parts.append("распознаны первые \(AIContextDocument.ocrPageLimit)") }
+            } else {
+                parts = ["файл"]
+            }
         }
         if material.hiddenForbidden > 0 { parts.append("скрыто \(material.hiddenForbidden) запрещённого контакта") }
         if material.hiddenProtected > 0 { parts.append("скрыто \(material.hiddenProtected) защищённых") }
@@ -102,6 +111,7 @@ private struct AIContextCardChip: View {
         case .chat: "bubble.left.and.bubble.right"
         case .letter: "envelope"
         case .contact: "person.text.rectangle"
+        case .file: "doc.text"
         }
     }
 }

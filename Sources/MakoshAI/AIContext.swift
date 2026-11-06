@@ -8,20 +8,67 @@ public enum AIContextCard: Codable, Hashable, Sendable, Identifiable {
     case chat(service: String, accountID: String, chatID: String, title: String, range: AIContextRange)
     case letter(id: String, title: String)
     case contact(id: UUID, title: String)
+    /// A file: its pages (1-based, inclusive) or everything when nil.
+    case file(source: AIFileSource, title: String, pages: ClosedRange<Int>?)
 
-    /// The source, independent of the chosen period.
+    /// The source, independent of the chosen period or pages.
     public var id: String {
         switch self {
         case .chat(let service, let accountID, let chatID, _, _): "chat:\(service):\(accountID):\(chatID)"
         case .letter(let id, _): "letter:\(id)"
         case .contact(let id, _): "contact:\(id.uuidString)"
+        case .file(let source, _, _): "file:" + source.id
         }
     }
 
     public var title: String {
         switch self {
-        case .chat(_, _, _, let title, _), .letter(_, let title), .contact(_, let title): title
+        case .chat(_, _, _, let title, _), .letter(_, let title), .contact(_, let title), .file(_, let title, _): title
         }
+    }
+}
+
+/// Where a file card's bytes come from. A staged copy lives in the private
+/// hand-off directory until the app quits.
+public enum AIFileSource: Codable, Hashable, Sendable {
+    case archive(recordID: UUID)
+    case paperless(connectionID: UUID, documentID: Int)
+    case staged(id: UUID)
+
+    public var id: String {
+        switch self {
+        case .archive(let id): "archive:\(id.uuidString.lowercased())"
+        case .paperless(let connection, let document): "paperless:\(connection.uuidString.lowercased()):\(document)"
+        case .staged(let id): "staged:\(id.uuidString.lowercased())"
+        }
+    }
+}
+
+/// The text of an attached file, page by page, as it goes to the provider.
+public struct AIContextDocument: Sendable, Equatable {
+    public static let ocrPageLimit = 200
+    /// Only the selected pages, in order.
+    public let pages: [String]
+    public let pageCount: Int
+    public let selected: ClosedRange<Int>
+    /// False for text split into parts (Word, plain text, images).
+    public let paginated: Bool
+    /// At least one page came from OCR.
+    public let recognized: Bool
+    /// OCR stopped at `ocrPageLimit`.
+    public let truncatedOCR: Bool
+    /// "archive", "paperless", "paperless-content" or "staged".
+    public let source: String
+    public init(
+        pages: [String], pageCount: Int, selected: ClosedRange<Int>, paginated: Bool, recognized: Bool, truncatedOCR: Bool, source: String
+    ) {
+        self.pages = pages
+        self.pageCount = pageCount
+        self.selected = selected
+        self.paginated = paginated
+        self.recognized = recognized
+        self.truncatedOCR = truncatedOCR
+        self.source = source
     }
 }
 
@@ -52,9 +99,11 @@ public struct AIContextMaterial: Sendable, Equatable {
     public let requested: Int?
     /// The local read stopped at its cap before covering the period.
     public let truncated: Bool
+    /// A file card's text; `lines` is empty then and `available` is the page count.
+    public let document: AIContextDocument?
     public init(
         card: AIContextCard, lines: [AIContextLine], hiddenForbidden: Int, hiddenProtected: Int, available: Int, requested: Int?,
-        truncated: Bool = false
+        truncated: Bool = false, document: AIContextDocument? = nil
     ) {
         self.card = card
         self.lines = lines
@@ -63,6 +112,13 @@ public struct AIContextMaterial: Sendable, Equatable {
         self.available = available
         self.requested = requested
         self.truncated = truncated
+        self.document = document
+    }
+
+    public static func document(_ card: AIContextCard, _ document: AIContextDocument) -> AIContextMaterial {
+        AIContextMaterial(
+            card: card, lines: [], hiddenForbidden: 0, hiddenProtected: 0, available: document.pageCount, requested: nil, document: document
+        )
     }
 }
 
@@ -78,11 +134,20 @@ public enum AIContextBuilder {
     public static func turn(_ materials: [AIContextMaterial], history: [AIChatTurn], budgetTokens: Int) throws -> AIChatTurn? {
         guard !materials.isEmpty else { return nil }
         var text = """
-            Ниже — переписка и письма, которые пользователь сам прикрепил к беседе. \
+            Ниже — переписка, письма и файлы, которые пользователь сам прикрепил к беседе. \
             Отвечай по ним; если ответа в них нет, так и скажи. \
             Реплики пользователя помечены «пользователь».
             """
         for material in materials {
+            if let document = material.document {
+                text += "\n\n=== \(heading(material.card, document)) ==="
+                if document.truncatedOCR { text += "\n(распознаны первые \(AIContextDocument.ocrPageLimit) страниц)" }
+                let unit = document.paginated ? "стр." : "часть"
+                for (offset, page) in document.pages.enumerated() {
+                    text += "\n--- \(unit) \(document.selected.lowerBound + offset) ---\n\(page)"
+                }
+                continue
+            }
             text += "\n\n=== \(heading(material.card)) ==="
             for line in material.lines {
                 let date = line.date.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
@@ -100,7 +165,15 @@ public enum AIContextBuilder {
         case .chat(let service, _, _, let title, let range): "Чат «\(title)» (\(service), \(describe(range)))"
         case .letter(_, let title): "Письмо «\(title)»"
         case .contact(_, let title): "Контакт «\(title)»"
+        case .file(_, let title, _): "Файл «\(title)»"
         }
+    }
+
+    private static func heading(_ card: AIContextCard, _ document: AIContextDocument) -> String {
+        let unit = document.paginated ? "страницы" : "части"
+        var details = "\(unit) \(document.selected.lowerBound)–\(document.selected.upperBound) из \(document.pageCount)"
+        if document.recognized { details += ", распознано со скана" }
+        return "Файл «\(card.title)» (\(details))"
     }
 
     private static func describe(_ range: AIContextRange) -> String {

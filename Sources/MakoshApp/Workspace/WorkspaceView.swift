@@ -320,6 +320,7 @@ struct WorkspaceView: View {
             destination = .whatsapp
             Task { await whatsapp.selectChat(chatID) }
         case .chat: break
+        case .file: destination = .files
         case .letter:
             // The letter itself is not yet selected there.
             destination = .mail

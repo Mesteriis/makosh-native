@@ -44,5 +44,31 @@ final class AIContextBuilderTests: XCTestCase {
         XCTAssertNoThrow(try AIContextBuilder.turn([material], history: history, budgetTokens: 2_000))
     }
 
+    func testDocumentMaterialPrintsPagesAndFlags() throws {
+        let card = AIContextCard.file(source: .archive(recordID: UUID()), title: "Договор", pages: 2...3)
+        let document = AIContextDocument(
+            pages: ["Пункт 1", "Пункт 2"], pageCount: 5, selected: 2...3, paginated: true, recognized: true, truncatedOCR: false,
+            source: "archive")
+        let material = AIContextMaterial.document(card, document)
+        XCTAssertEqual(material.available, 5)
+        XCTAssertEqual(material.lines, [])
+        let text = try XCTUnwrap(AIContextBuilder.turn([material], history: [], budgetTokens: 10_000)).text
+        XCTAssertTrue(text.contains("=== Файл «Договор» (страницы 2–3 из 5, распознано со скана) ==="), text)
+        XCTAssertTrue(text.contains("--- стр. 2 ---\nПункт 1"), text)
+        XCTAssertTrue(text.contains("--- стр. 3 ---\nПункт 2"), text)
+        XCTAssertTrue(text.contains("файлы"), "the system turn names files among the sources")
+        XCTAssertFalse(text.contains("распознаны первые"))
+    }
+
+    func testUnpaginatedDocumentPrintsParts() throws {
+        let card = AIContextCard.file(source: .staged(id: UUID()), title: "Заметки.txt", pages: nil)
+        let document = AIContextDocument(
+            pages: ["а", "б"], pageCount: 2, selected: 1...2, paginated: false, recognized: false, truncatedOCR: true, source: "staged")
+        let text = try XCTUnwrap(AIContextBuilder.turn([.document(card, document)], history: [], budgetTokens: 10_000)).text
+        XCTAssertTrue(text.contains("=== Файл «Заметки.txt» (части 1–2 из 2) ==="), text)
+        XCTAssertTrue(text.contains("--- часть 1 ---\nа"), text)
+        XCTAssertTrue(text.contains("(распознаны первые \(AIContextDocument.ocrPageLimit) страниц)"), text)
+    }
+
     func testNoCardsMeansNoTurn() throws { XCTAssertNil(try AIContextBuilder.turn([], history: [], budgetTokens: 10)) }
 }

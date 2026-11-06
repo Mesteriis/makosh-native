@@ -49,6 +49,9 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
             return try await letterMaterial(card, id: id, snapshot: snapshot)
         case .contact(let id, _):
             return try await contactMaterial(card, id: id, snapshot: snapshot)
+        case .file:
+            // Filled in by the file material task.
+            throw AIFailure.contextUnavailable("Файлы пока нельзя прикрепить.")
         }
     }
 

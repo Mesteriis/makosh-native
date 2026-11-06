@@ -16,18 +16,19 @@ struct FileActionsMenu: View {
     /// lives in. The file is staged first, so a lease the sheet owns may go.
     var before: (() -> Void)? = nil
     @Environment(\.filesHost) private var files
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         if let files {
             let actions = FileActions.available(protected: protected, hasPaperless: !files.model.connections.isEmpty)
-            if actions.isEmpty, !protected {
-                SettingsLink { Text("Подключить Paperless…") }.accessibilityIdentifier("files.send.connect")
-            }
             ForEach(actions, id: \.self) { action in
                 Button(action.title) { perform(action, in: files) }.accessibilityIdentifier("files.action.\(identifier(action))")
             }
             if !protected, !actions.contains(.sendToPaperless) {
-                SettingsLink { Text("Подключить Paperless…") }.accessibilityIdentifier("files.send.connect")
+                Button("Подключить Paperless…") {
+                    UserDefaults.standard.set(MakoshSettingsTab.files, forKey: MakoshSettingsTab.key)
+                    openSettings()
+                }.accessibilityIdentifier("files.send.connect")
             }
         }
     }

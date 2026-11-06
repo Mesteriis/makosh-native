@@ -101,6 +101,35 @@ final class FileStorageTests: XCTestCase {
         XCTAssertEqual(keychain.count, 0)
     }
 
+    func testTokenWithControlCharactersIsRejected() async throws {
+        let connection = paperless()
+        for token in ["abc\ndef", "abc\tdef", "a\u{0}b"] {
+            do {
+                try await registry.save(.paperless(connection), token: token)
+                XCTFail("token with control characters must be refused: \(token.debugDescription)")
+            } catch let error as FilesFailure { XCTAssertEqual(error, .invalidToken) }
+        }
+        XCTAssertEqual(registry.connections(), [], "the connection is not saved either")
+        XCTAssertEqual(keychain.count, 0)
+        try await registry.save(.paperless(connection), token: "  valid-token  ")
+        let saved = try await vault.load(connectionID: connection.id)
+        XCTAssertEqual(saved, "valid-token")
+    }
+
+    func testRemoveKeepsTheConnectionWhenTheTokenCannotBeRemoved() async throws {
+        let connection = paperless()
+        try await registry.save(.paperless(connection), token: "t")
+        let failing = FileStorageTokenVault(
+            access: FileStorageKeychainAccess(
+                read: { _ in (errSecItemNotFound, nil) }, write: { _, _ in errSecSuccess }, remove: { _ in errSecInteractionNotAllowed }))
+        let strict = FileStorageRegistry(defaults: defaults, vault: failing)
+        do {
+            try await strict.remove(connection.id)
+            XCTFail("a token that cannot be removed keeps the connection visible")
+        } catch let error as FilesFailure { XCTAssertEqual(error, .keyUnavailable) }
+        XCTAssertEqual(strict.connections().map(\.id), [connection.id])
+    }
+
     func testCorruptDefaultsYieldEmptyList() {
         defaults.set(Data("garbage".utf8), forKey: FileStorageRegistry.key)
         XCTAssertEqual(registry.connections(), [])

@@ -22,6 +22,9 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
     /// Extracted text and its fallback per card and page range, for the session.
     private let fileCache = FileMaterialCache()
 
+    /// A removed card's text leaves the session cache.
+    func forget(cardID: String) async { await fileCache.forget(cardID: cardID) }
+
     /// File cards need the Files host (archive, Paperless, staging) and the extractor.
     func attachFiles(
         _ files: FilesHost?, extractor: FileTextExtractor, progress: @escaping @Sendable (String, AIExtractionProgress?) -> Void
@@ -286,16 +289,4 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
         let line = AIContextLine(author: "Досье", isOutgoing: false, date: Date(), text: text)
         return AIContextMaterial(card: card, lines: [line], hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: nil)
     }
-}
-
-/// Text read for a file card, kept for the session so previews and sends
-/// never download or OCR the same pages twice.
-actor FileMaterialCache {
-    struct Entry: Sendable {
-        let text: ExtractedText
-        let fallback: String?
-    }
-    private var entries: [String: Entry] = [:]
-    func value(for key: String) -> Entry? { entries[key] }
-    func store(_ entry: Entry, for key: String) { entries[key] = entry }
 }

@@ -152,16 +152,29 @@ public actor PaperlessClient {
 
     public func download(id: Int, original: Bool, to destination: URL) async throws {
         var request = request(path: "api/documents/\(id)/download/", query: original ? [("original", "true")] : [])
-        request.setValue("application/json; version=\(Self.apiVersion)", forHTTPHeaderField: "Accept")
-        let (file, response): (URL, URLResponse)
-        do { (file, response) = try await session.download(for: request, delegate: redirects) } catch { throw Self.transport(error) }
+        request.setValue("*/*; version=\(Self.apiVersion)", forHTTPHeaderField: "Accept")
+        var (file, http) = try await fetch(request)
+        if http.statusCode == 406 {
+            try? FileManager.default.removeItem(at: file)
+            request.setValue("*/*", forHTTPHeaderField: "Accept")
+            (file, http) = try await fetch(request)
+        }
         defer { try? FileManager.default.removeItem(at: file) }
-        guard let http = response as? HTTPURLResponse else { throw FilesFailure.unexpectedResponse }
         guard (200...299).contains(http.statusCode) else {
             throw Self.rejection(
                 http, body: (try? Data(contentsOf: file, options: .mappedIfSafe)).map { $0.prefix(4096) } ?? Data(), token: token)
         }
         do { try FileManager.default.copyItem(at: file, to: destination) } catch { throw FilesFailure.unexpectedResponse }
+    }
+
+    private func fetch(_ request: URLRequest) async throws -> (URL, HTTPURLResponse) {
+        let (file, response): (URL, URLResponse)
+        do { (file, response) = try await session.download(for: request, delegate: redirects) } catch { throw Self.transport(error) }
+        guard let http = response as? HTTPURLResponse else {
+            try? FileManager.default.removeItem(at: file)
+            throw FilesFailure.unexpectedResponse
+        }
+        return (file, http)
     }
 
     /// Streams a multipart body from a private temporary file; returns the consumption task ID.
@@ -188,9 +201,18 @@ public actor PaperlessClient {
 
     public func task(id: String) async throws -> PaperlessTaskState {
         let (object, _) = try await perform(request(path: "api/tasks/", query: [("task_id", id)]), upload: nil)
-        guard let list = object as? [[String: Any]], let entry = list.first, let status = entry["status"] as? String else {
+        // Paperless answers a bare list; a paginated `results` list is accepted too.
+        let list: [[String: Any]]
+        if let bare = object as? [[String: Any]] {
+            list = bare
+        } else if let wrapped = (object as? [String: Any])?["results"] as? [[String: Any]] {
+            list = wrapped
+        } else {
             throw FilesFailure.unexpectedResponse
         }
+        // The consumption task may not be visible yet: still pending, keep polling.
+        guard let entry = list.first else { return .pending }
+        guard let status = entry["status"] as? String else { throw FilesFailure.unexpectedResponse }
         switch status.uppercased() {
         case "PENDING": return .pending
         case "STARTED", "RETRY": return .started

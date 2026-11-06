@@ -367,6 +367,17 @@ struct MailReadingView: View {
                         .accessibilityLabel("Сохранить \(attachment.filename)")
                         .accessibilityIdentifier("mail.attachment.save.\(attachment.id)")
                         .disabled(model.synthetic || model.busy)
+                        Menu {
+                            FileActionsMenu(handoff: {
+                                FileHandoff(name: attachment.filename, byteCount: Int64(attachment.byteCount), date: letter.date) { url in
+                                    try await model.exportAttachmentFile(attachment, letter: letter, to: url)
+                                }
+                            })
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Действия с файлом")
+                        .accessibilityIdentifier("mail.attachment.actions.\(attachment.id)").disabled(model.synthetic)
                     }.padding(12).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
                         .contextMenu {
                             Button("Сохранить…") { export(attachment, letter: letter) }.disabled(model.synthetic || model.busy)

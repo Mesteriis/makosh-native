@@ -128,10 +128,8 @@ final class PaperlessClientTests: XCTestCase {
         XCTAssertEqual(third, .success(documentID: 123))
         XCTAssertEqual(fourth, .failure(message: "Not consuming Счёт.pdf: It is a duplicate of Счёт.pdf (#120)"))
         XCTAssertEqual(requests.first?.url?.absoluteString, "https://doc.example/api/tasks/?task_id=t")
-        do {
-            _ = try await client.task(id: "t")
-            XCTFail("an unknown task is unexpected")
-        } catch let error as FilesFailure { XCTAssertEqual(error, .unexpectedResponse) }
+        let invisible = try await client.task(id: "t")
+        XCTAssertEqual(invisible, .pending, "a task not listed yet is still pending")
     }
 
     func testUnauthorizedTooLargeRejectedUnreachable() async throws {
@@ -195,6 +193,39 @@ final class PaperlessClientTests: XCTestCase {
         let empty = try await client.document(id: 6)
         XCTAssertEqual(empty.content, "")
         XCTAssertNil(empty.pageCount)
+    }
+
+    func testDownloadAcceptsAnyBodyAndRetriesWithoutVersionOn406() async throws {
+        PaperlessStubProtocol.reset([
+            .json(#"{"detail":"Invalid version"}"#, status: 406),
+            Reply(status: 200, body: Data("%PDF-1.7 again".utf8), headers: ["Content-Type": "application/pdf"]),
+        ])
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("paperless-dl-\(UUID().uuidString).pdf")
+        addTeardownBlock { try? FileManager.default.removeItem(at: destination) }
+        try await client.download(id: 5, original: true, to: destination)
+        XCTAssertEqual(try Data(contentsOf: destination), Data("%PDF-1.7 again".utf8))
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].value(forHTTPHeaderField: "Accept"), "*/*; version=\(PaperlessClient.apiVersion)")
+        XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Accept"), "*/*")
+    }
+
+    func testTaskListInResultsAndEmptyListMeansPending() async throws {
+        PaperlessStubProtocol.reset([
+            .json(#"{"results":[{"task_id":"t","status":"SUCCESS","related_document":9}]}"#),
+            .json("[]"),
+            .json(#"{"results":[]}"#),
+            Reply(status: 200, body: Data("<html>".utf8), headers: ["Content-Type": "text/html"]),
+        ])
+        let wrapped = try await client.task(id: "t")
+        XCTAssertEqual(wrapped, .success(documentID: 9))
+        let empty = try await client.task(id: "t")
+        XCTAssertEqual(empty, .pending, "a task not visible yet is still pending")
+        let emptyResults = try await client.task(id: "t")
+        XCTAssertEqual(emptyResults, .pending)
+        do {
+            _ = try await client.task(id: "t")
+            XCTFail("HTML is still unexpected")
+        } catch let error as FilesFailure { XCTAssertEqual(error, .unexpectedResponse) }
     }
 
     func testDownloadWritesOriginalToDestination() async throws {

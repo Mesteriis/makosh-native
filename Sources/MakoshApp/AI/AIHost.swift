@@ -87,6 +87,8 @@ import MakoshWhatsApp
                     self?.panel.reportExtraction(cardID: cardID, progress: progress)
                 }
             }
+            workspace.cardRemoved = { cardID in Task { await bridge.forget(cardID: cardID) } }
+            panel.cardRemoved = { cardID in Task { await bridge.forget(cardID: cardID) } }
             await worker.attachContext(bridge)
             let vectors = AIVectorStore(keyProvider: keyProvider)
             try await vectors.open(configuration: configuration)

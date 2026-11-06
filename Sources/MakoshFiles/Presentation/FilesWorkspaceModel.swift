@@ -103,6 +103,7 @@ public struct PaperlessLists: Equatable, Sendable {
             if token == generation { self.error = Self.describe(error) }
         }
         submissions = await sender.submissions()
+        if let journalFailure = await sender.lastJournalFailure, token == generation { error = journalFailure }
         for connection in connections where storageStatus[connection.id] == nil { await test(connection.id) }
     }
 
@@ -179,6 +180,7 @@ public struct PaperlessLists: Equatable, Sendable {
         documentsTask = nil
         documents = []
         hasMoreDocuments = false
+        loadingDocuments = false
         documentQuery = ""
         documentPage = 0
         error = nil

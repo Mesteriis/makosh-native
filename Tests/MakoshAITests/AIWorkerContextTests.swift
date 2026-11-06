@@ -16,6 +16,8 @@ actor AIFakeContextProvider: AIContextProvider {
     func fail(_ card: AIContextCard, _ failure: AIFailure) { failures[card.id] = failure }
     private var held: Set<String> = []
     private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+    /// Reads that found their task cancelled after a hold was released.
+    private(set) var cancelledReads: [String] = []
     /// Reads of this card wait until `release`, like a long extraction.
     func hold(_ card: AIContextCard) { held.insert(card.id) }
     func release(_ card: AIContextCard) {
@@ -26,6 +28,10 @@ actor AIFakeContextProvider: AIContextProvider {
         reads.append(card.id)
         if held.contains(card.id) {
             await withCheckedContinuation { waiters[card.id, default: []].append($0) }
+            if Task.isCancelled {
+                cancelledReads.append(card.id)
+                throw CancellationError()
+            }
         }
         if let failure = failures[card.id] { throw failure }
         guard let material = materials[card.id] else { throw AIFailure.contextUnavailable("нет") }

@@ -114,6 +114,13 @@ private struct AIRoleRow: View {
     @ObservedObject var model: AISettingsModel
     @State private var modelName = ""
     @State private var contextTokens = ""
+    /// Empty means the default; otherwise a whole number of at least 1 000.
+    private var tokensProblem: String? {
+        let text = contextTokens.trimmingCharacters(in: .whitespaces)
+        if text.isEmpty { return nil }
+        guard let value = Int(text) else { return "Только число токенов, например 128000." }
+        return value < 1_000 ? "Не меньше 1 000 токенов." : nil
+    }
 
     var body: some View {
         let assignment = model.roles[role]
@@ -156,10 +163,20 @@ private struct AIRoleRow: View {
                 HStack {
                     Text("Контекст модели, токенов").frame(width: 170, alignment: .leading).font(.caption).foregroundStyle(.secondary)
                     TextField("\(AITokenEstimate.defaultContextTokens)", text: $contextTokens)
-                        .frame(width: 120).onSubmit { Task { await model.setContextTokens(Int(contextTokens), role: role) } }
+                        .frame(width: 120)
+                        .onSubmit {
+                            guard tokensProblem == nil else { return }
+                            Task { await model.setContextTokens(contextTokens.isEmpty ? nil : Int(contextTokens), role: role) }
+                        }
                         .accessibilityIdentifier("ai.settings.contextTokens")
-                    Text("бюджет беседы — \(AITokenEstimate.budget(contextTokens: assignment?.contextTokens)) токенов").font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let tokensProblem {
+                        Text(tokensProblem).font(.caption).foregroundStyle(.orange)
+                    } else {
+                        Text(
+                            "бюджет беседы — \(AITokenEstimate.budget(contextTokens: assignment?.contextTokens)) токенов · Enter сохраняет"
+                        ).font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

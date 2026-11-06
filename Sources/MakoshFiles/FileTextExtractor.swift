@@ -74,7 +74,10 @@ public actor FileTextExtractor {
     private func pdf(
         _ file: URL, pages: ClosedRange<Int>?, progress: (@Sendable (ExtractionProgress) -> Void)?
     ) async throws -> ExtractedText {
-        guard let document = PDFDocument(url: file), document.pageCount > 0 else { throw FilesFailure.unsupportedText("pdf") }
+        guard let document = PDFDocument(url: file) else { throw FilesFailure.unsupportedText("pdf") }
+        // A locked PDF renders blank thumbnails: refuse it instead of OCR'ing nothing up to the limit.
+        guard !document.isLocked else { throw FilesFailure.unsupportedText("pdf с паролем") }
+        guard document.pageCount > 0 else { throw FilesFailure.unsupportedText("pdf") }
         let count = document.pageCount
         let selected = try Self.selection(pages, count: count)
         var result: [String] = []
@@ -174,52 +177,8 @@ public actor FileTextExtractor {
         return ExtractedText(pages: chosen, pageCount: count, paginated: false, recognizedPages: [], truncatedOCR: false)
     }
 
-    /// Paragraphs are packed up to `size`; an oversized paragraph is split by
-    /// lines, and a line with no breaks is cut hard.
-    public static func parts(_ text: String, size: Int = partCharacters) -> [String] {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, size > 0 else { return [] }
-        var result: [String] = []
-        var current = ""
-        func flush() {
-            let value = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty { result.append(value) }
-            current = ""
-        }
-        func append(_ piece: String) {
-            if current.isEmpty {
-                current = piece
-            } else if current.count + 2 + piece.count <= size {
-                current += "\n\n" + piece
-            } else {
-                flush()
-                current = piece
-            }
-        }
-        for paragraph in trimmed.components(separatedBy: "\n\n") {
-            let paragraph = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !paragraph.isEmpty else { continue }
-            if paragraph.count <= size {
-                append(paragraph)
-                continue
-            }
-            for line in paragraph.components(separatedBy: "\n") {
-                if line.count <= size {
-                    append(line)
-                    continue
-                }
-                var rest = Substring(line)
-                while !rest.isEmpty {
-                    let piece = String(rest.prefix(size))
-                    rest = rest.dropFirst(size)
-                    flush()
-                    result.append(piece)
-                }
-            }
-        }
-        flush()
-        return result
-    }
+    /// Parts of about `size` characters, shared with the AI card (`TextParts`).
+    public static func parts(_ text: String, size: Int = partCharacters) -> [String] { TextParts.split(text, size: size) }
 
     nonisolated private static func selection(_ pages: ClosedRange<Int>?, count: Int) throws -> ClosedRange<Int> {
         guard let pages else { return 1...count }

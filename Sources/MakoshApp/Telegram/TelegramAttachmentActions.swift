@@ -159,6 +159,7 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
     @ObservedObject var playback: TelegramPlaybackController
     @ViewBuilder let menu: () -> MenuContent
     @State private var reveal = TelegramMediaRevealState()
+    @Environment(\.filesHost) private var filesHost
 
     var body: some View {
         if let location = attachment.location {
@@ -253,7 +254,7 @@ struct TelegramAttachmentRow<MenuContent: View>: View {
                             .disabled(actions.isBusy || playback.isBusy)
                             .accessibilityIdentifier(prefix + ".playback")
                     }
-                    if !attachment.isProtected {
+                    if !attachment.isProtected, filesHost != nil {
                         Menu("Ещё") {
                             FileActionsMenu(handoff: {
                                 FileHandoff(name: attachment.name, byteCount: attachment.byteCount) { [media] url in

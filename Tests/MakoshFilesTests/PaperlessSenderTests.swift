@@ -190,6 +190,18 @@ final class PaperlessSenderTests: XCTestCase {
         XCTAssertEqual(script.uploadCalls.count, 0)
     }
 
+    func testResumeMarksUploadsWithoutTaskAsUnknown() async throws {
+        let stuck = PaperlessSubmission(
+            id: UUID(), connectionID: connection.id, fileName: "a.pdf", title: "a", taskID: nil, state: .uploading,
+            startedAt: Date(timeIntervalSince1970: 1), updatedAt: Date(timeIntervalSince1970: 1))
+        try JSONEncoder().encode([stuck]).write(to: journal)
+        let sender = sender()
+        await sender.resume()
+        let submissions = await sender.submissions()
+        XCTAssertEqual(submissions.map(\.state), [.unknown], "a process that died mid-upload cannot know the outcome")
+        XCTAssertEqual(script.uploadCalls.count, 0)
+    }
+
     func testCorruptJournalDoesNotCrashAndStartsEmpty() async throws {
         try Data("not json".utf8).write(to: journal)
         let sender = sender()

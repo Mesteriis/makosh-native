@@ -139,15 +139,22 @@ public final class FileStorageRegistry: @unchecked Sendable {
     /// Validates first; a nil token keeps whatever token the connection already has.
     public func save(_ connection: FileStorageConnection, token: String?) async throws {
         let valid = try connection.validated()
-        if let token { try await vault.save(token, connectionID: valid.id) }
+        if let token {
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.union(.newlines).contains($0) }) else {
+                throw FilesFailure.invalidToken
+            }
+            try await vault.save(trimmed, connectionID: valid.id)
+        }
         try write { list in
             if let index = list.firstIndex(where: { $0.id == valid.id }) { list[index] = valid } else { list.append(valid) }
         }
     }
 
+    /// The token goes first: a token that cannot be removed keeps its connection visible.
     public func remove(_ id: UUID) async throws {
-        try write { list in list.removeAll { $0.id == id } }
         try await vault.remove(connectionID: id)
+        try write { list in list.removeAll { $0.id == id } }
     }
 
     private func write(_ change: (inout [FileStorageConnection]) -> Void) throws {

@@ -7,25 +7,23 @@ import MakoshTelegram
 import MakoshWhatsApp
 
 /// Titles for catalogue rows from the sections that know the chat or letter.
-/// The models are read on the main actor only; nothing is retained strongly.
-final class FileSourceBridge: FileSourceResolving, @unchecked Sendable {
+/// Lives on the main actor like the models it reads; nothing is retained strongly.
+@MainActor final class FileSourceBridge: FileSourceResolving {
     private weak var telegram: TelegramModel?
     private weak var whatsapp: WhatsAppWorkspaceModel?
     private weak var mail: MailWorkspaceModel?
     private weak var teams: TeamsWorkspaceModel?
 
-    @MainActor init(telegram: TelegramModel, whatsapp: WhatsAppWorkspaceModel, mail: MailWorkspaceModel, teams: TeamsWorkspaceModel) {
+    init(telegram: TelegramModel, whatsapp: WhatsAppWorkspaceModel, mail: MailWorkspaceModel, teams: TeamsWorkspaceModel) {
         self.telegram = telegram
         self.whatsapp = whatsapp
         self.mail = mail
         self.teams = teams
     }
 
-    func sourceTitle(for identity: MessageArchiveIdentity) async -> String? {
-        await MainActor.run { title(identity) }
-    }
+    func sourceTitle(for identity: MessageArchiveIdentity) async -> String? { title(identity) }
 
-    @MainActor private func title(_ identity: MessageArchiveIdentity) -> String? {
+    private func title(_ identity: MessageArchiveIdentity) -> String? {
         switch identity.service {
         case "telegram":
             guard let telegram, let account = telegram.aiContextAccountID, String(account) == identity.accountID,

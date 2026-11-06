@@ -160,9 +160,13 @@ public actor PaperlessSender {
         } catch { return submission }
     }
 
-    /// Re-queries every unsettled submission with a task ID, once.
+    /// Re-queries every unsettled submission with a task ID, once. An upload
+    /// the previous process never finished cannot be resolved: it is unknown.
     public func resume() async {
         load()
+        for submission in records where submission.state == .uploading && submission.taskID == nil {
+            _ = update(submission, .unknown, { _ in })
+        }
         for submission in records where !submission.isSettled && submission.taskID != nil {
             await check(submission.id)
         }

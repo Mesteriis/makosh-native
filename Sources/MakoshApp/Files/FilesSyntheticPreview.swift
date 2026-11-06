@@ -35,6 +35,14 @@ struct FilesSyntheticPreview: View {
                 .sheet(item: Binding(get: { host.pendingSend }, set: { host.pendingSend = $0 })) { request in
                     PaperlessSendSheet(model: host.model, request: request)
                 }
+                .modifier(
+                    FileForwardColumn(host: host, destinations: { _ in [] }, perform: { _, _ in "В синтетической проверке адресатов нет." })
+                )
+                .onChange(of: host.pendingAsk?.id) { _, _ in
+                    guard host.pendingAsk != nil else { return }
+                    host.pendingAsk = nil
+                    host.model.error = "ИИ в синтетической проверке «Файлов» не запускается; карточка файла проверяется в QA ИИ."
+                }
                 .environment(\.filesHost, host)
                 .environment(\.colorScheme, .dark)
             } else if let error {

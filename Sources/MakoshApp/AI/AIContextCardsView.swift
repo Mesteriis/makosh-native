@@ -158,20 +158,42 @@ private struct AIFilePagesPicker: View {
                 TextField("С", text: $from).frame(width: 60).accessibilityIdentifier("ai.context.pages.from")
                 TextField("По", text: $to).frame(width: 60).accessibilityIdentifier("ai.context.pages.to")
             }
+            if let problem {
+                Text(problem).font(.caption).foregroundStyle(.orange)
+            } else {
+                Text("Пустые поля — весь файл.").font(.caption).foregroundStyle(.secondary)
+            }
             HStack {
                 Spacer()
                 Button("Отмена") { dismiss() }
                 Button("Применить") {
-                    if let lower = Int(from), let upper = Int(to), lower >= 1, upper >= lower { apply(lower...upper) } else { apply(nil) }
+                    apply(range)
                     dismiss()
-                }.keyboardShortcut(.defaultAction).accessibilityIdentifier("ai.context.pages.apply")
+                }.keyboardShortcut(.defaultAction).disabled(problem != nil).accessibilityIdentifier("ai.context.pages.apply")
             }
         }
-        .padding(12).frame(width: 220)
+        .padding(12).frame(width: 240)
         .onAppear {
             from = current.map { String($0.lowerBound) } ?? ""
             to = current.map { String($0.upperBound) } ?? ""
         }
+    }
+
+    /// Nil for the whole file; both fields must then be empty.
+    private var range: ClosedRange<Int>? {
+        guard let lower = Int(from.trimmingCharacters(in: .whitespaces)), let upper = Int(to.trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
+        return lower...max(lower, upper)
+    }
+    private var problem: String? {
+        let a = from.trimmingCharacters(in: .whitespaces), b = to.trimmingCharacters(in: .whitespaces)
+        if a.isEmpty, b.isEmpty { return nil }
+        guard let lower = Int(a), let upper = Int(b) else { return "Введите два числа или оставьте поля пустыми." }
+        if lower < 1 { return "Первая страница — 1." }
+        if upper < lower { return "«По» не меньше «С»." }
+        if let pageCount, upper > pageCount { return "В файле \(pageCount) стр." }
+        return nil
     }
 }
 

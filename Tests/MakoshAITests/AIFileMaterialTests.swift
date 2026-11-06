@@ -47,6 +47,23 @@ final class AIFileMaterialTests: XCTestCase {
         }
     }
 
+    func testFallbackRangeBeyondItsPartsUsesAllParts() throws {
+        // Page 1 of a 38-page scan was chosen; the local read is blank and the Paperless text has 2 parts.
+        let fallback =
+            "Первая часть." + String(repeating: " слово", count: 480) + "\n\nВторая часть." + String(repeating: " слово", count: 100)
+        XCTAssertEqual(AIContextDocument.parts(fallback).count, 2, "fixture: two parts")
+        let result = try AIContextDocument.assemble(
+            pages: [""], pageCount: 38, paginated: true, recognizedPages: [], truncatedOCR: false, selected: 1...1, fallback: fallback,
+            source: "paperless")
+        XCTAssertTrue(result.usedFallback)
+        XCTAssertEqual(result.document.selected, 1...1, "a range within the parts still applies")
+        let wide = try AIContextDocument.assemble(
+            pages: [""], pageCount: 38, paginated: true, recognizedPages: [], truncatedOCR: false, selected: 20...25, fallback: fallback,
+            source: "paperless")
+        XCTAssertEqual(wide.document.selected, 1...2, "a page range the parts cannot honour falls back to all parts, not an error")
+        XCTAssertEqual(wide.document.pages.count, 2)
+    }
+
     func testFallbackSelectionAppliesToParts() throws {
         let long = (1...4).map { "Абзац \($0) " + String(repeating: "т", count: 2_990) }.joined(separator: "\n\n")
         let result = try AIContextDocument.assemble(

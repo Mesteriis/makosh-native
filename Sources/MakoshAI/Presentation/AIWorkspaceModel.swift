@@ -119,9 +119,13 @@ import MakoshCore
         await changeCards { worker, id in try await worker.addCard(card, conversationID: id) }
     }
 
+    /// Told after a card is removed, so caches of its text can go.
+    package var cardRemoved: (@MainActor (String) -> Void)?
+
     package func remove(_ cardID: String) async {
         extraction[cardID] = nil
         await changeCards { worker, id in try await worker.removeCard(cardID, conversationID: id) }
+        cardRemoved?(cardID)
     }
 
     /// Called by the context bridge while a file card is being read; nil clears.

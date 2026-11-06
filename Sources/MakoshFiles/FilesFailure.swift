@@ -7,6 +7,7 @@ public enum FilesFailure: LocalizedError, Equatable, Sendable {
     case keyUnavailable
     case storageMissing
     case invalidConnection
+    case invalidToken
     case unauthorized
     case unreachable(String)
     case rejected(status: Int, reason: String)
@@ -23,6 +24,7 @@ public enum FilesFailure: LocalizedError, Equatable, Sendable {
         case .keyUnavailable: "Ключ локального архива недоступен. Существующий ключ и данные не заменены."
         case .storageMissing: "Подключение удалено. Файл не отправлен."
         case .invalidConnection: "Недопустимые параметры подключения: нужен HTTPS-адрес без учётных данных и название до 80 символов."
+        case .invalidToken: "Токен содержит перевод строки или управляющие символы — вставьте его одной строкой."
         case .unauthorized: "Paperless не принял токен. Проверьте токен в настройках подключения."
         case .unreachable(let code): "Paperless недоступен (\(code))."
         case .rejected(let status, let reason):

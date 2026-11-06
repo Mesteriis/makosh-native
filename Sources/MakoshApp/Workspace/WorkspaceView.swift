@@ -418,13 +418,15 @@ struct WorkspaceView: View {
             Task { await whatsapp.selectChat(chatID) }
         case .chat: break
         case .file(let source, _, _):
-            destination = .files
             switch source {
             case .archive(let recordID):
+                destination = .files
                 files.model.source = .all
                 files.model.highlighted = recordID
-            case .paperless(let connectionID, _): files.model.source = .storage(connectionID)
-            case .staged: break
+            case .paperless(let connectionID, _):
+                destination = .files
+                files.model.source = .storage(connectionID)
+            case .staged: break  // a private copy has no place to open
             }
         case .letter:
             // The letter itself is not yet selected there.

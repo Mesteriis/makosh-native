@@ -69,6 +69,8 @@ import XCTest
         await adding.value
         XCTAssertNil(model.previews[chatB.id], "the late material of a removed card never lands")
         XCTAssertEqual(model.previews[chatA.id]?.lines.first?.text, "a")
+        let cancelled = await provider.cancelledReads
+        XCTAssertEqual(cancelled, [chatB.id], "the held read saw its task cancelled")
     }
 
     func testRemovingAndAddingCardsUpdatesConversation() async throws {

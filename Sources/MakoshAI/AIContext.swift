@@ -146,7 +146,10 @@ extension AIContextDocument {
         let thin = pages.isEmpty || characters < fallbackThreshold * pages.count
         if thin, let fallback, !fallback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let parts = AIContextDocument.parts(fallback)
-            let range = try selection(selected, count: parts.count)
+            // The chosen pages belong to the scan; the fallback has parts instead.
+            // A range the parts cannot honour means "all of it", not an error.
+            let fits = selected.map { $0.lowerBound >= 1 && $0.upperBound <= parts.count } ?? false
+            let range = try selection(fits ? selected : nil, count: parts.count)
             return (
                 AIContextDocument(
                     pages: Array(parts[(range.lowerBound - 1)..<range.upperBound]), pageCount: parts.count, selected: range,
@@ -174,40 +177,8 @@ extension AIContextDocument {
         return selected
     }
 
-    /// Paragraphs packed to about 3 000 characters; an unbroken text is cut hard.
-    static func parts(_ text: String, size: Int = 3_000) -> [String] {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
-        var result: [String] = [], current = ""
-        func flush() {
-            let value = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty { result.append(value) }
-            current = ""
-        }
-        for paragraph in trimmed.components(separatedBy: "\n\n") {
-            let paragraph = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !paragraph.isEmpty else { continue }
-            if paragraph.count > size {
-                flush()
-                var rest = Substring(paragraph)
-                while !rest.isEmpty {
-                    result.append(String(rest.prefix(size)))
-                    rest = rest.dropFirst(size)
-                }
-                continue
-            }
-            if current.isEmpty {
-                current = paragraph
-            } else if current.count + 2 + paragraph.count <= size {
-                current += "\n\n" + paragraph
-            } else {
-                flush()
-                current = paragraph
-            }
-        }
-        flush()
-        return result
-    }
+    /// Parts of about 3 000 characters, the same split the file extractor uses.
+    static func parts(_ text: String, size: Int = TextParts.defaultSize) -> [String] { TextParts.split(text, size: size) }
 }
 
 /// Reads an attached source. Throws `AIFailure.contextUnavailable` for a

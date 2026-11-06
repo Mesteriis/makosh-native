@@ -166,6 +166,21 @@ final class FileTextExtractorTests: XCTestCase {
         } catch let error as FilesFailure { XCTAssertEqual(error, .unsupportedText("png")) }
     }
 
+    func testPasswordProtectedPDFIsRefused() async throws {
+        let url = file("locked.pdf")
+        var box = CGRect(x: 0, y: 0, width: 200, height: 200)
+        let consumer = try XCTUnwrap(CGDataConsumer(url: url as CFURL))
+        let options = [kCGPDFContextUserPassword as String: "secret", kCGPDFContextOwnerPassword as String: "owner"] as CFDictionary
+        let context = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &box, options))
+        context.beginPDFPage(nil)
+        context.endPDFPage()
+        context.closePDF()
+        do {
+            _ = try await FileTextExtractor().extract(url, name: "locked.pdf", pages: nil)
+            XCTFail("a locked PDF is refused, not OCR'd page by page")
+        } catch let error as FilesFailure { XCTAssertEqual(error, .unsupportedText("pdf с паролем")) }
+    }
+
     func testCacheRoundTrip() async {
         let extractor = FileTextExtractor()
         let value = ExtractedText(pages: ["a"], pageCount: 1, paginated: true, recognizedPages: [], truncatedOCR: false)

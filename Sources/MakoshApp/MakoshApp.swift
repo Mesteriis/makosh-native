@@ -53,6 +53,8 @@ struct MakoshApp: App {
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    /// The settings tab to show; a menu item may set it before opening the window.
+    @AppStorage(MakoshSettingsTab.key) private var settingsTab = "telegram"
     var body: some Scene {
         WindowGroup("Макош") {
             Group {
@@ -211,12 +213,12 @@ struct MakoshApp: App {
                 } else if CommandLine.arguments.contains(FilesQAIsolation.flag) {
                     Text("QA «Файлы» · подставной Paperless внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else {
-                    TabView {
-                        TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }
-                        WhatsAppCommonSettingsView().tabItem { Label("WhatsApp", systemImage: "message") }
-                        TeamsCommonSettingsView().tabItem { Label("Teams", systemImage: "person.3") }
-                        FilesSettingsView().tabItem { Label("Файлы", systemImage: "folder") }
-                        AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }
+                    TabView(selection: $settingsTab) {
+                        TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }.tag("telegram")
+                        WhatsAppCommonSettingsView().tabItem { Label("WhatsApp", systemImage: "message") }.tag("whatsapp")
+                        TeamsCommonSettingsView().tabItem { Label("Teams", systemImage: "person.3") }.tag("teams")
+                        FilesSettingsView().tabItem { Label("Файлы", systemImage: "folder") }.tag(MakoshSettingsTab.files)
+                        AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }.tag("ai")
                     }
                 }
             }.environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(
@@ -224,4 +226,10 @@ struct MakoshApp: App {
             ).environmentObject(delegate.ai).environmentObject(delegate.files)
         }
     }
+}
+
+/// Keys for opening Settings on a given tab.
+enum MakoshSettingsTab {
+    static let key = "makosh.settings.tab"
+    static let files = "files"
 }

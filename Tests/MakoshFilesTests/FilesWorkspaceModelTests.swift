@@ -186,6 +186,27 @@ final class CatalogueStub: FileCatalogueReading, @unchecked Sendable {
         XCTAssertEqual(model.storageStatus[a.id]?.map(\.documentCount), .success(7), "a known status is not probed again by polling")
     }
 
+    func testLeavingAStorageResetsLoadingDocuments() async throws {
+        let slow = scripts[a.id]!
+        slow.holdDocuments = true
+        let model = model()
+        model.source = .storage(a.id)
+        while slow.documentCalls.isEmpty { await Task.yield() }
+        XCTAssertTrue(model.loadingDocuments)
+        model.source = .all
+        XCTAssertFalse(model.loadingDocuments, "nothing is loading for the catalogue")
+        slow.release()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(model.loadingDocuments)
+    }
+
+    func testCorruptJournalIsReportedOnRefresh() async throws {
+        try Data("not json".utf8).write(to: journal)
+        let model = model()
+        await model.refresh()
+        XCTAssertEqual(model.error, "Журнал отправок повреждён и начат заново.")
+    }
+
     func testPollingRefreshesWhileActiveOnly() async throws {
         let model = model(pollInterval: .milliseconds(5))
         model.startPolling()

@@ -35,6 +35,22 @@ public struct PaperlessDocument: Equatable, Identifiable, Sendable {
     }
 }
 
+/// One document with its OCR text, for the AI card's fallback.
+public struct PaperlessDocumentDetail: Equatable, Sendable {
+    public let id: Int
+    public let title: String
+    public let content: String
+    public let originalFileName: String?
+    public let pageCount: Int?
+    public init(id: Int, title: String, content: String, originalFileName: String?, pageCount: Int?) {
+        self.id = id
+        self.title = title
+        self.content = content
+        self.originalFileName = originalFileName
+        self.pageCount = pageCount
+    }
+}
+
 public struct PaperlessPage<T: Sendable>: Sendable {
     public let items: [T]
     public let hasMore: Bool
@@ -124,6 +140,14 @@ public actor PaperlessClient {
                 originalFileName: entry["original_file_name"] as? String)
         }
         return PaperlessPage(items: documents, hasMore: object["next"] is String)
+    }
+
+    public func document(id: Int) async throws -> PaperlessDocumentDetail {
+        let (object, _) = try await json(request(path: "api/documents/\(id)/", query: []))
+        guard let documentID = Self.int(object["id"]) else { throw FilesFailure.unexpectedResponse }
+        return PaperlessDocumentDetail(
+            id: documentID, title: object["title"] as? String ?? "", content: object["content"] as? String ?? "",
+            originalFileName: object["original_file_name"] as? String, pageCount: Self.int(object["page_count"]))
     }
 
     public func download(id: Int, original: Bool, to destination: URL) async throws {

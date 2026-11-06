@@ -146,6 +146,12 @@ public final class PaperlessSyntheticService: PaperlessServing, @unchecked Senda
     public func download(id: Int, original: Bool, to destination: URL) async throws {
         try Data("%PDF-1.7\n% synthetic document \(id)\n".utf8).write(to: destination, options: .withoutOverwriting)
     }
+    public func document(id: Int) async throws -> PaperlessDocumentDetail {
+        guard let document = Self.documents.first(where: { $0.id == id }) else { throw FilesFailure.unexpectedResponse }
+        return PaperlessDocumentDetail(
+            id: id, title: document.title, content: "Синтетический текст документа «\(document.title)».",
+            originalFileName: document.originalFileName, pageCount: 1)
+    }
     public func upload(file: URL, name: String, options: PaperlessUpload) async throws -> String {
         lock.withLock { polls = 0 }
         return "qa-task-\(UUID().uuidString)"

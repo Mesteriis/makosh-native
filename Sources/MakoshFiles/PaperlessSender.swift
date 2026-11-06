@@ -8,6 +8,7 @@ public protocol PaperlessServing: Sendable {
     func documentTypes() async throws -> [PaperlessNamed]
     func documents(query: String, page: Int) async throws -> PaperlessPage<PaperlessDocument>
     func download(id: Int, original: Bool, to destination: URL) async throws
+    func document(id: Int) async throws -> PaperlessDocumentDetail
     func upload(file: URL, name: String, options: PaperlessUpload) async throws -> String
     func task(id: String) async throws -> PaperlessTaskState
     func documentURL(id: Int) -> URL

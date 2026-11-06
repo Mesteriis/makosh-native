@@ -179,6 +179,24 @@ final class PaperlessClientTests: XCTestCase {
         XCTAssertEqual(requests.count, 0)
     }
 
+    func testDocumentDetailParsesContent() async throws {
+        PaperlessStubProtocol.reset([
+            .json(
+                #"{"id":5,"title":"Договор","content":"Текст договора\nпункт 2","original_file_name":"lease.pdf","page_count":3,"tags":[1]}"#
+            )
+        ])
+        let detail = try await client.document(id: 5)
+        XCTAssertEqual(
+            detail,
+            PaperlessDocumentDetail(
+                id: 5, title: "Договор", content: "Текст договора\nпункт 2", originalFileName: "lease.pdf", pageCount: 3))
+        XCTAssertEqual(requests.first?.url?.absoluteString, "https://doc.example/api/documents/5/")
+        PaperlessStubProtocol.reset([.json(#"{"id":6,"title":"Без текста","content":null}"#)])
+        let empty = try await client.document(id: 6)
+        XCTAssertEqual(empty.content, "")
+        XCTAssertNil(empty.pageCount)
+    }
+
     func testDownloadWritesOriginalToDestination() async throws {
         PaperlessStubProtocol.reset([Reply(status: 200, body: Data("%PDF-1.7 original".utf8), headers: ["Content-Type": "application/pdf"])]
         )

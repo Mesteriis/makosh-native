@@ -52,6 +52,11 @@ final class PaperlessScript: PaperlessServing, @unchecked Sendable {
         return lock.withLock { pages[page] } ?? .init(items: [], hasMore: false)
     }
     func download(id: Int, original: Bool, to destination: URL) async throws {}
+    var details: [Int: PaperlessDocumentDetail] = [:]
+    func document(id: Int) async throws -> PaperlessDocumentDetail {
+        guard let detail = lock.withLock({ details[id] }) else { throw FilesFailure.unexpectedResponse }
+        return detail
+    }
     nonisolated func documentURL(id: Int) -> URL { URL(string: "https://doc.example/documents/\(id)/details")! }
 }
 

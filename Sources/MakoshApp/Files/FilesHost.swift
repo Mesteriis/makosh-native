@@ -36,6 +36,9 @@ extension EnvironmentValues {
     private var repository: ArchiveFileRepository?
     private var repositoryFactory: (@Sendable () throws -> ArchiveFileRepository)?
 
+    /// Synthetic previews export placeholder bytes instead of reading S3.
+    private let syntheticBytes: Data?
+
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Makosh", isDirectory: true)
@@ -43,14 +46,34 @@ extension EnvironmentValues {
         registry = FileStorageRegistry(vault: vault)
         sender = PaperlessSender(registry: registry, vault: vault, journal: support.appendingPathComponent("PaperlessSubmissions.json"))
         model = FilesWorkspaceModel(catalogue: nil, registry: registry, vault: vault, sender: sender, resolver: nil)
+        syntheticBytes = nil
     }
 
+    #if DEBUG
+    /// Isolated QA: in-memory tokens, a separate defaults suite, a journal in a
+    /// temporary directory and a Paperless that never touches the network.
+    init(synthetic journal: URL, defaults: UserDefaults, paperless: any PaperlessServing) {
+        vault = FileStorageTokenVault(access: .memory())
+        registry = FileStorageRegistry(defaults: defaults, vault: vault)
+        let factory: PaperlessSender.ClientFactory = { _, _ in paperless }
+        sender = PaperlessSender(registry: registry, vault: vault, journal: journal, clientFactory: factory)
+        model = FilesWorkspaceModel(catalogue: nil, registry: registry, vault: vault, sender: sender, resolver: nil, clientFactory: factory)
+        syntheticBytes = Data("%PDF-1.7\n% synthetic archive copy\n".utf8)
+    }
+    #endif
+
     /// Opens the catalogue over the shared archive schema; export uses the same S3 configuration as every service.
-    func start(configuration: ContactWorkspaceConfiguration, resolver: (any FileSourceResolving)?) {
+    func start(
+        configuration: ContactWorkspaceConfiguration, resolver: (any FileSourceResolving)?,
+        keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open
+    ) {
         guard !configured else { return }
         configured = true
         let schema = configuration.archiveSchema ?? configuration.schema
-        model.attach(catalogue: FileCatalogue(connectionString: configuration.connectionString, schema: schema), resolver: resolver)
+        model.attach(
+            catalogue: FileCatalogue(connectionString: configuration.connectionString, schema: schema, keyProvider: keyProvider),
+            resolver: resolver)
+        if syntheticBytes != nil { return }
         let args = CommandLine.arguments
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Makosh", isDirectory: true)
@@ -80,6 +103,10 @@ extension EnvironmentValues {
 
     /// Verified bytes of a retained file, through a private staging copy.
     private func export(_ item: FileCatalogueItem, into destination: URL) async throws {
+        if let syntheticBytes {
+            try syntheticBytes.write(to: destination, options: .withoutOverwriting)
+            return
+        }
         let repository = try await openRepository()
         do { try await repository.export(item.record, to: destination) } catch { throw FilesFailure.integrity }
     }

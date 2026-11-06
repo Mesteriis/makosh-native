@@ -31,6 +31,7 @@ python3 scripts/verify-telemost-dependencies.py
 python3 scripts/test-telemost-dependencies.py
 python3 scripts/test-telemost-qa.py
 python3 scripts/test-ai-qa.py
+python3 scripts/test-files-qa.py
 python3 scripts/test-teams-dependencies.py
 python3 scripts/test-teams-qa.py
 python3 scripts/test-runtime-bundle.py

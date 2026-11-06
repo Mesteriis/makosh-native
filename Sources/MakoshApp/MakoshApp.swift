@@ -18,7 +18,7 @@ import MakoshFiles
             || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "telemost"
             || CommandLine.arguments.contains("--teams-synthetic-preview")
             || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"
-            || CommandLine.arguments.contains(AIQAIsolation.flag)))
+            || CommandLine.arguments.contains(AIQAIsolation.flag) || CommandLine.arguments.contains(FilesQAIsolation.flag)))
     lazy var telegramProxy = TelegramProxyController()
     let telegramCallCoordinator = TelegramCallCoordinator()
     let telegramCallWindows = TelegramCallWindows()
@@ -48,7 +48,8 @@ struct MakoshApp: App {
     static func permitsOrdinaryReleaseLaunch(marker: String?, requiresSynthetic: Bool, arguments: [String]) -> Bool {
         WhatsAppQAIsolation.permitsNormalLaunch(marker: marker, arguments: arguments)
             && TelemostSyntheticLaunchPolicy.permitsNormalLaunch(marker: marker, arguments: arguments)
-            && !arguments.contains("--teams-synthetic-preview") && !arguments.contains(AIQAIsolation.flag) && !requiresSynthetic
+            && !arguments.contains("--teams-synthetic-preview") && !arguments.contains(AIQAIsolation.flag)
+            && !arguments.contains(FilesQAIsolation.flag) && !requiresSynthetic
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -74,6 +75,13 @@ struct MakoshApp: App {
                         minWidth: 600, minHeight: 240)
                 } else if CommandLine.arguments.contains(AIQAIsolation.flag) {
                     AISyntheticPreview().frame(minWidth: 1000, minHeight: 680)
+                } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "files",
+                    !CommandLine.arguments.contains(FilesQAIsolation.flag)
+                {
+                    Text("QA «Файлы» требует --files-synthetic-preview и отдельную конфигурацию PostgreSQL.").padding(24).frame(
+                        minWidth: 600, minHeight: 240)
+                } else if CommandLine.arguments.contains(FilesQAIsolation.flag) {
+                    FilesSyntheticPreview().frame(minWidth: 1000, minHeight: 680)
                 } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams",
                     !CommandLine.arguments.contains("--teams-synthetic-preview")
                 {
@@ -200,6 +208,8 @@ struct MakoshApp: App {
                     TeamsCommonSettingsView()
                 } else if CommandLine.arguments.contains(AIQAIsolation.flag) {
                     Text("ИИ QA · настройки внутри окна проверки; остальные сервисы выключены.").padding(24)
+                } else if CommandLine.arguments.contains(FilesQAIsolation.flag) {
+                    Text("QA «Файлы» · подставной Paperless внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else {
                     TabView {
                         TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }

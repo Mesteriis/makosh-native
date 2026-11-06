@@ -273,3 +273,16 @@ Tokens that used "when unlocked" now share the item's "after first unlock".
 `~/Library/Application Support/Makosh/<bundle id>.lock`; a second launch of the
 same bundle activates the first and exits. QA bundles have their own identifiers
 and locks.
+
+## ADR-016: Files section and Paperless — 2026-11-06
+
+`MakoshFiles` sits above `MakoshCore` and reads the shared archive it already
+has: a cursor over `archive_file_events` plus one `message_token` lookup per
+file (new index `archive_message_sequence`; tables stay append-only). Nothing
+is copied: the catalogue holds metadata, bytes come through the existing
+`ArchiveFileRepository.export`. Paperless-ngx is a storage connection, not a
+channel: HTTPS REST with a Keychain token, no redirects, no automatic resend;
+every submission lives in a private journal so a restart cannot lose
+"processing". Uploads reuse `FileHandoff`, which later parts reuse for chats,
+letters and AI cards. Paperless documents never enter the AI context or index.
+Details: [files.md](files.md).

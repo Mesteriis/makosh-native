@@ -122,6 +122,94 @@ public struct AIContextMaterial: Sendable, Equatable {
     }
 }
 
+/// Pages finished so far of a file card's text extraction.
+public struct AIExtractionProgress: Sendable, Equatable {
+    public let done: Int
+    public let total: Int
+    public init(done: Int, total: Int) {
+        self.done = done
+        self.total = total
+    }
+}
+
+extension AIContextDocument {
+    /// Fewer characters than this per page means the local read found nothing worth sending.
+    public static let fallbackThreshold = 50
+
+    /// The document for a card: the local pages, or the fallback text (Paperless
+    /// OCR) split into parts when the local read is thin. `selected` is 1-based.
+    public static func assemble(
+        pages: [String], pageCount: Int, paginated: Bool, recognizedPages: Set<Int>, truncatedOCR: Bool, selected: ClosedRange<Int>?,
+        fallback: String?, source: String
+    ) throws -> (document: AIContextDocument, usedFallback: Bool) {
+        let characters = pages.reduce(0) { $0 + $1.trimmingCharacters(in: .whitespacesAndNewlines).count }
+        let thin = pages.isEmpty || characters < fallbackThreshold * pages.count
+        if thin, let fallback, !fallback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let parts = AIContextDocument.parts(fallback)
+            let range = try selection(selected, count: parts.count)
+            return (
+                AIContextDocument(
+                    pages: Array(parts[(range.lowerBound - 1)..<range.upperBound]), pageCount: parts.count, selected: range,
+                    paginated: false,
+                    recognized: false, truncatedOCR: false, source: source + "-content"), true
+            )
+        }
+        let range = try selection(selected, count: pageCount)
+        guard pages.count == range.count else {
+            throw AIFailure.contextUnavailable("Прочитано не то число страниц — прикрепите файл заново.")
+        }
+        return (
+            AIContextDocument(
+                pages: pages, pageCount: pageCount, selected: range, paginated: paginated, recognized: !recognizedPages.isEmpty,
+                truncatedOCR: truncatedOCR, source: source), false
+        )
+    }
+
+    private static func selection(_ selected: ClosedRange<Int>?, count: Int) throws -> ClosedRange<Int> {
+        let count = max(count, 1)
+        guard let selected else { return 1...count }
+        guard selected.lowerBound >= 1, selected.upperBound <= count else {
+            throw AIFailure.contextUnavailable("В файле \(count) страниц — выберите страницы в этих пределах.")
+        }
+        return selected
+    }
+
+    /// Paragraphs packed to about 3 000 characters; an unbroken text is cut hard.
+    static func parts(_ text: String, size: Int = 3_000) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        var result: [String] = [], current = ""
+        func flush() {
+            let value = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { result.append(value) }
+            current = ""
+        }
+        for paragraph in trimmed.components(separatedBy: "\n\n") {
+            let paragraph = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !paragraph.isEmpty else { continue }
+            if paragraph.count > size {
+                flush()
+                var rest = Substring(paragraph)
+                while !rest.isEmpty {
+                    result.append(String(rest.prefix(size)))
+                    rest = rest.dropFirst(size)
+                }
+                continue
+            }
+            if current.isEmpty {
+                current = paragraph
+            } else if current.count + 2 + paragraph.count <= size {
+                current += "\n\n" + paragraph
+            } else {
+                flush()
+                current = paragraph
+            }
+        }
+        flush()
+        return result
+    }
+}
+
 /// Reads an attached source. Throws `AIFailure.contextUnavailable` for a
 /// source that may never be sent (secret chat, forbidden contact) or is gone.
 public protocol AIContextProvider: Sendable {

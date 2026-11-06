@@ -40,13 +40,16 @@ public struct FileCatalogueItem: Identifiable, Equatable, Sendable {
     public let record: ArchiveFileRecord
     public let messageDate: Date?
     public let author: String?
+    /// The author's service identity (external ID), for access rules.
+    public let authorID: String?
     public var sourceTitle: String?
 
-    public init(record: ArchiveFileRecord, messageDate: Date?, author: String?, sourceTitle: String? = nil) {
+    public init(record: ArchiveFileRecord, messageDate: Date?, author: String?, authorID: String? = nil, sourceTitle: String? = nil) {
         id = record.id
         self.record = record
         self.messageDate = messageDate
         self.author = author
+        self.authorID = authorID
         self.sourceTitle = sourceTitle
     }
     public var name: String { record.attachment.name }
@@ -99,12 +102,13 @@ public actor FileCatalogue {
                         // The message row is read before the cursor moves: a damaged
                         // row keeps failing visibly instead of dropping the file.
                         let message = try store.latestRecord(identity: record.identity)
-                        var date: Date?, author: String?
+                        var date: Date?, author: String?, authorID: String?
                         if case .message(let content)? = message?.observation.event {
                             date = content.date
                             author = content.author
+                            authorID = content.isOutgoing ? nil : content.authorID
                         }
-                        latest[Self.key(record)] = FileCatalogueItem(record: record, messageDate: date, author: author)
+                        latest[Self.key(record)] = FileCatalogueItem(record: record, messageDate: date, author: author, authorID: authorID)
                         changed.append(record.identity)
                     }
                     cursor = event.sequence

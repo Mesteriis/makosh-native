@@ -14,8 +14,19 @@ actor AIFakeContextProvider: AIContextProvider {
             hiddenForbidden: 0, hiddenProtected: 0, available: 1, requested: 200, truncated: truncated)
     }
     func fail(_ card: AIContextCard, _ failure: AIFailure) { failures[card.id] = failure }
+    private var held: Set<String> = []
+    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+    /// Reads of this card wait until `release`, like a long extraction.
+    func hold(_ card: AIContextCard) { held.insert(card.id) }
+    func release(_ card: AIContextCard) {
+        held.remove(card.id)
+        for waiter in waiters.removeValue(forKey: card.id) ?? [] { waiter.resume() }
+    }
     func material(for card: AIContextCard) async throws -> AIContextMaterial {
         reads.append(card.id)
+        if held.contains(card.id) {
+            await withCheckedContinuation { waiters[card.id, default: []].append($0) }
+        }
         if let failure = failures[card.id] { throw failure }
         guard let material = materials[card.id] else { throw AIFailure.contextUnavailable("нет") }
         return material

@@ -30,6 +30,8 @@ extension EnvironmentValues {
     let vault: FileStorageTokenVault
     let sender: PaperlessSender
     let model: FilesWorkspaceModel
+    /// Private copies for composers and AI cards; cleared at launch.
+    let stage: FileHandoffStage
     @Published private(set) var configured = false
     /// Set by any "Отправить в Paperless…" item; the workspace shows the sheet.
     @Published var pendingSend: FileSendRequest?
@@ -47,6 +49,8 @@ extension EnvironmentValues {
         sender = PaperlessSender(registry: registry, vault: vault, journal: support.appendingPathComponent("PaperlessSubmissions.json"))
         model = FilesWorkspaceModel(catalogue: nil, registry: registry, vault: vault, sender: sender, resolver: nil)
         syntheticBytes = nil
+        stage = FileHandoffStage(root: support.appendingPathComponent("FileHandoffStage", isDirectory: true))
+        Task { [stage] in await stage.clearAll() }
     }
 
     #if DEBUG
@@ -59,6 +63,7 @@ extension EnvironmentValues {
         sender = PaperlessSender(registry: registry, vault: vault, journal: journal, clientFactory: factory)
         model = FilesWorkspaceModel(catalogue: nil, registry: registry, vault: vault, sender: sender, resolver: nil, clientFactory: factory)
         syntheticBytes = Data("%PDF-1.7\n% synthetic archive copy\n".utf8)
+        stage = FileHandoffStage(root: journal.deletingLastPathComponent().appendingPathComponent("stage", isDirectory: true))
     }
     #endif
 
@@ -132,5 +137,29 @@ extension EnvironmentValues {
 
     func handoff(_ item: FileCatalogueItem) -> FileHandoff {
         FileHandoff(name: item.name, byteCount: item.byteCount, date: item.date) { [self] url in try await self.export(item, into: url) }
+    }
+
+    /// A catalogue row by its archive record id, after the catalogue has been read.
+    func record(id: UUID) async -> FileCatalogueItem? {
+        if let item = model.items.first(where: { $0.id == id }) { return item }
+        await model.refresh()
+        return model.items.first { $0.id == id }
+    }
+
+    /// The original of a Paperless document into a private destination.
+    func downloadPaperless(connectionID: UUID, documentID: Int, to destination: URL) async throws {
+        try await model.download(documentID: documentID, from: connectionID, original: true, to: destination)
+    }
+
+    func paperlessDetail(connectionID: UUID, documentID: Int) async throws -> PaperlessDocumentDetail {
+        guard let client = await model.client(for: connectionID) else { throw FilesFailure.storageMissing }
+        return try await client.document(id: documentID)
+    }
+
+    func handoff(connectionID: UUID, document: PaperlessDocument) -> FileHandoff {
+        let name = document.originalFileName.map { URL(fileURLWithPath: $0).lastPathComponent } ?? (document.title + ".pdf")
+        return FileHandoff(name: name, date: document.created) { [self] url in
+            try await self.downloadPaperless(connectionID: connectionID, documentID: document.id, to: url)
+        }
     }
 }

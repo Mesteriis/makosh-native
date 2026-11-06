@@ -19,6 +19,10 @@ import MakoshCore
     /// Material of each attached card, by card id, and cards that cannot be sent.
     @Published package private(set) var previews: [String: AIContextMaterial] = [:]
     @Published package private(set) var previewFailures: [String: AIFailure] = [:]
+    /// Text extraction under way for a file card, by card id.
+    @Published package private(set) var extraction: [String: AIExtractionProgress] = [:]
+    private var previewGeneration = 0
+    private var previewTask: Task<Void, Never>?
     @Published package var filter: AIConversationFilter = .all
     private var selection: UInt64 = 0
     private var anchoring: UInt64 = 0
@@ -116,7 +120,13 @@ import MakoshCore
     }
 
     package func remove(_ cardID: String) async {
+        extraction[cardID] = nil
         await changeCards { worker, id in try await worker.removeCard(cardID, conversationID: id) }
+    }
+
+    /// Called by the context bridge while a file card is being read; nil clears.
+    package func reportExtraction(cardID: String, progress: AIExtractionProgress?) {
+        if let progress, cards.contains(where: { $0.id == cardID }) { extraction[cardID] = progress } else { extraction[cardID] = nil }
     }
 
     package func setRange(_ range: AIContextRange, for cardID: String) async {
@@ -138,16 +148,29 @@ import MakoshCore
         } catch { failure = error as? AIFailure ?? .storage }
     }
 
+    /// Previews are read in their own task; a newer refresh or a removed card
+    /// cancels the old one, and a late result never lands.
     private func refreshPreviews(token: UInt64) async {
-        var materials: [String: AIContextMaterial] = [:], failures: [String: AIFailure] = [:]
-        for card in cards {
-            do { materials[card.id] = try await worker.preview(card: card) } catch {
-                failures[card.id] = error as? AIFailure ?? .storage
+        previewGeneration += 1
+        let generation = previewGeneration
+        previewTask?.cancel()
+        let cards = self.cards, worker = self.worker
+        extraction = extraction.filter { entry in cards.contains { $0.id == entry.key } }
+        let task = Task { [weak self] in
+            var materials: [String: AIContextMaterial] = [:], failures: [String: AIFailure] = [:]
+            for card in cards {
+                do { materials[card.id] = try await worker.preview(card: card) } catch {
+                    failures[card.id] = error as? AIFailure ?? .storage
+                }
+                guard !Task.isCancelled, let self, self.previewGeneration == generation, self.anchoring == token else { return }
             }
-            guard anchoring == token else { return }
+            guard let self, self.previewGeneration == generation, self.anchoring == token else { return }
+            self.previews = materials
+            self.previewFailures = failures
+            self.extraction = [:]
         }
-        previews = materials
-        previewFailures = failures
+        previewTask = task
+        await task.value
     }
 
     package func newConversation() async {

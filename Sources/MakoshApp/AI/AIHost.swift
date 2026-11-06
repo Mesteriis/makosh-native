@@ -1,6 +1,7 @@
 import Foundation
 import MakoshAI
 import MakoshCore
+import MakoshFiles
 import MakoshMail
 import MakoshTeams
 import MakoshTelegram
@@ -21,6 +22,8 @@ import MakoshWhatsApp
     /// Bumped after any access change so toggles reload their state.
     @Published private(set) var accessRevision = 0
     let isSynthetic: Bool
+    /// Text of attached files is read on the Mac and kept in memory only.
+    let extractor = FileTextExtractor()
     private var access: AIArchiveAccessProvider?
     private var indexer: AIIndexer?
 
@@ -54,7 +57,7 @@ import MakoshWhatsApp
         configuration: ContactWorkspaceConfiguration, contacts: ContactWorkspaceWorker?,
         keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open, mail: Bool = true,
         telegram: @escaping @MainActor () -> (any TelegramAIContextReading)? = { nil },
-        whatsapp: @escaping @MainActor () -> (any WhatsAppServing)? = { nil }
+        whatsapp: @escaping @MainActor () -> (any WhatsAppServing)? = { nil }, files: FilesHost? = nil
     ) async {
         guard self.configuration == nil else { return }
         self.configuration = configuration
@@ -77,8 +80,14 @@ import MakoshWhatsApp
                 return (AIArchiveAccessProvider(store: store, contacts: contacts), sources, repository)
             }
             let sources = opened.1
-            await worker.attachContext(
-                AIContextBridge(telegram: telegram, whatsapp: whatsapp, mail: opened.2, contacts: contacts, access: opened.0))
+            let bridge = AIContextBridge(telegram: telegram, whatsapp: whatsapp, mail: opened.2, contacts: contacts, access: opened.0)
+            bridge.attachFiles(files, extractor: extractor) { [weak self] cardID, progress in
+                Task { @MainActor [weak self] in
+                    self?.workspace.reportExtraction(cardID: cardID, progress: progress)
+                    self?.panel.reportExtraction(cardID: cardID, progress: progress)
+                }
+            }
+            await worker.attachContext(bridge)
             let vectors = AIVectorStore(keyProvider: keyProvider)
             try await vectors.open(configuration: configuration)
             await worker.attachRetrieval(vectors: vectors, access: opened.0)

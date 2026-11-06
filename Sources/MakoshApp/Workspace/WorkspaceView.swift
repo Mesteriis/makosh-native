@@ -203,7 +203,7 @@ struct WorkspaceView: View {
                 Task {
                     await ai.start(
                         configuration: configuration, contacts: model.dossierWorker, telegram: { [telegram] in telegram.aiContextReader },
-                        whatsapp: { [whatsapp] in whatsapp.service })
+                        whatsapp: { [whatsapp] in whatsapp.service }, files: files)
                 }
             }
             if ordinaryLaunch { telegram.connectIfRemembered() }

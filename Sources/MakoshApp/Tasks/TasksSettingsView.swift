@@ -2,7 +2,7 @@ import MakoshJira
 import MakoshTasks
 import SwiftUI
 
-/// Settings → Задачи: the Jira sites Makosh mirrors.
+/// Settings → Задачи: display, planner, the focus panel, the guide, and the Jira sites Makosh mirrors.
 struct TasksSettingsView: View {
     @EnvironmentObject private var host: TasksHost
 
@@ -19,9 +19,72 @@ struct TasksSettingsForm: View {
     @ObservedObject var model: TasksWorkspaceModel
     @State private var editing: JiraConnection?
     @State private var adding = false
+    @State private var presets = ""
+
+    private var preferences: TaskPreferences { model.storedPreferences }
 
     var body: some View {
         Form {
+            Section("Отображение") {
+                Picker("Формат даты", selection: binding(\.dateFormat)) {
+                    ForEach(TaskDateFormat.allCases, id: \.self) { Text($0.title).tag($0) }
+                }.accessibilityIdentifier("tasks.settings.dateFormat")
+                Picker("Первый день недели", selection: binding(\.firstWeekday)) {
+                    Text("Понедельник").tag(2)
+                    Text("Воскресенье").tag(1)
+                }
+                Toggle("Компактный режим", isOn: $model.condense)
+                Toggle("Панель массовых действий под списком", isOn: binding(\.showBulkBar))
+                Toggle("Извлекать ссылки из быстрого ввода", isOn: binding(\.extractURLs))
+                Toggle("Новая задача на сегодня — сразу в работе", isOn: binding(\.newTaskActiveToday))
+            }
+            Section("Планер") {
+                Stepper(
+                    "Начало дня: \(preferences.plannerDayStart):00", value: binding(\.plannerDayStart),
+                    in: 0...(preferences.plannerDayEnd - 1))
+                Stepper(
+                    "Конец дня: \(preferences.plannerDayEnd):00", value: binding(\.plannerDayEnd),
+                    in: (preferences.plannerDayStart + 1)...24)
+                Picker("Шаг сетки", selection: binding(\.plannerStep)) {
+                    ForEach([5, 10, 15, 30, 60], id: \.self) { Text("\($0) мин").tag($0) }
+                }
+            }
+            Section("Фокус-панель") {
+                Toggle(
+                    "Показывать фокус-панель",
+                    isOn: Binding(get: { model.focusEnabled }, set: { value in _Concurrency.Task { await model.setFocusEnabled(value) } })
+                )
+                .accessibilityIdentifier("tasks.settings.focus")
+                Picker("Высота", selection: binding(\.focus.compact)) {
+                    Text("Авто").tag(false)
+                    Text("Компактно").tag(true)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Модули").font(.caption).foregroundStyle(.secondary)
+                    ForEach(TaskFocusModule.allCases, id: \.self) { module in
+                        Toggle(
+                            moduleTitle(module),
+                            isOn: Binding(
+                                get: { preferences.focus.modules.contains(module) },
+                                set: { on in
+                                    model.updatePreferences {
+                                        if on { $0.focus.modules.insert(module) } else { $0.focus.modules.remove(module) }
+                                    }
+                                })
+                        ).toggleStyle(.checkbox)
+                    }
+                }
+                HStack {
+                    Text("Пресеты, мин")
+                    TextField("15, 30, 45, 60", text: $presets).textFieldStyle(.roundedBorder).frame(width: 160)
+                        .onSubmit(savePresets)
+                        .onAppear { presets = preferences.focus.presets.map(String.init).joined(separator: ", ") }
+                }
+                Stepper("Перерыв: \(preferences.focus.breakMinutes) мин", value: binding(\.focus.breakMinutes), in: 0...60)
+            }
+            Section("Гид") {
+                Button("Показать гид снова") { model.startGuide() }.accessibilityIdentifier("tasks.settings.guide")
+            }
             Section("Подключения Jira") {
                 ForEach(model.connections) { connection in
                     HStack {
@@ -55,9 +118,37 @@ struct TasksSettingsForm: View {
             if let error = model.error { Text(error).foregroundStyle(.orange) }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 560, minHeight: 360)
+        .frame(minWidth: 560, minHeight: 480)
         .sheet(item: $editing) { connection in JiraConnectionEditor(model: model, original: connection).makoshAppearance() }
         .sheet(isPresented: $adding) { JiraConnectionEditor(model: model, original: nil).makoshAppearance() }
+    }
+
+    private func binding<T: Equatable>(_ keyPath: WritableKeyPath<TaskPreferences, T>) -> Binding<T> {
+        Binding(get: { preferences[keyPath: keyPath] }, set: { value in model.updatePreferences { $0[keyPath: keyPath] = value } })
+    }
+
+    private func savePresets() {
+        let values = presets.split(whereSeparator: { ",; ".contains($0) }).compactMap { Int($0) }.filter { (1...480).contains($0) }
+        var unique: [Int] = []
+        for value in values where !unique.contains(value) { unique.append(value) }
+        guard !unique.isEmpty else {
+            presets = preferences.focus.presets.map(String.init).joined(separator: ", ")
+            return
+        }
+        model.updatePreferences { $0.focus.presets = Array(unique.prefix(6)) }
+        presets = unique.prefix(6).map(String.init).joined(separator: ", ")
+    }
+
+    private func moduleTitle(_ module: TaskFocusModule) -> String {
+        switch module {
+        case .timer: "Обратный отсчёт"
+        case .presets: "Пресеты интервалов"
+        case .controls: "Кнопки управления"
+        case .waiting: "Ждущие задачи"
+        case .counter: "Счётчик интервалов за день"
+        case .nextSlot: "Следующий слот планера"
+        case .clock: "Часы"
+        }
     }
 }
 

@@ -15,8 +15,8 @@ struct TasksHeaderBar: View {
                 "sidebar.left", on: model.showSidebar, tint: .accentColor, help: model.showSidebar ? "Скрыть панель" : "Показать панель"
             ) {
                 model.showSidebar.toggle()
-            }.accessibilityIdentifier("tasks.header.sidebar")
-            search
+            }.accessibilityIdentifier("tasks.header.sidebar").tasksGuideAnchor("sidebar")
+            search.tasksGuideAnchor("search")
             counters
             Spacer()
             if case .jira = model.space {

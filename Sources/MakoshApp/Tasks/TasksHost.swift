@@ -32,6 +32,7 @@ extension EnvironmentValues {
     /// Mirrors the model's «show sidebar» for the workspace, which cannot import `MakoshTasks`.
     @Published private(set) var sidebarCollapsed = false
     private var sidebarObservation: AnyCancellable?
+    private let focusPanel = TaskFocusPanelController()
     private let adapterFactory: TasksService.AdapterFactory
     private let keychain: JiraKeychainAccess
 
@@ -85,6 +86,7 @@ extension EnvironmentValues {
         sidebarObservation = model.$showSidebar.receive(on: DispatchQueue.main).sink { [weak self] shown in
             self?.sidebarCollapsed = !shown
         }
+        focusPanel.attach(model)
         do {
             try await service.open()
             if let seed { try await seed(store) }

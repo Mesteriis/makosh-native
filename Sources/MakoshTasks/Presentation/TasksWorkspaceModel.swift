@@ -840,9 +840,27 @@ public enum JiraAction: Sendable {
     public func updatePreferences(_ change: (inout TaskPreferences) -> Void) {
         var value = preferences
         change(&value)
+        guard value != preferences else { return }
+        objectWillChange.send()
         preferences = value
+        if calendarMonth.firstWeekday != value.firstWeekday {
+            calendarMonth = TaskCalendarMonth.containing(now(), firstWeekday: value.firstWeekday, calendar: calendar)
+        }
         let service = service
         _Concurrency.Task { try? await service.store.savePreferences(value) }
+    }
+
+    /// The onboarding guide's current step; nil when it is not showing.
+    @Published public var guideStep: Int?
+
+    /// Shown once at the first opening; Settings can start it again.
+    public func startGuideIfNeeded() {
+        if preferencesLoaded, !preferences.guideCompleted, guideStep == nil { guideStep = 0 }
+    }
+    public func startGuide() { guideStep = 0 }
+    public func finishGuide() {
+        guideStep = nil
+        updatePreferences { $0.guideCompleted = true }
     }
 
     public var storedPreferences: TaskPreferences { preferences }

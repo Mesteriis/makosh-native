@@ -153,6 +153,7 @@ struct TaskListView: View {
             listFocused = true
         }
         .contextMenu { TaskContextMenu(model: model, task: task, onEdit: onEdit) }
+        .tasksGuideAnchor(index == 0 ? "task-row" : "task-row-\(index)")
         .draggable(
             TaskDragPayload(
                 ids: model.selection.selected.contains(task.id) ? ids.filter { model.selection.selected.contains($0) } : [task.id])

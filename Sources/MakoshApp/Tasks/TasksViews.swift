@@ -26,6 +26,7 @@ struct TasksContentView: View {
     @FocusState private var quickEntryFocused: Bool
     @State private var plannerDragOrigin: Int?
     @State private var editingID: UUID?
+    @State private var guideAnchors: [String: CGRect] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,7 +50,7 @@ struct TasksContentView: View {
                         Divider()
                         TasksRightColumn(model: model) { editingID = $0 }.frame(width: rightColumnWidth).background {
                             WorkspaceBackdrop(intensity: 0.55)
-                        }
+                        }.tasksGuideAnchor("detail-panel")
                     }
                 }
             }
@@ -64,12 +65,16 @@ struct TasksContentView: View {
             }
             TasksStatusBar(model: model)
         }
+        .coordinateSpace(name: "tasksSection")
+        .onPreferenceChange(TasksGuideAnchorKey.self) { guideAnchors = $0 }
+        .overlay { if model.guideStep != nil { TasksGuideOverlay(model: model, anchors: guideAnchors) } }
         .animation(.easeInOut(duration: 0.2), value: model.selected)
         .animation(.easeInOut(duration: 0.2), value: model.showPlanner)
         .animation(.easeInOut(duration: 0.2), value: model.showRightPanel)
         .task {
             model.startTicking()
             await model.loadPlanner()
+            model.startGuideIfNeeded()
         }
         .onDisappear { model.stopTicking() }
         .sheet(item: Binding(get: { editingID.flatMap { model.task(id: $0) } }, set: { editingID = $0?.id })) { task in
@@ -111,9 +116,9 @@ struct TasksContentView: View {
             switch model.space {
             case .mine:
                 VStack(spacing: 10) {
-                    TaskQuickEntryField(model: model, focused: $quickEntryFocused)
+                    TaskQuickEntryField(model: model, focused: $quickEntryFocused).tasksGuideAnchor("create-task")
                     if let preview = model.quickEntryPreview { TaskQuickEntryPreview(entry: preview) }
-                    TaskFilterBar(model: model)
+                    TaskFilterBar(model: model).tasksGuideAnchor("sort-filter")
                 }.padding(.horizontal, 16).padding(.vertical, 12)
                 if model.visible.isEmpty, model.tasks.isEmpty {
                     ContentUnavailableView(

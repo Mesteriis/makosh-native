@@ -5,7 +5,7 @@ import Foundation
 /// `biweekly`, `monthly`, `yearly`) or an RRULE body. The next occurrence is
 /// counted from the day the task is closed, never from its due date.
 public enum TaskRecurrence {
-    static let keywords = ["daily", "weekly", "biweekly", "monthly", "yearly"]
+    public static let keywords = ["daily", "weekly", "biweekly", "monthly", "yearly"]
 
     public static func normalize(_ raw: String) -> String? {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)

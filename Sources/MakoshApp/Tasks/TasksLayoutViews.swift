@@ -117,6 +117,7 @@ struct TasksHeaderBar: View {
 /// The right column: the month calendar (when shown) over the details panel.
 struct TasksRightColumn: View {
     @ObservedObject var model: TasksWorkspaceModel
+    let onEdit: (UUID) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -124,7 +125,7 @@ struct TasksRightColumn: View {
                 TaskCalendarPanel(model: model)
                 Divider()
             }
-            TaskDetailsPanel(model: model)
+            TaskDetailsPanel(model: model, onEdit: onEdit)
         }
     }
 }

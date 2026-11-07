@@ -25,6 +25,7 @@ struct TasksContentView: View {
     @ObservedObject var model: TasksWorkspaceModel
     @FocusState private var quickEntryFocused: Bool
     @State private var plannerDragOrigin: Int?
+    @State private var editingID: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,11 +41,15 @@ struct TasksContentView: View {
                     if case .jira = model.space {
                         if let selected = model.selected, let task = model.task(id: selected) {
                             Divider()
-                            TaskDetailView(model: model, task: task).frame(width: 360).background { WorkspaceBackdrop(intensity: 0.55) }
+                            TaskDetailView(model: model, task: task) { editingID = $0 }.frame(width: 360).background {
+                                WorkspaceBackdrop(intensity: 0.55)
+                            }
                         }
                     } else if model.showRightPanel {
                         Divider()
-                        TasksRightColumn(model: model).frame(width: rightColumnWidth).background { WorkspaceBackdrop(intensity: 0.55) }
+                        TasksRightColumn(model: model) { editingID = $0 }.frame(width: rightColumnWidth).background {
+                            WorkspaceBackdrop(intensity: 0.55)
+                        }
                     }
                 }
             }
@@ -67,6 +72,9 @@ struct TasksContentView: View {
             await model.loadPlanner()
         }
         .onDisappear { model.stopTicking() }
+        .sheet(item: Binding(get: { editingID.flatMap { model.task(id: $0) } }, set: { editingID = $0?.id })) { task in
+            TaskEditDialog(model: model, task: task).makoshAppearance()
+        }
     }
 
     /// 256 pt by the reference; 360 pt when a Jira task's card with its five actions is open.
@@ -117,7 +125,7 @@ struct TasksContentView: View {
                     ContentUnavailableView("Здесь пусто", systemImage: "checklist", description: Text("Под этот фильтр ничего не попало."))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    TaskListView(model: model, quickEntryFocused: $quickEntryFocused) { model.selected = $0 }
+                    TaskListView(model: model, quickEntryFocused: $quickEntryFocused) { editingID = $0 }
                 }
             case .jira:
                 JiraBoardView(model: model)
@@ -125,75 +133,6 @@ struct TasksContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottomTrailing) { TasksToastStack(model: model) }
-    }
-}
-
-/// One line that becomes a task; tokens are shown as they are recognised.
-struct TaskQuickEntryField: View {
-    @ObservedObject var model: TasksWorkspaceModel
-    var focused: FocusState<Bool>.Binding
-    @State private var text = ""
-
-    var body: some View {
-        TextField("Новая задача… (@список #тег !приоритет ^срок ~код)", text: $text)
-            .textFieldStyle(.roundedBorder).focused(focused)
-            .onChange(of: text) { _, value in model.previewQuickEntry(value) }
-            .onSubmit {
-                let value = text
-                guard !value.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                text = ""
-                _Concurrency.Task { await model.create(quickEntry: value) }
-            }
-            .accessibilityIdentifier("tasks.quickEntry")
-            .background {
-                Button("") { focused.wrappedValue = true }.keyboardShortcut("n", modifiers: .command).hidden()
-            }
-    }
-}
-
-struct TaskQuickEntryPreview: View {
-    let entry: TaskQuickEntry
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<entry.tokens.count, id: \.self) { index in TaskTokenChip(token: entry.tokens[index]) }
-            Spacer()
-        }.accessibilityIdentifier("tasks.quickEntry.preview")
-    }
-}
-
-private struct TaskTokenChip: View {
-    let token: TaskQuickEntry.Token
-
-    var body: some View {
-        Text(token.text).font(.caption).padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.18), in: Capsule())
-            .foregroundStyle(token.resolved ? Color.primary : Color.orange)
-            .help(hint)
-    }
-
-    private var color: Color {
-        switch token.kind {
-        case .text: .clear
-        case .list: .blue
-        case .tag: .green
-        case .persona: .indigo
-        case .priority: .red
-        case .due: .orange
-        case .recurrence: .teal
-        case .flow: .pink
-        case .dependency: .purple
-        case .url: .cyan
-        }
-    }
-    private var hint: String {
-        guard !token.resolved else { return "" }
-        switch token.kind {
-        case .due: return "Дата не распознана — останется в названии."
-        case .dependency: return "Задача не найдена — останется в названии."
-        case .recurrence: return "Повтор не распознан — останется в названии."
-        default: return ""
-        }
     }
 }
 

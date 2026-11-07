@@ -91,9 +91,12 @@ public enum JiraAction: Sendable {
     @Published public private(set) var connections: [JiraConnection] = []
     @Published public private(set) var projectStatuses: [UUID: [String: [JiraStatus]]] = [:]
     @Published public private(set) var priorities: [UUID: [JiraPriority]] = [:]
-    @Published public private(set) var timer: TaskTimer?
+    @Published public internal(set) var timer: TaskTimer?
     @Published public private(set) var timerElapsed = 0
     @Published public var draft: TaskTimeDraft?
+    /// Drafts waiting behind the one on screen; focus sessions ending at once queue here.
+    var draftQueue: [TaskTimeDraft] = []
+    @Published public internal(set) var focusState = TaskFocusState()
     /// Meeting time waiting for the user to pick the task.
     @Published public var pendingMeetingTime: TaskMeetingTimeRequest?
     @Published public private(set) var summary: (daySeconds: Int, weekSeconds: Int) = (0, 0)
@@ -199,6 +202,7 @@ public enum JiraAction: Sendable {
         priorities = snapshot.priorities
         flowMeta = Dictionary(snapshot.flows.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         timer = snapshot.timer
+        focusState = snapshot.focus
         if let failure = snapshot.journalFailure { error = failure }
         if !preferencesLoaded {
             preferencesLoaded = true
@@ -214,6 +218,7 @@ public enum JiraAction: Sendable {
         summary = (try? await service.time.summary(day: now(), calendar: calendar)) ?? (0, 0)
         tick()
         applyFilters()
+        await settleClosedFocusSessions()
     }
 
     public func syncNow() async {
@@ -519,6 +524,10 @@ public enum JiraAction: Sendable {
     // MARK: Time
 
     public func startTimer(id: UUID) async {
+        if focusEnabled {
+            await focus(id: id)
+            return
+        }
         do {
             timer = try await service.time.start(taskID: id, note: "")
             error = nil
@@ -529,8 +538,12 @@ public enum JiraAction: Sendable {
     }
 
     public func stopTimer() async {
+        if focusEnabled, focusState.active != nil {
+            await stopFocusSession()
+            return
+        }
         do {
-            draft = try await service.time.stop()
+            enqueue(try await service.time.stop())
             timer = nil
             stopTicking()
             timerElapsed = 0
@@ -539,19 +552,19 @@ public enum JiraAction: Sendable {
 
     public func logManual(id: UUID, startedAt: Date, seconds: Int, note: String, meetingID: UUID? = nil) async {
         let suggest = (try? await service.time.suggestsWorklog(taskID: id)) ?? false
-        draft = service.time.draft(
-            manual: id, startedAt: startedAt, seconds: seconds, note: note, meetingID: meetingID, sendToJira: suggest)
+        enqueue(
+            service.time.draft(manual: id, startedAt: startedAt, seconds: seconds, note: note, meetingID: meetingID, sendToJira: suggest))
     }
 
     public func confirmDraft() async {
         guard let draft else { return }
         do {
             _ = try await service.time.confirm(draft)
-            self.draft = nil
+            presentNextDraft()
             error = nil
             await refresh()
         } catch TaskStoreError.duplicate {
-            self.draft = nil
+            presentNextDraft()
             await refresh()
         } catch { self.error = Self.describe(error) }
     }
@@ -559,8 +572,13 @@ public enum JiraAction: Sendable {
     /// Cancelling a timer's draft keeps the time: the timer resumes from its original start.
     public func discardDraft() async {
         guard let draft else { return }
-        self.draft = nil
-        if draft.source == .timer {
+        presentNextDraft()
+        guard draft.source == .timer, draft.reason == nil, let task = task(id: draft.taskID), task.status != .done,
+            task.status != .cancelled, task.deletedAt == nil
+        else { return }
+        if focusEnabled {
+            await focus(id: draft.taskID)
+        } else {
             try? await service.time.restore(draft)
             timer = try? await service.time.timer()
             startTicking()
@@ -586,6 +604,7 @@ public enum JiraAction: Sendable {
     public func tick() {
         expireToasts()
         advancePlannerDay()
+        tickPomodoro()
         guard let timer else {
             timerElapsed = 0
             return

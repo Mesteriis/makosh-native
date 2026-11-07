@@ -14,6 +14,7 @@ public struct TasksSnapshot: Sendable {
     public var priorities: [UUID: [JiraPriority]] = [:]
     public var preferences = TaskPreferences()
     public var flows: [TaskFlow] = []
+    public var focus = TaskFocusState()
     public var journalFailure: String?
     public init() {}
 }
@@ -27,6 +28,7 @@ public actor TasksService {
     public let registry: JiraConnectionRegistry
     public let journal: TaskJiraAttemptJournal
     public let time: TaskTimeService
+    public let focus: TaskFocusService
     private let adapterFactory: AdapterFactory
     private let now: @Sendable () -> Date
     private var mirrors: [UUID: JiraMirror] = [:]
@@ -49,7 +51,9 @@ public actor TasksService {
         registry = JiraConnectionRegistry(store: store, vault: vault)
         let journal = TaskJiraAttemptJournal(store: store, now: now) { _ in nil }
         self.journal = journal
-        time = TaskTimeService(store: store, journal: journal, now: now)
+        let time = TaskTimeService(store: store, journal: journal, now: now)
+        self.time = time
+        focus = TaskFocusService(store: store, time: time, now: now)
     }
 
     /// Opens the store, settles in-flight attempts and builds the mirrors.
@@ -59,6 +63,7 @@ public actor TasksService {
         opened = true
         await journal.attach { [weak self] id in await self?.adapter(for: id) }
         await journal.resume()
+        try await focus.restoreOnLaunch()
         for connection in try await store.connections() { try await attach(connection) }
     }
 
@@ -85,6 +90,7 @@ public actor TasksService {
             value.connections = try await store.connections()
             value.preferences = try await store.preferences()
             value.flows = try await store.flows()
+            value.focus = await focus.state()
         } catch {
             value.journalFailure = "Хранилище задач недоступно."
         }

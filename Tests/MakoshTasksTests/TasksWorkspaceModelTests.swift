@@ -559,4 +559,67 @@ import XCTest
         h.model.tick()
         XCTAssertEqual(h.model.plannerDay, pinned, "an explicit day stays")
     }
+
+    func testMirrorClosingFocusedTaskQueuesDraft() async throws {
+        let h = try await harness()
+        h.adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1", assignee: h.adapter.me)
+        await h.model.syncNow()
+        let jira = try XCTUnwrap(h.model.visible.first { $0.title == "Задача" })
+        let local = try await created(h, "Локальная")
+        await h.model.setFocusEnabled(true)
+        XCTAssertTrue(h.model.focusEnabled)
+        await h.model.focus(id: jira.id)
+        XCTAssertEqual(h.model.timer?.taskID, jira.id)
+        XCTAssertEqual(h.model.focusState.active?.taskID, jira.id)
+        h.clock.advance(600)
+        await h.model.logManual(id: local.id, startedAt: h.clock.now(), seconds: 300, note: "вручную")
+        let first = try XCTUnwrap(h.model.draft)
+        XCTAssertEqual(first.taskID, local.id)
+        h.adapter.issues["10001"]?.status = FakeJiraAdapter.done
+        await h.model.syncNow()
+        XCTAssertEqual(h.model.task(id: jira.id)?.status, .done)
+        XCTAssertEqual(h.model.draft?.id, first.id, "the open draft stays until it is settled")
+        XCTAssertNil(h.model.timer)
+        XCTAssertTrue(h.model.focusState.sessions.isEmpty)
+        await h.model.confirmDraft()
+        let queued = try XCTUnwrap(h.model.draft)
+        XCTAssertEqual(queued.taskID, jira.id)
+        XCTAssertEqual(queued.reason, "задача закрыта в Jira")
+        XCTAssertGreaterThanOrEqual(queued.seconds, 600)
+        await h.model.discardDraft()
+        XCTAssertNil(h.model.draft)
+        XCTAssertNil(h.model.timer, "discarding a closed task's draft does not restart its timer")
+    }
+
+    func testFocusDoneMarksTaskDoneAndOpensDraft() async throws {
+        let h = try await harness()
+        let a = try await created(h, "В фокусе")
+        await h.model.setFocusEnabled(true)
+        await h.model.startTimer(id: a.id)
+        XCTAssertEqual(h.model.focusState.active?.taskID, a.id, "with the panel on, the timer is a focus session")
+        h.clock.advance(120)
+        await h.model.focusDone(id: a.id)
+        XCTAssertEqual(h.model.task(id: a.id)?.status, .done)
+        XCTAssertEqual(h.model.draft?.taskID, a.id)
+        XCTAssertEqual(h.model.draft?.seconds, 120)
+        XCTAssertNil(h.model.timer)
+        await h.model.confirmDraft()
+        XCTAssertEqual(h.model.entries(id: a.id).map(\.seconds), [120])
+        await h.model.setFocusEnabled(false)
+        XCTAssertFalse(h.model.focusEnabled)
+    }
+
+    func testStopTimerWithFocusOnEndsTheSession() async throws {
+        let h = try await harness()
+        let a = try await created(h, "A")
+        await h.model.setFocusEnabled(true)
+        await h.model.focus(id: a.id)
+        h.clock.advance(60)
+        await h.model.stopTimer()
+        XCTAssertEqual(h.model.draft?.taskID, a.id)
+        XCTAssertTrue(h.model.focusState.sessions.isEmpty)
+        await h.model.discardDraft()
+        XCTAssertEqual(h.model.timer?.taskID, a.id, "discarding an open task's timer draft restores the timer")
+        XCTAssertEqual(h.model.focusState.active?.taskID, a.id, "and the session with it")
+    }
 }

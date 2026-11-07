@@ -64,11 +64,13 @@ public struct TaskTimeDraft: Equatable, Identifiable, Sendable {
     public var note: String
     public let meetingID: UUID?
     public var sendToJira: Bool
+    /// Why the draft appeared on its own («задача закрыта в Jira»), shown on the sheet.
+    public var reason: String?
 
     public init(
         id: UUID = UUID(), taskID: UUID, source: TaskTimeEntry.Source, startedAt: Date, seconds: Int, note: String = "",
         meetingID: UUID? = nil,
-        sendToJira: Bool = false
+        sendToJira: Bool = false, reason: String? = nil
     ) {
         self.id = id
         self.taskID = taskID
@@ -78,6 +80,7 @@ public struct TaskTimeDraft: Equatable, Identifiable, Sendable {
         self.note = note
         self.meetingID = meetingID
         self.sendToJira = sendToJira
+        self.reason = reason
     }
 }
 

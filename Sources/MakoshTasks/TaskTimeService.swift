@@ -36,6 +36,20 @@ public actor TaskTimeService {
             sendToJira: try await suggestsWorklog(taskID: timer.taskID))
     }
 
+    /// Clears the timer without a draft; the whole seconds go back to the caller (a focus session).
+    public func stopKeepingTime() async throws -> (taskID: UUID, seconds: Int)? {
+        guard let timer = try await store.timer() else { return nil }
+        try await store.clearTimer()
+        return (timer.taskID, max(0, Int(now().timeIntervalSince(timer.startedAt))))
+    }
+
+    /// The draft of an ended focus session: timer-sourced, so discarding it restores a timer.
+    public func draft(session taskID: UUID, startedAt: Date, seconds: Int, note: String) async -> TaskTimeDraft {
+        TaskTimeDraft(
+            taskID: taskID, source: .timer, startedAt: TaskStore.millis(startedAt), seconds: Self.wholeMinutes(TimeInterval(seconds)),
+            note: note, sendToJira: (try? await suggestsWorklog(taskID: taskID)) ?? false)
+    }
+
     /// A cancelled timer draft puts the timer back with its original start; other drafts restore nothing.
     public func restore(_ draft: TaskTimeDraft) async throws {
         guard draft.source == .timer, try await store.timer() == nil else { return }

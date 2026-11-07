@@ -48,7 +48,7 @@ extension TasksWorkspaceModel {
     static func count(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
         "\(n) " + TaskRecurrence.plural(n, one, few, many)
     }
-    static func tasksCount(_ n: Int) -> String { count(n, "задача", "задачи", "задач") }
+    public static func tasksCount(_ n: Int) -> String { count(n, "задача", "задачи", "задач") }
 
     // MARK: Targets
 

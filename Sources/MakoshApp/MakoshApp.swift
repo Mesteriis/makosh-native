@@ -203,6 +203,7 @@ struct MakoshApp: App {
         .commands {
             TelegramSearchCommands()
             TelegramSelectionCommands()
+            TaskSelectionCommands()
         }
         Settings {
             Group {

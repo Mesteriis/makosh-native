@@ -117,7 +117,7 @@ struct TasksContentView: View {
                     ContentUnavailableView("Здесь пусто", systemImage: "checklist", description: Text("Под этот фильтр ничего не попало."))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    TaskListView(model: model)
+                    TaskListView(model: model, quickEntryFocused: $quickEntryFocused) { model.selected = $0 }
                 }
             case .jira:
                 JiraBoardView(model: model)

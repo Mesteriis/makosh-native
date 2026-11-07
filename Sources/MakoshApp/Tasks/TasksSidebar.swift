@@ -1,50 +1,14 @@
 import MakoshTasks
 import SwiftUI
 
-/// Filters of «Мои» on top, lists and tags, then every Jira connection as its own space.
-/// Rows toggle the combinable filters; the reference's full sidebar replaces this view later.
+/// The reference's sidebar: agenda, status, lists, tags, personas, flows with
+/// progress, the hotkeys table; settings below; the Jira connections last.
 struct TasksSidebarView: View {
     @ObservedObject var model: TasksWorkspaceModel
+    @Environment(\.openSettings) private var openSettings
 
-    private enum Row: Hashable {
-        case agenda(TasksAgenda)
-        case status(TaskStatus?)
-        case list(String)
-        case tag(String)
-        case jira(UUID)
-    }
-
-    private var selection: Binding<Row?> {
-        Binding(
-            get: {
-                switch model.space {
-                case .mine:
-                    if let agenda = model.filters.agenda { return .agenda(agenda) }
-                    if let list = model.filters.list { return .list(list) }
-                    if let tag = model.filters.tag { return .tag(tag) }
-                    return .status(model.filters.status)
-                case .jira(let id): return .jira(id)
-                }
-            },
-            set: { value in
-                switch value {
-                case .agenda(let agenda)?:
-                    model.space = .mine
-                    model.filters.toggle(agenda: agenda)
-                case .status(let status)?:
-                    model.space = .mine
-                    if let status { model.filters.toggle(status: status) } else { model.filters.clearFilters() }
-                case .list(let list)?:
-                    model.space = .mine
-                    model.filters.toggle(list: list)
-                case .tag(let tag)?:
-                    model.space = .mine
-                    model.filters.toggle(tag: tag)
-                case .jira(let id)?: model.space = .jira(id)
-                case nil: break
-                }
-            })
-    }
+    private static let sectionKeys = ["agenda", "status", "lists", "tags", "personas", "flows"]
+    private var allExpanded: Bool { Self.sectionKeys.allSatisfy { !model.collapsedSections.contains($0) } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,68 +19,205 @@ struct TasksSidebarView: View {
                 }
                 Spacer()
                 Button {
-                    _Concurrency.Task { await model.syncNow() }
+                    let target = !allExpanded
+                    for key in Self.sectionKeys {
+                        if target { model.collapsedSections.remove(key) } else { model.collapsedSections.insert(key) }
+                    }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless).disabled(model.syncing || model.connections.isEmpty).help("Обновить из Jira")
-                .accessibilityIdentifier("tasks.sync")
-            }.padding(20)
-            List(selection: selection) {
-                Section("Повестка") {
-                    ForEach(TasksAgenda.allCases, id: \.self) { agenda in
-                        row(agenda.title, agenda == .overdue ? "exclamationmark.triangle" : "calendar", model.agendaCounts[agenda] ?? 0)
-                            .tag(Row.agenda(agenda)).accessibilityIdentifier("tasks.filter.\(agenda.rawValue)")
-                    }
-                }
-                Section("Статус") {
-                    row("Все", "line.3.horizontal.decrease.circle", model.totalCount).tag(Row.status(nil)).accessibilityIdentifier(
-                        "tasks.filter.all")
-                    ForEach(TaskStatus.allCases, id: \.self) { status in
-                        row(TaskStyleText.status(status), symbol(status), model.statusCounts[status] ?? 0).tag(Row.status(status))
-                            .accessibilityIdentifier("tasks.filter.status:\(status.rawValue)")
-                    }
-                }
-                if !model.lists.isEmpty {
-                    Section("Списки") {
-                        ForEach(model.lists, id: \.self) { list in
-                            row(list, "list.bullet", model.listCounts[list] ?? 0).tag(Row.list(list)).accessibilityIdentifier(
-                                "tasks.filter.list:\(list)")
+                    Image(systemName: allExpanded ? "chevron.up.2" : "chevron.down.2")
+                }.buttonStyle(.borderless).help(allExpanded ? "Свернуть все" : "Развернуть все").accessibilityIdentifier(
+                    "tasks.sidebar.toggleAll")
+            }.padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: model.condense ? 8 : 14) {
+                    section("agenda", "Повестка", symbol: "calendar") {
+                        ForEach(TasksAgenda.allCases, id: \.self) { agenda in
+                            filterItem(
+                                agenda.title, symbol: agenda == .overdue ? "exclamationmark.triangle" : "calendar",
+                                count: model.agendaCounts[agenda] ?? 0, active: model.filters.agenda == agenda,
+                                id: "tasks.filter.\(agenda.rawValue)"
+                            ) {
+                                model.space = .mine
+                                model.filters.toggle(agenda: agenda)
+                            }
                         }
                     }
-                }
-                if !model.tags.isEmpty {
-                    Section("Теги") {
-                        ForEach(model.tags, id: \.self) { tag in
-                            row("#" + tag, "number", model.tagCounts[tag] ?? 0).tag(Row.tag(tag)).accessibilityIdentifier(
-                                "tasks.filter.tag:\(tag)")
+                    section("status", "Статус") {
+                        filterItem(
+                            "Все", symbol: "line.3.horizontal.decrease.circle", count: model.totalCount,
+                            active: model.filters.status == nil, id: "tasks.filter.all"
+                        ) {
+                            model.space = .mine
+                            model.filters.status = nil
+                        }
+                        ForEach(TaskStatus.allCases, id: \.self) { status in
+                            filterItem(
+                                TaskStyleText.status(status), symbol: symbol(status), count: model.statusCounts[status] ?? 0,
+                                active: model.filters.status == status, id: "tasks.filter.status:\(status.rawValue)"
+                            ) {
+                                model.space = .mine
+                                model.filters.toggle(status: status)
+                            }
                         }
                     }
-                }
-                Section {
-                    if model.connections.isEmpty {
-                        Text("Подключите Jira в Настройках → Задачи, чтобы видеть свои задачи здесь.").font(.caption).foregroundStyle(
-                            .secondary)
-                    }
-                    ForEach(model.connections) { connection in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Label(connection.name, systemImage: "rectangle.3.group")
-                            Text(status(connection)).font(.caption).foregroundStyle(
-                                connection.lastFailure == nil ? Color.secondary : Color.orange
-                            ).lineLimit(1)
+                    if !model.lists.isEmpty {
+                        section("lists", "Списки") {
+                            ForEach(model.lists, id: \.self) { list in
+                                filterItem(
+                                    list, symbol: "list.bullet", count: model.listCounts[list] ?? 0, active: model.filters.list == list,
+                                    id: "tasks.filter.list:\(list)"
+                                ) {
+                                    model.space = .mine
+                                    model.filters.toggle(list: list)
+                                }
+                            }
                         }
-                        .tag(Row.jira(connection.id)).accessibilityIdentifier("tasks.jira.\(connection.id.uuidString)")
                     }
-                } header: {
-                    Text("Jira")
+                    if !model.tags.isEmpty {
+                        section("tags", "Теги") {
+                            ForEach(model.tags, id: \.self) { tag in
+                                filterItem(
+                                    tag, symbol: "number", count: model.tagCounts[tag] ?? 0, active: model.filters.tag == tag,
+                                    id: "tasks.filter.tag:\(tag)"
+                                ) {
+                                    model.space = .mine
+                                    model.filters.toggle(tag: tag)
+                                }
+                            }
+                        }
+                    }
+                    if !model.personas.isEmpty {
+                        section("personas", "Персоны") {
+                            ForEach(model.personas, id: \.self) { persona in
+                                filterItem(
+                                    persona, symbol: "person", count: model.personaCounts[persona] ?? 0,
+                                    active: model.filters.persona == persona, id: "tasks.filter.persona:\(persona)"
+                                ) {
+                                    model.space = .mine
+                                    model.filters.toggle(persona: persona)
+                                }
+                            }
+                        }
+                    }
+                    if !model.flows.isEmpty {
+                        section("flows", "Цепочки") {
+                            ForEach(model.flows, id: \.self) { flow in
+                                let progress = model.flowProgress(flow)
+                                let color = TaskStyle.color(model.flowMeta[flow]?.color)
+                                VStack(spacing: 2) {
+                                    filterItem(
+                                        flow, symbol: "bolt", tint: color, count: model.flowCounts[flow] ?? 0,
+                                        active: model.filters.flow == flow, id: "tasks.filter.flow:\(flow)"
+                                    ) {
+                                        model.space = .mine
+                                        model.filters.toggle(flow: flow)
+                                    }
+                                    if progress.total > 0 {
+                                        GeometryReader { geometry in
+                                            ZStack(alignment: .leading) {
+                                                Capsule().fill(Color.white.opacity(0.08))
+                                                Capsule().fill(color).frame(width: geometry.size.width * CGFloat(progress.percent) / 100)
+                                            }
+                                        }.frame(height: 4).padding(.horizontal, 10)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Divider()
+                    section("hotkeys", "Горячие клавиши", symbol: "keyboard") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Self.hotkeys, id: \.0) { key, text in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text(key).font(.caption2.monospaced()).padding(.horizontal, 4).padding(.vertical, 1)
+                                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
+                                    Text(text).font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                        }.padding(.horizontal, 10)
+                    }
+                    Divider()
+                    jira
                 }
-            }.listStyle(.inset).scrollContentBackground(.hidden)
+                .padding(.horizontal, 10).padding(.bottom, 10)
+            }
+            Divider()
+            HStack {
+                Spacer()
+                Button {
+                    openSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                }.buttonStyle(.borderless).help("Настройки → Задачи").accessibilityIdentifier("tasks.sidebar.settings")
+            }.padding(.horizontal, 16).padding(.vertical, 8)
         }.frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var subtitle: String {
         let open = model.totalCount - (model.statusCounts[.done] ?? 0) - (model.statusCounts[.cancelled] ?? 0)
         return "\(open) открытых · \(model.agendaCounts[.today] ?? 0) сегодня"
+    }
+
+    private func section<Content: View>(
+        _ key: String, _ title: String, symbol: String? = nil, @ViewBuilder content: () -> Content
+    ) -> some View {
+        let collapsed = model.collapsedSections.contains(key)
+        return VStack(alignment: .leading, spacing: 2) {
+            Button {
+                if collapsed { model.collapsedSections.remove(key) } else { model.collapsedSections.insert(key) }
+            } label: {
+                HStack(spacing: 4) {
+                    if let symbol { Image(systemName: symbol).font(.caption2) }
+                    Text(title.uppercased()).font(.caption2.bold()).tracking(0.8)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption2).rotationEffect(.degrees(collapsed ? 0 : 90))
+                }.foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 2)
+            }.buttonStyle(.plain).accessibilityIdentifier("tasks.sidebar.section.\(key)")
+            if !collapsed { content() }
+        }
+    }
+
+    private func filterItem(
+        _ title: String, symbol: String, tint: Color? = nil, count: Int, active: Bool, id: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol).font(.caption).foregroundStyle(tint ?? (active ? TaskStyle.selection : Color.secondary))
+                Text(title).lineLimit(1)
+                Spacer()
+                Text(String(count)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+            .font(.callout).padding(.horizontal, 10).padding(.vertical, model.condense ? 2 : 5)
+            .background(active ? TaskStyle.selection.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .foregroundStyle(active ? TaskStyle.selection : .primary)
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier(id)
+    }
+
+    @ViewBuilder private var jira: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("JIRA").font(.caption2.bold()).tracking(0.8).foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 2)
+            if model.connections.isEmpty {
+                Text("Подключите Jira в Настройках → Задачи, чтобы видеть свои задачи здесь.").font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+            }
+            ForEach(model.connections) { connection in
+                let active = model.space == .jira(connection.id)
+                Button {
+                    model.space = .jira(connection.id)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(connection.name, systemImage: "rectangle.3.group").font(.callout)
+                        Text(status(connection)).font(.caption2).foregroundStyle(
+                            connection.lastFailure == nil ? Color.secondary : Color.orange
+                        ).lineLimit(1)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(active ? TaskStyle.selection.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                    .contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("tasks.jira.\(connection.id.uuidString)")
+            }
+        }
     }
 
     private func symbol(_ status: TaskStatus) -> String {
@@ -128,14 +229,6 @@ struct TasksSidebarView: View {
         }
     }
 
-    private func row(_ title: String, _ symbol: String, _ count: Int) -> some View {
-        HStack {
-            Label(title, systemImage: symbol)
-            Spacer()
-            Text(String(count)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-        }
-    }
-
     private func status(_ connection: JiraConnection) -> String {
         if let failure = connection.lastFailure { return failure }
         guard let last = connection.lastSyncAt else { return "ещё не обновлялось" }
@@ -144,4 +237,11 @@ struct TasksSidebarView: View {
         let when = formatter.localizedString(for: last, relativeTo: Date())
         return connection.mentionsUnavailable ? "обновлено \(when) · упоминания недоступны" : "обновлено \(when)"
     }
+
+    static let hotkeys: [(String, String)] = [
+        ("⌘N", "Новая задача"), ("↑ / ↓", "Курсор"), ("⇧↑/↓", "Расширить выделение"), ("Home / End", "В начало / в конец"),
+        ("⌘⇧A", "Выделить все"), ("Space", "Сделано / вернуть"), ("S", "Сменить статус"), ("Enter", "Открыть"), ("F2", "Переименовать"),
+        ("⌫", "Удалить"), ("1 / 2 / 3 / 4", "Приоритет"), ("⇧P", "Отложить на день"), ("⌘C", "Скопировать ссылки"), ("⌘Z", "Отменить"),
+        ("⌘E", "Поиск"), ("⌘D", "Планер"), ("Esc", "Снять выделение / поиск / фильтры"),
+    ]
 }

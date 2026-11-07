@@ -127,6 +127,9 @@ struct TasksContentView: View {
                 } else {
                     TaskListView(model: model, quickEntryFocused: $quickEntryFocused) { editingID = $0 }
                 }
+                if let flow = model.activeFlow, !model.flowTasks.isEmpty || model.flowMeta[flow] != nil {
+                    TaskFlowView(model: model, flow: flow) { editingID = $0 }
+                }
             case .jira:
                 JiraBoardView(model: model)
             }

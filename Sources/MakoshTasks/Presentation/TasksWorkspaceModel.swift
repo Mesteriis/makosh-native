@@ -13,7 +13,7 @@ public enum TasksFilter: Equatable, Hashable, Sendable {
     case list(String)
     case tag(String)
 
-    var key: String {
+    public var key: String {
         switch self {
         case .all: "all"
         case .today: "today"
@@ -232,7 +232,7 @@ public enum JiraAction: Sendable {
             guard let dependent = task(id: dependentID) else { continue }
             var active = dependent
             active.status = .active
-            try? await service.store.update(active, expectedRevision: dependent.revision, actor: .user)
+            _ = try? await service.store.update(active, expectedRevision: dependent.revision, actor: .user)
         }
         await refresh()
     }
@@ -571,7 +571,7 @@ public enum JiraAction: Sendable {
         text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "ё", with: "е")
     }
 
-    static func describe(_ error: any Error) -> String {
+    public static func describe(_ error: any Error) -> String {
         switch error {
         case let failure as TasksFailure: return failure.errorDescription ?? "Ошибка раздела «Задачи»."
         case TaskStoreError.staleRevision: return TasksFailure.staleRevision.errorDescription ?? ""

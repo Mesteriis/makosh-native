@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 private enum Destination: String, CaseIterable, Identifiable {
     case contacts = "Контакты", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи",
-        files = "Файлы", ai = "ИИ"
+        files = "Файлы", tasks = "Задачи", ai = "ИИ"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -23,6 +23,7 @@ private enum Destination: String, CaseIterable, Identifiable {
         case .teams: "person.3"
         case .meetings: "video"
         case .files: "folder"
+        case .tasks: "checklist"
         case .ai: "sparkles"
         }
     }
@@ -36,6 +37,7 @@ struct WorkspaceView: View {
     @EnvironmentObject private var callWindows: TelegramCallWindows
     @EnvironmentObject private var ai: AIHost
     @EnvironmentObject private var files: FilesHost
+    @EnvironmentObject private var tasks: TasksHost
     /// Sources for the chat panel's "+" and "@"; made once the window appears.
     @State private var aiContextSearch: AIContextSearch?
     @StateObject private var systemAppearance = TelegramSystemAppearance()
@@ -210,6 +212,7 @@ struct WorkspaceView: View {
                 files.start(
                     configuration: configuration,
                     resolver: FileSourceBridge(telegram: telegram, whatsapp: whatsapp, mail: mail, teams: teams))
+                Task { await tasks.start(configuration: configuration) }
                 Task {
                     await ai.start(
                         configuration: configuration, contacts: model.dossierWorker, telegram: { [telegram] in telegram.aiContextReader },
@@ -519,6 +522,10 @@ struct WorkspaceView: View {
             WhatsAppSidebarView(model: whatsapp, navigation: whatsappNavigation).frame(minWidth: 300, idealWidth: 350, maxWidth: 440)
         } else if destination == .files {
             FilesSidebarView(model: files.model, host: files).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
+        } else if destination == .tasks {
+            Group {
+                if let model = tasks.model { TasksSidebarView(model: model) } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+            }.frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else if destination == .ai {
             AIConversationListView(model: ai.workspace, openChat: openAICard).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else {
@@ -605,6 +612,8 @@ struct WorkspaceView: View {
                     }
                 } else if destination == .files {
                     FilesDetailView(model: files.model, host: files, openSource: openFileSource)
+                } else if destination == .tasks {
+                    TasksDetailView(host: tasks)
                 } else if destination == .ai {
                     AIConversationView(model: ai.workspace, openCard: openAICard) { source in
                         // Opens the source's section; the message itself is not yet selected there.

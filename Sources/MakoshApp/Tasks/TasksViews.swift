@@ -1,0 +1,216 @@
+import MakoshTasks
+import SwiftUI
+
+/// The section's content: quick entry, the list or the board, the timer
+/// bar, and the card as a right-hand column when a task is selected.
+struct TasksDetailView: View {
+    @ObservedObject var host: TasksHost
+
+    var body: some View {
+        if let model = host.model {
+            TasksContentView(model: model)
+        } else if let failure = host.failure {
+            ContentUnavailableView("Задачи недоступны", systemImage: "checklist", description: Text(failure)).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ProgressView("Открываем задачи…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+struct TasksContentView: View {
+    @ObservedObject var model: TasksWorkspaceModel
+    @FocusState private var quickEntryFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                header.padding(16)
+                Divider()
+                switch model.space {
+                case .mine:
+                    if model.visible.isEmpty, model.tasks.isEmpty {
+                        ContentUnavailableView("Задач пока нет", systemImage: "checklist", description: Text("Напишите первую в строке выше: «Название @список #тег !1 ^завтра»."))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if model.visible.isEmpty {
+                        ContentUnavailableView("Здесь пусто", systemImage: "checklist", description: Text("Под этот фильтр ничего не попало."))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        TaskListView(model: model)
+                    }
+                case .jira:
+                    JiraBoardView(model: model)
+                }
+                Divider()
+                TaskTimerBar(model: model)
+                if let message = model.error {
+                    Divider()
+                    HStack {
+                        Text(message).font(.caption).foregroundStyle(.red).lineLimit(2)
+                        Spacer()
+                        Button("Скрыть") { model.error = nil }.controlSize(.small)
+                    }.padding(.horizontal, 16).padding(.vertical, 8).accessibilityIdentifier("tasks.error")
+                }
+            }
+            if let selected = model.selected, let task = model.task(id: selected) {
+                Divider()
+                TaskDetailView(model: model, task: task).frame(width: 360).background { WorkspaceBackdrop(intensity: 0.55) }
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: model.selected)
+        .task { model.startTicking() }
+        .onDisappear { model.stopTicking() }
+        .sheet(item: Binding(get: { model.draft }, set: { model.draft = $0 })) { draft in TaskTimeDraftSheet(model: model, draft: draft).makoshAppearance() }
+    }
+
+    private var header: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                if case .mine = model.space {
+                    TaskQuickEntryField(model: model, focused: $quickEntryFocused)
+                    Picker("Порядок", selection: $model.sort) {
+                        Text("Приоритет").tag(TasksSort.priority)
+                        Text("Статус").tag(TasksSort.status)
+                        Text("Срок").tag(TasksSort.due)
+                        Text("Создание").tag(TasksSort.created)
+                    }.frame(width: 130).accessibilityIdentifier("tasks.sort")
+                    Toggle("Сделанные", isOn: $model.showCompleted).toggleStyle(.checkbox).accessibilityIdentifier("tasks.showCompleted")
+                } else {
+                    TextField("Поиск по ключу и названию", text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.search")
+                }
+            }
+            if let preview = model.quickEntryPreview { TaskQuickEntryPreview(entry: preview) }
+        }
+    }
+}
+
+/// One line that becomes a task; tokens are shown as they are recognised.
+struct TaskQuickEntryField: View {
+    @ObservedObject var model: TasksWorkspaceModel
+    var focused: FocusState<Bool>.Binding
+    @State private var text = ""
+
+    var body: some View {
+        TextField("Новая задача… (@список #тег !приоритет ^срок ~код)", text: $text)
+            .textFieldStyle(.roundedBorder).focused(focused)
+            .onChange(of: text) { _, value in model.previewQuickEntry(value) }
+            .onSubmit {
+                let value = text
+                guard !value.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                text = ""
+                _Concurrency.Task { await model.create(quickEntry: value) }
+            }
+            .accessibilityIdentifier("tasks.quickEntry")
+            .background {
+                Button("") { focused.wrappedValue = true }.keyboardShortcut("n", modifiers: .command).hidden()
+            }
+    }
+}
+
+struct TaskQuickEntryPreview: View {
+    let entry: TaskQuickEntry
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<entry.tokens.count, id: \.self) { index in TaskTokenChip(token: entry.tokens[index]) }
+            Spacer()
+        }.accessibilityIdentifier("tasks.quickEntry.preview")
+    }
+}
+
+private struct TaskTokenChip: View {
+    let token: TaskQuickEntry.Token
+
+    var body: some View {
+        Text(token.text).font(.caption).padding(.horizontal, 6).padding(.vertical, 2)
+            .background(color.opacity(0.18), in: Capsule())
+            .foregroundStyle(token.resolved ? Color.primary : Color.orange)
+            .help(hint)
+    }
+
+    private var color: Color {
+        switch token.kind {
+        case .text: .clear
+        case .list: .blue
+        case .tag: .green
+        case .priority: .red
+        case .due: .orange
+        case .dependency: .purple
+        case .url: .teal
+        }
+    }
+    private var hint: String {
+        guard !token.resolved else { return "" }
+        switch token.kind {
+        case .due: return "Дата не распознана — останется в названии."
+        case .dependency: return "Задача не найдена — останется в названии."
+        default: return ""
+        }
+    }
+}
+
+/// The running timer, today's and this week's totals, and undo.
+struct TaskTimerBar: View {
+    @ObservedObject var model: TasksWorkspaceModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if let timer = model.timer {
+                Image(systemName: "timer").foregroundStyle(.green)
+                Text(model.task(id: timer.taskID)?.title ?? "Задача").lineLimit(1)
+                Text(TaskStyle.clock(model.timerElapsed)).monospacedDigit().accessibilityIdentifier("tasks.timer.elapsed")
+                Button {
+                    _Concurrency.Task { await model.stopTimer() }
+                } label: {
+                    Image(systemName: "stop.fill")
+                }.help("Остановить и записать время").accessibilityIdentifier("tasks.timer.stop")
+            } else {
+                Text("Таймер не идёт").foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("Сегодня \(TaskStyle.duration(model.summary.daySeconds)) · неделя \(TaskStyle.duration(model.summary.weekSeconds))").font(.caption)
+                .foregroundStyle(.secondary).accessibilityIdentifier("tasks.summary")
+            Button("Отменить") { _Concurrency.Task { await model.undo() } }.keyboardShortcut("z", modifiers: .command).controlSize(.small)
+                .disabled(model.undoCount == 0).accessibilityIdentifier("tasks.undo")
+        }.padding(.horizontal, 16).padding(.vertical, 8)
+    }
+}
+
+/// What gets written when the timer stops or time is entered by hand.
+struct TaskTimeDraftSheet: View {
+    @ObservedObject var model: TasksWorkspaceModel
+    @State var draft: TaskTimeDraft
+    @State private var minutes: Int
+    @State private var busy = false
+
+    init(model: TasksWorkspaceModel, draft: TaskTimeDraft) {
+        self.model = model
+        _draft = State(initialValue: draft)
+        _minutes = State(initialValue: max(1, draft.seconds / 60))
+    }
+
+    private var canSendToJira: Bool { model.task(id: draft.taskID)?.source != nil }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(draft.source == .timer ? "Записать время таймера" : draft.source == .meeting ? "Время встречи" : "Записать время").font(.headline)
+            Text(model.task(id: draft.taskID)?.title ?? "").lineLimit(2)
+            HStack {
+                DatePicker("Начало", selection: $draft.startedAt).accessibilityIdentifier("tasks.draft.started")
+                Stepper("Минут: \(minutes)", value: $minutes, in: 1...1440, step: 5).accessibilityIdentifier("tasks.draft.minutes")
+            }
+            TextField("Примечание", text: $draft.note).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.draft.note")
+            if canSendToJira { Toggle("Списать в Jira", isOn: $draft.sendToJira).accessibilityIdentifier("tasks.draft.sendToJira") }
+            HStack {
+                Spacer()
+                Button("Отмена") { model.discardDraft() }.keyboardShortcut(.cancelAction)
+                Button("Записать") {
+                    busy = true
+                    draft.seconds = minutes * 60
+                    model.draft = draft
+                    _Concurrency.Task { await model.confirmDraft() }
+                }.keyboardShortcut(.defaultAction).disabled(busy).accessibilityIdentifier("tasks.draft.confirm")
+            }
+        }.padding(16).frame(width: 440)
+    }
+}

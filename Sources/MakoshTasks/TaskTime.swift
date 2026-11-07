@@ -54,7 +54,7 @@ public struct TaskTimer: Codable, Equatable, Sendable {
 
 /// What the stop sheet shows before anything is written; `id` becomes the entry's id,
 /// so confirming the same draft twice cannot create two entries.
-public struct TaskTimeDraft: Equatable, Sendable {
+public struct TaskTimeDraft: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let taskID: UUID
     public let source: TaskTimeEntry.Source

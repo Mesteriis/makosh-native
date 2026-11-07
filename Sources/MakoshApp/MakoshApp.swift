@@ -18,7 +18,8 @@ import MakoshFiles
             || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "telemost"
             || CommandLine.arguments.contains("--teams-synthetic-preview")
             || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"
-            || CommandLine.arguments.contains(AIQAIsolation.flag) || CommandLine.arguments.contains(FilesQAIsolation.flag)))
+            || CommandLine.arguments.contains(AIQAIsolation.flag) || CommandLine.arguments.contains(FilesQAIsolation.flag)
+            || CommandLine.arguments.contains(TasksHost.qaFlag)))
     lazy var telegramProxy = TelegramProxyController()
     let telegramCallCoordinator = TelegramCallCoordinator()
     let telegramCallWindows = TelegramCallWindows()
@@ -26,6 +27,7 @@ import MakoshFiles
     let teamsSettings = TeamsSettingsRegistry()
     lazy var ai = AIHost()
     lazy var files = FilesHost()
+    lazy var tasks = TasksHost()
     private var instanceLock: MakoshInstanceLock?
     /// One running copy per bundle: a second launch brings the first one forward and quits.
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -49,7 +51,7 @@ struct MakoshApp: App {
         WhatsAppQAIsolation.permitsNormalLaunch(marker: marker, arguments: arguments)
             && TelemostSyntheticLaunchPolicy.permitsNormalLaunch(marker: marker, arguments: arguments)
             && !arguments.contains("--teams-synthetic-preview") && !arguments.contains(AIQAIsolation.flag)
-            && !arguments.contains(FilesQAIsolation.flag) && !requiresSynthetic
+            && !arguments.contains(FilesQAIsolation.flag) && !arguments.contains(TasksHost.qaFlag) && !requiresSynthetic
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -84,6 +86,13 @@ struct MakoshApp: App {
                         minWidth: 600, minHeight: 240)
                 } else if CommandLine.arguments.contains(FilesQAIsolation.flag) {
                     FilesSyntheticPreview().frame(minWidth: 1000, minHeight: 680)
+                } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "tasks",
+                    !CommandLine.arguments.contains(TasksHost.qaFlag)
+                {
+                    Text("QA «Задачи» требует --tasks-synthetic-preview и отдельную конфигурацию PostgreSQL.").padding(24).frame(
+                        minWidth: 600, minHeight: 240)
+                } else if CommandLine.arguments.contains(TasksHost.qaFlag) {
+                    TasksSyntheticPreview().frame(minWidth: 1100, minHeight: 700)
                 } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams",
                     !CommandLine.arguments.contains("--teams-synthetic-preview")
                 {
@@ -187,6 +196,7 @@ struct MakoshApp: App {
             }.makoshAppearance().environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
                 .environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(delegate.ai)
                 .environmentObject(delegate.files).environment(\.filesHost, delegate.files)
+                .environmentObject(delegate.tasks).environment(\.tasksHost, delegate.tasks)
         }
         .defaultSize(width: 1200, height: 854)
         .windowResizability(.contentMinSize)
@@ -212,18 +222,21 @@ struct MakoshApp: App {
                     Text("ИИ QA · настройки внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else if CommandLine.arguments.contains(FilesQAIsolation.flag) {
                     Text("QA «Файлы» · подставной Paperless внутри окна проверки; остальные сервисы выключены.").padding(24)
+                } else if CommandLine.arguments.contains(TasksHost.qaFlag) {
+                    Text("QA «Задачи» · подставная Jira внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else {
                     TabView(selection: $settingsTab) {
                         TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }.tag("telegram")
                         WhatsAppCommonSettingsView().tabItem { Label("WhatsApp", systemImage: "message") }.tag("whatsapp")
                         TeamsCommonSettingsView().tabItem { Label("Teams", systemImage: "person.3") }.tag("teams")
                         FilesSettingsView().tabItem { Label("Файлы", systemImage: "folder") }.tag(MakoshSettingsTab.files)
+                        TasksSettingsView().tabItem { Label("Задачи", systemImage: "checklist") }.tag(MakoshSettingsTab.tasks)
                         AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }.tag("ai")
                     }
                 }
             }.environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(
                 delegate.telegramNotificationRouter
-            ).environmentObject(delegate.ai).environmentObject(delegate.files)
+            ).environmentObject(delegate.ai).environmentObject(delegate.files).environmentObject(delegate.tasks)
         }
     }
 }
@@ -232,4 +245,5 @@ struct MakoshApp: App {
 enum MakoshSettingsTab {
     static let key = "makosh.settings.tab"
     static let files = "files"
+    static let tasks = "tasks"
 }

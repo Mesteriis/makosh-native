@@ -356,7 +356,35 @@ public enum JiraAction: Sendable {
         let attempt = await service.journal.submit(
             TaskJiraAttempt(taskID: id, connectionID: connectionID, issueID: source.identity.externalID, kind: kind, payload: payload, createdAt: now()))
         if attempt.reason == "уже выполняется" { error = TasksFailure.attemptInFlight.errorDescription }
-        if attempt.state == .confirmed { await refreshIssue(id: id) } else { await refresh() }
+        if attempt.state == .confirmed {
+            error = nil
+            await refreshIssue(id: id)
+        } else {
+            if attempt.state == .rejected { error = "Jira отклонила действие: " + (attempt.reason ?? "") }
+            await refresh()
+        }
+    }
+
+    /// Required fields the card renders for a transition (supported types only).
+    public func transitionRequirements(_ transition: JiraTransition) -> [JiraField] {
+        transition.fields.filter { $0.required && JiraFieldSupport.isSupported($0) }
+    }
+
+    /// Required fields Makosh cannot fill; the card shows «только в Jira» for them.
+    public func blockedFields(_ transition: JiraTransition) -> [JiraField] { JiraFieldSupport.unsupportedRequired(transition) }
+
+    public func canEditDescription(id: UUID) -> Bool {
+        guard let adf = observations[id]?.issue.descriptionADF else { return true }
+        return JiraADF.isSimple(adf)
+    }
+
+    public func openAttempts(id: UUID) -> [TaskJiraAttempt] { attempts(id: id).filter(\.isOpen) }
+
+    public func assignableUsers(id: UUID, query: String) async -> [JiraUser] {
+        guard let task = task(id: id), let source = task.source, let connectionID = UUID(uuidString: source.identity.accountID),
+            let project = observations[id]?.issue.projectKey, let adapter = await service.adapter(for: connectionID)
+        else { return [] }
+        return (try? await adapter.assignableUsers(projectKey: project, query: query)) ?? []
     }
 
     public func resolveAttempt(id attemptID: UUID) async {

@@ -26,4 +26,12 @@ public protocol JiraAdapter: Sendable {
     func projectStatuses(projectKey: String) async throws -> [JiraStatus]
     func priorities() async throws -> [JiraPriority]
     func assignableUsers(projectKey: String, query: String) async throws -> [JiraUser]
+
+    /// Writes. Each is one request, never retried by the adapter; the
+    /// caller's journal owns the attempt and its unknown outcomes.
+    func addWorklog(issueID: String, started: Date, seconds: Int, comment: String?) async throws -> String
+    func addComment(issueID: String, body: Data) async throws -> String
+    func transition(issueID: String, transitionID: String, fields: [String: JiraFieldValue]) async throws
+    func updateFields(issueID: String, patch: JiraIssuePatch) async throws
+    func assign(issueID: String, accountID: String?) async throws
 }

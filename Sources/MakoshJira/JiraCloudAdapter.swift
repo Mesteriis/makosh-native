@@ -23,4 +23,14 @@ public struct JiraCloudAdapter: JiraAdapter {
     public func assignableUsers(projectKey: String, query: String) async throws -> [JiraUser] {
         try await client.assignableUsers(projectKey: projectKey, query: query)
     }
+
+    public func addWorklog(issueID: String, started: Date, seconds: Int, comment: String?) async throws -> String {
+        try await client.addWorklog(issueID: issueID, started: started, seconds: seconds, comment: comment)
+    }
+    public func addComment(issueID: String, body: Data) async throws -> String { try await client.addComment(issueID: issueID, body: body) }
+    public func transition(issueID: String, transitionID: String, fields: [String: JiraFieldValue]) async throws {
+        try await client.transition(issueID: issueID, transitionID: transitionID, fields: fields)
+    }
+    public func updateFields(issueID: String, patch: JiraIssuePatch) async throws { try await client.updateFields(issueID: issueID, patch: patch) }
+    public func assign(issueID: String, accountID: String?) async throws { try await client.assign(issueID: issueID, accountID: accountID) }
 }

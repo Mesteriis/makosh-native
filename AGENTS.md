@@ -73,6 +73,7 @@
 - Every Jira write is one journaled attempt; an `unknown` outcome is resolved only by an explicit reread or dismissal, never by a retry. Worklogs under 60 seconds are not sent; an entry with a confirmed worklog is locked here and corrected in Jira. Jira errors carry codes and stages, never bodies, URLs, JQL or tokens.
 - Jira descriptions are edited only when their ADF is simple; transitions with required fields of unsupported types are blocked before sending. Observations, versions and task history are append-only; removing a connection deletes its token first and leaves tasks as `none`.
 - Inside `MakoshTasks` and `Sources/MakoshApp/Tasks` Swift's `Task` is spelled `_Concurrency.Task`; `MakoshApp.swift` and `WorkspaceView.swift` do not import `MakoshTasks`. Synthetic QA uses one `qa_tasks_` schema and the in-memory `JiraSyntheticAdapter`; live Jira only on the user's command, on the connection and issue they choose.
+- The interface follows `yuriyda/TaskOrchestrator` (`docs/superpowers/specs/2026-11-07-tasks-interface-design.md`); differences are recorded in `docs/reference-interface.md`, not silently. The closing rules (activation, recurrence spawn, spawn withdrawal) run inside `TaskStore.apply` for every actor and path; never reimplement them in a command. Time entries come only from a draft: focus sessions and planner slots never write `tasks_time_entries`, and a session's time is never dropped silently — it becomes a queued draft.
 
 ## Live QA and authorization
 

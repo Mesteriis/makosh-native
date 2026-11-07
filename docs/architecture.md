@@ -315,3 +315,14 @@ behind a `JiraAdapter` protocol that Data Center and the synthetic Jira
 share. Time is one running timer plus entries with their worklog state; a
 confirmed worklog locks the entry here and flows back from Jira by id.
 Details: [tasks.md](tasks.md).
+
+Addendum (2026-11-07, part 2): the closing rules — activating dependents,
+spawning the next occurrence of a recurring task, withdrawing an untouched
+spawn when a completion is reverted — run inside `TaskStore.apply`, in the
+transaction of the write that changed the status, for every actor and path
+(a command, a bulk action, undo, the Jira mirror), as the reference runs
+them on every write. Focus sessions sit on top of the one timer: the active
+session is the task the timer runs on, switching keeps time in the session,
+and only ending a session yields a time draft; the drafts queue, so a task
+closed from Jira while a sheet is open never loses its minutes. The planner's
+slots are a plan, not a fact: they never write time entries.

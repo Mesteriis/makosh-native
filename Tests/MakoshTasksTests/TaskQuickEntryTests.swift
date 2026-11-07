@@ -59,10 +59,34 @@ final class TaskQuickEntryTests: XCTestCase {
         XCTAssertEqual(entry.title, "Прочитать и https://example.com/b")
     }
 
-    func testFlowRecurrencePersonaAreOrdinaryText() {
-        let entry = parse("Отчёт >>релиз *weekly /Боб")
-        XCTAssertEqual(entry.title, "Отчёт >>релиз *weekly /Боб")
+    func testPersonaRecurrenceAndFlowTokens() {
+        let entry = parse("Позвонить /Боб *weekly >>Релиз /Алиса")
+        XCTAssertEqual(entry.title, "Позвонить")
+        XCTAssertEqual(entry.personas, ["Боб", "Алиса"])
+        XCTAssertEqual(entry.recurrence, "weekly")
+        XCTAssertEqual(entry.flowID, "Релиз")
+        XCTAssertEqual(entry.tokens.map(\.kind), [.text, .persona, .recurrence, .flow, .persona])
+    }
+
+    func testUnknownRecurrenceStaysInTitle() {
+        let entry = parse("Платёж *каждый")
+        XCTAssertNil(entry.recurrence)
+        XCTAssertEqual(entry.title, "Платёж *каждый")
+        XCTAssertEqual(entry.tokens.last, TaskQuickEntry.Token(kind: .recurrence, text: "*каждый", resolved: false))
+        XCTAssertEqual(parse("Платёж *FREQ=MONTHLY;INTERVAL=2").recurrence, "FREQ=MONTHLY;INTERVAL=2")
+    }
+
+    func testLoneMarkersAreText() {
+        let entry = parse("Знаки / * >> @ # ~")
+        XCTAssertEqual(entry.title, "Знаки / * >> @ # ~")
         XCTAssertTrue(entry.tokens.allSatisfy { $0.kind == .text })
+    }
+
+    func testURLExtractionCanBeOff() {
+        let entry = TaskQuickEntry.parse(
+            "Прочитать https://example.com/a", today: today, calendar: calendar, resolveDependency: { _ in nil }, extractURLs: false)
+        XCTAssertNil(entry.url)
+        XCTAssertEqual(entry.title, "Прочитать https://example.com/a")
     }
 
     func testInvalidPriorityIsText() {

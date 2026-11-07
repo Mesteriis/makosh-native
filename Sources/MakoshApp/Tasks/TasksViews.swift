@@ -148,10 +148,13 @@ private struct TaskTokenChip: View {
         case .text: .clear
         case .list: .blue
         case .tag: .green
+        case .persona: .indigo
         case .priority: .red
         case .due: .orange
+        case .recurrence: .teal
+        case .flow: .pink
         case .dependency: .purple
-        case .url: .teal
+        case .url: .cyan
         }
     }
     private var hint: String {
@@ -159,6 +162,7 @@ private struct TaskTokenChip: View {
         switch token.kind {
         case .due: return "Дата не распознана — останется в названии."
         case .dependency: return "Задача не найдена — останется в названии."
+        case .recurrence: return "Повтор не распознан — останется в названии."
         default: return ""
         }
     }

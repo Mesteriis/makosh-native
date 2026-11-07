@@ -88,6 +88,7 @@ public enum JiraAction: Sendable {
     @Published public private(set) var summary: (daySeconds: Int, weekSeconds: Int) = (0, 0)
     @Published public var error: String?
     @Published public private(set) var quickEntryPreview: TaskQuickEntry?
+    @Published public var quickEntry = TaskQuickEntryChips() { didSet { previewQuickEntry(quickEntry.composed()) } }
     @Published public private(set) var syncing = false
     @Published public private(set) var loading = false
 
@@ -220,22 +221,70 @@ public enum JiraAction: Sendable {
             quickEntryPreview = nil
             return
         }
-        quickEntryPreview = TaskQuickEntry.parse(text, today: now(), calendar: calendar, resolveDependency: resolveDependency)
+        quickEntryPreview = TaskQuickEntry.parse(
+            text, today: now(), calendar: calendar, resolveDependency: resolveDependency, extractURLs: preferences.extractURLs)
     }
 
-    public func create(quickEntry text: String) async {
-        let entry = TaskQuickEntry.parse(text, today: now(), calendar: calendar, resolveDependency: resolveDependency)
-        guard !entry.title.isEmpty else { return }
-        let task = Task(
-            title: entry.title, status: .inbox, priority: entry.priority ?? 4, list: entry.list, tags: entry.tags, due: entry.due,
-            url: entry.url,
-            dependsOn: entry.dependencies, createdAt: now())
-        do {
-            try await service.store.insert(task, actor: .user)
-            quickEntryPreview = nil
-            await refresh()
-        } catch { self.error = Self.describe(error) }
+    /// Completions for the word being typed in the field.
+    public var quickEntrySuggestions: [TaskQuickEntrySuggestion] {
+        TaskQuickEntrySuggestions.make(
+            for: quickEntry.text, lists: lists, tags: tags, personas: personas, flows: flows, hasList: quickEntry.hasList, today: now(),
+            calendar: calendar)
     }
+
+    /// Enter in the field: the chips and text become a task, with the active filters filled in.
+    public func create() async {
+        let line = quickEntry.composed()
+        guard !line.isEmpty else { return }
+        if await create(quickEntry: line) { quickEntry = TaskQuickEntryChips() }
+    }
+
+    @discardableResult public func create(quickEntry text: String) async -> Bool {
+        let entry = TaskQuickEntry.parse(
+            text, today: now(), calendar: calendar, resolveDependency: resolveDependency, extractURLs: preferences.extractURLs)
+        guard !entry.title.isEmpty else { return false }
+        let today = calendar.startOfDay(for: now())
+        var task = Task(
+            title: entry.title, status: .inbox, priority: entry.priority ?? 4, list: entry.list, tags: entry.tags, personas: entry.personas,
+            due: entry.due, url: entry.url, dependsOn: entry.dependencies, recurrence: entry.recurrence, flowID: entry.flowID,
+            createdAt: now())
+        if task.due == nil, let agenda = filters.agenda {
+            switch agenda {
+            case .today, .overdue: task.due = today
+            case .tomorrow: task.due = calendar.date(byAdding: .day, value: 1, to: today)
+            case .week: task.due = calendar.date(byAdding: .day, value: 7, to: today)
+            case .month: task.due = calendar.date(byAdding: .day, value: 30, to: today)
+            }
+        }
+        if task.due == nil, let day = filters.day { task.due = calendar.startOfDay(for: day) }
+        if filters.status == .active || (preferences.newTaskActiveToday && task.due.map { calendar.isDate($0, inSameDayAs: today) } == true)
+        {
+            task.status = .active
+        }
+        if task.list == nil, let list = filters.list { task.list = list }
+        if let tag = filters.tag, !task.tags.contains(tag) { task.tags.append(tag) }
+        if let persona = filters.persona, !task.personas.contains(persona) { task.personas.append(persona) }
+        if task.flowID == nil, let flow = filters.flow { task.flowID = flow }
+        do {
+            let inserted = try await service.store.insert(task, actor: .user)
+            quickEntryPreview = nil
+            error = nil
+            await refresh()
+            var parts = ["Создана: " + inserted.title]
+            if let due = inserted.due { parts.append(preferences.dateFormat.string(due, calendar: calendar)) }
+            if inserted.priority != 4 { parts.append("P\(inserted.priority)") }
+            if let list = inserted.list { parts.append("@" + list) }
+            toast(parts.joined(separator: " · "))
+            await taskCreated(inserted)
+            return true
+        } catch {
+            self.error = Self.describe(error)
+            return false
+        }
+    }
+
+    /// Follow-ups of a creation that other parts of the model add to (the planner slot).
+    func taskCreated(_ task: Task) async {}
 
     private func resolveDependency(_ reference: String) -> UUID? {
         let upper = reference.uppercased()
@@ -694,7 +743,7 @@ public enum JiraAction: Sendable {
 
     // MARK: Preferences
 
-    private var preferences = TaskPreferences()
+    var preferences = TaskPreferences()
 
     private func applyPreferences(_ preferences: TaskPreferences) {
         let loaded = preferencesLoaded

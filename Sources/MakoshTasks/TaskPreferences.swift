@@ -7,6 +7,29 @@ public enum TasksSort: String, Codable, CaseIterable, Sendable {
 /// How dates are written in rows and details.
 public enum TaskDateFormat: String, Codable, CaseIterable, Sendable {
     case iso, dmy, short, long
+
+    public var title: String {
+        switch self {
+        case .iso: "2026-04-20"
+        case .dmy: "20.04.2026"
+        case .short: "20 апр"
+        case .long: "20 апреля 2026"
+        }
+    }
+
+    public func string(_ date: Date, calendar: Calendar) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "ru_RU")
+        switch self {
+        case .iso: formatter.dateFormat = "yyyy-MM-dd"
+        case .dmy: formatter.dateFormat = "dd.MM.yyyy"
+        case .short: formatter.dateFormat = "d MMM"
+        case .long: formatter.dateFormat = "d MMMM yyyy"
+        }
+        return formatter.string(from: date)
+    }
 }
 
 /// What the focus panel shows; the default set keeps the current task in sight.

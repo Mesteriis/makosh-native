@@ -433,4 +433,37 @@ import XCTest
         h.model.showLeft = true
         XCTAssertTrue(h.model.visible.map(\.id).contains(gone.id), "the «Ушедшие» switch shows them too")
     }
+
+    func testQuickEntryPrefillsFromFilters() async throws {
+        let h = try await harness()
+        h.model.filters.toggle(agenda: .tomorrow)
+        h.model.filters.toggle(list: "Работа")
+        h.model.filters.toggle(persona: "Боб")
+        h.model.filters.toggle(tag: "релиз")
+        h.model.quickEntry.typed("Созвон ", extractURLs: true)
+        await h.model.create()
+        let task = try XCTUnwrap(h.model.tasks.first { $0.title == "Созвон" })
+        XCTAssertEqual(task.due, calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: h.clock.now())))
+        XCTAssertEqual(task.list, "Работа")
+        XCTAssertEqual(task.personas, ["Боб"])
+        XCTAssertEqual(task.tags, ["релиз"])
+        XCTAssertTrue(h.model.quickEntry.isEmpty, "the field clears after creating")
+        h.model.filters.clearFilters()
+        h.model.filters.toggle(status: .active)
+        h.model.quickEntry.typed("Сразу в работе ", extractURLs: true)
+        await h.model.create()
+        XCTAssertEqual(h.model.tasks.first { $0.title == "Сразу в работе" }?.status, .active)
+    }
+
+    func testQuickEntryToastNamesTheTask() async throws {
+        let h = try await harness()
+        for text in ["Счёт @Работа ", "Счёт !1 ", "Счёт ^завтра "] { h.model.quickEntry.typed(text, extractURLs: true) }
+        XCTAssertEqual(h.model.quickEntry.chips.map(\.raw), ["@Работа", "!1", "^завтра"])
+        XCTAssertEqual(h.model.quickEntryPreview?.title, "Счёт")
+        await h.model.create()
+        let expectedDay = TaskDateFormat.dmy.string(
+            calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: h.clock.now()))!, calendar: calendar)
+        XCTAssertEqual(h.model.lastAction, "Создана: Счёт · \(expectedDay) · P1 · @Работа")
+        XCTAssertNil(h.model.quickEntryPreview)
+    }
 }

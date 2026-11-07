@@ -136,7 +136,8 @@ struct WorkspaceView: View {
                 WorkspaceSplitView(
                     width: sidebarWidth, minimum: sidebarLayout.min, maximum: sidebarLayout.max,
                     minimumDetail: destination == .telegram || destination == .whatsapp || (destination == .mail && mail.showDossier)
-                        ? 640 : 460
+                        ? 640 : 460,
+                    collapsed: Binding(get: { destination == .tasks && tasks.sidebarCollapsed }, set: { _ in })
                 ) {
                     sectionSidebar.background { WorkspaceBackdrop(intensity: 0.55) }
                 } detail: {

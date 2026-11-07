@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MakoshCore
 import MakoshJira
@@ -28,6 +29,9 @@ extension EnvironmentValues {
     @Published private(set) var model: TasksWorkspaceModel?
     @Published private(set) var configured = false
     @Published private(set) var failure: String?
+    /// Mirrors the model's «show sidebar» for the workspace, which cannot import `MakoshTasks`.
+    @Published private(set) var sidebarCollapsed = false
+    private var sidebarObservation: AnyCancellable?
     private let adapterFactory: TasksService.AdapterFactory
     private let keychain: JiraKeychainAccess
 
@@ -78,6 +82,9 @@ extension EnvironmentValues {
         self.service = service
         let model = TasksWorkspaceModel(service: service)
         self.model = model
+        sidebarObservation = model.$showSidebar.receive(on: DispatchQueue.main).sink { [weak self] shown in
+            self?.sidebarCollapsed = !shown
+        }
         do {
             try await service.open()
             if let seed { try await seed(store) }

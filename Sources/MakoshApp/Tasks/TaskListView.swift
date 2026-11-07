@@ -107,13 +107,36 @@ struct TaskContextMenu: View {
 }
 
 enum TaskStyle {
+    /// The reference's priority colours: #ef4444, #fb923c, #60a5fa, #6b7280.
     static func priority(_ value: Int) -> Color {
         switch value {
-        case 1: Color(red: 0.94, green: 0.27, blue: 0.27)
-        case 2: Color(red: 0.98, green: 0.57, blue: 0.24)
-        case 3: Color(red: 0.38, green: 0.65, blue: 0.98)
-        default: Color.secondary
+        case 1: Color(red: 0.937, green: 0.267, blue: 0.267)
+        case 2: Color(red: 0.984, green: 0.573, blue: 0.235)
+        case 3: Color(red: 0.376, green: 0.647, blue: 0.98)
+        default: Color(red: 0.42, green: 0.447, blue: 0.502)
         }
+    }
+
+    /// The reference's status tints (text over a tinted pill).
+    static func status(_ status: TaskStatus) -> Color {
+        switch status {
+        case .inbox: Color(red: 0.82, green: 0.84, blue: 0.86)
+        case .active: Color(red: 0.49, green: 0.83, blue: 0.99)
+        case .done: Color(red: 0.43, green: 0.90, blue: 0.72)
+        case .cancelled: Color(red: 0.99, green: 0.65, blue: 0.65)
+        }
+    }
+    static let selection = Color(red: 0.055, green: 0.647, blue: 0.914)  // #0ea5e9
+    static let overdue = Color(red: 0.937, green: 0.267, blue: 0.267)
+    static let flow = Color(red: 0.957, green: 0.447, blue: 0.714)  // #f472b6
+    static let persona = Color(red: 0.506, green: 0.549, blue: 0.973)  // #818cf8
+    static let tag = Color(red: 0.22, green: 0.741, blue: 0.973)  // #38bdf8
+    static let due = Color(red: 0.753, green: 0.518, blue: 0.988)  // #c084fc
+
+    static func color(_ hex: String?) -> Color {
+        guard let hex, hex.hasPrefix("#"), hex.count == 7, let value = UInt32(hex.dropFirst(), radix: 16) else { return flow }
+        return Color(
+            red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
     }
     static func priorityTitle(_ value: Int) -> String {
         switch value {

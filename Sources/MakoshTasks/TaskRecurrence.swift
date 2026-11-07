@@ -58,7 +58,7 @@ public enum TaskRecurrence {
     private static let monthNames = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
     private static let ordinals = ["1": "Первый", "2": "Второй", "3": "Третий", "4": "Четвёртый", "-1": "Последний"]
 
-    static func plural(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
+    public static func plural(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
         let mod10 = n % 10, mod100 = n % 100
         if (11...14).contains(mod100) { return many }
         if mod10 == 1 { return one }

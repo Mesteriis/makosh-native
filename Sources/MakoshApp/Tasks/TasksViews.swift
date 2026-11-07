@@ -18,84 +18,113 @@ struct TasksDetailView: View {
     }
 }
 
+/// The reference's layout inside the workspace's detail area: a header, the
+/// list column, the planner (when shown), the right column with the
+/// calendar and details, the status bar; toasts float over the list.
 struct TasksContentView: View {
     @ObservedObject var model: TasksWorkspaceModel
     @FocusState private var quickEntryFocused: Bool
+    @State private var plannerDragOrigin: Int?
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                header.padding(16)
-                Divider()
-                switch model.space {
-                case .mine:
-                    if model.visible.isEmpty, model.tasks.isEmpty {
-                        ContentUnavailableView(
-                            "Задач пока нет", systemImage: "checklist",
-                            description: Text("Напишите первую в строке выше: «Название @список #тег !1 ^завтра».")
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if model.visible.isEmpty {
-                        ContentUnavailableView(
-                            "Здесь пусто", systemImage: "checklist", description: Text("Под этот фильтр ничего не попало.")
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        TaskListView(model: model)
+        VStack(spacing: 0) {
+            TasksHeaderBar(model: model, quickEntryFocused: $quickEntryFocused)
+            Divider()
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    listColumn
+                    if model.showPlanner, case .mine = model.space {
+                        plannerDivider(total: geometry.size.width)
+                        TaskPlannerView(model: model).frame(width: plannerWidth(total: geometry.size.width))
                     }
-                case .jira:
-                    JiraBoardView(model: model)
-                }
-                Divider()
-                TaskTimerBar(model: model)
-                if let message = model.error {
-                    Divider()
-                    HStack {
-                        Text(message).font(.caption).foregroundStyle(.red).lineLimit(2)
-                        Spacer()
-                        Button("Скрыть") { model.error = nil }.controlSize(.small)
-                    }.padding(.horizontal, 16).padding(.vertical, 8).accessibilityIdentifier("tasks.error")
+                    if case .jira = model.space {
+                        if let selected = model.selected, let task = model.task(id: selected) {
+                            Divider()
+                            TaskDetailView(model: model, task: task).frame(width: 360).background { WorkspaceBackdrop(intensity: 0.55) }
+                        }
+                    } else if model.showRightPanel {
+                        Divider()
+                        TasksRightColumn(model: model).frame(width: rightColumnWidth).background { WorkspaceBackdrop(intensity: 0.55) }
+                    }
                 }
             }
-            if let selected = model.selected, let task = model.task(id: selected) {
+            Divider()
+            if let message = model.error {
+                HStack {
+                    Text(message).font(.caption).foregroundStyle(.red).lineLimit(2)
+                    Spacer()
+                    Button("Скрыть") { model.error = nil }.controlSize(.small)
+                }.padding(.horizontal, 16).padding(.vertical, 6).accessibilityIdentifier("tasks.error")
                 Divider()
-                TaskDetailView(model: model, task: task).frame(width: 360).background { WorkspaceBackdrop(intensity: 0.55) }
-                    .transition(.move(edge: .trailing))
             }
+            TasksStatusBar(model: model)
         }
         .animation(.easeInOut(duration: 0.2), value: model.selected)
-        .task { model.startTicking() }
+        .animation(.easeInOut(duration: 0.2), value: model.showPlanner)
+        .animation(.easeInOut(duration: 0.2), value: model.showRightPanel)
+        .task {
+            model.startTicking()
+            await model.loadPlanner()
+        }
         .onDisappear { model.stopTicking() }
     }
 
-    private var header: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                if case .mine = model.space {
+    /// 256 pt by the reference; 360 pt when a Jira task's card with its five actions is open.
+    private var rightColumnWidth: CGFloat {
+        if let selected = model.selected, model.task(id: selected)?.source != nil { return 360 }
+        return 256
+    }
+
+    private func plannerWidth(total: CGFloat) -> CGFloat {
+        let available = total - (model.showRightPanel ? rightColumnWidth : 0)
+        return max(240, available * CGFloat(model.plannerWidthPercent) / 100)
+    }
+
+    private func plannerDivider(total: CGFloat) -> some View {
+        Rectangle().fill(Color.white.opacity(0.06)).frame(width: 6)
+            .overlay(Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1))
+            .contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() } }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        if plannerDragOrigin == nil { plannerDragOrigin = model.plannerWidthPercent }
+                        let available = total - (model.showRightPanel ? rightColumnWidth : 0)
+                        let delta = Int(-value.translation.width / max(1, available) * 100)
+                        model.plannerWidthPercent = max(20, min(60, (plannerDragOrigin ?? 40) + delta))
+                    }
+                    .onEnded { _ in plannerDragOrigin = nil }
+            )
+            .accessibilityIdentifier("tasks.planner.divider")
+    }
+
+    private var listColumn: some View {
+        VStack(spacing: 0) {
+            switch model.space {
+            case .mine:
+                VStack(spacing: 10) {
                     TaskQuickEntryField(model: model, focused: $quickEntryFocused)
-                    Picker(
-                        "Порядок",
-                        selection: Binding(
-                            get: { model.sortState?.field },
-                            set: { field in model.sortState = field.map { TasksSortState(field: $0, descending: false) } })
-                    ) {
-                        Text("Название").tag(Optional<TasksSort>.none)
-                        Text("Приоритет").tag(Optional(TasksSort.priority))
-                        Text("Статус").tag(Optional(TasksSort.status))
-                        Text("Срок").tag(Optional(TasksSort.due))
-                        Text("Создание").tag(Optional(TasksSort.created))
-                    }.frame(width: 130).accessibilityIdentifier("tasks.sort")
-                    Toggle("Только актуальные", isOn: $model.filters.actualOnly).toggleStyle(.checkbox).accessibilityIdentifier(
-                        "tasks.actualOnly")
+                    if let preview = model.quickEntryPreview { TaskQuickEntryPreview(entry: preview) }
+                    TaskFilterBar(model: model)
+                }.padding(.horizontal, 16).padding(.vertical, 12)
+                if model.visible.isEmpty, model.tasks.isEmpty {
+                    ContentUnavailableView(
+                        "Задач пока нет", systemImage: "checklist",
+                        description: Text("Напишите первую в строке выше: «Название @список #тег !1 ^завтра».")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if model.visible.isEmpty {
+                    ContentUnavailableView("Здесь пусто", systemImage: "checklist", description: Text("Под этот фильтр ничего не попало."))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    TextField("Поиск по ключу и названию", text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier(
-                        "tasks.search")
-                    Toggle("Ушедшие", isOn: $model.showLeft).toggleStyle(.checkbox).help("Задачи, которые перестали быть вашими")
-                        .accessibilityIdentifier("tasks.showLeft")
+                    TaskListView(model: model)
                 }
+            case .jira:
+                JiraBoardView(model: model)
             }
-            if let preview = model.quickEntryPreview { TaskQuickEntryPreview(entry: preview) }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottomTrailing) { TasksToastStack(model: model) }
     }
 }
 
@@ -165,35 +194,6 @@ private struct TaskTokenChip: View {
         case .recurrence: return "Повтор не распознан — останется в названии."
         default: return ""
         }
-    }
-}
-
-/// The running timer, today's and this week's totals, and undo.
-struct TaskTimerBar: View {
-    @ObservedObject var model: TasksWorkspaceModel
-
-    var body: some View {
-        HStack(spacing: 12) {
-            if let timer = model.timer {
-                Image(systemName: "timer").foregroundStyle(.green)
-                Text(model.task(id: timer.taskID)?.title ?? "Задача").lineLimit(1)
-                Text(TaskStyle.clock(model.timerElapsed)).monospacedDigit().accessibilityIdentifier("tasks.timer.elapsed")
-                Button {
-                    _Concurrency.Task { await model.stopTimer() }
-                } label: {
-                    Image(systemName: "stop.fill")
-                }.help("Остановить и записать время").accessibilityIdentifier("tasks.timer.stop")
-            } else {
-                Text("Таймер не идёт").foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text("Сегодня \(TaskStyle.duration(model.summary.daySeconds)) · неделя \(TaskStyle.duration(model.summary.weekSeconds))").font(
-                .caption
-            )
-            .foregroundStyle(.secondary).accessibilityIdentifier("tasks.summary")
-            Button("Отменить") { _Concurrency.Task { await model.undo() } }.keyboardShortcut("z", modifiers: .command).controlSize(.small)
-                .disabled(model.undoCount == 0).accessibilityIdentifier("tasks.undo")
-        }.padding(.horizontal, 16).padding(.vertical, 8)
     }
 }
 

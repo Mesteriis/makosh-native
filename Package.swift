@@ -16,6 +16,8 @@ let package = Package(
         .library(name: "MakoshTelemost", targets: ["MakoshTelemost"]),
         .library(name: "MakoshAI", targets: ["MakoshAI"]),
         .library(name: "MakoshFiles", targets: ["MakoshFiles"]),
+        .library(name: "MakoshTasks", targets: ["MakoshTasks"]),
+        .library(name: "MakoshJira", targets: ["MakoshJira"]),
         .library(name: "MakoshTelegram", targets: ["MakoshTelegram"]),
         .executable(name: "Makosh", targets: ["MakoshApp"]),
     ],
@@ -61,7 +63,11 @@ let package = Package(
         .target(name: "MakoshTelemost", dependencies: ["MakoshCore", "CPostgres"]),
         .target(name: "MakoshAI", dependencies: ["MakoshCore", "CPostgres"]),
         .target(name: "MakoshFiles", dependencies: ["MakoshCore", "CPostgres"]),
+        .target(name: "MakoshJira"),
+        .target(name: "MakoshTasks", dependencies: ["MakoshCore", "MakoshJira", "CPostgres"]),
         .testTarget(name: "MakoshFilesTests", dependencies: ["MakoshFiles", "MakoshCore", "CPostgres"]),
+        .testTarget(name: "MakoshJiraTests", dependencies: ["MakoshJira"]),
+        .testTarget(name: "MakoshTasksTests", dependencies: ["MakoshTasks", "MakoshJira", "MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshAITests", dependencies: ["MakoshAI", "MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshTelemostTests", dependencies: ["MakoshApp", "MakoshTelemost", "MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshTeamsTests", dependencies: ["MakoshApp", "MakoshTeams", "MakoshCore", "CPostgres"]),
@@ -109,7 +115,8 @@ let package = Package(
         .executableTarget(
             name: "MakoshApp",
             dependencies: [
-                "MakoshAI", "MakoshFiles", "MakoshTelemost", "MakoshTeams", "MakoshCore", "MakoshTelegram", "MakoshMail", "MakoshWhatsApp",
+                "MakoshAI", "MakoshFiles", "MakoshTasks", "MakoshJira", "MakoshTelemost", "MakoshTeams", "MakoshCore", "MakoshTelegram",
+                "MakoshMail", "MakoshWhatsApp",
             ]),
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),
         .target(

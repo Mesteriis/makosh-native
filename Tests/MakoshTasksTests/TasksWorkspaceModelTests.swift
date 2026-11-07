@@ -206,6 +206,123 @@ import XCTest
         XCTAssertFalse(again.showCompleted)
     }
 
+    private func created(_ h: Harness, _ line: String) async throws -> Task {
+        await h.model.create(quickEntry: line)
+        let title = line.split(separator: " ").first.map(String.init) ?? line
+        return try XCTUnwrap(h.model.visible.first { $0.title.hasPrefix(title) })
+    }
+
+    func testBulkDoneSkipsBlockedAndUndoesAsOneStep() async throws {
+        let h = try await harness()
+        let a = try await created(h, "A")
+        let b = try await created(h, "B")
+        let d = try await created(h, "D")
+        let c = try await created(h, "C ~\(d.code)")
+        XCTAssertEqual(c.dependsOn, [d.id])
+        let result = await h.model.bulkToggleDone(ids: [a.id, b.id, c.id])
+        XCTAssertEqual(result.changed, 2)
+        XCTAssertEqual(result.skippedBlocked, 1)
+        XCTAssertEqual(h.model.task(id: a.id)?.status, .done)
+        XCTAssertEqual(h.model.task(id: b.id)?.status, .done)
+        XCTAssertEqual(h.model.task(id: c.id)?.status, .inbox)
+        XCTAssertEqual(h.model.toasts.map(\.text).suffix(2), ["Выполнено: 2 задачи", "Пропущено заблокированных: 1"])
+        XCTAssertEqual(h.model.lastAction, "Пропущено заблокированных: 1")
+        XCTAssertEqual(h.model.undoCount, 1)
+        await h.model.undo()
+        XCTAssertEqual(h.model.task(id: a.id)?.status, .inbox)
+        XCTAssertEqual(h.model.task(id: b.id)?.status, .inbox)
+        XCTAssertEqual(h.model.undoCount, 0)
+        let allBlocked = await h.model.bulkToggleDone(ids: [c.id])
+        XCTAssertEqual(allBlocked.changed, 0)
+        XCTAssertEqual(h.model.lastAction, "Заблокировано: сначала закройте зависимости")
+    }
+
+    func testBulkToggleReopensWhenAllDone() async throws {
+        let h = try await harness()
+        let a = try await created(h, "A")
+        _ = await h.model.bulkToggleDone(ids: [a.id])
+        _ = await h.model.bulkToggleDone(ids: [a.id])
+        XCTAssertEqual(h.model.task(id: a.id)?.status, .active)
+        XCTAssertEqual(h.model.lastAction, "Возвращено: 1 задача")
+    }
+
+    func testSnoozeUntilMondayNeverPicksToday() async throws {
+        let h = try await harness()
+        h.clock.advance(3 * 86_400)  // 2027-01-18, a Monday
+        XCTAssertEqual(calendar.component(.weekday, from: h.clock.now()), 2)
+        let a = try await created(h, "A")
+        await h.model.bulkSnooze(ids: [a.id], until: .monday)
+        let today = calendar.startOfDay(for: h.clock.now())
+        XCTAssertEqual(h.model.task(id: a.id)?.due, calendar.date(byAdding: .day, value: 7, to: today))
+        XCTAssertEqual(h.model.task(id: a.id)?.postponed, 1)
+        await h.model.bulkSnooze(ids: [a.id], until: .tuesday)
+        XCTAssertEqual(h.model.task(id: a.id)?.due, calendar.date(byAdding: .day, value: 8, to: today))
+        await h.model.bulkSnooze(ids: [a.id], days: 0, months: 1)
+        let tuesday = calendar.date(byAdding: .day, value: 8, to: today)!
+        XCTAssertEqual(h.model.task(id: a.id)?.due, calendar.date(byAdding: .month, value: 1, to: tuesday), "a month from max(due, today)")
+        XCTAssertEqual(h.model.task(id: a.id)?.postponed, 3)
+        await h.model.bulkToday(ids: [a.id])
+        XCTAssertEqual(h.model.task(id: a.id)?.due, today)
+        XCTAssertEqual(h.model.lastAction, "На сегодня: 1 задача")
+        let b = try await created(h, "B")
+        await h.model.bulkPostpone(ids: [b.id])
+        XCTAssertEqual(h.model.lastAction, "Нет срока для переноса")
+        XCTAssertNil(h.model.task(id: b.id)?.due)
+    }
+
+    func testDuplicateCopiesFieldsButNotNotesOrSource() async throws {
+        let h = try await harness()
+        let a = try await created(h, "Исходная @Работа #тег !2 ^завтра")
+        var edited = a
+        edited.notes = [TaskNote(content: "секрет")]
+        edited.personas = ["Боб"]
+        await h.model.update(edited)
+        await h.model.duplicate(id: a.id)
+        let copies = h.model.visible.filter { $0.title == "Исходная" }
+        XCTAssertEqual(copies.count, 2)
+        let copy = try XCTUnwrap(copies.first { $0.id != a.id })
+        XCTAssertEqual(copy.list, "Работа")
+        XCTAssertEqual(copy.tags, ["тег"])
+        XCTAssertEqual(copy.priority, 2)
+        XCTAssertEqual(copy.due, a.due)
+        XCTAssertEqual(copy.personas, ["Боб"])
+        XCTAssertEqual(copy.notes, [])
+        XCTAssertNil(copy.source)
+        XCTAssertNotEqual(copy.code, a.code)
+        XCTAssertEqual(h.model.lastAction, "Задача продублирована")
+    }
+
+    func testReferencesTextUsesVisibleOrder() async throws {
+        let h = try await harness()
+        let first = try await created(h, "Первая !1")
+        let second = try await created(h, "Вторая !2")
+        h.model.sort = .priority
+        XCTAssertEqual(h.model.visible.map(\.id), [first.id, second.id])
+        XCTAssertEqual(
+            h.model.referencesText(ids: [second.id, first.id]), "to:\(first.code) Первая\nto:\(second.code) Вторая")
+        XCTAssertEqual(h.model.referencesText(ids: []), "")
+    }
+
+    func testRenameAndSelectionBridge() async throws {
+        let h = try await harness()
+        let a = try await created(h, "Старое")
+        h.model.selected = a.id
+        XCTAssertEqual(h.model.selection.selected, [a.id])
+        XCTAssertEqual(h.model.selection.cursor, h.model.visible.firstIndex { $0.id == a.id })
+        await h.model.rename(id: a.id, title: "Новое")
+        XCTAssertEqual(h.model.task(id: a.id)?.title, "Новое")
+        await h.model.delete(id: a.id)
+        XCTAssertNil(h.model.selected)
+        XCTAssertTrue(h.model.selection.selected.isEmpty)
+    }
+
+    func testOutsideChangesToast() async throws {
+        let h = try await harness()
+        h.adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1", assignee: h.adapter.me)
+        await h.model.syncNow()
+        XCTAssertEqual(h.model.toasts.map(\.text).last, "Обновлено извне")
+    }
+
     func testNoneTasksAreFoundBySearch() async throws {
         let h = try await harness()
         let gone = try await h.store.insert(

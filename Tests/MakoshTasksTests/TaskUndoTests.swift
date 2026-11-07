@@ -7,7 +7,7 @@ final class TaskUndoTests: XCTestCase {
         let before = Task(title: title)
         var after = before
         after.title = title + "!"
-        return TaskUndoStep(taskID: before.id, before: before, after: after, at: at)
+        return TaskUndoStep(change: TaskChange(before: before, after: after), at: at)
     }
 
     func testKeepsAtMostFiveSteps() {
@@ -15,8 +15,8 @@ final class TaskUndoTests: XCTestCase {
         let now = Date()
         for index in 0..<7 { history.record(step("\(index)", at: now)) }
         XCTAssertEqual(history.count, 5)
-        XCTAssertEqual(history.pop(now: now)?.before.title, "6")
-        XCTAssertEqual(history.pop(now: now)?.before.title, "5")
+        XCTAssertEqual(history.pop(now: now)?.changes.first?.before.title, "6")
+        XCTAssertEqual(history.pop(now: now)?.changes.first?.before.title, "5")
     }
 
     func testExpiredStepIsDropped() {
@@ -24,7 +24,7 @@ final class TaskUndoTests: XCTestCase {
         let start = Date()
         history.record(step("old", at: start))
         history.record(step("fresh", at: start.addingTimeInterval(50)))
-        XCTAssertEqual(history.pop(now: start.addingTimeInterval(100))?.before.title, "fresh")
+        XCTAssertEqual(history.pop(now: start.addingTimeInterval(100))?.changes.first?.before.title, "fresh")
         XCTAssertNil(history.pop(now: start.addingTimeInterval(100)), "the older step expired")
     }
 
@@ -41,8 +41,28 @@ final class TaskUndoTests: XCTestCase {
         let now = Date()
         history.record(step("first", at: now))
         history.record(step("second", at: now))
-        XCTAssertEqual(history.pop(now: now)?.before.title, "second")
-        XCTAssertEqual(history.pop(now: now)?.before.title, "first")
+        XCTAssertEqual(history.pop(now: now)?.changes.first?.before.title, "second")
+        XCTAssertEqual(history.pop(now: now)?.changes.first?.before.title, "first")
+        XCTAssertNil(history.pop(now: now))
+    }
+
+    func testStepWithSeveralChangesPopsAsOne() {
+        var history = TaskUndoHistory()
+        let now = Date()
+        let a = Task(title: "a"), b = Task(title: "b")
+        var a2 = a, b2 = b
+        a2.status = .done
+        b2.status = .done
+        let slot = TaskPlanSlot(planID: UUID(), taskID: a.id, start: 540, end: 600, kind: .task)
+        history.record(
+            TaskUndoStep(
+                changes: [TaskChange(before: a, after: a2), TaskChange(before: b, after: b2)],
+                slots: [TaskSlotChange(before: slot, after: nil)], at: now))
+        XCTAssertEqual(history.count, 1)
+        let popped = history.pop(now: now)
+        XCTAssertEqual(popped?.changes.map(\.before.title), ["a", "b"])
+        XCTAssertEqual(popped?.slots.first?.before, slot)
+        XCTAssertNil(popped?.slots.first?.after)
         XCTAssertNil(history.pop(now: now))
     }
 }

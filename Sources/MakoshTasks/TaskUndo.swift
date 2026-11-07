@@ -1,17 +1,37 @@
 import Foundation
 
-/// One reversible change: the task before and after it.
-public struct TaskUndoStep: Equatable, Sendable {
-    public let taskID: UUID
+/// One task before and after a change.
+public struct TaskChange: Equatable, Sendable {
     public let before: Task
     public let after: Task
-    public let at: Date
-    public init(taskID: UUID, before: Task, after: Task, at: Date) {
-        self.taskID = taskID
+    public init(before: Task, after: Task) {
         self.before = before
         self.after = after
+    }
+}
+
+/// A planner slot before and after: `nil` on one side for an added or removed slot.
+public struct TaskSlotChange: Equatable, Sendable {
+    public let before: TaskPlanSlot?
+    public let after: TaskPlanSlot?
+    public init(before: TaskPlanSlot?, after: TaskPlanSlot?) {
+        self.before = before
+        self.after = after
+    }
+}
+
+/// One reversible step: every task and slot a single action touched, so a
+/// bulk action or a planner move comes back with one ⌘Z.
+public struct TaskUndoStep: Equatable, Sendable {
+    public let changes: [TaskChange]
+    public let slots: [TaskSlotChange]
+    public let at: Date
+    public init(changes: [TaskChange], slots: [TaskSlotChange] = [], at: Date) {
+        self.changes = changes
+        self.slots = slots
         self.at = at
     }
+    public init(change: TaskChange, at: Date) { self.init(changes: [change], at: at) }
 }
 
 /// The reference's deliberately short memory: five steps, each alive for

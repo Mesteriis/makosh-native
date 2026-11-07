@@ -71,6 +71,35 @@ public enum TaskDomain {
         return value
     }
 
+    /// Snoozing by an amount: from max(due, today), the counter grows by one.
+    public static func snoozed(_ task: Task, days: Int, months: Int, today: Date, calendar: Calendar) -> Task {
+        var value = task
+        let base = max(task.due.map { calendar.startOfDay(for: $0) } ?? .distantPast, calendar.startOfDay(for: today))
+        var due = base
+        if days != 0 { due = calendar.date(byAdding: .day, value: days, to: due) ?? due }
+        if months != 0 { due = calendar.date(byAdding: .month, value: months, to: due) ?? due }
+        value.due = due
+        value.postponed += 1
+        return value
+    }
+
+    /// Snoozing to a day: the counter grows by one.
+    public static func snoozed(_ task: Task, until day: Date, calendar: Calendar) -> Task {
+        var value = task
+        value.due = calendar.startOfDay(for: day)
+        value.postponed += 1
+        return value
+    }
+
+    /// The Monday that starts the next week: never today, so on a Monday it is a week away.
+    public static func nextWeekStart(after today: Date, calendar: Calendar) -> Date {
+        let start = calendar.startOfDay(for: today)
+        let weekday = calendar.component(.weekday, from: start)  // 1 = Sunday … 7 = Saturday
+        var ahead = (9 - weekday) % 7
+        if ahead == 0 { ahead = 7 }
+        return calendar.date(byAdding: .day, value: ahead, to: start) ?? start
+    }
+
     /// The status change itself: blocked tasks refuse active and done, done
     /// stamps completedAt, leaving done clears it, a repeated done is a no-op.
     public static func applying(status: TaskStatus, to task: Task, now: Date, resolve: (UUID) -> Task?) throws -> Task {

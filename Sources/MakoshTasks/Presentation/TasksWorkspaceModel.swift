@@ -86,7 +86,22 @@ public enum JiraAction: Sendable {
     @Published public var search = "" { didSet { applyFilters() } }
     /// In a connection's space: also show issues that left the selection («Ушедшие»).
     @Published public var showLeft = false { didSet { applyFilters() } }
-    @Published public var selected: UUID?
+    @Published public var selection = TaskSelection()
+    @Published public var toasts: [TasksToast] = []
+    @Published public internal(set) var lastAction: String?
+    /// The single selected task, for the card; setting it makes a one-row selection.
+    public var selected: UUID? {
+        get { selection.selected.count == 1 ? selection.selected.first : nil }
+        set {
+            if let id = newValue, let index = visible.firstIndex(where: { $0.id == id }) {
+                selection.click(index: index, id: id, shift: false, command: false, visible: visible.map(\.id))
+            } else if let id = newValue {
+                selection.selected = [id]
+            } else {
+                selection.clear()
+            }
+        }
+    }
     @Published public private(set) var tasks: [Task] = []
     @Published public private(set) var visible: [Task] = []
     @Published public private(set) var board: [JiraBoardColumn] = []
@@ -109,8 +124,8 @@ public enum JiraAction: Sendable {
 
     public let service: TasksService
     public let calendar: Calendar
-    private let now: @Sendable () -> Date
-    private var undo = TaskUndoHistory()
+    let now: @Sendable () -> Date
+    var undo = TaskUndoHistory()
     private var seenOutsideChanges = 0
     private var ticking: _Concurrency.Task<Void, Never>?
     private var preferencesLoaded = false
@@ -162,8 +177,10 @@ public enum JiraAction: Sendable {
         }
         let outside = await service.outsideChanges
         if outside != seenOutsideChanges {
+            let first = seenOutsideChanges == 0
             seenOutsideChanges = outside
             undo.clear()
+            if !first || !tasks.isEmpty { toast("Обновлено извне") }
         }
         summary = (try? await service.time.summary(day: now(), calendar: calendar)) ?? (0, 0)
         tick()
@@ -253,7 +270,7 @@ public enum JiraAction: Sendable {
         var value = task
         value.deletedAt = now()
         await edit(value, from: task)
-        if selected == id { selected = nil }
+        selection.selected.remove(id)
     }
 
     /// Any field edit from the card; the revision in `task` must be current.
@@ -295,24 +312,36 @@ public enum JiraAction: Sendable {
     }
 
     private func write(_ value: Task, from original: Task) async throws {
-        let written = try await service.store.update(value, expectedRevision: original.revision, actor: .user)
-        undo.record(TaskUndoStep(taskID: original.id, before: original, after: written, at: now()))
+        let written = try await service.store.apply(value, expectedRevision: original.revision, actor: .user)
+        undo.record(TaskUndoStep(change: TaskChange(before: original, after: written.task), at: now()))
         error = nil
         await refresh()
+        let activated = written.effects.activated.compactMap { task(id: $0)?.title }
+        if !activated.isEmpty { toast("Активированы: " + activated.joined(separator: ", ")) }
     }
 
+    /// Reverts the newest step whole; a task that changed since makes the whole step unavailable.
     public func undo() async {
         guard let step = undo.pop(now: now()) else { return }
         do {
-            guard let current = try await service.store.task(id: step.taskID), current.revision == step.after.revision else {
-                error = "Задача менялась — отменить нельзя."
-                return
+            let changes = step.changes
+            try await service.store.performInTransaction { store in
+                for change in changes {
+                    guard let current = try store.task(id: change.after.id), current.revision == change.after.revision else {
+                        throw TaskStoreError.staleRevision
+                    }
+                }
+                for change in changes {
+                    var restored = change.before
+                    restored.revision = change.after.revision
+                    try store.apply(restored, expectedRevision: change.after.revision, actor: .user)
+                }
             }
-            var restored = step.before
-            restored.revision = current.revision
-            try await service.store.update(restored, expectedRevision: current.revision, actor: .user)
             error = nil
             await refresh()
+            toast("Отменено")
+        } catch TaskStoreError.staleRevision {
+            error = "Задача менялась — отменить нельзя."
         } catch { self.error = Self.describe(error) }
     }
 
@@ -568,6 +597,7 @@ public enum JiraAction: Sendable {
             visible = rows
             board = Self.columns(for: rows, statuses: projectStatuses[connectionID] ?? [:], observations: observations)
         }
+        selection.clamp(to: visible.map(\.id))
     }
 
     static func columns(

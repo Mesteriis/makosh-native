@@ -102,6 +102,27 @@ final class TaskClosingTests: XCTestCase {
         XCTAssertEqual(untouched?.revision, 1)
     }
 
+    func testReopeningRevertsActivatedDependents() async throws {
+        let db = try tasksDatabase(), store = try await taskStore(db)
+        let blocker = try await store.insert(Task(title: "Блокер", status: .active), actor: .user)
+        let dependent = try await store.insert(Task(title: "Зависимая", dependsOn: [blocker.id]), actor: .user)
+        let manual = try await store.insert(Task(title: "Вручную", status: .active, dependsOn: [blocker.id]), actor: .user)
+        let closed = try await close(store, blocker)
+        XCTAssertEqual(closed.effects.activated, [dependent.id])
+        let activatedFound = try await store.task(id: dependent.id)
+        let activatedRevision = try XCTUnwrap(activatedFound).revision
+        let reopened = try await reopen(store, closed.task)
+        XCTAssertEqual(reopened.effects.deactivated, [dependent.id])
+        let touchedFound = try await store.task(id: dependent.id)
+        let touched = try XCTUnwrap(touchedFound)
+        XCTAssertEqual(touched.status, .inbox)
+        XCTAssertEqual(touched.revision, activatedRevision + 1)
+        let untouched = try await store.task(id: manual.id)
+        XCTAssertEqual(untouched?.status, .active, "a task the user activated by hand is not touched")
+        let versions = try await store.versions(taskID: dependent.id)
+        XCTAssertEqual(versions.last?.changedFields, ["status", "deactivated-after:" + blocker.code])
+    }
+
     func testUpdateKeepsItsSignatureAndRunsTheRules() async throws {
         let db = try tasksDatabase(), store = try await taskStore(db)
         let task = try await store.insert(Task(title: "Отчёт", recurrence: "monthly"), actor: .user)

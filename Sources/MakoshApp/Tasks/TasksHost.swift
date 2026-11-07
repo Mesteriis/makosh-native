@@ -91,6 +91,8 @@ extension EnvironmentValues {
             try await service.open()
             if let seed { try await seed(store) }
             await model.refresh()
+            // The focus panel and the planner's midnight hop run while other sections are on screen.
+            model.startTicking()
             await service.startPolling()
             _Concurrency.Task { await model.syncNow() }
         } catch {

@@ -6,6 +6,8 @@ public struct TaskCloseEffects: Equatable, Sendable {
     public var spawned: Task?
     public var resurrected = false
     public var removedSpawn: UUID?
+    /// Dependents this reopening sent back to inbox (they were activated by the closing).
+    public var deactivated: [UUID] = []
     public init() {}
 }
 
@@ -27,10 +29,25 @@ extension TaskStore {
             if let recurrence = after.recurrence {
                 (effects.spawned, effects.resurrected) = try spawnOccurrence(of: after, recurrence: recurrence, actor: actor)
             }
-        } else if before.status == .done, after.status != .done, after.recurrence != nil {
-            effects.removedSpawn = try removeUntouchedSpawn(of: after, actor: actor)
+        } else if before.status == .done, after.status != .done {
+            if after.recurrence != nil { effects.removedSpawn = try removeUntouchedSpawn(of: after, actor: actor) }
+            effects.deactivated = try deactivateDependents(of: after, actor: actor)
         }
         return effects
+    }
+
+    /// A dependent the closing activated (its latest version carries the marker) and
+    /// that is still active goes back to inbox; one the user moved since is left alone.
+    private func deactivateDependents(of reopened: Task, actor: TaskActor) throws -> [UUID] {
+        var deactivated: [UUID] = []
+        let marker = Self.activationMarker(reopened)
+        for var task in try tasks() where task.status == .active && task.dependsOn.contains(reopened.id) {
+            guard try versions(taskID: task.id).last?.changedFields.contains(marker) == true else { continue }
+            task.status = .inbox
+            try update(task, expectedRevision: task.revision, actor: actor, extraChanged: ["deactivated-after:" + reopened.code])
+            deactivated.append(task.id)
+        }
+        return deactivated
     }
 
     private func activateDependents(of completed: Task, actor: TaskActor) throws -> [UUID] {

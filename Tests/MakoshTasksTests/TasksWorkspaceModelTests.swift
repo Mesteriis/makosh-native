@@ -621,6 +621,35 @@ import XCTest
         await h.model.discardDraft()
         XCTAssertEqual(h.model.timer?.taskID, a.id, "discarding an open task's timer draft restores the timer")
         XCTAssertEqual(h.model.focusState.active?.taskID, a.id, "and the session with it")
+        XCTAssertGreaterThanOrEqual(h.model.focusState.workSeconds(of: a.id, now: h.clock.now()), 60, "the session's time comes back too")
+        XCTAssertGreaterThanOrEqual(h.model.timerElapsed, 60)
+    }
+
+    func testUndoPathGoesThroughTheSameRules() async throws {
+        let h = try await harness()
+        let x = try await created(h, "X")
+        let y = try await created(h, "Y ~\(x.code)")
+        await h.model.set(status: .active, id: x.id)
+        await h.model.set(status: .done, id: x.id)
+        XCTAssertEqual(h.model.task(id: y.id)?.status, .active, "closing X activates Y")
+        await h.model.undo()
+        XCTAssertEqual(h.model.task(id: x.id)?.status, .active)
+        XCTAssertEqual(h.model.task(id: y.id)?.status, .inbox, "reopening X takes the activation back: no active-but-blocked task")
+    }
+
+    func testBulkCycleLeavesCascadedDependentAlone() async throws {
+        let h = try await harness()
+        let x = try await created(h, "X")
+        let y = try await created(h, "Y ~\(x.code)")
+        await h.model.set(status: .active, id: x.id)
+        let result = await h.model.bulkCycle(ids: [x.id, y.id])
+        XCTAssertEqual(h.model.task(id: x.id)?.status, .done)
+        XCTAssertEqual(h.model.task(id: y.id)?.status, .active, "Y was moved by X's closing and is not cycled again")
+        XCTAssertEqual(result.changed, 1)
+        XCTAssertEqual(result.activated, ["Y"])
+        await h.model.undo()
+        XCTAssertEqual(h.model.task(id: x.id)?.status, .active)
+        XCTAssertEqual(h.model.task(id: y.id)?.status, .inbox)
     }
 
     func testCalendarMonthAndDaySelection() async throws {

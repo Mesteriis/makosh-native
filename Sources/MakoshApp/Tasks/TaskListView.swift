@@ -184,7 +184,11 @@ struct TaskListView: View {
     private var rubberBandGesture: some Gesture {
         DragGesture(minimumDistance: 5, coordinateSpace: .named("tasksList"))
             .onChanged { value in
-                if dragStart == nil { dragStart = value.startLocation }
+                if dragStart == nil {
+                    // A drag that starts on a row is the row's own drag (into the planner), not a rubber band.
+                    guard !rowFrames.values.contains(where: { $0.contains(value.startLocation) }) else { return }
+                    dragStart = value.startLocation
+                }
                 let origin = dragStart ?? value.startLocation
                 let rect = CGRect(
                     x: min(origin.x, value.location.x), y: min(origin.y, value.location.y), width: abs(value.location.x - origin.x),

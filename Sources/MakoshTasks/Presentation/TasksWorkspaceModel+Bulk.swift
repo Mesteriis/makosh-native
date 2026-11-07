@@ -61,11 +61,15 @@ extension TasksWorkspaceModel {
     func bulkEdit(_ ids: [UUID], _ change: @escaping @Sendable (Task) throws -> Task?) async -> TaskBulkResult {
         var result = TaskBulkResult()
         guard !ids.isEmpty else { return result }
+        // A task this action's own cascade already moved (a dependent activated by an earlier
+        // write) is left as the cascade put it, instead of being cycled from a stale picture.
+        let expected = Dictionary(uniqueKeysWithValues: ids.compactMap { id in task(id: id).map { (id, $0.revision) } })
         do {
             let outcome = try await service.store.performInTransaction { store -> ([TaskChange], [TaskCloseEffects]) in
                 var changes: [TaskChange] = [], effects: [TaskCloseEffects] = []
                 for id in ids {
-                    guard let current = try store.task(id: id), current.deletedAt == nil, let value = try change(current), value != current
+                    guard let current = try store.task(id: id), current.deletedAt == nil, current.revision == expected[id],
+                        let value = try change(current), value != current
                     else { continue }
                     let written = try store.apply(value, expectedRevision: current.revision, actor: .user)
                     changes.append(TaskChange(before: current, after: written.task))

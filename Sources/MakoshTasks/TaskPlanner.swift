@@ -103,7 +103,8 @@ public enum TaskPlannerRules {
                 break
             }
         }
-        return max(dayStart, min(candidate, dayEnd - duration))
+        let result = max(dayStart, min(candidate, dayEnd - duration))
+        return occupied.contains { overlaps(result, duration, $0) } ? nil : result
     }
 
     /// Where dropped tasks land, one after another from `start`; a task that

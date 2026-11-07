@@ -76,7 +76,6 @@ struct TasksContentView: View {
             await model.loadPlanner()
             model.startGuideIfNeeded()
         }
-        .onDisappear { model.stopTicking() }
         .sheet(item: Binding(get: { editingID.flatMap { model.task(id: $0) } }, set: { editingID = $0?.id })) { task in
             TaskEditDialog(model: model, task: task).makoshAppearance()
         }

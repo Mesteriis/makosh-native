@@ -586,10 +586,13 @@ public enum JiraAction: Sendable {
         guard draft.source == .timer, draft.reason == nil, let task = task(id: draft.taskID), task.status != .done,
             task.status != .cancelled, task.deletedAt == nil
         else { return }
+        // The draft's start is «now − the session's time», so restoring the timer there and
+        // adopting it brings the whole session back, not a fresh one from zero.
+        try? await service.time.restore(draft)
         if focusEnabled {
-            await focus(id: draft.taskID)
+            try? await service.focus.adoptRunningTimer()
+            await syncFocusState()
         } else {
-            try? await service.time.restore(draft)
             timer = try? await service.time.timer()
             startTicking()
             tick()

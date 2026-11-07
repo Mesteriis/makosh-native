@@ -63,6 +63,8 @@ public enum JiraAction: Sendable {
     /// Where «Создать задачу здесь» puts the next created task.
     public internal(set) var pendingSlotStart: Int?
     var trackedToday: Date?
+    /// The month the sidebar calendar shows; starts on today's month.
+    @Published public var calendarMonth: TaskCalendarMonth
     @Published public var search = "" { didSet { applyFilters() } }
     /// In a connection's space: also show issues that left the selection («Ушедшие»).
     @Published public var showLeft = false { didSet { applyFilters() } }
@@ -118,7 +120,15 @@ public enum JiraAction: Sendable {
         self.service = service
         self.calendar = calendar
         self.now = now
+        calendarMonth = TaskCalendarMonth.containing(now(), firstWeekday: 2, calendar: calendar)
     }
+
+    /// Days with due tasks, for the calendar's dots.
+    public var dueDays: Set<Date> { TaskCalendarRules.dueDays(mineTasks, calendar: calendar) }
+    public var agendaRange: ClosedRange<Date>? { TaskCalendarRules.agendaRange(filters.agenda, today: now(), calendar: calendar) }
+
+    /// A click on a calendar day; the same day again clears the filter.
+    public func selectDay(_ day: Date?) { filters.select(day: day) }
 
     public var undoCount: Int { undo.count }
 
@@ -801,6 +811,9 @@ public enum JiraAction: Sendable {
         showPlanner = preferences.showPlanner
         plannerWidthPercent = preferences.plannerWidthPercent
         collapsedSections = Set(preferences.collapsedSections)
+        if calendarMonth.firstWeekday != preferences.firstWeekday {
+            calendarMonth = TaskCalendarMonth.containing(now(), firstWeekday: preferences.firstWeekday, calendar: calendar)
+        }
         preferencesLoaded = loaded
     }
 

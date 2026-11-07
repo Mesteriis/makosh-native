@@ -622,4 +622,26 @@ import XCTest
         XCTAssertEqual(h.model.timer?.taskID, a.id, "discarding an open task's timer draft restores the timer")
         XCTAssertEqual(h.model.focusState.active?.taskID, a.id, "and the session with it")
     }
+
+    func testCalendarMonthAndDaySelection() async throws {
+        let h = try await harness()
+        let due = calendar.date(byAdding: .day, value: 3, to: calendar.startOfDay(for: h.clock.now()))!
+        let a = try await created(h, "Со сроком ^+3d")
+        _ = try await created(h, "Без срока")
+        XCTAssertEqual(h.model.calendarMonth.year, calendar.component(.year, from: h.clock.now()))
+        XCTAssertEqual(h.model.calendarMonth.month, calendar.component(.month, from: h.clock.now()))
+        XCTAssertEqual(h.model.dueDays, [due])
+        h.model.filters.toggle(agenda: .week)
+        XCTAssertEqual(
+            h.model.agendaRange?.upperBound, calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: h.clock.now())))
+        h.model.selectDay(due)
+        XCTAssertNil(h.model.filters.agenda, "a day replaces the agenda")
+        XCTAssertEqual(h.model.visible.map(\.id), [a.id])
+        XCTAssertEqual(h.model.filters.chips.last?.kind, .day)
+        h.model.selectDay(due)
+        XCTAssertNil(h.model.filters.day)
+        h.model.calendarMonth = h.model.calendarMonth.next()
+        XCTAssertEqual(
+            h.model.calendarMonth.month, calendar.component(.month, from: calendar.date(byAdding: .month, value: 1, to: h.clock.now())!))
+    }
 }

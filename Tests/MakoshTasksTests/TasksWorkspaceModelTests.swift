@@ -193,19 +193,6 @@ import XCTest
         XCTAssertEqual(h.model.summary.daySeconds, 180)
     }
 
-    func testPreferencesPersistAcrossModels() async throws {
-        let h = try await harness()
-        h.model.sort = .due
-        h.model.filter = .overdue
-        h.model.showCompleted = false
-        try await _Concurrency.Task.sleep(for: .milliseconds(50))
-        let again = TasksWorkspaceModel(service: h.service, calendar: calendar, now: { h.clock.now() })
-        await again.refresh()
-        XCTAssertEqual(again.sort, .due)
-        XCTAssertEqual(again.filter, .overdue)
-        XCTAssertFalse(again.showCompleted)
-    }
-
     private func created(_ h: Harness, _ line: String) async throws -> Task {
         await h.model.create(quickEntry: line)
         let title = line.split(separator: " ").first.map(String.init) ?? line
@@ -296,7 +283,7 @@ import XCTest
         let h = try await harness()
         let first = try await created(h, "Первая !1")
         let second = try await created(h, "Вторая !2")
-        h.model.sort = .priority
+        h.model.sortState = TasksSortState(field: .priority, descending: false)
         XCTAssertEqual(h.model.visible.map(\.id), [first.id, second.id])
         XCTAssertEqual(
             h.model.referencesText(ids: [second.id, first.id]), "to:\(first.code) Первая\nto:\(second.code) Вторая")
@@ -321,6 +308,112 @@ import XCTest
         h.adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1", assignee: h.adapter.me)
         await h.model.syncNow()
         XCTAssertEqual(h.model.toasts.map(\.text).last, "Обновлено извне")
+    }
+
+    func testPreferencesV2RoundTrip() async throws {
+        let h = try await harness()
+        h.model.sortState = TasksSortState(field: .due, descending: true)
+        h.model.filters.toggle(agenda: .overdue)
+        h.model.filters.toggle(tag: "релиз")
+        h.model.filters.actualOnly = true
+        h.model.condense = true
+        h.model.showPlanner = true
+        h.model.showCalendar = false
+        h.model.plannerWidthPercent = 55
+        h.model.collapsedSections = ["hotkeys", "tags"]
+        try await _Concurrency.Task.sleep(for: .milliseconds(80))
+        let again = TasksWorkspaceModel(service: h.service, calendar: calendar, now: { h.clock.now() })
+        await again.refresh()
+        XCTAssertEqual(again.sortState, TasksSortState(field: .due, descending: true))
+        XCTAssertEqual(again.filters.agenda, .overdue)
+        XCTAssertEqual(again.filters.tag, "релиз")
+        XCTAssertTrue(again.filters.actualOnly)
+        XCTAssertTrue(again.condense)
+        XCTAssertTrue(again.showPlanner)
+        XCTAssertFalse(again.showCalendar)
+        XCTAssertEqual(again.plannerWidthPercent, 55)
+        XCTAssertEqual(again.collapsedSections, ["hotkeys", "tags"])
+    }
+
+    func testFiltersCombineAndCountsIncludeOverdue() async throws {
+        let h = try await harness()
+        let overdue = try await created(h, "Просроченная #a ^вчера")
+        let today = try await created(h, "Сегодняшняя #b ^сегодня")
+        _ = try await created(h, "Без срока #a")
+        h.model.filters.toggle(agenda: .today)
+        XCTAssertEqual(Set(h.model.visible.map(\.id)), [overdue.id, today.id], "today includes the overdue")
+        XCTAssertEqual(h.model.agendaCounts[.today], 2)
+        XCTAssertEqual(h.model.agendaCounts[.overdue], 1)
+        XCTAssertEqual(h.model.agendaCounts[.week], 2)
+        XCTAssertEqual(h.model.foundCount, 2)
+        h.model.filters.toggle(tag: "a")
+        XCTAssertEqual(h.model.visible.map(\.id), [overdue.id])
+        XCTAssertEqual(h.model.tagCounts["a"], 2)
+        XCTAssertEqual(h.model.statusCounts[.inbox], 3)
+        XCTAssertEqual(h.model.totalCount, 3)
+        h.model.clearAll()
+        XCTAssertEqual(h.model.visible.count, 3)
+        XCTAssertNil(h.model.foundCount)
+    }
+
+    func testOverdueFloatToTopUnderDivider() async throws {
+        let h = try await harness()
+        let urgent = try await created(h, "Срочная !1")
+        let late = try await created(h, "Просроченная !4 ^вчера")
+        h.model.sortState = TasksSortState(field: .priority, descending: false)
+        XCTAssertEqual(h.model.visible.map(\.id), [late.id, urgent.id], "overdue floats above a higher priority")
+        XCTAssertEqual(h.model.overdueCount, 1)
+        _ = await h.model.bulkToggleDone(ids: [late.id])
+        XCTAssertEqual(h.model.overdueCount, 0, "a done task is no longer overdue")
+    }
+
+    func testSearchSwapsKeyboardLayoutAndAcceptsRefs() async throws {
+        let h = try await harness()
+        let hello = try await created(h, "Привет")
+        let other = try await created(h, "Другая")
+        h.model.search = "ghbdtn"
+        XCTAssertEqual(h.model.visible.map(\.id), [hello.id])
+        h.model.search = "to:" + other.code.lowercased()
+        XCTAssertEqual(h.model.visible.map(\.id), [other.id])
+        h.model.search = ""
+        XCTAssertEqual(h.model.visible.count, 2)
+    }
+
+    func testEscapeCascade() async throws {
+        let h = try await harness()
+        let a = try await created(h, "A")
+        h.model.filters.toggle(list: "Нет")
+        h.model.search = "a"
+        h.model.selected = a.id
+        XCTAssertEqual(h.model.escape(), .selection)
+        XCTAssertTrue(h.model.selection.selected.isEmpty)
+        XCTAssertEqual(h.model.escape(), .search)
+        XCTAssertEqual(h.model.search, "")
+        XCTAssertEqual(h.model.escape(), .filters)
+        XCTAssertFalse(h.model.filters.isFiltering)
+        XCTAssertEqual(h.model.escape(), .nothing)
+    }
+
+    func testGroupByFlowClustersAtFirstOccurrence() async throws {
+        let h = try await harness()
+        let a = try await created(h, "A !1")
+        let b = try await created(h, "B !2")
+        let c = try await created(h, "C !3")
+        let d = try await created(h, "D !4")
+        for id in [a.id, c.id] {
+            var task = try XCTUnwrap(h.model.task(id: id))
+            task.flowID = "Релиз"
+            await h.model.update(task)
+        }
+        h.model.sortState = TasksSortState(field: .priority, descending: false)
+        XCTAssertEqual(h.model.visible.map(\.id), [a.id, b.id, c.id, d.id])
+        h.model.filters.groupByFlow = true
+        XCTAssertEqual(h.model.visible.map(\.id), [a.id, c.id, b.id, d.id], "flow tasks gather at the first one")
+        XCTAssertEqual(h.model.flowGroups.map(\.flow), ["Релиз", nil])
+        XCTAssertEqual(h.model.flowGroups.map { $0.tasks.count }, [2, 2])
+        h.model.filters.toggle(flow: "Релиз")
+        XCTAssertEqual(h.model.visible.map(\.id), [a.id, c.id], "a pinned flow is not grouped again")
+        XCTAssertEqual(h.model.flowGroups.map(\.flow), [nil])
     }
 
     func testNoneTasksAreFoundBySearch() async throws {

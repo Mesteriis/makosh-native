@@ -241,11 +241,6 @@ extension TasksWorkspaceModel {
     }
 }
 
-/// `to:КОД` references, as the reference pastes them for agents.
-public enum TaskReference {
-    public static func text(code: String, title: String) -> String { "to:\(code) \(title)" }
-}
-
 /// Russian names of the local statuses, shared by toasts and views.
 public enum TaskStyleText {
     public static func status(_ status: TaskStatus) -> String {

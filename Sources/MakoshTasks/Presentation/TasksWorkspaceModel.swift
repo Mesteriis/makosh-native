@@ -7,41 +7,6 @@ public enum TasksSpace: Equatable, Sendable {
     case jira(UUID)
 }
 
-public enum TasksFilter: Equatable, Hashable, Sendable {
-    case all, today, tomorrow, week, month, overdue
-    case status(TaskStatus)
-    case list(String)
-    case tag(String)
-
-    public var key: String {
-        switch self {
-        case .all: "all"
-        case .today: "today"
-        case .tomorrow: "tomorrow"
-        case .week: "week"
-        case .month: "month"
-        case .overdue: "overdue"
-        case .status(let value): "status:" + value.rawValue
-        case .list(let value): "list:" + value
-        case .tag(let value): "tag:" + value
-        }
-    }
-    static func from(key: String) -> TasksFilter {
-        switch key {
-        case "today": return .today
-        case "tomorrow": return .tomorrow
-        case "week": return .week
-        case "month": return .month
-        case "overdue": return .overdue
-        default:
-            if key.hasPrefix("status:"), let status = TaskStatus(rawValue: String(key.dropFirst(7))) { return .status(status) }
-            if key.hasPrefix("list:") { return .list(String(key.dropFirst(5))) }
-            if key.hasPrefix("tag:") { return .tag(String(key.dropFirst(4))) }
-            return .all
-        }
-    }
-}
-
 /// One column of the Jira board: a workflow status, or a category when the project has too many statuses.
 public struct JiraBoardColumn: Identifiable, Equatable, Sendable {
     public let id: String
@@ -65,24 +30,28 @@ public enum JiraAction: Sendable {
     public static let boardStatusLimit = 8
 
     @Published public var space: TasksSpace = .mine { didSet { applyFilters() } }
-    @Published public var filter: TasksFilter = .all {
+    @Published public var filters = TasksFilters() {
         didSet {
             applyFilters()
             savePreferences()
         }
     }
-    @Published public var sort: TasksSort = .priority {
+    @Published public var sortState: TasksSortState? {
         didSet {
             applyFilters()
             savePreferences()
         }
     }
-    @Published public var showCompleted = true {
-        didSet {
-            applyFilters()
-            savePreferences()
-        }
-    }
+    @Published public var condense = false { didSet { savePreferences() } }
+    @Published public var showSidebar = true { didSet { savePreferences() } }
+    @Published public var showRightPanel = true { didSet { savePreferences() } }
+    @Published public var showCalendar = true { didSet { savePreferences() } }
+    @Published public var showPlanner = false { didSet { savePreferences() } }
+    @Published public var plannerWidthPercent = 40 { didSet { savePreferences() } }
+    @Published public var collapsedSections: Set<String> = [] { didSet { savePreferences() } }
+    /// How many leading rows of `visible` are overdue (they float under «Просрочено»).
+    @Published public private(set) var overdueCount = 0
+    @Published public private(set) var flowGroups: [TasksFlowGroup] = []
     @Published public var search = "" { didSet { applyFilters() } }
     /// In a connection's space: also show issues that left the selection («Ушедшие»).
     @Published public var showLeft = false { didSet { applyFilters() } }
@@ -154,8 +123,50 @@ public enum JiraAction: Sendable {
     public var lists: [String] { Array(Set(tasks.filter { $0.deletedAt == nil }.compactMap(\.list))).sorted() }
     public var tags: [String] { Array(Set(tasks.filter { $0.deletedAt == nil }.flatMap(\.tags))).sorted() }
 
-    public func count(_ filter: TasksFilter) -> Int {
-        mineTasks.filter { matches($0, filter: filter) && (showCompleted || !isClosed($0)) }.count
+    public var personas: [String] { Array(Set(mineTasks.flatMap(\.personas))).sorted() }
+    public var flows: [String] { Array(Set(mineTasks.compactMap(\.flowID))).sorted() }
+    public var totalCount: Int { mineTasks.count }
+    public var doneCount: Int { mineTasks.filter { $0.status == .done }.count }
+    /// `visible.count` while anything narrows the list; nil otherwise.
+    public var foundCount: Int? { filters.isFiltering || !Self.fold(search).isEmpty ? visible.count : nil }
+    public var agendaCounts: [TasksAgenda: Int] {
+        Dictionary(
+            uniqueKeysWithValues: TasksAgenda.allCases.map { agenda in (agenda, mineTasks.filter { matches($0, agenda: agenda) }.count) })
+    }
+    public var statusCounts: [TaskStatus: Int] {
+        Dictionary(uniqueKeysWithValues: TaskStatus.allCases.map { status in (status, mineTasks.filter { $0.status == status }.count) })
+    }
+    public var listCounts: [String: Int] { Self.counts(mineTasks.compactMap(\.list)) }
+    public var tagCounts: [String: Int] { Self.counts(mineTasks.flatMap(\.tags)) }
+    public var personaCounts: [String: Int] { Self.counts(mineTasks.flatMap(\.personas)) }
+    public var flowCounts: [String: Int] { Self.counts(mineTasks.compactMap(\.flowID)) }
+    private static func counts(_ values: [String]) -> [String: Int] {
+        values.reduce(into: [:]) { $0[$1, default: 0] += 1 }
+    }
+
+    /// Sidebar's «N задач» and the header's counter click: every filter, the day and the search.
+    public func clearAll() {
+        search = ""
+        filters.clearFilters()
+    }
+
+    public enum EscapeResult: Equatable, Sendable { case selection, search, filters, nothing }
+
+    /// Esc, one stage per press: selection → search → filters.
+    @discardableResult public func escape() -> EscapeResult {
+        if !selection.selected.isEmpty {
+            selection.clear()
+            return .selection
+        }
+        if !search.isEmpty {
+            search = ""
+            return .search
+        }
+        if filters.isFiltering {
+            filters.clearFilters()
+            return .filters
+        }
+        return .nothing
     }
 
     public func refresh() async {
@@ -533,57 +544,104 @@ public enum JiraAction: Sendable {
 
     private func isClosed(_ task: Task) -> Bool { task.status == .done || task.status == .cancelled }
 
-    private func matches(_ task: Task, filter: TasksFilter) -> Bool {
+    private func matches(_ task: Task, agenda: TasksAgenda) -> Bool {
         let today = calendar.startOfDay(for: now())
+        let overdue = isOverdue(task)
+        guard let due = task.due.map({ calendar.startOfDay(for: $0) }) else { return false }
         func within(days: Int) -> Bool {
-            guard let due = task.due, let end = calendar.date(byAdding: .day, value: days, to: today) else { return false }
-            return calendar.startOfDay(for: due) < end && !isClosed(task)
+            guard let end = calendar.date(byAdding: .day, value: days, to: today) else { return false }
+            return due >= today && due <= end
         }
-        switch filter {
-        case .all: return true
-        case .today: return task.due.map { calendar.isDate($0, inSameDayAs: today) } ?? false
-        case .tomorrow:
-            return task.due.map { calendar.isDate($0, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: today) ?? today) } ?? false
-        case .week: return within(days: 7)
-        case .month: return within(days: 31)
-        case .overdue: return isOverdue(task)
-        case .status(let status): return task.status == status
-        case .list(let list): return task.list == list
-        case .tag(let tag): return task.tags.contains(tag)
+        switch agenda {
+        case .overdue: return overdue
+        case .today: return overdue || calendar.isDate(due, inSameDayAs: today)
+        case .tomorrow: return overdue || calendar.isDate(due, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: today) ?? today)
+        case .week: return overdue || within(days: 7)
+        case .month: return overdue || within(days: 30)
         }
     }
 
-    private func applyFilters() {
-        let needle = Self.fold(search)
-        func searched(_ task: Task) -> Bool {
-            guard !needle.isEmpty else { return true }
-            if task.code.lowercased() == needle { return true }
-            let key = observations[task.id]?.issue.key.lowercased() ?? ""
-            return Self.fold(task.title).contains(needle) || key.contains(needle) || task.tags.contains { Self.fold($0).contains(needle) }
+    private func matches(_ task: Task) -> Bool {
+        if let status = filters.status, task.status != status { return false }
+        if filters.status == nil, filters.actualOnly, isClosed(task) { return false }
+        if let agenda = filters.agenda, !matches(task, agenda: agenda) { return false }
+        if let list = filters.list, task.list != list { return false }
+        if let tag = filters.tag, !task.tags.contains(tag) { return false }
+        if let persona = filters.persona, !task.personas.contains(persona) { return false }
+        if let flow = filters.flow, task.flowID != flow { return false }
+        if let day = filters.day {
+            guard let due = task.due, calendar.isDate(due, inSameDayAs: day) else { return false }
         }
-        switch space {
-        case .mine:
-            var result = mineTasks.filter { matches($0, filter: filter) && (showCompleted || !isClosed($0)) && searched($0) }
-            result.sort { lhs, rhs in
-                let primary: Bool?
-                switch sort {
-                case .priority: primary = lhs.priority == rhs.priority ? nil : lhs.priority < rhs.priority
+        return true
+    }
+
+    private func searched(_ task: Task, needle: String, swapped: String, reference: String?) -> Bool {
+        guard !needle.isEmpty else { return true }
+        if let reference, task.code.hasSuffix(reference) { return true }
+        let key = observations[task.id]?.issue.key.lowercased() ?? ""
+        let fields = [Self.fold(task.title), key, Self.fold(task.list ?? "")] + task.tags.map(Self.fold)
+        return fields.contains { $0.contains(needle) || (swapped != needle && $0.contains(swapped)) }
+    }
+
+    private func sorted(_ tasks: [Task]) -> [Task] {
+        tasks.sorted { lhs, rhs in
+            var primary: Bool?
+            if let sortState {
+                let sign = sortState.descending ? -1 : 1
+                func compare<T: Comparable>(_ l: T, _ r: T) -> Bool? { l == r ? nil : ((l < r) == (sign > 0)) }
+                switch sortState.field {
+                case .priority: primary = compare(lhs.priority, rhs.priority)
                 case .status:
                     let order = TaskDomain.fullCycle
-                    let l = order.firstIndex(of: lhs.status) ?? 0, r = order.firstIndex(of: rhs.status) ?? 0
-                    primary = l == r ? nil : l < r
+                    primary = compare(order.firstIndex(of: lhs.status) ?? 0, order.firstIndex(of: rhs.status) ?? 0)
                 case .due:
                     switch (lhs.due, rhs.due) {
                     case (nil, nil): primary = nil
                     case (nil, _): primary = false
                     case (_, nil): primary = true
-                    case (let l?, let r?): primary = l == r ? nil : l < r
+                    case (let l?, let r?): primary = compare(l, r)
                     }
-                case .created: primary = lhs.createdAt == rhs.createdAt ? nil : lhs.createdAt > rhs.createdAt
+                case .created: primary = compare(lhs.createdAt, rhs.createdAt)
                 }
-                return primary ?? (lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending)
             }
-            visible = result
+            return primary ?? (lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending)
+        }
+    }
+
+    private func applyFilters() {
+        let needle = Self.fold(search)
+        let swapped = KeyboardLayout.swapped(needle)
+        let reference = needle.split(separator: " ").first.flatMap { TaskReference.normalize(String($0)) }
+        switch space {
+        case .mine:
+            let rows = sorted(mineTasks.filter { matches($0) && searched($0, needle: needle, swapped: swapped, reference: reference) })
+            let overdue = rows.filter { isOverdue($0) }
+            var rest = rows.filter { !isOverdue($0) }
+            if filters.groupByFlow, filters.flow == nil {
+                var seen: Set<String> = []
+                var grouped: [Task] = []
+                for task in rest {
+                    if let flow = task.flowID {
+                        guard seen.insert(flow).inserted else { continue }
+                        grouped += rest.filter { $0.flowID == flow }
+                    } else {
+                        grouped.append(task)
+                    }
+                }
+                rest = grouped
+            }
+            overdueCount = overdue.count
+            visible = overdue + rest
+            var groups: [TasksFlowGroup] = []
+            for task in rest {
+                let flow = filters.groupByFlow && filters.flow == nil ? task.flowID : nil
+                if let last = groups.last, last.flow == flow {
+                    groups[groups.count - 1] = TasksFlowGroup(flow: flow, tasks: last.tasks + [task])
+                } else {
+                    groups.append(TasksFlowGroup(flow: flow, tasks: [task]))
+                }
+            }
+            flowGroups = groups
             board = []
         case .jira(let connectionID):
             // Issues that left the selection stay reachable: by search, or with «Ушедшие» on.
@@ -592,8 +650,11 @@ public enum JiraAction: Sendable {
                 guard task.deletedAt == nil, let source = task.source, source.identity.accountID == connectionID.uuidString else {
                     return false
                 }
-                return (source.membership != TaskMembership.none || includeLeft) && searched(task)
+                return (source.membership != TaskMembership.none || includeLeft)
+                    && searched(task, needle: needle, swapped: swapped, reference: reference)
             }
+            overdueCount = 0
+            flowGroups = []
             visible = rows
             board = Self.columns(for: rows, statuses: projectStatuses[connectionID] ?? [:], observations: observations)
         }
@@ -635,50 +696,51 @@ public enum JiraAction: Sendable {
 
     private var preferences = TaskPreferences()
 
-    // The single filter of the first part is bridged onto the stored v2 shape
-    // until the combinable filters replace it.
     private func applyPreferences(_ preferences: TaskPreferences) {
         let loaded = preferencesLoaded
         preferencesLoaded = false
         self.preferences = preferences
-        sort = preferences.sort ?? .priority
-        let snapshot = preferences.filters
-        let key: String
-        if let agenda = snapshot.agenda {
-            key = agenda
-        } else if let status = snapshot.status {
-            key = "status:" + status
-        } else if let list = snapshot.list {
-            key = "list:" + list
-        } else if let tag = snapshot.tag {
-            key = "tag:" + tag
-        } else {
-            key = "all"
-        }
-        filter = TasksFilter.from(key: key)
-        showCompleted = !snapshot.actualOnly
+        sortState = preferences.sort.map { TasksSortState(field: $0, descending: preferences.sortDescending) }
+        filters = TasksFilters(snapshot: preferences.filters, calendar: calendar)
+        condense = preferences.condense
+        showSidebar = preferences.showSidebar
+        showRightPanel = preferences.showRightPanel
+        showCalendar = preferences.showCalendar
+        showPlanner = preferences.showPlanner
+        plannerWidthPercent = preferences.plannerWidthPercent
+        collapsedSections = Set(preferences.collapsedSections)
         preferencesLoaded = loaded
     }
 
     private func savePreferences() {
         guard preferencesLoaded else { return }
         var value = preferences
-        value.sort = sort
-        var snapshot = TasksFiltersSnapshot()
-        switch filter {
-        case .all: break
-        case .today, .tomorrow, .week, .month, .overdue: snapshot.agenda = filter.key
-        case .status(let status): snapshot.status = status.rawValue
-        case .list(let list): snapshot.list = list
-        case .tag(let tag): snapshot.tag = tag
-        }
-        snapshot.actualOnly = !showCompleted
-        value.filters = snapshot
-        value.showCompleted = showCompleted
+        value.sort = sortState?.field
+        value.sortDescending = sortState?.descending ?? false
+        value.filters = filters.snapshot(calendar: calendar)
+        value.showCompleted = !filters.actualOnly
+        value.condense = condense
+        value.showSidebar = showSidebar
+        value.showRightPanel = showRightPanel
+        value.showCalendar = showCalendar
+        value.showPlanner = showPlanner
+        value.plannerWidthPercent = plannerWidthPercent
+        value.collapsedSections = collapsedSections.sorted()
         preferences = value
         let service = service
         _Concurrency.Task { try? await service.store.savePreferences(value) }
     }
+
+    /// Settings and views change the stored preferences through this one door.
+    public func updatePreferences(_ change: (inout TaskPreferences) -> Void) {
+        var value = preferences
+        change(&value)
+        preferences = value
+        let service = service
+        _Concurrency.Task { try? await service.store.savePreferences(value) }
+    }
+
+    public var storedPreferences: TaskPreferences { preferences }
 
     public static func fold(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "ё", with: "е")

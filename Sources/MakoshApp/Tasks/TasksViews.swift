@@ -73,13 +73,20 @@ struct TasksContentView: View {
             HStack(spacing: 12) {
                 if case .mine = model.space {
                     TaskQuickEntryField(model: model, focused: $quickEntryFocused)
-                    Picker("Порядок", selection: $model.sort) {
-                        Text("Приоритет").tag(TasksSort.priority)
-                        Text("Статус").tag(TasksSort.status)
-                        Text("Срок").tag(TasksSort.due)
-                        Text("Создание").tag(TasksSort.created)
+                    Picker(
+                        "Порядок",
+                        selection: Binding(
+                            get: { model.sortState?.field },
+                            set: { field in model.sortState = field.map { TasksSortState(field: $0, descending: false) } })
+                    ) {
+                        Text("Название").tag(Optional<TasksSort>.none)
+                        Text("Приоритет").tag(Optional(TasksSort.priority))
+                        Text("Статус").tag(Optional(TasksSort.status))
+                        Text("Срок").tag(Optional(TasksSort.due))
+                        Text("Создание").tag(Optional(TasksSort.created))
                     }.frame(width: 130).accessibilityIdentifier("tasks.sort")
-                    Toggle("Сделанные", isOn: $model.showCompleted).toggleStyle(.checkbox).accessibilityIdentifier("tasks.showCompleted")
+                    Toggle("Только актуальные", isOn: $model.filters.actualOnly).toggleStyle(.checkbox).accessibilityIdentifier(
+                        "tasks.actualOnly")
                 } else {
                     TextField("Поиск по ключу и названию", text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier(
                         "tasks.search")

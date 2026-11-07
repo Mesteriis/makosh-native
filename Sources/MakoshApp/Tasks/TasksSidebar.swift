@@ -2,11 +2,15 @@ import MakoshTasks
 import SwiftUI
 
 /// Filters of «Мои» on top, lists and tags, then every Jira connection as its own space.
+/// Rows toggle the combinable filters; the reference's full sidebar replaces this view later.
 struct TasksSidebarView: View {
     @ObservedObject var model: TasksWorkspaceModel
 
     private enum Row: Hashable {
-        case filter(TasksFilter)
+        case agenda(TasksAgenda)
+        case status(TaskStatus?)
+        case list(String)
+        case tag(String)
         case jira(UUID)
     }
 
@@ -14,15 +18,28 @@ struct TasksSidebarView: View {
         Binding(
             get: {
                 switch model.space {
-                case .mine: return .filter(model.filter)
+                case .mine:
+                    if let agenda = model.filters.agenda { return .agenda(agenda) }
+                    if let list = model.filters.list { return .list(list) }
+                    if let tag = model.filters.tag { return .tag(tag) }
+                    return .status(model.filters.status)
                 case .jira(let id): return .jira(id)
                 }
             },
             set: { value in
                 switch value {
-                case .filter(let filter)?:
+                case .agenda(let agenda)?:
                     model.space = .mine
-                    model.filter = filter
+                    model.filters.toggle(agenda: agenda)
+                case .status(let status)?:
+                    model.space = .mine
+                    if let status { model.filters.toggle(status: status) } else { model.filters.clearFilters() }
+                case .list(let list)?:
+                    model.space = .mine
+                    model.filters.toggle(list: list)
+                case .tag(let tag)?:
+                    model.space = .mine
+                    model.filters.toggle(tag: tag)
                 case .jira(let id)?: model.space = .jira(id)
                 case nil: break
                 }
@@ -47,24 +64,34 @@ struct TasksSidebarView: View {
             }.padding(20)
             List(selection: selection) {
                 Section("Повестка") {
-                    row("Сегодня", "calendar", .today)
-                    row("Завтра", "calendar.badge.clock", .tomorrow)
-                    row("Неделя", "calendar", .week)
-                    row("Месяц", "calendar", .month)
-                    row("Просрочено", "exclamationmark.triangle", .overdue)
+                    ForEach(TasksAgenda.allCases, id: \.self) { agenda in
+                        row(agenda.title, agenda == .overdue ? "exclamationmark.triangle" : "calendar", model.agendaCounts[agenda] ?? 0)
+                            .tag(Row.agenda(agenda)).accessibilityIdentifier("tasks.filter.\(agenda.rawValue)")
+                    }
                 }
                 Section("Статус") {
-                    row("Все", "line.3.horizontal.decrease.circle", .all)
-                    row("Входящие", "tray", .status(.inbox))
-                    row("В работе", "bolt", .status(.active))
-                    row("Сделано", "checkmark", .status(.done))
-                    row("Отменено", "xmark", .status(.cancelled))
+                    row("Все", "line.3.horizontal.decrease.circle", model.totalCount).tag(Row.status(nil)).accessibilityIdentifier(
+                        "tasks.filter.all")
+                    ForEach(TaskStatus.allCases, id: \.self) { status in
+                        row(TaskStyleText.status(status), symbol(status), model.statusCounts[status] ?? 0).tag(Row.status(status))
+                            .accessibilityIdentifier("tasks.filter.status:\(status.rawValue)")
+                    }
                 }
                 if !model.lists.isEmpty {
-                    Section("Списки") { ForEach(model.lists, id: \.self) { list in row(list, "list.bullet", .list(list)) } }
+                    Section("Списки") {
+                        ForEach(model.lists, id: \.self) { list in
+                            row(list, "list.bullet", model.listCounts[list] ?? 0).tag(Row.list(list)).accessibilityIdentifier(
+                                "tasks.filter.list:\(list)")
+                        }
+                    }
                 }
                 if !model.tags.isEmpty {
-                    Section("Теги") { ForEach(model.tags, id: \.self) { tag in row("#" + tag, "number", .tag(tag)) } }
+                    Section("Теги") {
+                        ForEach(model.tags, id: \.self) { tag in
+                            row("#" + tag, "number", model.tagCounts[tag] ?? 0).tag(Row.tag(tag)).accessibilityIdentifier(
+                                "tasks.filter.tag:\(tag)")
+                        }
+                    }
                 }
                 Section {
                     if model.connections.isEmpty {
@@ -88,17 +115,25 @@ struct TasksSidebarView: View {
     }
 
     private var subtitle: String {
-        let open = model.count(.all) - model.count(.status(.done)) - model.count(.status(.cancelled))
-        return "\(open) открытых · \(model.count(.today)) сегодня"
+        let open = model.totalCount - (model.statusCounts[.done] ?? 0) - (model.statusCounts[.cancelled] ?? 0)
+        return "\(open) открытых · \(model.agendaCounts[.today] ?? 0) сегодня"
     }
 
-    private func row(_ title: String, _ symbol: String, _ filter: TasksFilter) -> some View {
+    private func symbol(_ status: TaskStatus) -> String {
+        switch status {
+        case .inbox: "tray"
+        case .active: "bolt"
+        case .done: "checkmark"
+        case .cancelled: "xmark"
+        }
+    }
+
+    private func row(_ title: String, _ symbol: String, _ count: Int) -> some View {
         HStack {
             Label(title, systemImage: symbol)
             Spacer()
-            Text(String(model.count(filter))).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            Text(String(count)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
         }
-        .tag(Row.filter(filter)).accessibilityIdentifier("tasks.filter.\(filter.key)")
     }
 
     private func status(_ connection: JiraConnection) -> String {

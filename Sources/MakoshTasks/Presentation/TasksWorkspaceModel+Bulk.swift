@@ -252,3 +252,48 @@ public enum TaskStyleText {
         }
     }
 }
+
+// MARK: Flows and personas
+
+extension TasksWorkspaceModel {
+    public func saveFlow(_ flow: TaskFlow) async {
+        do {
+            try await service.store.saveFlow(flow)
+            error = nil
+            await refresh()
+        } catch { self.error = Self.describe(error) }
+    }
+
+    /// Drops the card and the name on its tasks; a pinned filter on it is cleared.
+    public func deleteFlow(name: String) async {
+        do {
+            try await service.store.removeFlow(name: name)
+            if filters.flow == name { filters.flow = nil }
+            error = nil
+            await refresh()
+            toast("Цепочка удалена")
+        } catch { self.error = Self.describe(error) }
+    }
+
+    /// «Запустить следующую»: the first ready inbox task of the flow goes active.
+    public func startNext(inFlow name: String) async {
+        let inFlow = tasks.filter { $0.flowID == name && $0.deletedAt == nil }
+        guard let next = TaskFlowRules.nextReady(inFlow, resolve: { self.task(id: $0) }) else { return }
+        let result = await bulk(status: .active, ids: [next.id], quiet: true)
+        if result.changed > 0 { toast("Задача запущена") }
+    }
+
+    public func setFlow(id: UUID, name: String?) async {
+        guard let task = task(id: id) else { return }
+        var value = task
+        value.flowID = name?.trimmingCharacters(in: .whitespaces).isEmpty == false ? name?.trimmingCharacters(in: .whitespaces) : nil
+        await update(value)
+    }
+
+    public func setPersonas(id: UUID, _ personas: [String]) async {
+        guard let task = task(id: id) else { return }
+        var value = task
+        value.personas = personas.map { $0.replacingOccurrences(of: " ", with: "") }.filter { !$0.isEmpty }
+        await update(value)
+    }
+}

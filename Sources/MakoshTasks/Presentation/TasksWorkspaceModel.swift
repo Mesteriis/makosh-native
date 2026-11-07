@@ -125,7 +125,12 @@ public enum JiraAction: Sendable {
     public var tags: [String] { Array(Set(tasks.filter { $0.deletedAt == nil }.flatMap(\.tags))).sorted() }
 
     public var personas: [String] { Array(Set(mineTasks.flatMap(\.personas))).sorted() }
-    public var flows: [String] { Array(Set(mineTasks.compactMap(\.flowID))).sorted() }
+    /// Every flow with tasks or a card.
+    public var flows: [String] { Array(Set(mineTasks.compactMap(\.flowID) + flowMeta.keys)).sorted() }
+    @Published public private(set) var flowMeta: [String: TaskFlow] = [:]
+    public var activeFlow: String? { filters.flow }
+    public var flowTasks: [Task] { activeFlow.map { flow in mineTasks.filter { $0.flowID == flow } } ?? [] }
+    public func flowProgress(_ name: String) -> TaskFlowProgress { TaskFlowRules.progress(mineTasks.filter { $0.flowID == name }) }
     public var totalCount: Int { mineTasks.count }
     public var doneCount: Int { mineTasks.filter { $0.status == .done }.count }
     /// `visible.count` while anything narrows the list; nil otherwise.
@@ -181,6 +186,7 @@ public enum JiraAction: Sendable {
         connections = snapshot.connections
         projectStatuses = snapshot.projectStatuses
         priorities = snapshot.priorities
+        flowMeta = Dictionary(snapshot.flows.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         timer = snapshot.timer
         if let failure = snapshot.journalFailure { error = failure }
         if !preferencesLoaded {

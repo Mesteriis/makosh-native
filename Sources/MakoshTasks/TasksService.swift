@@ -13,6 +13,7 @@ public struct TasksSnapshot: Sendable {
     public var projectStatuses: [UUID: [String: [JiraStatus]]] = [:]
     public var priorities: [UUID: [JiraPriority]] = [:]
     public var preferences = TaskPreferences()
+    public var flows: [TaskFlow] = []
     public var journalFailure: String?
     public init() {}
 }
@@ -83,6 +84,7 @@ public actor TasksService {
             value.timer = try await store.timer()
             value.connections = try await store.connections()
             value.preferences = try await store.preferences()
+            value.flows = try await store.flows()
         } catch {
             value.journalFailure = "Хранилище задач недоступно."
         }

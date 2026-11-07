@@ -466,4 +466,39 @@ import XCTest
         XCTAssertEqual(h.model.lastAction, "Создана: Счёт · \(expectedDay) · P1 · @Работа")
         XCTAssertNil(h.model.quickEntryPreview)
     }
+
+    func testStartNextActivatesFirstReady() async throws {
+        let h = try await harness()
+        let first = try await created(h, "Первая >>Релиз")
+        let second = try await created(h, "Вторая >>Релиз ~\(first.code)")
+        XCTAssertEqual(h.model.flows, ["Релиз"])
+        XCTAssertEqual(h.model.flowProgress("Релиз").total, 2)
+        await h.model.startNext(inFlow: "Релиз")
+        XCTAssertEqual(h.model.task(id: first.id)?.status, .active)
+        XCTAssertEqual(h.model.task(id: second.id)?.status, .inbox)
+        XCTAssertEqual(h.model.lastAction, "Задача запущена")
+        await h.model.saveFlow(TaskFlow(name: "Релиз", description: "Выпуск", color: TaskFlow.palette[2]))
+        XCTAssertEqual(h.model.flowMeta["Релиз"]?.description, "Выпуск")
+        h.model.filters.toggle(flow: "Релиз")
+        XCTAssertEqual(h.model.activeFlow, "Релиз")
+        XCTAssertEqual(Set(h.model.flowTasks.map(\.id)), [first.id, second.id])
+        await h.model.deleteFlow(name: "Релиз")
+        XCTAssertNil(h.model.filters.flow, "deleting the pinned flow clears its filter")
+        XCTAssertNil(h.model.task(id: first.id)?.flowID)
+        XCTAssertTrue(h.model.flows.isEmpty)
+    }
+
+    func testPersonaCountsAndFilter() async throws {
+        let h = try await harness()
+        let bob = try await created(h, "Для Боба /Боб")
+        _ = try await created(h, "Для обоих /Боб /Алиса")
+        XCTAssertEqual(h.model.personas, ["Алиса", "Боб"])
+        XCTAssertEqual(h.model.personaCounts["Боб"], 2)
+        h.model.filters.toggle(persona: "Алиса")
+        XCTAssertEqual(h.model.visible.map(\.title), ["Для обоих"])
+        await h.model.setPersonas(id: bob.id, ["Алиса"])
+        XCTAssertEqual(h.model.visible.count, 2)
+        await h.model.setFlow(id: bob.id, name: "Ремонт")
+        XCTAssertEqual(h.model.flowCounts["Ремонт"], 1)
+    }
 }

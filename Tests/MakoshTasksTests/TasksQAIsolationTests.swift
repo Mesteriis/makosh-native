@@ -32,7 +32,7 @@ final class TasksQAIsolationTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         try await TasksSyntheticSeed.seed(store: store, now: now)
         let tasks = try await store.tasks()
-        XCTAssertEqual(tasks.count, 12)
+        XCTAssertEqual(tasks.count, 14)
         let byID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
         let blocked = tasks.filter { TaskDomain.isBlocked($0) { byID[$0] } }
         XCTAssertFalse(blocked.isEmpty, "at least one task waits for another")
@@ -42,7 +42,7 @@ final class TasksQAIsolationTests: XCTestCase {
         XCTAssertTrue(tasks.contains { !$0.tags.isEmpty && $0.list != nil })
         try await TasksSyntheticSeed.seed(store: store, now: now)
         let again = try await store.tasks()
-        XCTAssertEqual(again.count, 12, "seeding twice is a no-op")
+        XCTAssertEqual(again.count, 14, "seeding twice is a no-op")
         let connections = try await store.connections()
         XCTAssertEqual(connections.map(\.name), ["Синтетическая Jira"])
     }

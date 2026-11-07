@@ -92,3 +92,73 @@ public struct JiraPage<T: Sendable>: Sendable {
         self.nextToken = nextToken
     }
 }
+
+public struct JiraComment: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let author: JiraUser
+    public let created: Date
+    public let updated: Date
+    public let bodyADF: Data
+    public let bodyText: String
+    public init(id: String, author: JiraUser, created: Date, updated: Date, bodyADF: Data, bodyText: String) {
+        self.id = id
+        self.author = author
+        self.created = created
+        self.updated = updated
+        self.bodyADF = bodyADF
+        self.bodyText = bodyText
+    }
+}
+
+public struct JiraWorklog: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let author: JiraUser
+    public let started: Date
+    public let seconds: Int
+    public let commentText: String
+    public init(id: String, author: JiraUser, started: Date, seconds: Int, commentText: String = "") {
+        self.id = id
+        self.author = author
+        self.started = started
+        self.seconds = seconds
+        self.commentText = commentText
+    }
+}
+
+public struct JiraFieldOption: Codable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+/// A field a transition screen asks for; `schemaType` is Jira's wire type (`string`, `option`, `resolution`, …).
+public struct JiraField: Codable, Equatable, Sendable {
+    public let key: String
+    public let name: String
+    public let required: Bool
+    public let schemaType: String
+    public let allowedValues: [JiraFieldOption]?
+    public init(key: String, name: String, required: Bool, schemaType: String, allowedValues: [JiraFieldOption]? = nil) {
+        self.key = key
+        self.name = name
+        self.required = required
+        self.schemaType = schemaType
+        self.allowedValues = allowedValues
+    }
+}
+
+public struct JiraTransition: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let to: JiraStatus
+    public let fields: [JiraField]
+    public init(id: String, name: String, to: JiraStatus, fields: [JiraField] = []) {
+        self.id = id
+        self.name = name
+        self.to = to
+        self.fields = fields
+    }
+}

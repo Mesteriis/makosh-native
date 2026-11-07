@@ -81,6 +81,18 @@ public struct Task: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+extension Task {
+    /// The same task with a new code or creation time; both are `let` so the
+    /// store builds a copy rather than mutating them.
+    func replacing(code: String? = nil, createdAt: Date? = nil) -> Task {
+        Task(
+            id: id, code: code ?? self.code, title: title, status: status, priority: priority, list: list, tags: tags, due: due,
+            start: start, estimateMinutes: estimateMinutes, url: url, postponed: postponed, dependsOn: dependsOn, notes: notes,
+            source: source, createdAt: createdAt ?? self.createdAt, updatedAt: updatedAt, completedAt: completedAt, deletedAt: deletedAt,
+            revision: revision)
+    }
+}
+
 /// Short codes like `7K3MZ`: five Crockford Base32 characters from the id's leading bits.
 public enum TaskCode {
     static let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")

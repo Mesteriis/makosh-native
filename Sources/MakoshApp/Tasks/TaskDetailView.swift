@@ -50,7 +50,7 @@ struct TaskDetailView: View {
 
     private func load() {
         title = task.title
-        notes = task.notes
+        notes = task.notesText
         list = task.list ?? ""
         tagsText = task.tags.joined(separator: ", ")
         estimate = task.estimateMinutes.map(String.init) ?? ""
@@ -58,8 +58,9 @@ struct TaskDetailView: View {
 
     /// Notes are written when the editor loses focus or the card goes away, not per keystroke.
     private func flushNotes() {
-        guard notes != task.notes else { return }
-        save { $0.notes = notes }
+        guard notes != task.notesText else { return }
+        // One editor over all notes until the per-note list arrives with the details panel.
+        save { $0.notes = notes.isEmpty ? [] : [TaskNote(content: notes)] }
     }
 
     private var localLayer: some View {

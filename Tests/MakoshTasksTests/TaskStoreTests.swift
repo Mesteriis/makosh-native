@@ -101,7 +101,7 @@ final class TaskStoreTests: XCTestCase {
         var changed = initial
         changed.sort = .due
         changed.showCompleted = false
-        changed.filter = "overdue"
+        changed.filters.agenda = "overdue"
         try await store.savePreferences(changed)
         let read = try await store.preferences()
         XCTAssertEqual(read, changed)
@@ -114,6 +114,35 @@ final class TaskStoreTests: XCTestCase {
         try await again.open()
         let tasks = try await again.tasks()
         XCTAssertTrue(tasks.isEmpty)
+        _ = store
+    }
+
+    func testNewFieldsRoundTripAndAppearInChangedFields() async throws {
+        let db = try tasksDatabase(), store = try await taskStore(db)
+        let note = TaskNote(content: "заметка")
+        let inserted = try await store.insert(
+            Task(title: "x", personas: ["Боб"], recurrence: "weekly", flowID: "Релиз", notes: [note]), actor: .user)
+        let read = try await store.task(id: inserted.id)
+        XCTAssertEqual(read?.personas, ["Боб"])
+        XCTAssertEqual(read?.recurrence, "weekly")
+        XCTAssertEqual(read?.flowID, "Релиз")
+        XCTAssertEqual(read?.notes.map(\.content), ["заметка"])
+        var edit = inserted
+        edit.personas = ["Боб", "Алиса"]
+        edit.recurrence = nil
+        edit.flowID = "Ремонт"
+        edit.notes.append(TaskNote(content: "ещё"))
+        _ = try await store.update(edit, expectedRevision: inserted.revision, actor: .user)
+        let versions = try await store.versions(taskID: inserted.id)
+        XCTAssertEqual(versions.last?.changedFields.sorted(), ["flowID", "notes", "personas", "recurrence"])
+    }
+
+    func testNewTablesExistAfterOpen() async throws {
+        let db = try tasksDatabase(), store = try await taskStore(db)
+        for table in ["tasks_flows", "tasks_day_plans", "tasks_day_plan_slots", "tasks_focus"] {
+            let rows = try db.execute("SELECT to_regclass('\"\(db.schema)\".\(table)')")
+            XCTAssertEqual(rows.first?.first, "\(db.schema).\(table)", table)
+        }
         _ = store
     }
 

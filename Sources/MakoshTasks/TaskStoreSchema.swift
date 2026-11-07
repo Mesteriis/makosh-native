@@ -44,6 +44,15 @@ enum TaskStoreSchema {
             """,
             "CREATE INDEX IF NOT EXISTS tasks_time_entries_task ON \(s)tasks_time_entries(task_id, started_at)",
             "CREATE TABLE IF NOT EXISTS \(s)tasks_timer(id SMALLINT PRIMARY KEY CHECK(id = 1), data JSONB NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS \(s)tasks_flows(name TEXT PRIMARY KEY, data JSONB NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS \(s)tasks_day_plans(id UUID PRIMARY KEY, date DATE NOT NULL UNIQUE, data JSONB NOT NULL)",
+            """
+            CREATE TABLE IF NOT EXISTS \(s)tasks_day_plan_slots(
+                id UUID PRIMARY KEY, plan_id UUID NOT NULL, task_id UUID, start_time TEXT NOT NULL, end_time TEXT NOT NULL,
+                data JSONB NOT NULL)
+            """,
+            "CREATE INDEX IF NOT EXISTS tasks_day_plan_slots_plan ON \(s)tasks_day_plan_slots(plan_id, start_time)",
+            "CREATE TABLE IF NOT EXISTS \(s)tasks_focus(id SMALLINT PRIMARY KEY CHECK(id = 1), data JSONB NOT NULL)",
         ]
     }
 }

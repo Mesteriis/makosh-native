@@ -90,7 +90,7 @@ public enum TasksSyntheticSeed {
             Task(id: id(11), title: "Разобрать почту", status: .inbox, priority: 4, tags: ["рутина"], estimateMinutes: 30, createdAt: now),
             Task(
                 id: id(12), title: "Перенести заметки", status: .inbox, priority: 3, list: "Личное", due: day(0), postponed: 2,
-                notes: "Переносилось дважды.",
+                notes: [TaskNote(id: id(112), content: "Переносилось дважды.", createdAt: now)],
                 createdAt: now),
         ]
         for row in rows { try await store.insert(row, actor: .user) }

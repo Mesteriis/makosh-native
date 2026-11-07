@@ -614,21 +614,49 @@ public enum JiraAction: Sendable {
 
     // MARK: Preferences
 
+    private var preferences = TaskPreferences()
+
+    // The single filter of the first part is bridged onto the stored v2 shape
+    // until the combinable filters replace it.
     private func applyPreferences(_ preferences: TaskPreferences) {
         let loaded = preferencesLoaded
         preferencesLoaded = false
-        sort = preferences.sort
-        filter = TasksFilter.from(key: preferences.filter)
-        showCompleted = preferences.showCompleted
+        self.preferences = preferences
+        sort = preferences.sort ?? .priority
+        let snapshot = preferences.filters
+        let key: String
+        if let agenda = snapshot.agenda {
+            key = agenda
+        } else if let status = snapshot.status {
+            key = "status:" + status
+        } else if let list = snapshot.list {
+            key = "list:" + list
+        } else if let tag = snapshot.tag {
+            key = "tag:" + tag
+        } else {
+            key = "all"
+        }
+        filter = TasksFilter.from(key: key)
+        showCompleted = !snapshot.actualOnly
         preferencesLoaded = loaded
     }
 
     private func savePreferences() {
         guard preferencesLoaded else { return }
-        var value = TaskPreferences()
+        var value = preferences
         value.sort = sort
-        value.filter = filter.key
+        var snapshot = TasksFiltersSnapshot()
+        switch filter {
+        case .all: break
+        case .today, .tomorrow, .week, .month, .overdue: snapshot.agenda = filter.key
+        case .status(let status): snapshot.status = status.rawValue
+        case .list(let list): snapshot.list = list
+        case .tag(let tag): snapshot.tag = tag
+        }
+        snapshot.actualOnly = !showCompleted
+        value.filters = snapshot
         value.showCompleted = showCompleted
+        preferences = value
         let service = service
         _Concurrency.Task { try? await service.store.savePreferences(value) }
     }

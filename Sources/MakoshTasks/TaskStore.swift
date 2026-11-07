@@ -49,25 +49,18 @@ public struct TaskProviderObservation: Codable, Equatable, Sendable {
     }
 }
 
-public enum TasksSort: String, Codable, CaseIterable, Sendable {
-    case priority, status, due, created
-}
-
-public struct TaskPreferences: Codable, Equatable, Sendable {
-    public var sort: TasksSort = .priority
-    public var filter: String = "all"
-    public var showCompleted = true
-    public init() {}
-}
-
 /// The section's PostgreSQL store. One connection, confined to the actor;
 /// every write is a transaction that also appends a version row.
 public actor TaskStore {
     private let connectionString: String
     let schema: String
     private var connection: PostgresConnection?
+    private let encoder = TaskStore.makeEncoder()
+    private let decoder = TaskStore.makeDecoder()
+    private let now: @Sendable () -> Date
+
     // JSONEncoder's own `.iso8601` drops fractional seconds; keep milliseconds both ways.
-    private let encoder: JSONEncoder = {
+    static func makeEncoder() -> JSONEncoder {
         let value = JSONEncoder()
         value.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
@@ -75,8 +68,8 @@ public actor TaskStore {
         }
         value.outputFormatting = [.sortedKeys]
         return value
-    }()
-    private let decoder: JSONDecoder = {
+    }
+    static func makeDecoder() -> JSONDecoder {
         let value = JSONDecoder()
         value.dateDecodingStrategy = .custom { decoder in
             let text = try decoder.singleValueContainer().decode(String.self)
@@ -86,8 +79,7 @@ public actor TaskStore {
             return date
         }
         return value
-    }()
-    private let now: @Sendable () -> Date
+    }
 
     public init(connectionString: String, schema: String, now: @escaping @Sendable () -> Date = Date.init) {
         self.connectionString = connectionString
@@ -307,12 +299,15 @@ public actor TaskStore {
         if old.priority != new.priority { fields.append("priority") }
         if old.list != new.list { fields.append("list") }
         if old.tags != new.tags { fields.append("tags") }
+        if old.personas != new.personas { fields.append("personas") }
         if old.due != new.due { fields.append("due") }
         if old.start != new.start { fields.append("start") }
         if old.estimateMinutes != new.estimateMinutes { fields.append("estimate") }
         if old.url != new.url { fields.append("url") }
         if old.postponed != new.postponed { fields.append("postponed") }
         if old.dependsOn != new.dependsOn { fields.append("dependsOn") }
+        if old.recurrence != new.recurrence { fields.append("recurrence") }
+        if old.flowID != new.flowID { fields.append("flowID") }
         if old.notes != new.notes { fields.append("notes") }
         if old.source != new.source { fields.append("source") }
         if old.completedAt != new.completedAt { fields.append("completedAt") }

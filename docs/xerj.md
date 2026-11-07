@@ -163,3 +163,18 @@ explicitly says rerunning cannot repair it. Raw failure is retained in ignored
 .local/mail-layout/index-v24-refusal.log. Recovery uses a new mk-own-v25/project-v25
 scope; previous indexes/state remain preserved. No source, lock or dependency
 paths are excluded to disguise the failure.
+
+## Tasks: reference scopes
+
+Two reference scopes are declared in `references.lock.json` for the Tasks
+section: `mk-ref-taskorchestrator` (`.references/TaskOrchestrator`,
+`055c1f17`) and `mk-ref-mactower` (`.references/mac-tower`, `317eeafb`).
+Index them separately before claiming XERJ evidence for them:
+
+```bash
+xerj index --url http://127.0.0.1:19320 --prefix mk-ref-taskorchestrator --state-name TaskOrchestrator .references/TaskOrchestrator
+xerj index --url http://127.0.0.1:19320 --prefix mk-ref-mactower --state-name mac-tower .references/mac-tower
+```
+
+Until that run is recorded here, the Tasks work reads both references
+directly and does not report XERJ hits for them.

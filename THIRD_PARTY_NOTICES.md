@@ -509,3 +509,17 @@ or shipped from it. Its independent provenance manifest and boundary are in
 `Dependencies/Telemost.lock.json` and `Dependencies/Telemost/README.md`.
 Makosh owns this implementation under its existing license; combined app license
 and existing dependencies are unchanged.
+
+## Jira — transfer from MacTower
+
+`MakoshJira` carries the Jira HTTP session, transport, response parsing,
+transition models and diagnostics transferred from the owner's MacTower
+repository (`https://git.sh-inc.ru/avm/mac-tower.git`, revision
+`317eeafb433fcb38e17f029f08bcc891d889d410`, MIT, copyright MacTower
+contributors). OAuth 1.0a signing, custom CA validation, Data Center branches
+and every `MacTowerCore` dependency are removed in transfer; the v3 REST
+client, Cloud adapter, ADF handling, models and the adapter protocol are
+written for Makosh. The file list with source hashes is
+`Dependencies/Jira.lock.json`. `yuriyda/TaskOrchestrator` (MIT) is a
+business-rules reference only: no source is linked or copied. Combined app
+license and existing dependencies are unchanged.

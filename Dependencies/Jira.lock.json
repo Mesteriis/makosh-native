@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "url": "https://git.sh-inc.ru/avm/mac-tower.git",
+    "revision": "317eeafb433fcb38e17f029f08bcc891d889d410",
+    "license": "MIT",
+    "licenseText": "LICENSE",
+    "notes": "Transfer source for Sources/MakoshJira; OAuth 1.0a, custom CA, Data Center branches and MacTowerCore dependencies are removed during transfer."
+  },
+  "files": [
+    {
+      "path": "src/MacTowerWorkTracking/JiraHTTPSession.swift",
+      "sha256": "b640a470223467690d620785e4bc832f0029c6ea460912f0cdafc6c604baf988",
+      "target": "Sources/MakoshJira/JiraHTTPSession.swift"
+    },
+    {
+      "path": "src/MacTowerWorkTracking/JiraTransport.swift",
+      "sha256": "163386882e04241049e4fa22302ab469ded181f398dfeb29af16153e2e7dd39f",
+      "target": "Sources/MakoshJira/JiraTransport.swift"
+    },
+    {
+      "path": "src/MacTowerWorkTracking/JiraResponseParsing.swift",
+      "sha256": "a8d65c444ac6be92b612de245da76a4c458a2c53defca1310aeaf993e634635c",
+      "target": "Sources/MakoshJira/JiraResponseParsing.swift"
+    },
+    {
+      "path": "src/MacTowerWorkTracking/JiraTaskTransitions.swift",
+      "sha256": "ff29339cf07cd22a1a4435e8f3020e8a111d3b6c8f42e877e4016f2963f839bf",
+      "target": "Sources/MakoshJira/JiraTaskTransitions.swift"
+    },
+    {
+      "path": "src/MacTowerWorkTracking/JiraDiagnostics.swift",
+      "sha256": "880b51f19a8a46e89d8805f47875320bfd007f910304e9afa5855454c4d9fe97",
+      "target": "Sources/MakoshJira/JiraDiagnostics.swift"
+    }
+  ],
+  "rewritten": [
+    "JiraRESTClient (v3 endpoints, new models)",
+    "JiraCloudAdapter",
+    "JiraADF",
+    "JiraModels",
+    "JiraAdapter protocol"
+  ]
+}

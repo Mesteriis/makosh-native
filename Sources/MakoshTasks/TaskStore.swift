@@ -135,16 +135,12 @@ public actor TaskStore {
         value.revision = 1
         value.updatedAt = Self.millis(now())
         try transaction {
-            var attempt = 0
-            while true {
-                do {
-                    try self.write(value)
-                    break
-                } catch TaskStoreError.duplicate where attempt < 3 {
-                    attempt += 1
-                    value = value.replacing(code: TaskCode.make(from: UUID()))
-                }
+            // A failed INSERT would poison the transaction, so the code is checked first;
+            // a race on the UNIQUE index still surfaces as `duplicate`.
+            for _ in 0..<4 where try !self.query("SELECT 1 FROM \(self.t("tasks_tasks")) WHERE code = $1", [value.code]).isEmpty {
+                value = value.replacing(code: TaskCode.make(from: UUID()))
             }
+            try self.write(value)
             if let source = value.source { try self.writeSource(source, taskID: value.id) }
             try self.appendVersion(value, actor: actor, changed: ["*"])
         }

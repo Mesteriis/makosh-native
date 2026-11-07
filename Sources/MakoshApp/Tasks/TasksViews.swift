@@ -60,7 +60,6 @@ struct TasksContentView: View {
         .animation(.easeInOut(duration: 0.2), value: model.selected)
         .task { model.startTicking() }
         .onDisappear { model.stopTicking() }
-        .sheet(item: Binding(get: { model.draft }, set: { model.draft = $0 })) { draft in TaskTimeDraftSheet(model: model, draft: draft).makoshAppearance() }
     }
 
     private var header: some View {
@@ -212,5 +211,71 @@ struct TaskTimeDraftSheet: View {
                 }.keyboardShortcut(.defaultAction).disabled(busy).accessibilityIdentifier("tasks.draft.confirm")
             }
         }.padding(16).frame(width: 440)
+    }
+}
+
+/// The sheets any section may raise: the time draft and the meeting-time
+/// task chooser. Applied once per window, so Telemost can log time while
+/// the Tasks section is not on screen.
+struct TasksSheets: ViewModifier {
+    @ObservedObject var host: TasksHost
+
+    func body(content: Content) -> some View {
+        if let model = host.model {
+            content.modifier(TasksModelSheets(model: model))
+        } else {
+            content
+        }
+    }
+}
+
+private struct TasksModelSheets: ViewModifier {
+    @ObservedObject var model: TasksWorkspaceModel
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: Binding(get: { model.draft }, set: { model.draft = $0 })) { draft in TaskTimeDraftSheet(model: model, draft: draft).makoshAppearance() }
+            .sheet(item: Binding(get: { model.pendingMeetingTime }, set: { model.pendingMeetingTime = $0 })) { request in
+                MeetingTimeChooserSheet(model: model, request: request).makoshAppearance()
+            }
+    }
+}
+
+/// Which task a meeting's time belongs to, when its title names no single key.
+struct MeetingTimeChooserSheet: View {
+    @ObservedObject var model: TasksWorkspaceModel
+    let request: TaskMeetingTimeRequest
+    @State private var query = ""
+
+    private var candidates: [Task] {
+        let needle = TasksWorkspaceModel.fold(query)
+        return model.tasks.filter { task in
+            guard task.deletedAt == nil, task.status != .cancelled, task.source?.membership != TaskMembership.none else { return false }
+            guard !needle.isEmpty else { return true }
+            let key = model.observation(id: task.id)?.issue.key.lowercased() ?? ""
+            return TasksWorkspaceModel.fold(task.title).contains(needle) || key.contains(needle) || task.code.lowercased() == needle
+        }.prefix(40).map { $0 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Время встречи").font(.headline)
+            Text("«\(request.title)» · \(TaskStyle.duration(request.seconds)). В какую задачу записать?").font(.callout)
+            TextField("Название, код или ключ Jira", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.meeting.query")
+            List(candidates) { task in
+                Button {
+                    _Concurrency.Task { await model.logMeeting(taskID: task.id, meetingID: request.meetingID, title: request.title, seconds: request.seconds, startedAt: request.startedAt) }
+                } label: {
+                    HStack {
+                        if let key = model.observation(id: task.id)?.issue.key { Text(key).font(.caption.monospaced()).foregroundStyle(.secondary) }
+                        Text(task.title).lineLimit(1)
+                    }
+                }.buttonStyle(.plain).accessibilityIdentifier("tasks.meeting.pick.\(task.code)")
+            }.frame(minHeight: 220)
+            HStack {
+                Spacer()
+                Button("Отмена") { model.pendingMeetingTime = nil }.keyboardShortcut(.cancelAction)
+            }
+        }.padding(16).frame(width: 460)
     }
 }

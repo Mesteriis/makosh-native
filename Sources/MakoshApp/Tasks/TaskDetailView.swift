@@ -194,12 +194,3 @@ struct ManualTimeSheet: View {
         }.padding(16).frame(width: 400)
     }
 }
-
-extension TasksWorkspaceModel {
-    /// A short code or a Jira key typed by the user.
-    func resolveReference(_ reference: String) -> UUID? {
-        let upper = reference.trimmingCharacters(in: .whitespaces).uppercased()
-        if let task = tasks.first(where: { $0.code == upper && $0.deletedAt == nil }) { return task.id }
-        return observations.first { $0.value.issue.key.uppercased() == upper }?.key
-    }
-}

@@ -202,6 +202,7 @@ struct WorkspaceView: View {
         )
         .modifier(TelemostGuardedTeamsHosts(model: teams, enabled: !isolatedWhatsApp && !telemost.isSynthetic))
         .modifier(WhatsAppQAHosts(model: whatsapp, enabled: isolatedWhatsApp))
+        .modifier(TasksSheets(host: tasks))
         .onReceive(telegram.notifications.$activationRequest.dropFirst()) { _ in destination = .telegram }
         .onReceive(whatsapp.$notificationActivation.dropFirst()) { _ in destination = .whatsapp }
         .onReceive(mail.$notificationActivation.dropFirst()) { _ in destination = .mail }

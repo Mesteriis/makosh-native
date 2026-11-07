@@ -60,6 +60,8 @@ struct TelemostDetailView: View {
     @State private var waitingSheet = false
     @State private var historySheet = false
     @State private var contactID: UUID?
+    @Environment(\.tasksHost) private var tasksHost
+    @State private var timerOffer: TasksHost.TimerOffer?
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -72,7 +74,14 @@ struct TelemostDetailView: View {
                     Text(meeting.localTitle.isEmpty ? "Встреча" : meeting.localTitle).font(.title2.bold()).textSelection(.enabled)
                     Text(meeting.validatedURL.url.absoluteString).textSelection(.enabled).accessibilityIdentifier("telemost.selectedURL")
                     HStack {
-                        Button("Открыть встречу") { model.openMeeting(meeting.validatedURL.url.absoluteString) }.buttonStyle(.borderedProminent).accessibilityIdentifier("telemost.open")
+                        Button("Открыть встречу") {
+                            model.openMeeting(meeting.validatedURL.url.absoluteString)
+                            timerOffer = tasksHost?.offerTimer(title: meeting.localTitle, notes: meeting.notes)
+                        }.buttonStyle(.borderedProminent).accessibilityIdentifier("telemost.open")
+                        if let tasksHost {
+                            Button("Списать время…") { tasksHost.logTime(title: meeting.localTitle, notes: meeting.notes, meetingID: meeting.id) }
+                                .accessibilityIdentifier("telemost.logTime")
+                        }
                         Button("Скопировать ссылку") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(meeting.validatedURL.url.absoluteString, forType: .string) }
                         Button("Изменить локально") { editSheet = true }.disabled(model.busy)
                     }
@@ -110,6 +119,12 @@ struct TelemostDetailView: View {
         .sheet(isPresented: $waitingSheet) { TelemostWaitingRoomView(model: model) }
         .sheet(isPresented: $historySheet) { TelemostHistoryView(model: model) }
         .alert("Телемост", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("Понятно") { model.error = nil } } message: { Text(model.error ?? "") }
+        .alert("Запустить таймер?", isPresented: Binding(get: { timerOffer != nil }, set: { if !$0 { timerOffer = nil } }), presenting: timerOffer) { offer in
+            Button("Запустить") { tasksHost?.startTimer(id: offer.id) }
+            Button("Нет", role: .cancel) {}
+        } message: { offer in
+            Text("Встреча упоминает задачу \(offer.title). Время пойдёт на неё, пока вы не остановите таймер.")
+        }
         .onChange(of: model.contextID) { _, _ in contactID = nil; editSheet = false; waitingSheet = false; historySheet = false; connectionSheet = false }
     }
 }

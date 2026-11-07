@@ -44,6 +44,29 @@ extension EnvironmentValues {
     }
     #endif
 
+    /// A task found by its Jira key in a meeting's title or notes.
+    struct TimerOffer: Identifiable {
+        let id: UUID
+        let title: String
+    }
+
+    /// «Списать время…» from a meeting card: a draft when the task is clear, else the chooser.
+    func logTime(title: String, notes: String, meetingID: UUID, seconds: Int = 1800) {
+        guard let model else { return }
+        _Concurrency.Task { await model.logMeeting(title: title, notes: notes, meetingID: meetingID, seconds: seconds) }
+    }
+
+    /// After «Открыть встречу»: the task to offer a timer for, when exactly one key matches.
+    func offerTimer(title: String, notes: String) -> TimerOffer? {
+        guard let model, model.timer == nil, let id = model.task(matchingKeysIn: title, notes: notes), let task = model.task(id: id) else { return nil }
+        return TimerOffer(id: id, title: (model.observation(id: id)?.issue.key).map { "\($0) · \(task.title)" } ?? task.title)
+    }
+
+    func startTimer(id: UUID) {
+        guard let model else { return }
+        _Concurrency.Task { await model.startTimer(id: id) }
+    }
+
     /// Opens the store in the application schema and starts polling; safe to call once.
     func start(configuration: ContactWorkspaceConfiguration, seed: ((TaskStore) async throws -> Void)? = nil) async {
         guard !configured else { return }

@@ -34,6 +34,7 @@ struct TasksSyntheticPreview: View {
                         Button("Готово") { settings = false }.padding()
                     }.makoshAppearance()
                 }
+                .modifier(TasksSheets(host: host))
                 .environment(\.tasksHost, host)
                 .environment(\.colorScheme, .dark)
             } else if let error {

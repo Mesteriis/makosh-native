@@ -97,6 +97,8 @@ public enum JiraAction: Sendable {
     @Published public private(set) var timer: TaskTimer?
     @Published public private(set) var timerElapsed = 0
     @Published public var draft: TaskTimeDraft?
+    /// Meeting time waiting for the user to pick the task.
+    @Published public var pendingMeetingTime: TaskMeetingTimeRequest?
     @Published public private(set) var summary: (daySeconds: Int, weekSeconds: Int) = (0, 0)
     @Published public var error: String?
     @Published public private(set) var quickEntryPreview: TaskQuickEntry?
@@ -595,7 +597,7 @@ public enum JiraAction: Sendable {
         _Concurrency.Task { try? await service.store.savePreferences(value) }
     }
 
-    static func fold(_ text: String) -> String {
+    public static func fold(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "ё", with: "е")
     }
 

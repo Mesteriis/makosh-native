@@ -116,4 +116,19 @@ final class TaskStoreTests: XCTestCase {
         XCTAssertTrue(tasks.isEmpty)
         _ = store
     }
+
+    func testNestedTransactionRollsBackTogether() async throws {
+        let db = try tasksDatabase(), store = try await taskStore(db)
+        let identity = ServiceIdentity(service: "jira", accountID: "c", externalID: "7")
+        let task = try await store.insert(Task(title: "x", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
+        struct Abort: Error {}
+        do {
+            try await store.performInTransaction { store in
+                try store.setMembership(taskID: task.id, .none)
+                throw Abort()
+            }
+        } catch is Abort {}
+        let after = try await store.task(id: task.id)
+        XCTAssertEqual(after?.source?.membership, .assigned, "the inner write must roll back with the outer transaction")
+    }
 }

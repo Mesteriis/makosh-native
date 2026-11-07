@@ -200,4 +200,19 @@ final class JiraMirrorTests: XCTestCase {
         XCTAssertTrue(incremental.contains("updated >= \""), incremental)
         XCTAssertTrue(incremental.contains("ORDER BY updated ASC"))
     }
+
+    func testApplyFailureDoesNotAdvanceWindow() async throws {
+        let db = try tasksDatabase(), store = try await taskStore(db), adapter = FakeJiraAdapter()
+        adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1", assignee: me)
+        let value = mirror(store, adapter: adapter)
+        await store.close()
+        let failed = await value.sync(full: true)
+        XCTAssertNotNil(failed.failure)
+        XCTAssertEqual(failed.applied, 0)
+        let last = await value.lastSync
+        XCTAssertNil(last, "nothing was applied, so the window must not move")
+        try await store.open()
+        _ = await value.sync(full: false)
+        XCTAssertFalse(adapter.jqls.last?.contains("updated >=") == true, "the next pass is still a full one")
+    }
 }

@@ -333,9 +333,21 @@ public actor TaskStore {
         guard let connection else { throw TaskStoreError.notOpen }
         try wrap { try connection.execute(sql, parameters) }
     }
+    private var transactionDepth = 0
+
+    /// One BEGIN/COMMIT for the outermost call; nested calls join it, so a
+    /// failure anywhere rolls back everything (a bare inner COMMIT would not).
     func transaction<T>(_ body: () throws -> T) throws -> T {
         guard let connection else { throw TaskStoreError.notOpen }
+        if transactionDepth > 0 { return try body() }
+        transactionDepth += 1
+        defer { transactionDepth -= 1 }
         return try connection.transaction(body)
+    }
+
+    /// Several store calls as one transaction; the closure runs on the actor.
+    public func performInTransaction<T: Sendable>(_ body: @Sendable (isolated TaskStore) throws -> T) throws -> T {
+        try transaction { try body(self) }
     }
     private func wrap<T>(_ body: () throws -> T) throws -> T {
         do { return try body() } catch let failure as PostgresConnection.Failure {

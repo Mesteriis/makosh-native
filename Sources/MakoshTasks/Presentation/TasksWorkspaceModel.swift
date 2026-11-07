@@ -84,6 +84,8 @@ public enum JiraAction: Sendable {
         }
     }
     @Published public var search = "" { didSet { applyFilters() } }
+    /// In a connection's space: also show issues that left the selection («Ушедшие»).
+    @Published public var showLeft = false { didSet { applyFilters() } }
     @Published public var selected: UUID?
     @Published public private(set) var tasks: [Task] = []
     @Published public private(set) var visible: [Task] = []
@@ -454,7 +456,17 @@ public enum JiraAction: Sendable {
         } catch { self.error = Self.describe(error) }
     }
 
-    public func discardDraft() { draft = nil }
+    /// Cancelling a timer's draft keeps the time: the timer resumes from its original start.
+    public func discardDraft() async {
+        guard let draft else { return }
+        self.draft = nil
+        if draft.source == .timer {
+            try? await service.time.restore(draft)
+            timer = try? await service.time.timer()
+            startTicking()
+            tick()
+        }
+    }
 
     public func updateEntry(_ entry: TaskTimeEntry) async {
         do {
@@ -556,11 +568,13 @@ public enum JiraAction: Sendable {
             visible = result
             board = []
         case .jira(let connectionID):
+            // Issues that left the selection stay reachable: by search, or with «Ушедшие» on.
+            let includeLeft = showLeft || !needle.isEmpty
             let rows = tasks.filter { task in
                 guard task.deletedAt == nil, let source = task.source, source.identity.accountID == connectionID.uuidString else {
                     return false
                 }
-                return source.membership != TaskMembership.none && searched(task)
+                return (source.membership != TaskMembership.none || includeLeft) && searched(task)
             }
             visible = rows
             board = Self.columns(for: rows, statuses: projectStatuses[connectionID] ?? [:], observations: observations)

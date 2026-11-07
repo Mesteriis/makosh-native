@@ -40,18 +40,33 @@ final class JiraADFTests: XCTestCase {
         XCTAssertTrue(JiraADF.text(from: adf(media)).contains("[вложение]"))
     }
 
-    func testSimpleListIsSimple() {
-        XCTAssertTrue(JiraADF.isSimple(adf(list)))
-        XCTAssertTrue(JiraADF.isSimple(adf(paragraphs)))
-        XCTAssertTrue(JiraADF.isSimple(adf(mention)))
+    func testOnlyWhatTheBuilderReproducesIsSimple() {
+        // Lists, marks and mentions survive projection but not the rebuild from text,
+        // so editing them would flatten the original: they are read-only.
+        XCTAssertFalse(JiraADF.isSimple(adf(list)))
+        XCTAssertFalse(JiraADF.isSimple(adf(paragraphs)), "a strong mark would be lost")
+        XCTAssertFalse(JiraADF.isSimple(adf(mention)))
+        let plain = """
+            {"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Первая"},{"type":"hardBreak"},{"type":"text","text":"строка"}]},{"type":"paragraph","content":[{"type":"text","text":"Вторая"}]}]}
+            """
+        XCTAssertTrue(JiraADF.isSimple(adf(plain)))
         XCTAssertEqual(JiraADF.text(from: adf(list)), "• один\n\n• два")
+    }
+
+    func testSimpleDocumentRoundTripsThroughTheBuilder() {
+        let plain = """
+            {"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Первая"},{"type":"hardBreak"},{"type":"text","text":"строка"}]},{"type":"paragraph","content":[{"type":"text","text":"Вторая"}]}]}
+            """
+        let rebuilt = JiraADF.document(fromText: JiraADF.text(from: adf(plain)))
+        XCTAssertEqual(JiraADF.text(from: rebuilt), JiraADF.text(from: adf(plain)))
+        XCTAssertTrue(JiraADF.isSimple(rebuilt))
     }
 
     func testDocumentFromTextRoundTrips() throws {
         let text = "Первый абзац\nвторая строка\n\nВторой абзац с @Я"
         let data = JiraADF.document(fromText: text, mentions: ["Я": "me-1"])
         XCTAssertEqual(JiraADF.text(from: data), text)
-        XCTAssertTrue(JiraADF.isSimple(data))
+        XCTAssertFalse(JiraADF.isSimple(data), "a mention is not rebuilt from text without its map")
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(object["type"] as? String, "doc")
         XCTAssertEqual(object["version"] as? Int, 1)

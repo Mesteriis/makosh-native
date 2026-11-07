@@ -205,4 +205,22 @@ import XCTest
         XCTAssertEqual(again.filter, .overdue)
         XCTAssertFalse(again.showCompleted)
     }
+
+    func testNoneTasksAreFoundBySearch() async throws {
+        let h = try await harness()
+        let gone = try await h.store.insert(
+            Task(
+                title: "Ушла из выборки",
+                source: TaskSource(
+                    identity: ServiceIdentity(service: "jira", accountID: h.connection.id.uuidString, externalID: "9"), membership: .none)),
+            actor: .provider)
+        await h.model.refresh()
+        h.model.space = .jira(h.connection.id)
+        XCTAssertFalse(h.model.visible.map(\.id).contains(gone.id), "hidden until searched for")
+        h.model.search = "ушла"
+        XCTAssertTrue(h.model.visible.map(\.id).contains(gone.id), "search reaches tasks that left the selection")
+        h.model.search = ""
+        h.model.showLeft = true
+        XCTAssertTrue(h.model.visible.map(\.id).contains(gone.id), "the «Ушедшие» switch shows them too")
+    }
 }

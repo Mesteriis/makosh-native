@@ -183,4 +183,41 @@ final class TaskTimeServiceTests: XCTestCase {
         XCTAssertEqual(summary.daySeconds, 600)
         XCTAssertEqual(summary.weekSeconds, 1800)
     }
+
+    func testDiscardedTimerDraftKeepsTheTimer() async throws {
+        let db = try tasksDatabase(), h = try await harness(db)
+        let started = try await h.service.start(taskID: h.localTask.id, note: "пишу")
+        h.clock.advance(300)
+        let draft = try await h.service.stop()
+        let cleared = try await h.store.timer()
+        XCTAssertNil(cleared)
+        try await h.service.restore(draft)
+        let restored = try await h.store.timer()
+        XCTAssertEqual(restored, started, "cancelling the draft puts the timer back with its original start")
+        let manual = h.service.draft(
+            manual: h.localTask.id, startedAt: h.clock.now(), seconds: 60, note: "", meetingID: nil, sendToJira: false)
+        try await h.service.restore(manual)
+        let unchanged = try await h.store.timer()
+        XCTAssertEqual(unchanged, started, "a manual draft restores nothing")
+    }
+
+    func testConfirmWithOpenWorklogAttemptLeavesEntryUnsent() async throws {
+        let db = try tasksDatabase(), h = try await harness(db)
+        h.adapter.failNextWrite = .transport(code: "timedOut")
+        let first = h.service.draft(
+            manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 600, note: "первая", meetingID: nil, sendToJira: true)
+        let stuck = try await h.service.confirm(first)
+        XCTAssertEqual(stuck.worklogState, .pending)
+        let second = h.service.draft(
+            manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "вторая", meetingID: nil, sendToJira: true)
+        do {
+            _ = try await h.service.confirm(second)
+            XCTFail("a second worklog while one is unknown must be reported")
+        } catch let error as TasksFailure { XCTAssertEqual(error, .attemptInFlight) }
+        let entries = try await h.store.entries(taskID: h.jiraTask.id)
+        let kept = try XCTUnwrap(entries.first { $0.id == second.id })
+        XCTAssertEqual(kept.worklogState, .none, "the entry stays local and unsent")
+        XCTAssertNil(kept.attemptID, "it is not bound to the other entry's attempt")
+        XCTAssertEqual(h.adapter.calls.filter { if case .addWorklog = $0 { true } else { false } }.count, 1)
+    }
 }

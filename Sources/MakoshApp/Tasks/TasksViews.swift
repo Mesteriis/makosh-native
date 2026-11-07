@@ -83,6 +83,8 @@ struct TasksContentView: View {
                 } else {
                     TextField("Поиск по ключу и названию", text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier(
                         "tasks.search")
+                    Toggle("Ушедшие", isOn: $model.showLeft).toggleStyle(.checkbox).help("Задачи, которые перестали быть вашими")
+                        .accessibilityIdentifier("tasks.showLeft")
                 }
             }
             if let preview = model.quickEntryPreview { TaskQuickEntryPreview(entry: preview) }
@@ -212,7 +214,10 @@ struct TaskTimeDraftSheet: View {
             if canSendToJira { Toggle("Списать в Jira", isOn: $draft.sendToJira).accessibilityIdentifier("tasks.draft.sendToJira") }
             HStack {
                 Spacer()
-                Button("Отмена") { model.discardDraft() }.keyboardShortcut(.cancelAction)
+                Button(draft.source == .timer ? "Не записывать, таймер дальше" : "Отмена") {
+                    _Concurrency.Task { await model.discardDraft() }
+                }
+                .keyboardShortcut(.cancelAction)
                 Button("Записать") {
                     busy = true
                     draft.seconds = minutes * 60
@@ -244,7 +249,9 @@ private struct TasksModelSheets: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: Binding(get: { model.draft }, set: { model.draft = $0 })) { draft in
+            .sheet(
+                item: Binding(get: { model.draft }, set: { value in if value == nil { _Concurrency.Task { await model.discardDraft() } } })
+            ) { draft in
                 TaskTimeDraftSheet(model: model, draft: draft).makoshAppearance()
             }
             .sheet(item: Binding(get: { model.pendingMeetingTime }, set: { model.pendingMeetingTime = $0 })) { request in

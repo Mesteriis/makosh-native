@@ -8,8 +8,12 @@ struct TaskDetailView: View {
     let task: Task
     @State private var title = ""
     @State private var notes = ""
+    @State private var list = ""
+    @State private var tagsText = ""
+    @State private var estimate = ""
     @State private var dependencyCode = ""
     @State private var manualTime = false
+    @FocusState private var notesFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -33,7 +37,12 @@ struct TaskDetailView: View {
             }.padding(16)
         }
         .onAppear(perform: load)
-        .onChange(of: task.id) { _, _ in load() }
+        .onChange(of: task.id) { _, _ in
+            flushNotes()
+            load()
+        }
+        .onChange(of: notesFocused) { _, focused in if !focused { flushNotes() } }
+        .onDisappear(perform: flushNotes)
         .sheet(isPresented: $manualTime) {
             ManualTimeSheet(model: model, task: task).makoshAppearance()
         }
@@ -42,6 +51,15 @@ struct TaskDetailView: View {
     private func load() {
         title = task.title
         notes = task.notes
+        list = task.list ?? ""
+        tagsText = task.tags.joined(separator: ", ")
+        estimate = task.estimateMinutes.map(String.init) ?? ""
+    }
+
+    /// Notes are written when the editor loses focus or the card goes away, not per keystroke.
+    private func flushNotes() {
+        guard notes != task.notes else { return }
+        save { $0.notes = notes }
     }
 
     private var localLayer: some View {
@@ -75,10 +93,8 @@ struct TaskDetailView: View {
                 .textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.card.list")
             }
             LabeledContent("Теги") {
-                TextField(
-                    "через запятую",
-                    text: Binding(get: { task.tags.joined(separator: ", ") }, set: { value in save { $0.tags = Self.tags(value) } })
-                ).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.card.tags")
+                TextField("через запятую", text: $tagsText).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.card.tags")
+                    .onSubmit { save { $0.tags = Self.tags(tagsText) } }
             }
             LabeledContent("Срок") {
                 HStack {
@@ -92,13 +108,10 @@ struct TaskDetailView: View {
                 }
             }
             LabeledContent("Оценка, мин") {
-                TextField(
-                    "",
-                    value: Binding(
-                        get: { task.estimateMinutes ?? 0 }, set: { value in save { $0.estimateMinutes = value > 0 ? value : nil } }),
-                    format: .number
+                TextField("", text: $estimate).textFieldStyle(.roundedBorder).frame(width: 80).accessibilityIdentifier(
+                    "tasks.card.estimate"
                 )
-                .textFieldStyle(.roundedBorder).frame(width: 80).accessibilityIdentifier("tasks.card.estimate")
+                .onSubmit { save { $0.estimateMinutes = Int(estimate).flatMap { $0 > 0 ? $0 : nil } } }
             }
             if let url = task.url { Link(url.absoluteString, destination: url).font(.caption).lineLimit(1) }
             VStack(alignment: .leading, spacing: 4) {
@@ -123,8 +136,8 @@ struct TaskDetailView: View {
                     }.controlSize(.small).disabled(dependencyCode.isEmpty)
                 }
             }
-            TextEditor(text: $notes).frame(minHeight: 80).font(.body).accessibilityIdentifier("tasks.card.notes")
-                .onChange(of: notes) { _, value in if value != task.notes { save { $0.notes = value } } }
+            TextEditor(text: $notes).frame(minHeight: 80).font(.body).focused($notesFocused).accessibilityIdentifier("tasks.card.notes")
+            Text("Заметки сохраняются, когда поле теряет фокус; остальные поля — по Enter.").font(.caption2).foregroundStyle(.secondary)
             if task.postponed > 0 { Text("Переносилось: \(task.postponed)").font(.caption).foregroundStyle(.secondary) }
             Text("Создана \(task.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
         }

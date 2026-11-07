@@ -36,6 +36,12 @@ public actor TaskTimeService {
             sendToJira: try await suggestsWorklog(taskID: timer.taskID))
     }
 
+    /// A cancelled timer draft puts the timer back with its original start; other drafts restore nothing.
+    public func restore(_ draft: TaskTimeDraft) async throws {
+        guard draft.source == .timer, try await store.timer() == nil else { return }
+        try await store.saveTimer(TaskTimer(taskID: draft.taskID, startedAt: draft.startedAt, note: draft.note))
+    }
+
     /// A draft for hand-entered or meeting time; `sendToJira` nil follows the connection's setting.
     public nonisolated func draft(
         manual taskID: UUID, startedAt: Date, seconds: Int, note: String, meetingID: UUID?, sendToJira: Bool,
@@ -74,6 +80,13 @@ public actor TaskTimeService {
                 payload: .worklog(
                     started: entry.startedAt, seconds: entry.seconds, comment: entry.note.isEmpty ? nil : entry.note, entryID: entry.id),
                 createdAt: now()))
+        guard case .worklog(_, _, _, let boundEntryID) = attempt.payload, boundEntryID == entry.id else {
+            // Another worklog of this task is still open; this entry stays local and unsent.
+            entry.worklogState = .none
+            entry.updatedAt = now()
+            _ = try await store.updateEntry(entry)
+            throw TasksFailure.attemptInFlight
+        }
         entry.attemptID = attempt.id
         if attempt.state == .confirmed {
             entry.worklogID = attempt.resultID

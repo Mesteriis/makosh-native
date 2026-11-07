@@ -129,4 +129,23 @@ final class JiraCloudAdapterWriteTests: XCTestCase {
         XCTAssertEqual(JiraStubProtocol.body(at: 0)?["accountId"] as? String, "bob-1")
         XCTAssertTrue(JiraStubProtocol.body(at: 1)?["accountId"] is NSNull)
     }
+
+    func testDueDateIsSentAsLocalDay() async throws {
+        // One in the morning, local time: the UTC day may still be yesterday.
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        let early = start.addingTimeInterval(3600)
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        JiraStubProtocol.reset([.noContent(), .noContent()])
+        try await JiraTestSupport.adapter().updateFields(issueID: "10001", patch: JiraIssuePatch(due: .some(early)))
+        let fields = try XCTUnwrap(JiraStubProtocol.body(at: 0)?["fields"] as? [String: Any])
+        XCTAssertEqual(fields["duedate"] as? String, formatter.string(from: early))
+        try await JiraTestSupport.adapter().transition(issueID: "10001", transitionID: "31", fields: ["customfield_2": .date(early)])
+        let transition = try XCTUnwrap(JiraStubProtocol.body(at: 1)?["fields"] as? [String: Any])
+        XCTAssertEqual(transition["customfield_2"] as? String, formatter.string(from: early))
+    }
 }

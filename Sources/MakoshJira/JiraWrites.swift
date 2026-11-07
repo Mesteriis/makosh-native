@@ -12,7 +12,7 @@ public enum JiraFieldValue: Codable, Equatable, Sendable {
         switch self {
         case .text(let value): return value
         case .number(let value): return value
-        case .date(let value): return JiraDate.dayString(value)
+        case .date(let value): return JiraDate.localDayString(value)
         case .option(let id), .resolution(let id): return ["id": id]
         }
     }
@@ -75,7 +75,7 @@ public struct JiraIssuePatch: Codable, Equatable, Sendable {
             fields["description"] = object
         }
         if let priorityID { fields["priority"] = ["id": priorityID] }
-        if let due { fields["duedate"] = due.map { JiraDate.dayString($0) } ?? NSNull() }
+        if let due { fields["duedate"] = due.map { JiraDate.localDayString($0) } ?? NSNull() }
         if let labels { fields["labels"] = labels }
         return fields
     }

@@ -62,6 +62,7 @@ public actor JiraMirror {
         var token: String?
         var cursorResets = 0
         var includeMentions = mentions && !mentionsUnavailable
+        var applyFailed = false
         while true {
             let page: JiraPage<JiraIssue>
             do {
@@ -89,18 +90,20 @@ public actor JiraMirror {
                     seen.insert(issue.id)
                     result.applied += 1
                 } catch {
+                    applyFailed = true
                     result.failure = "Не удалось сохранить задачу."
                 }
             }
             guard let next = page.nextToken else { break }
             token = next
         }
-        if full {
+        if full, !applyFailed {
             do { result.left = try await demote(notIn: seen) } catch { result.failure = "Не удалось обновить ушедшие задачи." }
         }
         failures = 0
         deferredUntil = nil
-        lastSuccessfulSync = start
+        // A pass that could not store something is not a success: the window stays put.
+        if !applyFailed { lastSuccessfulSync = start }
         return result
     }
 

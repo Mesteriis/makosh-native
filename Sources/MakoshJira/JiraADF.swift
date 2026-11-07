@@ -78,13 +78,13 @@ public enum JiraADF {
 }
 
 extension JiraADF {
-    /// Node types Makosh can rebuild from plain text without losing anything.
-    static let simpleNodes: Set<String> = ["doc", "paragraph", "text", "hardBreak", "mention", "bulletList", "orderedList", "listItem"]
-    static let simpleMarks: Set<String> = ["strong", "em", "link", "underline", "strike", "code"]
+    /// Node types the plain-text builder reproduces exactly; anything else
+    /// (marks, mentions, lists, tables, media, panels) would be flattened by
+    /// an edit, so such a description is read-only in Makosh.
+    static let simpleNodes: Set<String> = ["doc", "paragraph", "text", "hardBreak"]
+    static let simpleMarks: Set<String> = []
 
-    /// True when the document holds only paragraphs, text, breaks, mentions
-    /// and simple lists; anything else (tables, media, panels, macros) is
-    /// read-only in Makosh so the original keeps its formatting.
+    /// True when the document holds only paragraphs, plain text and breaks.
     public static func isSimple(_ adf: Data) -> Bool {
         guard let object = try? JSONSerialization.jsonObject(with: adf) as? [String: Any] else { return false }
         return isSimple(node: object)

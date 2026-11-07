@@ -7,7 +7,7 @@ import MakoshJira
 public actor TaskJiraAttemptJournal {
     public typealias AdapterLookup = @Sendable (UUID) async -> (any JiraAdapter)?
     private let store: TaskStore
-    private let adapter: AdapterLookup
+    private var adapter: AdapterLookup
     private let now: @Sendable () -> Date
     public private(set) var lastFailure: String?
 
@@ -16,6 +16,8 @@ public actor TaskJiraAttemptJournal {
         self.adapter = adapter
         self.now = now
     }
+
+    func replaceAdapterLookup(_ lookup: @escaping AdapterLookup) { adapter = lookup }
 
     /// Records the attempt, sends it and returns its settled (or unknown) state.
     /// An attempt of the same kind still open on the task is returned instead.

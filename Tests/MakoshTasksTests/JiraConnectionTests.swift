@@ -73,7 +73,8 @@ final class JiraConnectionTests: XCTestCase {
         let connection = connection()
         try await registry.save(connection, token: "t")
         let identity = ServiceIdentity(service: "jira", accountID: connection.id.uuidString, externalID: "10001")
-        let task = try await store.insert(Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
+        let task = try await store.insert(
+            Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
         try await registry.remove(connection.id)
         let remaining = try await registry.connections()
         XCTAssertTrue(remaining.isEmpty)

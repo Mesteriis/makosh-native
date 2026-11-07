@@ -45,7 +45,8 @@ public struct JiraIssuePatch: Codable, Equatable, Sendable {
     public var due: Date??
     public var labels: [String]?
 
-    public init(summary: String? = nil, descriptionADF: Data? = nil, priorityID: String? = nil, due: Date?? = nil, labels: [String]? = nil) {
+    public init(summary: String? = nil, descriptionADF: Data? = nil, priorityID: String? = nil, due: Date?? = nil, labels: [String]? = nil)
+    {
         self.summary = summary
         self.descriptionADF = descriptionADF
         self.priorityID = priorityID
@@ -64,7 +65,9 @@ public struct JiraIssuePatch: Codable, Equatable, Sendable {
     func wireFields() throws -> [String: Any] {
         var fields: [String: Any] = [:]
         if let summary {
-            guard !summary.trimmingCharacters(in: .whitespaces).isEmpty, summary.utf8.count <= 4096 else { throw JiraAdapterError.invalidRequest }
+            guard !summary.trimmingCharacters(in: .whitespaces).isEmpty, summary.utf8.count <= 4096 else {
+                throw JiraAdapterError.invalidRequest
+            }
             fields["summary"] = summary
         }
         if let descriptionADF {
@@ -92,7 +95,9 @@ extension JiraRESTClient {
     }
 
     func addComment(issueID: String, body: Data) async throws -> String {
-        guard Self.identifier(issueID), let adf = try? JSONSerialization.jsonObject(with: body) else { throw JiraAdapterError.invalidRequest }
+        guard Self.identifier(issueID), let adf = try? JSONSerialization.jsonObject(with: body) else {
+            throw JiraAdapterError.invalidRequest
+        }
         let created = try await post(JiraWireCreated.self, path: "/issue/\(issueID)/comment", body: try Self.json(["body": adf]))
         return created.id.value
     }
@@ -110,7 +115,9 @@ extension JiraRESTClient {
     }
 
     func assign(issueID: String, accountID: String?) async throws {
-        guard Self.identifier(issueID), accountID.map({ !$0.isEmpty && $0.utf8.count <= 128 }) ?? true else { throw JiraAdapterError.invalidRequest }
+        guard Self.identifier(issueID), accountID.map({ !$0.isEmpty && $0.utf8.count <= 128 }) ?? true else {
+            throw JiraAdapterError.invalidRequest
+        }
         let body: [String: Any] = ["accountId": accountID ?? NSNull()]
         try await send(.put, path: "/issue/\(issueID)/assignee", body: try Self.json(body), expectsNoContent: true)
     }

@@ -38,7 +38,9 @@ public enum TasksQAIsolation {
             if let value = parsed[position].val { values[String(cString: keyword)] = String(cString: value) }
             position += 1
         }
-        let allowed: Set<String> = ["host", "hostaddr", "port", "dbname", "user", "password", "sslmode", "connect_timeout", "application_name"]
+        let allowed: Set<String> = [
+            "host", "hostaddr", "port", "dbname", "user", "password", "sslmode", "connect_timeout", "application_name",
+        ]
         guard Set(values.keys).isSubset(of: allowed), ["127.0.0.1", "::1", "localhost"].contains(values["host"] ?? ""),
             ["127.0.0.1", "::1"].contains(values["hostaddr"] ?? "")
         else { throw Failure.invalidConfiguration }
@@ -59,23 +61,42 @@ public enum TasksSyntheticSeed {
         let today = calendar.startOfDay(for: now)
         func day(_ offset: Int) -> Date { calendar.date(byAdding: .day, value: offset, to: today)! }
         let rows: [Task] = [
-            Task(id: id(1), title: "Оплатить счёт за хостинг", status: .active, priority: 1, list: "Финансы", tags: ["оплата"], due: day(-3), createdAt: now),
-            Task(id: id(2), title: "Подготовить отчёт за неделю", status: .active, priority: 2, list: "Работа", tags: ["отчёт"], due: day(0), createdAt: now),
-            Task(id: id(3), title: "Собрать релиз", status: .inbox, priority: 2, list: "Работа", tags: ["релиз"], due: day(1), createdAt: now),
-            Task(id: id(4), title: "Выложить релиз", status: .inbox, priority: 2, list: "Работа", tags: ["релиз"], due: day(2), dependsOn: [id(3)], createdAt: now),
-            Task(id: id(5), title: "Написать заметки к релизу", status: .inbox, priority: 3, list: "Работа", dependsOn: [id(3), id(4)], createdAt: now),
-            Task(id: id(6), title: "Записаться к стоматологу", status: .inbox, priority: 3, list: "Личное", tags: ["здоровье"], due: day(5), createdAt: now),
+            Task(
+                id: id(1), title: "Оплатить счёт за хостинг", status: .active, priority: 1, list: "Финансы", tags: ["оплата"], due: day(-3),
+                createdAt: now),
+            Task(
+                id: id(2), title: "Подготовить отчёт за неделю", status: .active, priority: 2, list: "Работа", tags: ["отчёт"], due: day(0),
+                createdAt: now),
+            Task(
+                id: id(3), title: "Собрать релиз", status: .inbox, priority: 2, list: "Работа", tags: ["релиз"], due: day(1), createdAt: now
+            ),
+            Task(
+                id: id(4), title: "Выложить релиз", status: .inbox, priority: 2, list: "Работа", tags: ["релиз"], due: day(2),
+                dependsOn: [id(3)], createdAt: now),
+            Task(
+                id: id(5), title: "Написать заметки к релизу", status: .inbox, priority: 3, list: "Работа", dependsOn: [id(3), id(4)],
+                createdAt: now),
+            Task(
+                id: id(6), title: "Записаться к стоматологу", status: .inbox, priority: 3, list: "Личное", tags: ["здоровье"], due: day(5),
+                createdAt: now),
             Task(id: id(7), title: "Продлить страховку", status: .inbox, priority: 1, list: "Личное", due: day(12), createdAt: now),
-            Task(id: id(8), title: "Прочитать договор аренды", status: .active, priority: 4, list: "Личное", tags: ["документы"], createdAt: now),
-            Task(id: id(9), title: "Купить подарок", status: .done, priority: 4, list: "Личное", due: day(-1), createdAt: now, completedAt: now),
+            Task(
+                id: id(8), title: "Прочитать договор аренды", status: .active, priority: 4, list: "Личное", tags: ["документы"],
+                createdAt: now),
+            Task(
+                id: id(9), title: "Купить подарок", status: .done, priority: 4, list: "Личное", due: day(-1), createdAt: now,
+                completedAt: now),
             Task(id: id(10), title: "Старая идея", status: .cancelled, priority: 4, createdAt: now),
             Task(id: id(11), title: "Разобрать почту", status: .inbox, priority: 4, tags: ["рутина"], estimateMinutes: 30, createdAt: now),
             Task(
-                id: id(12), title: "Перенести заметки", status: .inbox, priority: 3, list: "Личное", due: day(0), postponed: 2, notes: "Переносилось дважды.",
+                id: id(12), title: "Перенести заметки", status: .inbox, priority: 3, list: "Личное", due: day(0), postponed: 2,
+                notes: "Переносилось дважды.",
                 createdAt: now),
         ]
         for row in rows { try await store.insert(row, actor: .user) }
         try await store.saveConnection(
-            JiraConnection(id: connectionID, name: "Синтетическая Jira", origin: URL(string: "https://jira.synthetic.test")!, email: "qa@example.com", accountID: "me-1"))
+            JiraConnection(
+                id: connectionID, name: "Синтетическая Jira", origin: URL(string: "https://jira.synthetic.test")!, email: "qa@example.com",
+                accountID: "me-1"))
     }
 }

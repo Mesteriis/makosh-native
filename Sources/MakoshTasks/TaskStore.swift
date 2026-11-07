@@ -109,7 +109,8 @@ public actor TaskStore {
     // MARK: Tasks
 
     public func tasks(includeDeleted: Bool = false) throws -> [Task] {
-        let rows = try query("SELECT data FROM \(t("tasks_tasks")) \(includeDeleted ? "" : "WHERE deleted_at IS NULL") ORDER BY updated_at DESC")
+        let rows = try query(
+            "SELECT data FROM \(t("tasks_tasks")) \(includeDeleted ? "" : "WHERE deleted_at IS NULL") ORDER BY updated_at DESC")
         return try rows.map { try decode(Task.self, $0[0]) }
     }
 
@@ -125,7 +126,8 @@ public actor TaskStore {
 
     public func task(source identity: ServiceIdentity) throws -> Task? {
         let rows = try query(
-            "SELECT t.data FROM \(t("tasks_sources")) s JOIN \(t("tasks_tasks")) t ON t.id = s.task_id WHERE s.identity = $1", [identity.id])
+            "SELECT t.data FROM \(t("tasks_sources")) s JOIN \(t("tasks_tasks")) t ON t.id = s.task_id WHERE s.identity = $1", [identity.id]
+        )
         return try rows.first.map { try decode(Task.self, $0[0]) }
     }
 
@@ -158,7 +160,8 @@ public actor TaskStore {
             try self.execute(
                 "UPDATE \(self.t("tasks_tasks")) SET data = $2::jsonb, status = $3, due = $4, deleted_at = $5, revision = $6, updated_at = $7 WHERE id = $1",
                 [
-                    value.id.uuidString, try self.encode(value), value.status.rawValue, value.due.map(Self.dayString), value.deletedAt.map(Self.iso),
+                    value.id.uuidString, try self.encode(value), value.status.rawValue, value.due.map(Self.dayString),
+                    value.deletedAt.map(Self.iso),
                     String(value.revision), Self.iso(value.updatedAt),
                 ])
             if let source = value.source { try self.writeSource(source, taskID: value.id) }
@@ -203,7 +206,8 @@ public actor TaskStore {
     }
 
     public func sources(connectionID: UUID) throws -> [(taskID: UUID, source: TaskSource)] {
-        let rows = try query("SELECT task_id, data FROM \(t("tasks_sources")) WHERE data->'identity'->>'accountID' = $1", [connectionID.uuidString])
+        let rows = try query(
+            "SELECT task_id, data FROM \(t("tasks_sources")) WHERE data->'identity'->>'accountID' = $1", [connectionID.uuidString])
         return try rows.compactMap { row in
             guard let id = UUID(uuidString: row[0]) else { return nil }
             return (id, try decode(TaskSource.self, row[1]))
@@ -236,7 +240,8 @@ public actor TaskStore {
     // MARK: Preferences
 
     public func preferences() throws -> TaskPreferences {
-        try query("SELECT data FROM \(t("tasks_preferences")) WHERE id = 1").first.map { try decode(TaskPreferences.self, $0[0]) } ?? TaskPreferences()
+        try query("SELECT data FROM \(t("tasks_preferences")) WHERE id = 1").first.map { try decode(TaskPreferences.self, $0[0]) }
+            ?? TaskPreferences()
     }
 
     public func savePreferences(_ value: TaskPreferences) throws {
@@ -257,7 +262,8 @@ public actor TaskStore {
                 VALUES($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
                 """,
                 [
-                    task.id.uuidString, task.code, try encode(task), task.status.rawValue, task.due.map(Self.dayString), task.deletedAt.map(Self.iso),
+                    task.id.uuidString, task.code, try encode(task), task.status.rawValue, task.due.map(Self.dayString),
+                    task.deletedAt.map(Self.iso),
                     String(task.revision), Self.iso(task.updatedAt),
                 ])
         } catch let failure as PostgresConnection.Failure where failure.sqlState == "23505" {
@@ -347,7 +353,9 @@ public actor TaskStore {
     static func date(_ text: String) -> Date? {
         // PostgreSQL prints "2026-11-07 10:00:00.123+00"; normalise to ISO 8601.
         var value = text.replacingOccurrences(of: " ", with: "T")
-        if let sign = value.lastIndex(where: { $0 == "+" || $0 == "-" }), value.distance(from: sign, to: value.endIndex) == 3 { value += ":00" }
+        if let sign = value.lastIndex(where: { $0 == "+" || $0 == "-" }), value.distance(from: sign, to: value.endIndex) == 3 {
+            value += ":00"
+        }
         return isoFormatter(fractional: true).date(from: value) ?? isoFormatter(fractional: false).date(from: value)
     }
     static func dayString(_ date: Date) -> String {

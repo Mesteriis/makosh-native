@@ -18,7 +18,10 @@ public struct JiraKeychainAccess: Sendable {
 
     public static var system: Self {
         @Sendable func query(_ id: UUID) -> [String: Any] {
-            [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "org.makosh.jira.tokens.v1", kSecAttrAccount as String: id.uuidString]
+            [
+                kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "org.makosh.jira.tokens.v1",
+                kSecAttrAccount as String: id.uuidString,
+            ]
         }
         return Self(
             read: { id in MakoshSecretStore.shared.copyData(query(id)) },

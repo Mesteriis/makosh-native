@@ -48,6 +48,8 @@ final class JiraSyntheticAdapterTests: XCTestCase {
         } catch let error as JiraAdapterError { XCTAssertEqual(error, .transport(code: "timedOut")) }
         _ = try await jira.addComment(issueID: "1001", body: JiraADF.document(fromText: "y"))
         let comments = try await jira.comments(issueID: "1001", nextToken: nil)
-        XCTAssertEqual(comments.items.filter { $0.bodyText == "x" || $0.bodyText == "y" }.count, 2, "the failed write still landed, as a timeout would")
+        XCTAssertEqual(
+            comments.items.filter { $0.bodyText == "x" || $0.bodyText == "y" }.count, 2, "the failed write still landed, as a timeout would"
+        )
     }
 }

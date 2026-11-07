@@ -58,7 +58,8 @@ struct JiraRESTClient: Sendable {
     func transitions(issueID: String) async throws -> [JiraTransition] {
         guard Self.identifier(issueID) else { throw JiraAdapterError.invalidRequest }
         let envelope = try await get(
-            JiraTransitionEnvelope.self, path: "/issue/\(issueID)/transitions", query: [URLQueryItem(name: "expand", value: "transitions.fields")])
+            JiraTransitionEnvelope.self, path: "/issue/\(issueID)/transitions",
+            query: [URLQueryItem(name: "expand", value: "transitions.fields")])
         guard envelope.transitions.count <= 100 else { throw JiraAdapterError.invalidResponse }
         return try envelope.transitions.filter { $0.isAvailable != false }.map { try $0.normalized() }
     }
@@ -182,7 +183,11 @@ enum JiraWire {
         let object: Any
         init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
-            if container.decodeNil() { object = NSNull() } else if let value = try? container.decode(Bool.self) { object = value } else if let value =
+            if container.decodeNil() {
+                object = NSNull()
+            } else if let value = try? container.decode(Bool.self) {
+                object = value
+            } else if let value =
                 try? container.decode(Int64.self)
             {
                 object = value
@@ -290,7 +295,9 @@ struct JiraWireComment: Decodable, Sendable {
     func normalized() throws -> JiraComment {
         guard let created = JiraDate.parse(created), let updated = JiraDate.parse(updated) else { throw JiraAdapterError.invalidResponse }
         let adf = body?.data ?? Data("{}".utf8)
-        return JiraComment(id: id.value, author: try author.normalized(), created: created, updated: updated, bodyADF: adf, bodyText: JiraADF.text(from: adf))
+        return JiraComment(
+            id: id.value, author: try author.normalized(), created: created, updated: updated, bodyADF: adf,
+            bodyText: JiraADF.text(from: adf))
     }
 }
 

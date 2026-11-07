@@ -31,7 +31,8 @@ public actor TaskJiraAttemptJournal {
             var value = try await store.insertAttempt(attempt)
             guard let adapter = await adapter(attempt.connectionID) else {
                 value = try await store.updateAttempt(value.with(state: .sent, at: now()), expectedState: .queued)
-                return try await store.updateAttempt(value.with(state: .rejected, reason: "подключение удалено", at: now()), expectedState: .sent)
+                return try await store.updateAttempt(
+                    value.with(state: .rejected, reason: "подключение удалено", at: now()), expectedState: .sent)
             }
             value = try await store.updateAttempt(value.with(state: .sent, at: now()), expectedState: .queued)
             do {
@@ -39,9 +40,11 @@ public actor TaskJiraAttemptJournal {
                 return try await store.updateAttempt(value.with(state: .confirmed, resultID: resultID, at: now()), expectedState: .sent)
             } catch let error as JiraAdapterError {
                 let outcome = Self.outcome(of: error)
-                return try await store.updateAttempt(value.with(state: outcome, reason: JiraDiagnostics.code(error), at: now()), expectedState: .sent)
+                return try await store.updateAttempt(
+                    value.with(state: outcome, reason: JiraDiagnostics.code(error), at: now()), expectedState: .sent)
             } catch {
-                return try await store.updateAttempt(value.with(state: .unknown, reason: JiraDiagnostics.code(error), at: now()), expectedState: .sent)
+                return try await store.updateAttempt(
+                    value.with(state: .unknown, reason: JiraDiagnostics.code(error), at: now()), expectedState: .sent)
             }
         } catch {
             lastFailure = "Журнал попыток недоступен."
@@ -69,12 +72,17 @@ public actor TaskJiraAttemptJournal {
             guard let attempt = try await store.attempt(id: id) else { throw TaskStoreError.notFound }
             guard attempt.state == .unknown else { return attempt }
             guard let adapter = await adapter(attempt.connectionID) else {
-                return try await store.updateAttempt(attempt.with(state: .rejected, reason: "подключение удалено", at: now()), expectedState: .unknown)
+                return try await store.updateAttempt(
+                    attempt.with(state: .rejected, reason: "подключение удалено", at: now()), expectedState: .unknown)
             }
             let matches = try await matches(for: attempt, adapter: adapter)
             switch matches.count {
-            case 1: return try await store.updateAttempt(attempt.with(state: .confirmed, resultID: matches[0], at: now()), expectedState: .unknown)
-            case 0: return try await store.updateAttempt(attempt.with(state: .rejected, reason: "не найдено", at: now()), expectedState: .unknown)
+            case 1:
+                return try await store.updateAttempt(
+                    attempt.with(state: .confirmed, resultID: matches[0], at: now()), expectedState: .unknown)
+            case 0:
+                return try await store.updateAttempt(
+                    attempt.with(state: .rejected, reason: "не найдено", at: now()), expectedState: .unknown)
             default:
                 var value = attempt
                 value.reason = "несколько совпадений"
@@ -82,7 +90,9 @@ public actor TaskJiraAttemptJournal {
             }
         } catch {
             guard var attempt = try? await store.attempt(id: id) else {
-                return TaskJiraAttempt(taskID: UUID(), connectionID: UUID(), issueID: "", kind: .comment, payload: .comment(text: "", adf: Data()), state: .unknown)
+                return TaskJiraAttempt(
+                    taskID: UUID(), connectionID: UUID(), issueID: "", kind: .comment, payload: .comment(text: "", adf: Data()),
+                    state: .unknown)
             }
             attempt.reason = "проверка не удалась: " + JiraDiagnostics.code(error)
             return attempt
@@ -91,7 +101,8 @@ public actor TaskJiraAttemptJournal {
 
     public func dismiss(_ id: UUID) async -> TaskJiraAttempt? {
         guard let attempt = try? await store.attempt(id: id), attempt.state == .unknown else { return nil }
-        return try? await store.updateAttempt(attempt.with(state: .rejected, reason: "отказ пользователя", at: now()), expectedState: .unknown)
+        return try? await store.updateAttempt(
+            attempt.with(state: .rejected, reason: "отказ пользователя", at: now()), expectedState: .unknown)
     }
 
     // MARK: Internals
@@ -129,18 +140,24 @@ public actor TaskJiraAttemptJournal {
         switch attempt.payload {
         case .worklog(let started, let seconds, let comment, _):
             return try await adapter.worklogs(issueID: attempt.issueID).filter { worklog in
-                worklog.author.accountID == me.accountID && abs(worklog.started.timeIntervalSince(started)) <= 1 && worklog.seconds == seconds
-                    && worklog.commentText.trimmingCharacters(in: .whitespacesAndNewlines) == (comment ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                worklog.author.accountID == me.accountID && abs(worklog.started.timeIntervalSince(started)) <= 1
+                    && worklog.seconds == seconds
+                    && worklog.commentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        == (comment ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             }.map(\.id)
         case .comment(let text, _):
             let wanted = text.trimmingCharacters(in: .whitespacesAndNewlines)
             var page = try await adapter.comments(issueID: attempt.issueID, nextToken: nil)
-            var found = page.items.filter { $0.author.accountID == me.accountID && $0.bodyText.trimmingCharacters(in: .whitespacesAndNewlines) == wanted }
+            var found = page.items.filter {
+                $0.author.accountID == me.accountID && $0.bodyText.trimmingCharacters(in: .whitespacesAndNewlines) == wanted
+            }
             var pages = 0
             while let next = page.nextToken, pages < 20 {
                 pages += 1
                 page = try await adapter.comments(issueID: attempt.issueID, nextToken: next)
-                found += page.items.filter { $0.author.accountID == me.accountID && $0.bodyText.trimmingCharacters(in: .whitespacesAndNewlines) == wanted }
+                found += page.items.filter {
+                    $0.author.accountID == me.accountID && $0.bodyText.trimmingCharacters(in: .whitespacesAndNewlines) == wanted
+                }
             }
             return found.map(\.id)
         case .transition(_, let toStatusID, _):

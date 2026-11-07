@@ -49,36 +49,56 @@ struct TaskDetailView: View {
             TextField("Название", text: $title).textFieldStyle(.roundedBorder).font(.headline)
                 .onSubmit { save { $0.title = title } }.accessibilityIdentifier("tasks.card.title")
             HStack {
-                Picker("Статус", selection: Binding(get: { task.status }, set: { value in _Concurrency.Task { await model.set(status: value, id: task.id) } })) {
+                Picker(
+                    "Статус",
+                    selection: Binding(
+                        get: { task.status }, set: { value in _Concurrency.Task { await model.set(status: value, id: task.id) } })
+                ) {
                     ForEach(TaskStatus.allCases, id: \.self) { Text(TaskStyle.statusTitle($0)).tag($0) }
                 }.accessibilityIdentifier("tasks.card.status")
-                Picker("Приоритет", selection: Binding(get: { task.priority }, set: { value in _Concurrency.Task { await model.set(priority: value, id: task.id) } })) {
+                Picker(
+                    "Приоритет",
+                    selection: Binding(
+                        get: { task.priority }, set: { value in _Concurrency.Task { await model.set(priority: value, id: task.id) } })
+                ) {
                     ForEach(1...4, id: \.self) { Text("!\($0)").tag($0) }
                 }.frame(width: 90).accessibilityIdentifier("tasks.card.priority")
             }
             if model.isBlocked(task) {
-                Label("Ждёт: " + model.blockers(task).map(\.title).joined(separator: ", "), systemImage: "lock").font(.caption).foregroundStyle(.orange)
+                Label("Ждёт: " + model.blockers(task).map(\.title).joined(separator: ", "), systemImage: "lock").font(.caption)
+                    .foregroundStyle(.orange)
             }
             LabeledContent("Список") {
-                TextField("без списка", text: Binding(get: { task.list ?? "" }, set: { value in save { $0.list = value.isEmpty ? nil : value } }))
-                    .textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.card.list")
+                TextField(
+                    "без списка", text: Binding(get: { task.list ?? "" }, set: { value in save { $0.list = value.isEmpty ? nil : value } })
+                )
+                .textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.card.list")
             }
             LabeledContent("Теги") {
                 TextField(
-                    "через запятую", text: Binding(get: { task.tags.joined(separator: ", ") }, set: { value in save { $0.tags = Self.tags(value) } })
+                    "через запятую",
+                    text: Binding(get: { task.tags.joined(separator: ", ") }, set: { value in save { $0.tags = Self.tags(value) } })
                 ).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.card.tags")
             }
             LabeledContent("Срок") {
                 HStack {
-                    DatePicker("", selection: Binding(get: { task.due ?? Date() }, set: { value in save { $0.due = value } }), displayedComponents: .date)
-                        .labelsHidden().accessibilityIdentifier("tasks.card.due")
+                    DatePicker(
+                        "", selection: Binding(get: { task.due ?? Date() }, set: { value in save { $0.due = value } }),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden().accessibilityIdentifier("tasks.card.due")
                     if task.due != nil { Button("Убрать") { save { $0.due = nil } }.controlSize(.small) }
                     Button("+1 день") { _Concurrency.Task { await model.postpone(id: task.id) } }.controlSize(.small)
                 }
             }
             LabeledContent("Оценка, мин") {
-                TextField("", value: Binding(get: { task.estimateMinutes ?? 0 }, set: { value in save { $0.estimateMinutes = value > 0 ? value : nil } }), format: .number)
-                    .textFieldStyle(.roundedBorder).frame(width: 80).accessibilityIdentifier("tasks.card.estimate")
+                TextField(
+                    "",
+                    value: Binding(
+                        get: { task.estimateMinutes ?? 0 }, set: { value in save { $0.estimateMinutes = value > 0 ? value : nil } }),
+                    format: .number
+                )
+                .textFieldStyle(.roundedBorder).frame(width: 80).accessibilityIdentifier("tasks.card.estimate")
             }
             if let url = task.url { Link(url.absoluteString, destination: url).font(.caption).lineLimit(1) }
             VStack(alignment: .leading, spacing: 4) {
@@ -91,7 +111,8 @@ struct TaskDetailView: View {
                     }
                 }
                 HStack {
-                    TextField("Код задачи или ключ Jira", text: $dependencyCode).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.card.dependency")
+                    TextField("Код задачи или ключ Jira", text: $dependencyCode).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+                        "tasks.card.dependency")
                     Button("Добавить") {
                         if let id = model.resolveReference(dependencyCode) {
                             dependencyCode = ""
@@ -115,9 +136,11 @@ struct TaskDetailView: View {
                 Text("Время").font(.headline)
                 Spacer()
                 if model.timer?.taskID == task.id {
-                    Button("■ Остановить") { _Concurrency.Task { await model.stopTimer() } }.controlSize(.small).accessibilityIdentifier("tasks.card.timer.stop")
+                    Button("■ Остановить") { _Concurrency.Task { await model.stopTimer() } }.controlSize(.small).accessibilityIdentifier(
+                        "tasks.card.timer.stop")
                 } else {
-                    Button("▶ Таймер") { _Concurrency.Task { await model.startTimer(id: task.id) } }.controlSize(.small).accessibilityIdentifier("tasks.card.timer.start")
+                    Button("▶ Таймер") { _Concurrency.Task { await model.startTimer(id: task.id) } }.controlSize(.small)
+                        .accessibilityIdentifier("tasks.card.timer.start")
                 }
                 Button("Вручную…") { manualTime = true }.controlSize(.small).accessibilityIdentifier("tasks.card.time.manual")
             }
@@ -131,7 +154,8 @@ struct TaskDetailView: View {
                         Text(TaskStyle.duration(entry.seconds)).font(.caption.bold())
                         Text(entry.note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         Spacer()
-                        Text(Self.worklog(entry)).font(.caption2).foregroundStyle(entry.worklogState == .deletedInJira ? .orange : .secondary)
+                        Text(Self.worklog(entry)).font(.caption2).foregroundStyle(
+                            entry.worklogState == .deletedInJira ? .orange : .secondary)
                         if !entry.isLocked {
                             Button {
                                 _Concurrency.Task { await model.deleteEntry(id: entry.id) }
@@ -141,7 +165,8 @@ struct TaskDetailView: View {
                         }
                     }.accessibilityIdentifier("tasks.card.entry.\(entry.id.uuidString)")
                 }
-                Text("Всего: " + TaskStyle.duration(entries.filter { $0.worklogState != .deletedInJira }.reduce(0) { $0 + $1.seconds })).font(.caption)
+                Text("Всего: " + TaskStyle.duration(entries.filter { $0.worklogState != .deletedInJira }.reduce(0) { $0 + $1.seconds }))
+                    .font(.caption)
             }
         }
     }
@@ -154,7 +179,9 @@ struct TaskDetailView: View {
     }
 
     static func tags(_ text: String) -> [String] {
-        text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "") }.filter { !$0.isEmpty }
+        text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "") }.filter {
+            !$0.isEmpty
+        }
     }
     static func worklog(_ entry: TaskTimeEntry) -> String {
         switch entry.worklogState {

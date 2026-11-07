@@ -4,7 +4,9 @@ import XCTest
 @testable import MakoshTasks
 
 final class TasksQAIsolationTests: XCTestCase {
-    private func configuration(_ schema: String, connection: String = "host=127.0.0.1 hostaddr=127.0.0.1 dbname=qa user=qa") -> ContactWorkspaceConfiguration {
+    private func configuration(
+        _ schema: String, connection: String = "host=127.0.0.1 hostaddr=127.0.0.1 dbname=qa user=qa"
+    ) -> ContactWorkspaceConfiguration {
         ContactWorkspaceConfiguration(connectionString: connection, schema: schema, archiveSchema: schema)
     }
     private let arguments = ["--tasks-synthetic-preview", "--database-config", "/tmp/qa.json"]
@@ -15,10 +17,14 @@ final class TasksQAIsolationTests: XCTestCase {
         XCTAssertThrowsError(try TasksQAIsolation.validate(configuration: configuration("qa_files_abc"), arguments: arguments))
         XCTAssertThrowsError(try TasksQAIsolation.validate(configuration: configuration("qa_tasks_"), arguments: arguments))
         XCTAssertThrowsError(
-            try TasksQAIsolation.validate(configuration: configuration("qa_tasks_abc", connection: "host=db.example hostaddr=10.0.0.5 dbname=qa"), arguments: arguments))
-        XCTAssertThrowsError(try TasksQAIsolation.validate(configuration: configuration("qa_tasks_abc"), arguments: ["--database-config", "/tmp/qa.json"]))
+            try TasksQAIsolation.validate(
+                configuration: configuration("qa_tasks_abc", connection: "host=db.example hostaddr=10.0.0.5 dbname=qa"),
+                arguments: arguments))
         XCTAssertThrowsError(
-            try TasksQAIsolation.validate(configuration: configuration("qa_tasks_abc"), arguments: arguments + ["--files-synthetic-preview"]))
+            try TasksQAIsolation.validate(configuration: configuration("qa_tasks_abc"), arguments: ["--database-config", "/tmp/qa.json"]))
+        XCTAssertThrowsError(
+            try TasksQAIsolation.validate(
+                configuration: configuration("qa_tasks_abc"), arguments: arguments + ["--files-synthetic-preview"]))
     }
 
     func testSeedCreatesBlockedAndOverdueTasks() async throws {

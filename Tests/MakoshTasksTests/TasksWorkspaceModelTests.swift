@@ -35,7 +35,8 @@ import XCTest
         let store = TaskStore(connectionString: db.connectionString, schema: db.schema, now: { clock.now() })
         let service = TasksService(store: store, vault: JiraTokenVault(access: .memory()), now: { clock.now() }) { _, _ in adapter }
         try await service.open()
-        let connection = JiraConnection(name: "Работа", origin: URL(string: "https://jira.test")!, email: "me@example.com", pollInterval: 60)
+        let connection = JiraConnection(
+            name: "Работа", origin: URL(string: "https://jira.test")!, email: "me@example.com", pollInterval: 60)
         if connected { try await service.save(connection, token: "t") }
         let model = TasksWorkspaceModel(service: service, calendar: calendar, now: { clock.now() })
         await model.refresh()
@@ -46,10 +47,16 @@ import XCTest
         let h = try await harness()
         let local = try await h.store.insert(Task(title: "Локальная"), actor: .user)
         let gone = try await h.store.insert(
-            Task(title: "Ушла", source: TaskSource(identity: ServiceIdentity(service: "jira", accountID: h.connection.id.uuidString, externalID: "9"), membership: .none)),
+            Task(
+                title: "Ушла",
+                source: TaskSource(
+                    identity: ServiceIdentity(service: "jira", accountID: h.connection.id.uuidString, externalID: "9"), membership: .none)),
             actor: .provider)
         let kept = try await h.store.insert(
-            Task(title: "Оставлена", source: TaskSource(identity: ServiceIdentity(service: "jira", accountID: h.connection.id.uuidString, externalID: "8"), membership: .kept)),
+            Task(
+                title: "Оставлена",
+                source: TaskSource(
+                    identity: ServiceIdentity(service: "jira", accountID: h.connection.id.uuidString, externalID: "8"), membership: .kept)),
             actor: .provider)
         let deleted = try await h.store.insert(Task(title: "Удалена"), actor: .user)
         try await h.store.softDelete(id: deleted.id, expectedRevision: 1, actor: .user)
@@ -159,7 +166,8 @@ import XCTest
         h.adapter.statusesByProject["QA"] = (1...9).map {
             JiraStatus(id: "\($0)", name: "S\($0)", category: $0 < 4 ? .new : ($0 < 8 ? .indeterminate : .done))
         }
-        h.adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1", status: JiraStatus(id: "5", name: "S5", category: .indeterminate), assignee: h.adapter.me)
+        h.adapter.issues["10001"] = FakeJiraAdapter.issue(
+            id: "10001", key: "QA-1", status: JiraStatus(id: "5", name: "S5", category: .indeterminate), assignee: h.adapter.me)
         await h.model.syncNow()
         h.model.space = .jira(h.connection.id)
         XCTAssertEqual(h.model.board.map(\.title), ["К выполнению", "В работе", "Готово"])

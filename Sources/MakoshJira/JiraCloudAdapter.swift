@@ -18,7 +18,9 @@ public struct JiraCloudAdapter: JiraAdapter {
         try await client.comments(issueID: issueID, nextToken: nextToken)
     }
     public func worklogs(issueID: String) async throws -> [JiraWorklog] { try await client.worklogs(issueID: issueID) }
-    public func projectStatuses(projectKey: String) async throws -> [JiraStatus] { try await client.projectStatuses(projectKey: projectKey) }
+    public func projectStatuses(projectKey: String) async throws -> [JiraStatus] {
+        try await client.projectStatuses(projectKey: projectKey)
+    }
     public func priorities() async throws -> [JiraPriority] { try await client.priorities() }
     public func assignableUsers(projectKey: String, query: String) async throws -> [JiraUser] {
         try await client.assignableUsers(projectKey: projectKey, query: query)
@@ -31,6 +33,8 @@ public struct JiraCloudAdapter: JiraAdapter {
     public func transition(issueID: String, transitionID: String, fields: [String: JiraFieldValue]) async throws {
         try await client.transition(issueID: issueID, transitionID: transitionID, fields: fields)
     }
-    public func updateFields(issueID: String, patch: JiraIssuePatch) async throws { try await client.updateFields(issueID: issueID, patch: patch) }
+    public func updateFields(issueID: String, patch: JiraIssuePatch) async throws {
+        try await client.updateFields(issueID: issueID, patch: patch)
+    }
     public func assign(issueID: String, accountID: String?) async throws { try await client.assign(issueID: issueID, accountID: accountID) }
 }

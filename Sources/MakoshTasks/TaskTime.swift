@@ -21,7 +21,8 @@ public struct TaskTimeEntry: Codable, Equatable, Identifiable, Sendable {
 
     public init(
         id: UUID = UUID(), taskID: UUID, source: Source, startedAt: Date, seconds: Int, note: String = "", meetingID: UUID? = nil,
-        attemptID: UUID? = nil, worklogID: String? = nil, worklogState: WorklogState = .none, createdAt: Date = Date(), updatedAt: Date? = nil
+        attemptID: UUID? = nil, worklogID: String? = nil, worklogState: WorklogState = .none, createdAt: Date = Date(),
+        updatedAt: Date? = nil
     ) {
         self.id = id
         self.taskID = taskID
@@ -65,7 +66,8 @@ public struct TaskTimeDraft: Equatable, Identifiable, Sendable {
     public var sendToJira: Bool
 
     public init(
-        id: UUID = UUID(), taskID: UUID, source: TaskTimeEntry.Source, startedAt: Date, seconds: Int, note: String = "", meetingID: UUID? = nil,
+        id: UUID = UUID(), taskID: UUID, source: TaskTimeEntry.Source, startedAt: Date, seconds: Int, note: String = "",
+        meetingID: UUID? = nil,
         sendToJira: Bool = false
     ) {
         self.id = id
@@ -88,7 +90,8 @@ extension TaskStore {
         var value = timer
         value = TaskTimer(taskID: timer.taskID, startedAt: Self.millis(timer.startedAt), note: timer.note)
         try execute(
-            "INSERT INTO \(t("tasks_timer"))(id, data) VALUES(1, $1::jsonb) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data", [try encode(value)])
+            "INSERT INTO \(t("tasks_timer"))(id, data) VALUES(1, $1::jsonb) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data",
+            [try encode(value)])
     }
 
     public func clearTimer() throws { try execute("DELETE FROM \(t("tasks_timer")) WHERE id = 1") }
@@ -100,13 +103,16 @@ extension TaskStore {
     }
 
     public func entry(id: UUID) throws -> TaskTimeEntry? {
-        try query("SELECT data FROM \(t("tasks_time_entries")) WHERE id = $1", [id.uuidString]).first.map { try decode(TaskTimeEntry.self, $0[0]) }
+        try query("SELECT data FROM \(t("tasks_time_entries")) WHERE id = $1", [id.uuidString]).first.map {
+            try decode(TaskTimeEntry.self, $0[0])
+        }
     }
 
     /// Entries whose start lies in `[from, to)`.
     public func entries(from: Date, to: Date) throws -> [TaskTimeEntry] {
         try query(
-            "SELECT data FROM \(t("tasks_time_entries")) WHERE started_at >= $1 AND started_at < $2 ORDER BY started_at", [Self.iso(from), Self.iso(to)]
+            "SELECT data FROM \(t("tasks_time_entries")) WHERE started_at >= $1 AND started_at < $2 ORDER BY started_at",
+            [Self.iso(from), Self.iso(to)]
         ).map { try decode(TaskTimeEntry.self, $0[0]) }
     }
 

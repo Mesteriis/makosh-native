@@ -8,7 +8,8 @@ final class TaskStoreTests: XCTestCase {
     private func observation(_ identity: ServiceIdentity, summary: String, at: Date = Date()) -> TaskProviderObservation {
         let issue = JiraIssue(
             id: identity.externalID, key: "QA-1", projectKey: "QA", summary: summary,
-            status: JiraStatus(id: "1", name: "To Do", category: .new), updated: at, browseURL: URL(string: "https://jira.test/browse/QA-1")!)
+            status: JiraStatus(id: "1", name: "To Do", category: .new), updated: at,
+            browseURL: URL(string: "https://jira.test/browse/QA-1")!)
         return TaskProviderObservation(identity: identity, observedAt: at, raw: Data("{}".utf8), issue: issue)
     }
 
@@ -72,7 +73,8 @@ final class TaskStoreTests: XCTestCase {
     func testObservationVersionsAreAppendOnly() async throws {
         let db = try tasksDatabase(), store = try await taskStore(db)
         let identity = ServiceIdentity(service: "jira", accountID: UUID().uuidString, externalID: "10001")
-        let task = try await store.insert(Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
+        let task = try await store.insert(
+            Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
         try await store.saveObservation(observation(identity, summary: "one", at: Date(timeIntervalSince1970: 1)), for: task.id)
         try await store.saveObservation(observation(identity, summary: "two", at: Date(timeIntervalSince1970: 2)), for: task.id)
         let versions = try await store.observations(taskID: task.id, limit: 10)
@@ -84,7 +86,8 @@ final class TaskStoreTests: XCTestCase {
     func testTaskBySourceIdentity() async throws {
         let db = try tasksDatabase(), store = try await taskStore(db)
         let identity = ServiceIdentity(service: "jira", accountID: "c", externalID: "7")
-        let task = try await store.insert(Task(title: "x", source: TaskSource(identity: identity, membership: .mentioned)), actor: .provider)
+        let task = try await store.insert(
+            Task(title: "x", source: TaskSource(identity: identity, membership: .mentioned)), actor: .provider)
         let found = try await store.task(source: identity)
         XCTAssertEqual(found?.id, task.id)
         let missing = try await store.task(source: ServiceIdentity(service: "jira", accountID: "c", externalID: "8"))

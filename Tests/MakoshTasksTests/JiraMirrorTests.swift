@@ -38,7 +38,8 @@ final class JiraMirrorTests: XCTestCase {
 
     func testMentionedIssueIsMarkedMentioned() async throws {
         let db = try tasksDatabase(), store = try await taskStore(db), adapter = FakeJiraAdapter()
-        adapter.issues["10002"] = FakeJiraAdapter.issue(id: "10002", key: "QA-2", assignee: JiraUser(accountID: "bob-1", displayName: "Боб"))
+        adapter.issues["10002"] = FakeJiraAdapter.issue(
+            id: "10002", key: "QA-2", assignee: JiraUser(accountID: "bob-1", displayName: "Боб"))
         _ = await mirror(store, adapter: adapter).sync(full: true)
         let taskFound = try await store.task(source: identity("10002"))
         let task = try XCTUnwrap(taskFound)

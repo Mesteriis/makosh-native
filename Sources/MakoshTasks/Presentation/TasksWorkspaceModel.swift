@@ -137,7 +137,9 @@ public enum JiraAction: Sendable {
     public var lists: [String] { Array(Set(tasks.filter { $0.deletedAt == nil }.compactMap(\.list))).sorted() }
     public var tags: [String] { Array(Set(tasks.filter { $0.deletedAt == nil }.flatMap(\.tags))).sorted() }
 
-    public func count(_ filter: TasksFilter) -> Int { mineTasks.filter { matches($0, filter: filter) && (showCompleted || !isClosed($0)) }.count }
+    public func count(_ filter: TasksFilter) -> Int {
+        mineTasks.filter { matches($0, filter: filter) && (showCompleted || !isClosed($0)) }.count
+    }
 
     public func refresh() async {
         loading = true
@@ -195,7 +197,8 @@ public enum JiraAction: Sendable {
         let entry = TaskQuickEntry.parse(text, today: now(), calendar: calendar, resolveDependency: resolveDependency)
         guard !entry.title.isEmpty else { return }
         let task = Task(
-            title: entry.title, status: .inbox, priority: entry.priority ?? 4, list: entry.list, tags: entry.tags, due: entry.due, url: entry.url,
+            title: entry.title, status: .inbox, priority: entry.priority ?? 4, list: entry.list, tags: entry.tags, due: entry.due,
+            url: entry.url,
             dependsOn: entry.dependencies, createdAt: now())
         do {
             try await service.store.insert(task, actor: .user)
@@ -224,8 +227,11 @@ public enum JiraAction: Sendable {
             try await write(changed, from: task)
             if status == .done { await activateDependents(after: id) }
         } catch let error as TaskDomainError {
-            if case .blocked(let ids) = error { self.error = TasksFailure.blocked(ids.compactMap { self.task(id: $0)?.title }).errorDescription }
-            else { self.error = Self.describe(error) }
+            if case .blocked(let ids) = error {
+                self.error = TasksFailure.blocked(ids.compactMap { self.task(id: $0)?.title }).errorDescription
+            } else {
+                self.error = Self.describe(error)
+            }
         } catch { self.error = Self.describe(error) }
     }
 
@@ -322,13 +328,17 @@ public enum JiraAction: Sendable {
     // MARK: Jira
 
     public func jira(_ action: JiraAction, id: UUID) async {
-        guard let task = task(id: id), let source = task.source, let connectionID = UUID(uuidString: source.identity.accountID) else { return }
+        guard let task = task(id: id), let source = task.source, let connectionID = UUID(uuidString: source.identity.accountID) else {
+            return
+        }
         let payload: TaskJiraAttempt.Payload
         let kind: TaskJiraAttempt.Kind
         switch action {
         case .transition(let transition, let fields):
             do { try JiraFieldSupport.validate(transition, fields: fields) } catch let failure as JiraAdapterError {
-                if case .unsupportedFields(let keys) = failure { error = TasksFailure.unsupportedFields(keys).errorDescription } else {
+                if case .unsupportedFields(let keys) = failure {
+                    error = TasksFailure.unsupportedFields(keys).errorDescription
+                } else {
                     error = "Заполните обязательные поля перехода."
                 }
                 return
@@ -356,7 +366,9 @@ public enum JiraAction: Sendable {
             kind = .assignee
         }
         let attempt = await service.journal.submit(
-            TaskJiraAttempt(taskID: id, connectionID: connectionID, issueID: source.identity.externalID, kind: kind, payload: payload, createdAt: now()))
+            TaskJiraAttempt(
+                taskID: id, connectionID: connectionID, issueID: source.identity.externalID, kind: kind, payload: payload, createdAt: now())
+        )
         if attempt.reason == "уже выполняется" { error = TasksFailure.attemptInFlight.errorDescription }
         if attempt.state == .confirmed {
             error = nil
@@ -396,7 +408,9 @@ public enum JiraAction: Sendable {
     }
 
     public func dismissAttempt(id attemptID: UUID) async {
-        if let attempt = await service.journal.dismiss(attemptID), attempt.kind == .worklog { try? await service.time.applyAttempt(attempt) }
+        if let attempt = await service.journal.dismiss(attemptID), attempt.kind == .worklog {
+            try? await service.time.applyAttempt(attempt)
+        }
         await refresh()
     }
 
@@ -423,7 +437,8 @@ public enum JiraAction: Sendable {
 
     public func logManual(id: UUID, startedAt: Date, seconds: Int, note: String, meetingID: UUID? = nil) async {
         let suggest = (try? await service.time.suggestsWorklog(taskID: id)) ?? false
-        draft = service.time.draft(manual: id, startedAt: startedAt, seconds: seconds, note: note, meetingID: meetingID, sendToJira: suggest)
+        draft = service.time.draft(
+            manual: id, startedAt: startedAt, seconds: seconds, note: note, meetingID: meetingID, sendToJira: suggest)
     }
 
     public func confirmDraft() async {
@@ -482,7 +497,9 @@ public enum JiraAction: Sendable {
 
     // MARK: Filtering
 
-    private var mineTasks: [Task] { tasks.filter { $0.deletedAt == nil && ($0.source == nil || $0.source?.membership != TaskMembership.none) } }
+    private var mineTasks: [Task] {
+        tasks.filter { $0.deletedAt == nil && ($0.source == nil || $0.source?.membership != TaskMembership.none) }
+    }
 
     private func isClosed(_ task: Task) -> Bool { task.status == .done || task.status == .cancelled }
 
@@ -495,7 +512,8 @@ public enum JiraAction: Sendable {
         switch filter {
         case .all: return true
         case .today: return task.due.map { calendar.isDate($0, inSameDayAs: today) } ?? false
-        case .tomorrow: return task.due.map { calendar.isDate($0, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: today) ?? today) } ?? false
+        case .tomorrow:
+            return task.due.map { calendar.isDate($0, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: today) ?? today) } ?? false
         case .week: return within(days: 7)
         case .month: return within(days: 31)
         case .overdue: return isOverdue(task)
@@ -539,7 +557,9 @@ public enum JiraAction: Sendable {
             board = []
         case .jira(let connectionID):
             let rows = tasks.filter { task in
-                guard task.deletedAt == nil, let source = task.source, source.identity.accountID == connectionID.uuidString else { return false }
+                guard task.deletedAt == nil, let source = task.source, source.identity.accountID == connectionID.uuidString else {
+                    return false
+                }
                 return source.membership != TaskMembership.none && searched(task)
             }
             visible = rows
@@ -547,7 +567,9 @@ public enum JiraAction: Sendable {
         }
     }
 
-    static func columns(for tasks: [Task], statuses: [String: [JiraStatus]], observations: [UUID: TaskProviderObservation]) -> [JiraBoardColumn] {
+    static func columns(
+        for tasks: [Task], statuses: [String: [JiraStatus]], observations: [UUID: TaskProviderObservation]
+    ) -> [JiraBoardColumn] {
         var known: [JiraStatus] = []
         var seen: Set<String> = []
         for project in statuses.keys.sorted() {

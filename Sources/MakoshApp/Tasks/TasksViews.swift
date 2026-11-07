@@ -10,7 +10,8 @@ struct TasksDetailView: View {
         if let model = host.model {
             TasksContentView(model: model)
         } else if let failure = host.failure {
-            ContentUnavailableView("Задачи недоступны", systemImage: "checklist", description: Text(failure)).frame(maxWidth: .infinity, maxHeight: .infinity)
+            ContentUnavailableView("Задачи недоступны", systemImage: "checklist", description: Text(failure)).frame(
+                maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ProgressView("Открываем задачи…").frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -29,11 +30,16 @@ struct TasksContentView: View {
                 switch model.space {
                 case .mine:
                     if model.visible.isEmpty, model.tasks.isEmpty {
-                        ContentUnavailableView("Задач пока нет", systemImage: "checklist", description: Text("Напишите первую в строке выше: «Название @список #тег !1 ^завтра»."))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        ContentUnavailableView(
+                            "Задач пока нет", systemImage: "checklist",
+                            description: Text("Напишите первую в строке выше: «Название @список #тег !1 ^завтра».")
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if model.visible.isEmpty {
-                        ContentUnavailableView("Здесь пусто", systemImage: "checklist", description: Text("Под этот фильтр ничего не попало."))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        ContentUnavailableView(
+                            "Здесь пусто", systemImage: "checklist", description: Text("Под этот фильтр ничего не попало.")
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         TaskListView(model: model)
                     }
@@ -75,7 +81,8 @@ struct TasksContentView: View {
                     }.frame(width: 130).accessibilityIdentifier("tasks.sort")
                     Toggle("Сделанные", isOn: $model.showCompleted).toggleStyle(.checkbox).accessibilityIdentifier("tasks.showCompleted")
                 } else {
-                    TextField("Поиск по ключу и названию", text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.search")
+                    TextField("Поиск по ключу и названию", text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+                        "tasks.search")
                 }
             }
             if let preview = model.quickEntryPreview { TaskQuickEntryPreview(entry: preview) }
@@ -167,8 +174,10 @@ struct TaskTimerBar: View {
                 Text("Таймер не идёт").foregroundStyle(.secondary)
             }
             Spacer()
-            Text("Сегодня \(TaskStyle.duration(model.summary.daySeconds)) · неделя \(TaskStyle.duration(model.summary.weekSeconds))").font(.caption)
-                .foregroundStyle(.secondary).accessibilityIdentifier("tasks.summary")
+            Text("Сегодня \(TaskStyle.duration(model.summary.daySeconds)) · неделя \(TaskStyle.duration(model.summary.weekSeconds))").font(
+                .caption
+            )
+            .foregroundStyle(.secondary).accessibilityIdentifier("tasks.summary")
             Button("Отменить") { _Concurrency.Task { await model.undo() } }.keyboardShortcut("z", modifiers: .command).controlSize(.small)
                 .disabled(model.undoCount == 0).accessibilityIdentifier("tasks.undo")
         }.padding(.horizontal, 16).padding(.vertical, 8)
@@ -192,7 +201,8 @@ struct TaskTimeDraftSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(draft.source == .timer ? "Записать время таймера" : draft.source == .meeting ? "Время встречи" : "Записать время").font(.headline)
+            Text(draft.source == .timer ? "Записать время таймера" : draft.source == .meeting ? "Время встречи" : "Записать время").font(
+                .headline)
             Text(model.task(id: draft.taskID)?.title ?? "").lineLimit(2)
             HStack {
                 DatePicker("Начало", selection: $draft.startedAt).accessibilityIdentifier("tasks.draft.started")
@@ -234,7 +244,9 @@ private struct TasksModelSheets: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: Binding(get: { model.draft }, set: { model.draft = $0 })) { draft in TaskTimeDraftSheet(model: model, draft: draft).makoshAppearance() }
+            .sheet(item: Binding(get: { model.draft }, set: { model.draft = $0 })) { draft in
+                TaskTimeDraftSheet(model: model, draft: draft).makoshAppearance()
+            }
             .sheet(item: Binding(get: { model.pendingMeetingTime }, set: { model.pendingMeetingTime = $0 })) { request in
                 MeetingTimeChooserSheet(model: model, request: request).makoshAppearance()
             }
@@ -261,13 +273,20 @@ struct MeetingTimeChooserSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Время встречи").font(.headline)
             Text("«\(request.title)» · \(TaskStyle.duration(request.seconds)). В какую задачу записать?").font(.callout)
-            TextField("Название, код или ключ Jira", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.meeting.query")
+            TextField("Название, код или ключ Jira", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+                "tasks.meeting.query")
             List(candidates) { task in
                 Button {
-                    _Concurrency.Task { await model.logMeeting(taskID: task.id, meetingID: request.meetingID, title: request.title, seconds: request.seconds, startedAt: request.startedAt) }
+                    _Concurrency.Task {
+                        await model.logMeeting(
+                            taskID: task.id, meetingID: request.meetingID, title: request.title, seconds: request.seconds,
+                            startedAt: request.startedAt)
+                    }
                 } label: {
                     HStack {
-                        if let key = model.observation(id: task.id)?.issue.key { Text(key).font(.caption.monospaced()).foregroundStyle(.secondary) }
+                        if let key = model.observation(id: task.id)?.issue.key {
+                            Text(key).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
                         Text(task.title).lineLimit(1)
                     }
                 }.buttonStyle(.plain).accessibilityIdentifier("tasks.meeting.pick.\(task.code)")

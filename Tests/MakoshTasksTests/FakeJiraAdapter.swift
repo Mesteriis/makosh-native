@@ -4,7 +4,11 @@ import MakoshJira
 /// A scriptable Jira: issues, transitions, comments and worklogs in memory,
 /// every call recorded, any call made to fail or hang once.
 final class FakeJiraAdapter: JiraAdapter, @unchecked Sendable {
-    enum Call: Equatable { case currentUser, search(String), issue(String), transitions(String), comments(String), worklogs(String), projectStatuses(String), priorities, assignable(String), addWorklog(String, Int), addComment(String), transition(String, String), updateFields(String), assign(String, String?) }
+    enum Call: Equatable {
+        case currentUser, search(String), issue(String), transitions(String), comments(String), worklogs(String), projectStatuses(String),
+            priorities, assignable(String), addWorklog(String, Int), addComment(String), transition(String, String), updateFields(String),
+            assign(String, String?)
+    }
     private let lock = NSLock()
     var me = JiraUser(accountID: "me-1", displayName: "Я")
     var issues: [String: JiraIssue] = [:]
@@ -102,7 +106,8 @@ final class FakeJiraAdapter: JiraAdapter, @unchecked Sendable {
         try takeWriteFailure()
         let id = newID("w")
         lock.withLock {
-            worklogsByIssue[issueID, default: []].append(JiraWorklog(id: id, author: me, started: started, seconds: seconds, commentText: comment ?? ""))
+            worklogsByIssue[issueID, default: []].append(
+                JiraWorklog(id: id, author: me, started: started, seconds: seconds, commentText: comment ?? ""))
         }
         return id
     }
@@ -120,7 +125,8 @@ final class FakeJiraAdapter: JiraAdapter, @unchecked Sendable {
     func transition(issueID: String, transitionID: String, fields: [String: JiraFieldValue]) async throws {
         record(.transition(issueID, transitionID))
         try takeWriteFailure()
-        guard var issue = issues[issueID], let transition = (transitionsByIssue[issueID] ?? []).first(where: { $0.id == transitionID }) else {
+        guard var issue = issues[issueID], let transition = (transitionsByIssue[issueID] ?? []).first(where: { $0.id == transitionID })
+        else {
             throw JiraAdapterError.notFound
         }
         issue.status = transition.to

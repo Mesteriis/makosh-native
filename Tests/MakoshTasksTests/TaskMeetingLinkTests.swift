@@ -21,7 +21,8 @@ final class TaskMeetingLinkTests: XCTestCase {
     @MainActor func testHostFindsTaskByKey() async throws {
         let db = try tasksDatabase()
         let store = TaskStore(connectionString: db.connectionString, schema: db.schema)
-        let service = TasksService(store: store, vault: JiraTokenVault(access: .memory()), adapterFactory: { _, _ in JiraSyntheticAdapter() })
+        let service = TasksService(
+            store: store, vault: JiraTokenVault(access: .memory()), adapterFactory: { _, _ in JiraSyntheticAdapter() })
         try await service.open()
         try await TasksSyntheticSeed.seed(store: store)
         let connections = try await store.connections()
@@ -42,7 +43,8 @@ final class TaskMeetingLinkTests: XCTestCase {
     @MainActor func testTwoKeysLeaveTaskUnset() async throws {
         let db = try tasksDatabase()
         let store = TaskStore(connectionString: db.connectionString, schema: db.schema)
-        let service = TasksService(store: store, vault: JiraTokenVault(access: .memory()), adapterFactory: { _, _ in JiraSyntheticAdapter() })
+        let service = TasksService(
+            store: store, vault: JiraTokenVault(access: .memory()), adapterFactory: { _, _ in JiraSyntheticAdapter() })
         try await service.open()
         try await TasksSyntheticSeed.seed(store: store)
         let connections = try await store.connections()

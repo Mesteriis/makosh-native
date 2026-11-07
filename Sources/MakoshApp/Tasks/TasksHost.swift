@@ -58,7 +58,9 @@ extension EnvironmentValues {
 
     /// After «Открыть встречу»: the task to offer a timer for, when exactly one key matches.
     func offerTimer(title: String, notes: String) -> TimerOffer? {
-        guard let model, model.timer == nil, let id = model.task(matchingKeysIn: title, notes: notes), let task = model.task(id: id) else { return nil }
+        guard let model, model.timer == nil, let id = model.task(matchingKeysIn: title, notes: notes), let task = model.task(id: id) else {
+            return nil
+        }
         return TimerOffer(id: id, title: (model.observation(id: id)?.issue.key).map { "\($0) · \(task.title)" } ?? task.title)
     }
 

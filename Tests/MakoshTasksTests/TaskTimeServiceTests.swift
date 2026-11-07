@@ -28,14 +28,18 @@ final class TaskTimeServiceTests: XCTestCase {
         let clock = Clock()
         let adapter = FakeJiraAdapter()
         adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1", assignee: adapter.me)
-        let connection = JiraConnection(id: connectionID, name: "Работа", origin: URL(string: "https://jira.test")!, email: "me@example.com", suggestWorklog: suggestWorklog)
+        let connection = JiraConnection(
+            id: connectionID, name: "Работа", origin: URL(string: "https://jira.test")!, email: "me@example.com",
+            suggestWorklog: suggestWorklog)
         try await store.saveConnection(connection)
         let identity = ServiceIdentity(service: "jira", accountID: connectionID.uuidString, externalID: "10001")
-        let jiraTask = try await store.insert(Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
+        let jiraTask = try await store.insert(
+            Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
         let localTask = try await store.insert(Task(title: "Локальная"), actor: .user)
         let journal = TaskJiraAttemptJournal(store: store, now: { clock.now() }) { [connectionID] id in id == connectionID ? adapter : nil }
         let service = TaskTimeService(store: store, journal: journal, now: { clock.now() })
-        return Harness(store: store, adapter: adapter, journal: journal, service: service, clock: clock, jiraTask: jiraTask, localTask: localTask)
+        return Harness(
+            store: store, adapter: adapter, journal: journal, service: service, clock: clock, jiraTask: jiraTask, localTask: localTask)
     }
 
     func testStartPersistsTimerAcrossReopen() async throws {
@@ -89,7 +93,8 @@ final class TaskTimeServiceTests: XCTestCase {
 
     func testConfirmWithoutJiraKeepsLocalEntry() async throws {
         let db = try tasksDatabase(), h = try await harness(db)
-        let draft = h.service.draft(manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "вручную", meetingID: nil, sendToJira: false)
+        let draft = h.service.draft(
+            manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "вручную", meetingID: nil, sendToJira: false)
         let entry = try await h.service.confirm(draft)
         XCTAssertEqual(entry.source, .manual)
         XCTAssertEqual(entry.worklogState, .none)
@@ -117,7 +122,8 @@ final class TaskTimeServiceTests: XCTestCase {
 
     func testConfirmedEntryIsLockedForEditAndDelete() async throws {
         let db = try tasksDatabase(), h = try await harness(db)
-        let draft = h.service.draft(manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "a", meetingID: nil, sendToJira: true)
+        let draft = h.service.draft(
+            manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "a", meetingID: nil, sendToJira: true)
         var entry = try await h.service.confirm(draft)
         XCTAssertEqual(entry.worklogState, .confirmed)
         entry.seconds = 900
@@ -139,7 +145,8 @@ final class TaskTimeServiceTests: XCTestCase {
 
     func testWorklogDeletedInJiraMarksEntry() async throws {
         let db = try tasksDatabase(), h = try await harness(db)
-        let draft = h.service.draft(manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "a", meetingID: nil, sendToJira: true)
+        let draft = h.service.draft(
+            manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "a", meetingID: nil, sendToJira: true)
         let entry = try await h.service.confirm(draft)
         try await h.service.applyWorklogs([], taskID: h.jiraTask.id)
         let after = try await h.store.entries(taskID: h.jiraTask.id)
@@ -149,10 +156,12 @@ final class TaskTimeServiceTests: XCTestCase {
 
     func testWorklogChangedInJiraUpdatesEntry() async throws {
         let db = try tasksDatabase(), h = try await harness(db)
-        let draft = h.service.draft(manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "a", meetingID: nil, sendToJira: true)
+        let draft = h.service.draft(
+            manual: h.jiraTask.id, startedAt: h.clock.now(), seconds: 300, note: "a", meetingID: nil, sendToJira: true)
         let entry = try await h.service.confirm(draft)
         let moved = h.clock.now().addingTimeInterval(3600)
-        try await h.service.applyWorklogs([JiraWorklog(id: entry.worklogID!, author: h.adapter.me, started: moved, seconds: 1200)], taskID: h.jiraTask.id)
+        try await h.service.applyWorklogs(
+            [JiraWorklog(id: entry.worklogID!, author: h.adapter.me, started: moved, seconds: 1200)], taskID: h.jiraTask.id)
         let after = try await h.store.entries(taskID: h.jiraTask.id)
         XCTAssertEqual(after.first?.seconds, 1200)
         XCTAssertEqual(after.first?.startedAt, moved)

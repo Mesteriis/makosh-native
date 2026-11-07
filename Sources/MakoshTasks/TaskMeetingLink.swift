@@ -58,7 +58,9 @@ extension TasksWorkspaceModel {
     public func logMeeting(taskID: UUID, meetingID: UUID, title: String, seconds: Int, startedAt: Date) async {
         pendingMeetingTime = nil
         let suggest = (try? await service.time.suggestsWorklog(taskID: taskID)) ?? false
-        draft = service.time.draft(manual: taskID, startedAt: startedAt, seconds: seconds, note: title, meetingID: meetingID, sendToJira: suggest, source: .meeting)
+        draft = service.time.draft(
+            manual: taskID, startedAt: startedAt, seconds: seconds, note: title, meetingID: meetingID, sendToJira: suggest, source: .meeting
+        )
     }
 
     /// A short code or Jira key typed or found in text.

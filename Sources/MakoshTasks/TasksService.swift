@@ -96,7 +96,8 @@ public actor TasksService {
 
     public func adapter(for connectionID: UUID) async -> (any JiraAdapter)? {
         if let adapter = adapters[connectionID] { return adapter }
-        guard let connection = try? await store.connections().first(where: { $0.id == connectionID }), let token = try? await vault.load(connectionID: connectionID)
+        guard let connection = try? await store.connections().first(where: { $0.id == connectionID }),
+            let token = try? await vault.load(connectionID: connectionID)
         else { return nil }
         let adapter = adapterFactory(connection, token)
         adapters[connectionID] = adapter
@@ -180,7 +181,8 @@ public actor TasksService {
 
     /// Rereads one issue with its transitions, comments and worklogs; worklog changes flow to the entries.
     public func refreshIssue(taskID: UUID) async throws -> TaskProviderObservation? {
-        guard let task = try await store.task(id: taskID), let source = task.source, let connectionID = UUID(uuidString: source.identity.accountID),
+        guard let task = try await store.task(id: taskID), let source = task.source,
+            let connectionID = UUID(uuidString: source.identity.accountID),
             let mirror = mirrors[connectionID]
         else { return nil }
         let observation = try await mirror.refresh(issueID: source.identity.externalID)

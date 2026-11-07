@@ -46,9 +46,11 @@ struct TaskRow: View {
             Button {
                 _Concurrency.Task { await model.toggleDone(id: task.id) }
             } label: {
-                Image(systemName: task.status == .done ? "checkmark.circle.fill" : "circle").foregroundStyle(task.status == .done ? Color.green : .secondary)
+                Image(systemName: task.status == .done ? "checkmark.circle.fill" : "circle").foregroundStyle(
+                    task.status == .done ? Color.green : .secondary)
             }
-            .buttonStyle(.plain).help(task.status == .done ? "Открыть заново" : "Сделано").accessibilityIdentifier("tasks.row.done.\(task.code)")
+            .buttonStyle(.plain).help(task.status == .done ? "Открыть заново" : "Сделано").accessibilityIdentifier(
+                "tasks.row.done.\(task.code)")
             Text(task.code).font(.caption.monospaced()).foregroundStyle(.tertiary)
             Text("!\(task.priority)").font(.caption.bold()).foregroundStyle(TaskStyle.priority(task.priority))
             if !blockers.isEmpty {
@@ -84,7 +86,11 @@ struct TaskContextMenu: View {
             }
         }
         Menu("Приоритет") {
-            ForEach(1...4, id: \.self) { value in Button("!\(value) \(TaskStyle.priorityTitle(value))") { _Concurrency.Task { await model.set(priority: value, id: task.id) } } }
+            ForEach(1...4, id: \.self) { value in
+                Button("!\(value) \(TaskStyle.priorityTitle(value))") {
+                    _Concurrency.Task { await model.set(priority: value, id: task.id) }
+                }
+            }
         }
         Button("Отложить на день") { _Concurrency.Task { await model.postpone(id: task.id) } }
         if model.timer?.taskID != task.id { Button("Запустить таймер") { _Concurrency.Task { await model.startTimer(id: task.id) } } }

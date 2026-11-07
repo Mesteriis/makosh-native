@@ -87,7 +87,9 @@ extension TaskStore {
     }
 
     public func attempt(id: UUID) throws -> TaskJiraAttempt? {
-        try query("SELECT data FROM \(t("tasks_jira_attempts")) WHERE id = $1", [id.uuidString]).first.map { try decode(TaskJiraAttempt.self, $0[0]) }
+        try query("SELECT data FROM \(t("tasks_jira_attempts")) WHERE id = $1", [id.uuidString]).first.map {
+            try decode(TaskJiraAttempt.self, $0[0])
+        }
     }
 
     /// Every attempt still queued, sent or unknown, oldest first.
@@ -114,23 +116,30 @@ extension TaskStore {
             VALUES($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NULL)
             """,
             [
-                value.id.uuidString, value.taskID.uuidString, value.connectionID.uuidString, value.issueID, value.kind.rawValue, value.state.rawValue,
+                value.id.uuidString, value.taskID.uuidString, value.connectionID.uuidString, value.issueID, value.kind.rawValue,
+                value.state.rawValue,
                 try encode(value), Self.iso(value.createdAt), Self.iso(value.updatedAt),
             ])
         return value
     }
 
     /// Moves an attempt along the allowed path; `expectedState` guards against a stale caller.
-    @discardableResult public func updateAttempt(_ attempt: TaskJiraAttempt, expectedState: TaskJiraAttempt.State) throws -> TaskJiraAttempt {
+    @discardableResult public func updateAttempt(_ attempt: TaskJiraAttempt, expectedState: TaskJiraAttempt.State) throws -> TaskJiraAttempt
+    {
         try transaction {
             guard let current = try self.attempt(id: attempt.id) else { throw TaskStoreError.notFound }
-            guard current.state == expectedState, TaskJiraAttempt.allows(current.state, attempt.state) else { throw TaskStoreError.invalidTransition }
+            guard current.state == expectedState, TaskJiraAttempt.allows(current.state, attempt.state) else {
+                throw TaskStoreError.invalidTransition
+            }
             var value = attempt
             value.updatedAt = Self.millis(value.updatedAt)
             value.resolvedAt = value.resolvedAt.map(Self.millis)
             try self.execute(
                 "UPDATE \(self.t("tasks_jira_attempts")) SET state = $2, data = $3::jsonb, updated_at = $4, resolved_at = $5 WHERE id = $1",
-                [value.id.uuidString, value.state.rawValue, try self.encode(value), Self.iso(value.updatedAt), value.resolvedAt.map(Self.iso)])
+                [
+                    value.id.uuidString, value.state.rawValue, try self.encode(value), Self.iso(value.updatedAt),
+                    value.resolvedAt.map(Self.iso),
+                ])
             return value
         }
     }

@@ -525,7 +525,11 @@ struct WorkspaceView: View {
             FilesSidebarView(model: files.model, host: files).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else if destination == .tasks {
             Group {
-                if let model = tasks.model { TasksSidebarView(model: model) } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                if let model = tasks.model {
+                    TasksSidebarView(model: model)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }.frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else if destination == .ai {
             AIConversationListView(model: ai.workspace, openChat: openAICard).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)

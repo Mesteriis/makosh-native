@@ -29,21 +29,28 @@ struct TasksSettingsForm: View {
                             Text(connection.name)
                             Text("\(connection.origin.host ?? "") · \(connection.email)").font(.caption).foregroundStyle(.secondary)
                             if let failure = connection.lastFailure { Text(failure).font(.caption).foregroundStyle(.orange) }
-                            if connection.mentionsUnavailable { Text("Jira отклонила поиск упоминаний; зеркалятся только назначенные.").font(.caption).foregroundStyle(.orange) }
+                            if connection.mentionsUnavailable {
+                                Text("Jira отклонила поиск упоминаний; зеркалятся только назначенные.").font(.caption).foregroundStyle(
+                                    .orange)
+                            }
                         }
                         Spacer()
                         Button("Изменить") { editing = connection }
                         Button("Удалить", role: .destructive) {
                             _Concurrency.Task {
-                                do { try await model.service.remove(connectionID: connection.id) } catch { model.error = TasksWorkspaceModel.describe(error) }
+                                do { try await model.service.remove(connectionID: connection.id) } catch {
+                                    model.error = TasksWorkspaceModel.describe(error)
+                                }
                                 await model.refresh()
                             }
                         }
                     }.accessibilityIdentifier("tasks.settings.connection.\(connection.id.uuidString)")
                 }
                 Button("Добавить Jira…") { adding = true }.accessibilityIdentifier("tasks.settings.add")
-                Text("Jira Cloud: почта аккаунта и API-токен (id.atlassian.com → Security → API tokens). Токен хранится только в Связке ключей.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(
+                    "Jira Cloud: почта аккаунта и API-токен (id.atlassian.com → Security → API tokens). Токен хранится только в Связке ключей."
+                )
+                .font(.caption).foregroundStyle(.secondary)
             }
             if let error = model.error { Text(error).foregroundStyle(.orange) }
         }
@@ -73,20 +80,25 @@ struct JiraConnectionEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(original == nil ? "Новое подключение Jira" : "Подключение Jira").font(.headline)
             TextField("Название", text: $name).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.editor.name")
-            TextField("Адрес сайта, https://компания.atlassian.net", text: $origin).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.editor.origin")
+            TextField("Адрес сайта, https://компания.atlassian.net", text: $origin).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+                "tasks.jira.editor.origin")
             TextField("Почта аккаунта", text: $email).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.editor.email")
-            SecureField(original == nil ? "API-токен" : "Новый API-токен (пусто — оставить прежний)", text: $token).textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("tasks.jira.editor.token")
+            SecureField(original == nil ? "API-токен" : "Новый API-токен (пусто — оставить прежний)", text: $token).textFieldStyle(
+                .roundedBorder
+            )
+            .accessibilityIdentifier("tasks.jira.editor.token")
             Stepper("Опрос каждые \(pollMinutes) мин", value: $pollMinutes, in: 1...1440)
             Toggle("Искать упоминания в комментариях", isOn: $mentions)
             Toggle("Предлагать worklog при записи времени", isOn: $suggestWorklog)
             if let checked { Text(checked).font(.caption).foregroundStyle(.green) }
             if let failure { Text(failure).font(.caption).foregroundStyle(.orange) }
             HStack {
-                Button("Проверить") { _Concurrency.Task { await check() } }.disabled(busy || (token.isEmpty && original == nil)).accessibilityIdentifier("tasks.jira.editor.check")
+                Button("Проверить") { _Concurrency.Task { await check() } }.disabled(busy || (token.isEmpty && original == nil))
+                    .accessibilityIdentifier("tasks.jira.editor.check")
                 Spacer()
                 Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Сохранить") { _Concurrency.Task { await save() } }.keyboardShortcut(.defaultAction).disabled(busy).accessibilityIdentifier("tasks.jira.editor.save")
+                Button("Сохранить") { _Concurrency.Task { await save() } }.keyboardShortcut(.defaultAction).disabled(busy)
+                    .accessibilityIdentifier("tasks.jira.editor.save")
             }
         }
         .padding(16).frame(width: 480)
@@ -138,7 +150,9 @@ struct JiraConnectionEditor: View {
         }
         busy = true
         defer { busy = false }
-        if connection.accountID == nil, !token.isEmpty, let me = try? await model.service.verify(connection, token: token) { connection.accountID = me.accountID }
+        if connection.accountID == nil, !token.isEmpty, let me = try? await model.service.verify(connection, token: token) {
+            connection.accountID = me.accountID
+        }
         do {
             try await model.service.save(connection, token: token.isEmpty ? nil : token)
             await model.refresh()

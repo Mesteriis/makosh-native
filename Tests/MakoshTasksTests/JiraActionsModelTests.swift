@@ -64,7 +64,8 @@ import XCTest
         XCTAssertTrue(h.model.attempts(id: rich.id).isEmpty)
         let simple = try task(h, key: "QA-1")
         XCTAssertTrue(h.model.canEditDescription(id: simple.id))
-        await h.model.jira(.fields(JiraIssuePatch(summary: "Переименовано", descriptionADF: JiraADF.document(fromText: "Новый текст"))), id: simple.id)
+        await h.model.jira(
+            .fields(JiraIssuePatch(summary: "Переименовано", descriptionADF: JiraADF.document(fromText: "Новый текст"))), id: simple.id)
         XCTAssertNil(h.model.error)
         XCTAssertEqual(h.model.observation(id: simple.id)?.issue.summary, "Переименовано")
         XCTAssertEqual(h.model.observation(id: simple.id)?.issue.descriptionText, "Новый текст")
@@ -77,7 +78,9 @@ import XCTest
         XCTAssertEqual(users.map(\.accountID), ["bob-1"])
         await h.model.jira(.assign(accountID: "bob-1"), id: task.id)
         XCTAssertEqual(h.model.observation(id: task.id)?.issue.assignee?.accountID, "bob-1")
-        XCTAssertEqual(h.model.task(id: task.id)?.source?.membership, .mentioned, "handed over, no mention, but still mirrored until the next full sync")
+        XCTAssertEqual(
+            h.model.task(id: task.id)?.source?.membership, .mentioned,
+            "handed over, no mention, but still mirrored until the next full sync")
         await h.model.jira(.assign(accountID: nil), id: task.id)
         XCTAssertNil(h.model.observation(id: task.id)?.issue.assignee)
         await h.model.jira(.comment("Готово, смотри"), id: task.id)

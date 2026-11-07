@@ -67,7 +67,8 @@ final class JiraCloudAdapterWriteTests: XCTestCase {
         let cascade = JiraField(key: "customfield_7", name: "Area", required: true, schemaType: "option-with-child")
         let text = JiraField(key: "customfield_1", name: "Note", required: true, schemaType: "string")
         let optional = JiraField(key: "customfield_9", name: "Sprint", required: false, schemaType: "array")
-        let transition = JiraTransition(id: "31", name: "Done", to: JiraStatus(id: "3", name: "Done", category: .done), fields: [cascade, text, optional])
+        let transition = JiraTransition(
+            id: "31", name: "Done", to: JiraStatus(id: "3", name: "Done", category: .done), fields: [cascade, text, optional])
         XCTAssertEqual(JiraFieldSupport.unsupportedRequired(transition).map(\.key), ["customfield_7"])
         XCTAssertTrue(JiraFieldSupport.isSupported(text))
         XCTAssertFalse(JiraFieldSupport.isSupported(cascade))
@@ -83,7 +84,8 @@ final class JiraCloudAdapterWriteTests: XCTestCase {
                 .utf8)
         let rich = JiraIssue(
             id: "1", key: "QA-1", projectKey: "QA", summary: "x", descriptionADF: table, descriptionText: "a",
-            status: JiraStatus(id: "1", name: "To Do", category: .new), updated: Date(), browseURL: URL(string: "https://jira.test/browse/QA-1")!)
+            status: JiraStatus(id: "1", name: "To Do", category: .new), updated: Date(),
+            browseURL: URL(string: "https://jira.test/browse/QA-1")!)
         let patch = JiraIssuePatch(descriptionADF: JiraADF.document(fromText: "plain"))
         XCTAssertThrowsError(try patch.validate(against: rich)) { error in
             XCTAssertEqual(error as? JiraAdapterError, .descriptionNotEditable)

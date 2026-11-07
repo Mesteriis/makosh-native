@@ -68,12 +68,15 @@ struct TasksSidebarView: View {
                 }
                 Section {
                     if model.connections.isEmpty {
-                        Text("Подключите Jira в Настройках → Задачи, чтобы видеть свои задачи здесь.").font(.caption).foregroundStyle(.secondary)
+                        Text("Подключите Jira в Настройках → Задачи, чтобы видеть свои задачи здесь.").font(.caption).foregroundStyle(
+                            .secondary)
                     }
                     ForEach(model.connections) { connection in
                         VStack(alignment: .leading, spacing: 2) {
                             Label(connection.name, systemImage: "rectangle.3.group")
-                            Text(status(connection)).font(.caption).foregroundStyle(connection.lastFailure == nil ? Color.secondary : Color.orange).lineLimit(1)
+                            Text(status(connection)).font(.caption).foregroundStyle(
+                                connection.lastFailure == nil ? Color.secondary : Color.orange
+                            ).lineLimit(1)
                         }
                         .tag(Row.jira(connection.id)).accessibilityIdentifier("tasks.jira.\(connection.id.uuidString)")
                     }

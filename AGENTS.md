@@ -67,6 +67,13 @@
 - The catalogue contains explicitly added/created meetings. Own OAuth registration, verified principal confirmation and account leases govern REST; HTTP401 keeps a durable reauthorization gate until a new confirmed grant. Unknown POST needs an explicit resolution; unknown PATCH needs exact-scope GET/review. Retain credentials, observations and attempts; mutation replay is always explicit.
 - Participation uses a validated official HTTPS handoff. Native media/Linux WebRTC, chat, calendar, files and recording administration remain outside this first stage. Synthetic QA uses both `qa_telemost_` schemas and fake boundaries; native transport failure leaves visual acceptance unverified.
 
+## Tasks decisions
+
+- Continue the existing `MakoshTasks` / `MakoshJira` implementation; read `docs/tasks.md` and the approved `docs/superpowers/specs/2026-11-07-tasks-section-design.md` before changing the domain, the mirror, the attempt journal or time. The local layer never writes to Jira by itself; Jira's Done category completing the local task is the only automatism.
+- Every Jira write is one journaled attempt; an `unknown` outcome is resolved only by an explicit reread or dismissal, never by a retry. Worklogs under 60 seconds are not sent; an entry with a confirmed worklog is locked here and corrected in Jira. Jira errors carry codes and stages, never bodies, URLs, JQL or tokens.
+- Jira descriptions are edited only when their ADF is simple; transitions with required fields of unsupported types are blocked before sending. Observations, versions and task history are append-only; removing a connection deletes its token first and leaves tasks as `none`.
+- Inside `MakoshTasks` and `Sources/MakoshApp/Tasks` Swift's `Task` is spelled `_Concurrency.Task`; `MakoshApp.swift` and `WorkspaceView.swift` do not import `MakoshTasks`. Synthetic QA uses one `qa_tasks_` schema and the in-memory `JiraSyntheticAdapter`; live Jira only on the user's command, on the connection and issue they choose.
+
 ## Live QA and authorization
 
 - Read the current QA scope/status in `docs/development-status.md` before using a real account. Use only the user-selected account and test peer; authorization for that test is not blanket access to other dialogs, account settings or sessions. Reading, messages/files, calls and microphone/camera use must stay within the actions authorized in the conversation; reuse existing authorization within that scope.

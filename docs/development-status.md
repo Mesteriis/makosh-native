@@ -1,4 +1,48 @@
-# Development status — 2026-11-06
+# Development status — 2026-11-07
+
+## Задачи, часть 1: локальный домен, Jira Cloud, время — 2026-11-07
+
+План `docs/superpowers/plans/2026-11-07-tasks-section.md` (ветка
+`tasks-section`), спека `docs/superpowers/specs/2026-11-07-tasks-section-design.md`,
+описание в `docs/tasks.md`, ADR-018.
+
+- Референсы и пин: `TaskOrchestrator` `055c1f1` и `mac-tower` `317eeafb` в
+  `references.lock.json` (XERJ ещё не индексировал — записано в
+  `docs/xerj.md`); `Dependencies/Jira.lock.json` с хэшами перенесённых
+  файлов — `DependencyLockTests`.
+- `MakoshJira`: транспорт и сессия MacTower (Basic, 30 с, лимит 16 KiB на
+  тело ошибки, `Retry-After`, недействительный курсор), REST v3 чтение и
+  пять записей, ADF (проекция, «простой документ», сборка из текста),
+  поддерживаемые поля переходов — `JiraTransportTests`,
+  `JiraCloudAdapterReadTests`, `JiraCloudAdapterWriteTests`, `JiraADFTests`,
+  `JiraModelsTests` (31 тест на стабе `URLProtocol`).
+- `MakoshTasks`: домен, быстрый ввод и даты, хранилище PostgreSQL с
+  версиями и наблюдениями, undo, журнал попыток, зеркало, подключения и
+  токены, время, сервис и модель, QA-изоляция и синтетическая Jira, связь
+  со встречами — `TaskDomainTests`, `TaskDateParserTests`,
+  `TaskQuickEntryTests`, `TaskStoreTests`, `TaskUndoTests`,
+  `TaskJiraAttemptJournalTests`, `JiraMirrorTests`, `JiraConnectionTests`,
+  `TaskTimeServiceTests`, `TasksWorkspaceModelTests`, `TasksQAIsolationTests`,
+  `JiraSyntheticAdapterTests`, `TasksSyntheticTests`, `JiraActionsModelTests`,
+  `TaskMeetingLinkTests` (интеграционные — на реальном PostgreSQL в
+  `makosh_test_` схемах).
+- Приложение: раздел «Задачи» (витрины «Мои» и «Jira», карточка правой
+  колонкой, быстрый ввод с предпросмотром, таймер и сводка, клавиши
+  референса), карточка Jira с переходами и полями, передачей, правкой,
+  комментариями, worklog и строками попыток, Настройки → Задачи,
+  «Списать время…» и предложение таймера в карточке встречи Telemost,
+  окно QA `--tasks-synthetic-preview`.
+- Обнаружено по пути и закрыто тестом: коллизия короткого кода внутри
+  транзакции отравляла её (SQLSTATE 25P02) — код проверяется до INSERT.
+- Проверки: `scripts/test.sh` — exit 0 (10 бандлов XCTest, самый большой
+  2327 тестов, Rust 59, Python); `scripts/build-app.sh` — exit 0;
+  `scripts/format.sh`. Отладочный QA-бандл собран
+  (`scripts/run-tasks-qa.py --launch`, схема `qa_tasks_`), окно запущено;
+  осмотр мной не выполнялся — пользователь отклонил доступ к окну QA, оно
+  оставлено для его осмотра. Живая Jira не подключалась.
+- Вторая очередь и известные границы — в `docs/tasks.md`: планер, повторы,
+  уведомления, карточка ИИ, Data Center, правка worklog из Makosh, деньги,
+  резервная копия задач.
 
 ## Файлы: закрытие отложенных мелочей — 2026-11-06
 

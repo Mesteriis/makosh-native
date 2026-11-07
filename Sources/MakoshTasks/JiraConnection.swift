@@ -17,7 +17,8 @@ public struct JiraConnection: Codable, Equatable, Identifiable, Sendable {
     public var mentionsUnavailable: Bool
 
     public init(
-        id: UUID = UUID(), name: String, origin: URL, email: String, accountID: String? = nil, pollInterval: TimeInterval = 300, mentions: Bool = true,
+        id: UUID = UUID(), name: String, origin: URL, email: String, accountID: String? = nil, pollInterval: TimeInterval = 300,
+        mentions: Bool = true,
         suggestWorklog: Bool = true, lastSyncAt: Date? = nil, lastFailure: String? = nil, mentionsUnavailable: Bool = false
     ) {
         self.id = id

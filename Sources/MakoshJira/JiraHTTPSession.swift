@@ -113,7 +113,8 @@ final class JiraSessionRequest: NSObject, URLSessionDataDelegate, @unchecked Sen
             finish(.failure(JiraTransportFailure.redirectRejected))
             return
         }
-        let mime = (http.value(forHTTPHeaderField: "Content-Type") ?? "").split(separator: ";", maxSplits: 1).first?
+        let mime =
+            (http.value(forHTTPHeaderField: "Content-Type") ?? "").split(separator: ";", maxSplits: 1).first?
             .trimmingCharacters(in: .whitespaces).lowercased() ?? ""
         let isJSON = mime == "application/json" || (mime.hasPrefix("application/") && mime.hasSuffix("+json"))
         guard (200..<300).contains(http.statusCode) else {

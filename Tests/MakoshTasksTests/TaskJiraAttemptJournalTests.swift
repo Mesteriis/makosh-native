@@ -12,7 +12,8 @@ final class TaskJiraAttemptJournalTests: XCTestCase {
         adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1")
         adapter.transitionsByIssue["10001"] = [FakeJiraAdapter.start, FakeJiraAdapter.finish]
         let identity = ServiceIdentity(service: "jira", accountID: connectionID.uuidString, externalID: "10001")
-        let task = try await store.insert(Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
+        let task = try await store.insert(
+            Task(title: "QA-1", source: TaskSource(identity: identity, membership: .assigned)), actor: .provider)
         let journal = TaskJiraAttemptJournal(store: store) { [connectionID] id in id == connectionID ? adapter : nil }
         return (store, journal, task)
     }
@@ -23,7 +24,8 @@ final class TaskJiraAttemptJournalTests: XCTestCase {
     func testSubmitConfirmsWithResultID() async throws {
         let db = try tasksDatabase(), adapter = FakeJiraAdapter()
         let (store, journal, task) = try await journal(db, adapter: adapter)
-        let result = await journal.submit(attempt(task, kind: .comment, payload: .comment(text: "Готово", adf: JiraADF.document(fromText: "Готово"))))
+        let result = await journal.submit(
+            attempt(task, kind: .comment, payload: .comment(text: "Готово", adf: JiraADF.document(fromText: "Готово"))))
         XCTAssertEqual(result.state, .confirmed)
         XCTAssertEqual(result.resultID, "c101")
         XCTAssertNotNil(result.resolvedAt)
@@ -74,10 +76,13 @@ final class TaskJiraAttemptJournalTests: XCTestCase {
         let (_, journal, task) = try await journal(db, adapter: adapter)
         let started = Date(timeIntervalSince1970: 1_800_000_000)
         adapter.failNextWrite = .transport(code: "networkFailure")
-        let unknown = await journal.submit(attempt(task, kind: .worklog, payload: .worklog(started: started, seconds: 600, comment: "созвон", entryID: UUID())))
+        let unknown = await journal.submit(
+            attempt(task, kind: .worklog, payload: .worklog(started: started, seconds: 600, comment: "созвон", entryID: UUID())))
         XCTAssertEqual(unknown.state, .unknown)
         // Jira did record it after all.
-        adapter.worklogsByIssue["10001"] = [JiraWorklog(id: "w7", author: adapter.me, started: started, seconds: 600, commentText: "созвон")]
+        adapter.worklogsByIssue["10001"] = [
+            JiraWorklog(id: "w7", author: adapter.me, started: started, seconds: 600, commentText: "созвон")
+        ]
         let resolved = await journal.resolve(unknown.id)
         XCTAssertEqual(resolved.state, .confirmed)
         XCTAssertEqual(resolved.resultID, "w7")
@@ -88,9 +93,11 @@ final class TaskJiraAttemptJournalTests: XCTestCase {
         let (_, journal, task) = try await journal(db, adapter: adapter)
         let started = Date(timeIntervalSince1970: 1_800_000_000)
         adapter.failNextWrite = .transport(code: "networkFailure")
-        let unknown = await journal.submit(attempt(task, kind: .worklog, payload: .worklog(started: started, seconds: 600, comment: nil, entryID: UUID())))
+        let unknown = await journal.submit(
+            attempt(task, kind: .worklog, payload: .worklog(started: started, seconds: 600, comment: nil, entryID: UUID())))
         adapter.worklogsByIssue["10001"] = [
-            JiraWorklog(id: "w7", author: adapter.me, started: started, seconds: 600), JiraWorklog(id: "w8", author: adapter.me, started: started, seconds: 600),
+            JiraWorklog(id: "w7", author: adapter.me, started: started, seconds: 600),
+            JiraWorklog(id: "w8", author: adapter.me, started: started, seconds: 600),
         ]
         let resolved = await journal.resolve(unknown.id)
         XCTAssertEqual(resolved.state, .unknown)

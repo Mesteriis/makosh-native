@@ -65,7 +65,8 @@ public actor JiraMirror {
         while true {
             let page: JiraPage<JiraIssue>
             do {
-                page = try await adapter.searchIssues(jql: jql(full: full, mentions: includeMentions), nextToken: token, limit: Self.pageSize)
+                page = try await adapter.searchIssues(
+                    jql: jql(full: full, mentions: includeMentions), nextToken: token, limit: Self.pageSize)
             } catch JiraAdapterError.http(let status) where status == 400 && includeMentions {
                 // Jira refused the mention clause; carry on with assignments only.
                 includeMentions = false
@@ -156,7 +157,8 @@ public actor JiraMirror {
         let membership: TaskMembership = issue.assignee?.accountID == accountID ? .assigned : .mentioned
         let observation =
             observation
-            ?? TaskProviderObservation(identity: identity, observedAt: now(), raw: (try? JSONEncoder().encode(issue)) ?? Data(), issue: issue)
+            ?? TaskProviderObservation(
+                identity: identity, observedAt: now(), raw: (try? JSONEncoder().encode(issue)) ?? Data(), issue: issue)
         if let existing = try await store.task(source: identity) {
             let previous = try await store.latestObservation(taskID: existing.id)
             var task = existing
@@ -171,7 +173,8 @@ public actor JiraMirror {
             try await store.saveObservation(observation, for: existing.id)
         } else {
             var task = Task(
-                title: issue.summary, status: .inbox, priority: 4, url: issue.browseURL, source: TaskSource(identity: identity, membership: membership),
+                title: issue.summary, status: .inbox, priority: 4, url: issue.browseURL,
+                source: TaskSource(identity: identity, membership: membership),
                 createdAt: now())
             if issue.status.category == .done { task = try TaskDomain.applying(status: .done, to: task, now: now()) { _ in nil } }
             let inserted = try await store.insert(task, actor: .provider)
@@ -197,7 +200,9 @@ extension TaskStore {
     /// time not yet in Jira, or an attempt still in flight.
     public func hasLocalActivity(taskID: UUID) throws -> Bool {
         if let task = try task(id: taskID), task.status == .active { return true }
-        if try openAttempt(taskID: taskID, kind: .worklog) != nil || !(try openAttempts().filter { $0.taskID == taskID }.isEmpty) { return true }
+        if try openAttempt(taskID: taskID, kind: .worklog) != nil || !(try openAttempts().filter { $0.taskID == taskID }.isEmpty) {
+            return true
+        }
         let timer = try query("SELECT 1 FROM \(t("tasks_timer")) WHERE data->>'taskID' = $1", [taskID.uuidString])
         if !timer.isEmpty { return true }
         let unsent = try query(

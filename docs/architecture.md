@@ -298,3 +298,20 @@ persisted; Paperless OCR is only a fallback. The conversation budget comes
 from the chat model's context window (`AITokenEstimate`), replacing the fixed
 100 000-character limit of ADR-013's panel. Protected Telegram/WhatsApp content
 offers no file actions at all. Details: [files.md](files.md).
+
+## ADR-018: Tasks — a local domain with providers behind it — 2026-11-07
+
+Tasks are one PostgreSQL store (application schema, `tasks_*`) with two
+views: «Мои» for local tasks and the provider issues assigned to or
+mentioning the user, «Jira» for a connection's issues by workflow status.
+A provider issue is a `ServiceIdentity` with a membership and append-only
+observations; the local layer on top of it never writes back. The only
+automatism is Jira's Done category completing the local task. Every write
+to Jira is an explicit attempt with a journal (`queued → sent → confirmed |
+rejected | unknown`); an unknown outcome waits for a reread or a dismissal
+and is never resent, because a worklog counted twice is worse than one
+missed. `MakoshJira` carries MacTower's transport (`Dependencies/Jira.lock.json`)
+behind a `JiraAdapter` protocol that Data Center and the synthetic Jira
+share. Time is one running timer plus entries with their worklog state; a
+confirmed worklog locks the entry here and flows back from Jira by id.
+Details: [tasks.md](tasks.md).

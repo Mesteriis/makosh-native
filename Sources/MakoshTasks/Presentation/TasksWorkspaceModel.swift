@@ -227,7 +227,6 @@ public enum JiraAction: Sendable {
         do {
             let changed = try TaskDomain.applying(status: status, to: task, now: now()) { self.task(id: $0) }
             try await write(changed, from: task)
-            if status == .done { await activateDependents(after: id) }
         } catch let error as TaskDomainError {
             if case .blocked(let ids) = error {
                 self.error = TasksFailure.blocked(ids.compactMap { self.task(id: $0)?.title }).errorDescription
@@ -235,16 +234,6 @@ public enum JiraAction: Sendable {
                 self.error = Self.describe(error)
             }
         } catch { self.error = Self.describe(error) }
-    }
-
-    private func activateDependents(after id: UUID) async {
-        for dependentID in TaskDomain.dependentsToActivate(after: id, among: tasks) {
-            guard let dependent = task(id: dependentID) else { continue }
-            var active = dependent
-            active.status = .active
-            _ = try? await service.store.update(active, expectedRevision: dependent.revision, actor: .user)
-        }
-        await refresh()
     }
 
     public func set(priority: Int, id: UUID) async {

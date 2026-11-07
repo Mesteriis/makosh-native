@@ -215,4 +215,19 @@ final class JiraMirrorTests: XCTestCase {
         _ = await value.sync(full: false)
         XCTAssertFalse(adapter.jqls.last?.contains("updated >=") == true, "the next pass is still a full one")
     }
+
+    func testDoneCategoryActivatesLocalDependents() async throws {
+        let db = try tasksDatabase(), store = try await taskStore(db), adapter = FakeJiraAdapter()
+        adapter.issues["10001"] = FakeJiraAdapter.issue(id: "10001", key: "QA-1", assignee: me)
+        _ = await mirror(store, adapter: adapter).sync(full: true)
+        let jiraFound = try await store.task(source: identity("10001"))
+        let jiraTask = try XCTUnwrap(jiraFound)
+        let dependent = try await store.insert(Task(title: "После Jira", dependsOn: [jiraTask.id]), actor: .user)
+        adapter.issues["10001"]?.status = FakeJiraAdapter.done
+        _ = await mirror(store, adapter: adapter).sync(full: true)
+        let closed = try await store.task(id: jiraTask.id)
+        XCTAssertEqual(closed?.status, .done)
+        let activated = try await store.task(id: dependent.id)
+        XCTAssertEqual(activated?.status, .active, "the mirror's done goes through the store's closing rules")
+    }
 }

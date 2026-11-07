@@ -57,7 +57,7 @@ public actor TaskStore {
     private var connection: PostgresConnection?
     private let encoder = TaskStore.makeEncoder()
     private let decoder = TaskStore.makeDecoder()
-    private let now: @Sendable () -> Date
+    let now: @Sendable () -> Date
 
     // JSONEncoder's own `.iso8601` drops fractional seconds; keep milliseconds both ways.
     static func makeEncoder() -> JSONEncoder {
@@ -124,6 +124,10 @@ public actor TaskStore {
     }
 
     @discardableResult public func insert(_ task: Task, actor: TaskActor) throws -> Task {
+        try insert(task, actor: actor, changed: ["*"])
+    }
+
+    @discardableResult func insert(_ task: Task, actor: TaskActor, changed: [String]) throws -> Task {
         // Stored dates carry millisecond precision; the returned value matches what a read gives back.
         var value = Self.rounded(task.replacing(createdAt: Self.millis(task.createdAt)))
         value.revision = 1
@@ -136,19 +140,35 @@ public actor TaskStore {
             }
             try self.write(value)
             if let source = value.source { try self.writeSource(source, taskID: value.id) }
-            try self.appendVersion(value, actor: actor, changed: ["*"])
+            try self.appendVersion(value, actor: actor, changed: changed)
         }
         return value
     }
 
+    /// Writes the task and, in the same transaction, whatever its status change
+    /// entails: activated dependents, a spawned occurrence, a withdrawn one.
     @discardableResult public func update(_ task: Task, expectedRevision: Int64, actor: TaskActor) throws -> Task {
+        try apply(task, expectedRevision: expectedRevision, actor: actor).task
+    }
+
+    public func apply(_ task: Task, expectedRevision: Int64, actor: TaskActor) throws -> TaskWriteResult {
+        try transaction {
+            guard let current = try self.task(id: task.id) else { throw TaskStoreError.notFound }
+            let written = try self.update(task, expectedRevision: expectedRevision, actor: actor, extraChanged: [])
+            let effects = try self.closingEffects(before: current, after: written, actor: actor)
+            return TaskWriteResult(task: written, effects: effects)
+        }
+    }
+
+    /// The bare write of one task; `extraChanged` names the rule that caused it.
+    @discardableResult func update(_ task: Task, expectedRevision: Int64, actor: TaskActor, extraChanged: [String]) throws -> Task {
         var value = Self.rounded(task)
         try transaction {
             guard let current = try self.task(id: task.id) else { throw TaskStoreError.notFound }
             guard current.revision == expectedRevision else { throw TaskStoreError.staleRevision }
             value.revision = current.revision + 1
             value.updatedAt = Self.millis(self.now())
-            let changed = Self.changedFields(from: current, to: value)
+            let changed = Self.changedFields(from: current, to: value) + extraChanged
             try self.execute(
                 "UPDATE \(self.t("tasks_tasks")) SET data = $2::jsonb, status = $3, due = $4, deleted_at = $5, revision = $6, updated_at = $7 WHERE id = $1",
                 [

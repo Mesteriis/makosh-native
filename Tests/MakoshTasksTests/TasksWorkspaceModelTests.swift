@@ -501,4 +501,62 @@ import XCTest
         await h.model.setFlow(id: bob.id, name: "Ремонт")
         XCTAssertEqual(h.model.flowCounts["Ремонт"], 1)
     }
+
+    func testMoveSlotIsUndoable() async throws {
+        let h = try await harness()
+        let a = try await created(h, "Задача")
+        await h.model.loadPlanner()
+        await h.model.dropTasks([a.id], at: 10 * 60)
+        let slot = try XCTUnwrap(h.model.slots.first)
+        XCTAssertEqual(slot.start, 10 * 60)
+        XCTAssertEqual(slot.end, 11 * 60)
+        XCTAssertEqual(h.model.plannedTaskIDs, [a.id])
+        await h.model.moveSlot(id: slot.id, to: 14 * 60)
+        XCTAssertEqual(h.model.slots.first?.start, 14 * 60)
+        XCTAssertEqual(h.model.slots.first?.end, 15 * 60)
+        await h.model.undo()
+        XCTAssertEqual(h.model.slots.first?.start, 10 * 60, "the move comes back with one undo")
+        await h.model.resizeSlot(id: slot.id, end: 12 * 60)
+        XCTAssertEqual(h.model.task(id: a.id)?.estimateMinutes, 120, "resizing writes the estimate")
+        await h.model.removeSlot(id: slot.id)
+        XCTAssertTrue(h.model.slots.isEmpty)
+        await h.model.undo()
+        XCTAssertEqual(h.model.slots.count, 1, "removal is undoable too")
+        await h.model.dropTasks([a.id], at: 9 * 60)
+        XCTAssertEqual(h.model.slots.count, 1, "a task already in the plan is not added twice")
+        XCTAssertEqual(h.model.plannerSummary.planned, 120)
+    }
+
+    func testCreateHereSchedulesTheNewTask() async throws {
+        let h = try await harness()
+        await h.model.loadPlanner()
+        await h.model.blockSlot(at: 10 * 60 + 30)
+        XCTAssertEqual(h.model.slots.map(\.kind), [.blocked])
+        h.model.createTaskHere(at: 10 * 60)
+        h.model.quickEntry.typed("Созвон ", extractURLs: true)
+        await h.model.create()
+        let task = try XCTUnwrap(h.model.tasks.first { $0.title == "Созвон" })
+        let slot = try XCTUnwrap(h.model.slots.first { $0.taskID == task.id })
+        XCTAssertEqual(slot.start, 10 * 60)
+        XCTAssertEqual(slot.end, 10 * 60 + 30, "only until the blocked slot")
+        let blocked = try XCTUnwrap(h.model.slots.first { $0.kind == .blocked })
+        await h.model.updateSlot(id: blocked.id, title: "Обед", recurrence: .daily)
+        XCTAssertEqual(h.model.slots.first { $0.kind == .blocked }?.title, "Обед")
+        XCTAssertEqual(h.model.slots.first { $0.kind == .blocked }?.recurrence, .daily)
+    }
+
+    func testPlannerDayAdvancesAtMidnightOnlyWhenOnToday() async throws {
+        let h = try await harness()
+        await h.model.loadPlanner()
+        let today = calendar.startOfDay(for: h.clock.now())
+        XCTAssertEqual(h.model.plannerDay, today)
+        h.clock.advance(86_400)
+        h.model.tick()
+        XCTAssertEqual(h.model.plannerDay, calendar.date(byAdding: .day, value: 1, to: today), "midnight moves a planner that showed today")
+        let pinned = calendar.date(byAdding: .day, value: 5, to: today)!
+        h.model.plannerDay = pinned
+        h.clock.advance(86_400)
+        h.model.tick()
+        XCTAssertEqual(h.model.plannerDay, pinned, "an explicit day stays")
+    }
 }

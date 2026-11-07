@@ -52,6 +52,17 @@ public enum JiraAction: Sendable {
     /// How many leading rows of `visible` are overdue (they float under «Просрочено»).
     @Published public private(set) var overdueCount = 0
     @Published public private(set) var flowGroups: [TasksFlowGroup] = []
+    /// The planner's day; `.distantPast` until the planner loads (then today).
+    @Published public var plannerDay: Date = .distantPast {
+        didSet { if oldValue != .distantPast, plannerDay != oldValue { _Concurrency.Task { await loadPlanner() } } }
+    }
+    @Published public internal(set) var plan: TaskDayPlan?
+    @Published public internal(set) var slots: [TaskPlanSlot] = []
+    @Published public internal(set) var plannedTaskIDs: Set<UUID> = []
+    @Published public internal(set) var todaySlots: [TaskPlanSlot] = []
+    /// Where «Создать задачу здесь» puts the next created task.
+    public internal(set) var pendingSlotStart: Int?
+    var trackedToday: Date?
     @Published public var search = "" { didSet { applyFilters() } }
     /// In a connection's space: also show issues that left the selection («Ушедшие»).
     @Published public var showLeft = false { didSet { applyFilters() } }
@@ -289,9 +300,6 @@ public enum JiraAction: Sendable {
         }
     }
 
-    /// Follow-ups of a creation that other parts of the model add to (the planner slot).
-    func taskCreated(_ task: Task) async {}
-
     private func resolveDependency(_ reference: String) -> UUID? {
         let upper = reference.uppercased()
         if let task = tasks.first(where: { $0.code == upper && $0.deletedAt == nil }) { return task.id }
@@ -390,7 +398,7 @@ public enum JiraAction: Sendable {
     public func undo() async {
         guard let step = undo.pop(now: now()) else { return }
         do {
-            let changes = step.changes
+            let changes = step.changes, slotChanges = step.slots
             try await service.store.performInTransaction { store in
                 for change in changes {
                     guard let current = try store.task(id: change.after.id), current.revision == change.after.revision else {
@@ -402,9 +410,17 @@ public enum JiraAction: Sendable {
                     restored.revision = change.after.revision
                     try store.apply(restored, expectedRevision: change.after.revision, actor: .user)
                 }
+                for change in slotChanges.reversed() {
+                    switch (change.before, change.after) {
+                    case (nil, let added?): try store.removeSlot(id: added.id)
+                    case (let removed?, nil): if try store.slot(id: removed.id) == nil { try store.insertSlot(removed) }
+                    case (let before?, _): try store.updateSlot(before)
+                    case (nil, nil): break
+                    }
+                }
             }
             error = nil
-            await refresh()
+            if !slotChanges.isEmpty { await reloadAfterSlotChange() } else { await refresh() }
             toast("Отменено")
         } catch TaskStoreError.staleRevision {
             error = "Задача менялась — отменить нельзя."
@@ -568,6 +584,8 @@ public enum JiraAction: Sendable {
 
     /// Recomputes the running timer's elapsed seconds; the ticking task calls it every second.
     public func tick() {
+        expireToasts()
+        advancePlannerDay()
         guard let timer else {
             timerElapsed = 0
             return

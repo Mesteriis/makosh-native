@@ -18,8 +18,10 @@ final class FakeJiraAdapter: JiraAdapter, @unchecked Sendable {
     var searchPages: [([JiraIssue], String?)] = []
     /// Errors to throw on the next write of each kind; consumed once.
     var failNextWrite: JiraAdapterError?
-    /// Errors to throw on the next search page; consumed once.
+    /// Errors to throw on the next search page; consumed once. With
+    /// `failNextSearchAfterPages` the failure waits that many successful pages.
     var failNextSearch: JiraAdapterError?
+    var failNextSearchAfterPages = 0
     /// Rejects JQL containing this text with .http(400) — Jira refusing an operator.
     var rejectJQLContaining: String?
     private(set) var calls: [Call] = []
@@ -50,6 +52,11 @@ final class FakeJiraAdapter: JiraAdapter, @unchecked Sendable {
         lock.withLock { jqls.append(jql) }
         if let reject = rejectJQLContaining, jql.contains(reject) { throw JiraAdapterError.http(status: 400) }
         let failure: JiraAdapterError? = lock.withLock {
+            guard failNextSearch != nil else { return nil }
+            if failNextSearchAfterPages > 0 {
+                failNextSearchAfterPages -= 1
+                return nil
+            }
             defer { failNextSearch = nil }
             return failNextSearch
         }

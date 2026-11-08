@@ -32,6 +32,9 @@ extension EnvironmentValues {
     let notifications = CalendarSystemNotifications()
     private let router: @MainActor () -> ApplicationSystemNotificationRouter?
     private let keychain: CalendarKeychainAccess
+    /// The archive-vault key for sealed event fields; QA keeps a fixed synthetic key in memory.
+    private let keyProvider: @Sendable (UUID, Bool) throws -> Data
+    var usesSystemKeychain: Bool { synthetic == nil }
     private let synthetic: [String: CalendarSyntheticAdapter]?
     private var reminderTask: Task<Void, Never>?
     private var refreshObservation: AnyCancellable?
@@ -40,6 +43,7 @@ extension EnvironmentValues {
     init(router: @escaping @MainActor () -> ApplicationSystemNotificationRouter? = { nil }) {
         self.router = router
         keychain = .system
+        keyProvider = MessageArchiveKeychain.open
         synthetic = nil
     }
 
@@ -48,6 +52,8 @@ extension EnvironmentValues {
     init(synthetic adapters: [String: CalendarSyntheticAdapter]) {
         router = { nil }
         keychain = .memory()
+        // Synthetic data only: no system Keychain prompt for an ad-hoc signed QA bundle.
+        keyProvider = { _, _ in Data(repeating: 0x51, count: 32) }
         synthetic = adapters
     }
     #endif
@@ -83,7 +89,7 @@ extension EnvironmentValues {
     ) async {
         guard !configured else { return }
         configured = true
-        let store = CalendarStore(connectionString: configuration.connectionString, schema: configuration.schema)
+        let store = CalendarStore(connectionString: configuration.connectionString, schema: configuration.schema, keyProvider: keyProvider)
         let http = CalendarHTTP()
         let google =
             synthetic == nil

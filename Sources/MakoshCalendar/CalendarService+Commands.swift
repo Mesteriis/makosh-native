@@ -47,6 +47,9 @@ public enum CalendarWriteOutcome: Sendable {
 struct CalendarAttemptPayload: Codable {
     var uid: String
     var response: CalendarResponse?
+    /// What an update tried to write: a check confirms it only when the server shows the same.
+    var title: String?
+    var time: CalendarEventTime?
 }
 
 extension CalendarService {
@@ -239,9 +242,16 @@ extension CalendarService {
             switch attempt.kind {
             case .deleteEvent: state = found == nil ? .confirmed : .rejected
             case .respond: state = found?.selfResponse == payload.response ? .confirmed : .rejected
+            case .updateEvent:
+                // The event existing proves nothing: the server must show what was written.
+                state =
+                    found.map { ($0.title == payload.title || payload.title == nil) && ($0.time == payload.time || payload.time == nil) }
+                        == true
+                    ? .confirmed : .rejected
             default: state = found == nil ? .rejected : .confirmed
             }
-            if let found, state == .confirmed, attempt.kind != .deleteEvent { try await store.observe(found, collectionID: collection.id) }
+            // What the server shows wins locally: a lost update is undone here, not left as if written.
+            if let found, attempt.kind != .deleteEvent { try await store.observe(found, collectionID: collection.id) }
             try await store.settle(attemptID, state: state, failure: state == .rejected ? .rejected(code: 404, stage: "check") : nil)
             if let eventID = attempt.eventID, let event = try await store.event(id: eventID), event.deletedAt == nil {
                 if (attempt.kind == .createEvent && state == .rejected) || (attempt.kind == .deleteEvent && state == .confirmed) {
@@ -323,8 +333,9 @@ extension CalendarService {
     func conflicts(for event: CalendarEvent, excluding: UUID?) async throws -> [CalendarConflict] {
         let collections = try await store.collections()
         let scope = CalendarNeighbours.of(event.collectionID, in: collections).union([event.collectionID])
-        let start = min(CalendarRecurrenceExpander.start(of: event.time), now())
-        let window = DateInterval(start: start.addingTimeInterval(-86400), end: now().addingTimeInterval(BusyEngine.horizon))
+        // Only the future matters: an old series is checked from now, not from its first day.
+        let start = max(CalendarRecurrenceExpander.start(of: event.time), now())
+        let window = DateInterval(start: start.addingTimeInterval(-86400), end: max(start, now()).addingTimeInterval(BusyEngine.horizon))
         let mine = CalendarRecurrenceExpander.occurrences(of: event, overrides: [], in: window).prefix(200)
         let events = try await store.events(collectionIDs: scope, from: window.start, to: window.end, includeCopies: true)
         let byID = Dictionary(uniqueKeysWithValues: events.map { ($0.id, $0) })
@@ -351,12 +362,13 @@ extension CalendarService {
     )
         async throws -> CalendarWriteOutcome
     {
+        // An external event whose creation is still unconfirmed cannot be edited yet: check before touching the row.
+        if account.kind != .local, previous.externalID == nil { throw CalendarFailure.invalidInput("attempt open") }
         let saved = try await store.update(changed, expectedRevision: previous.revision, actor: .user)
-        guard account.kind != .local else {
+        guard account.kind != .local, let externalID = previous.externalID else {
             reconcileSoon()
             return .saved(saved)
         }
-        guard let externalID = previous.externalID else { throw CalendarFailure.invalidInput("attempt open") }
         return try await push(.updateEvent, event: saved, account: account, collection: collection, undo: .restore(previous)) { adapter in
             try await adapter.update(
                 saved, ref: RemoteEventRef(externalID: externalID, etag: previous.etag), in: collection,
@@ -375,7 +387,8 @@ extension CalendarService {
         _ kind: CalendarAttemptKind, event: CalendarEvent, account: CalendarAccount, collection: CalendarCollection, undo: Undo,
         _ write: (any CalendarAdapter) async throws -> RemoteEventRef
     ) async throws -> CalendarWriteOutcome {
-        let attempt = try await begin(kind, eventID: event.id, collectionID: collection.id, payload: .init(uid: event.uid))
+        let payload = CalendarAttemptPayload(uid: event.uid, title: event.title, time: event.time)
+        let attempt = try await begin(kind, eventID: event.id, collectionID: collection.id, payload: payload)
         do {
             let adapter = try await adapter(for: account)
             try await store.markSent(attempt.id)

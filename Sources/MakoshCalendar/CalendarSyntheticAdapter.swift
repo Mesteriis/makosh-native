@@ -11,6 +11,10 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     private var counter = 0
     private var failure: CalendarFailure?
     private var readFailure: CalendarFailure?
+    private var failureApplies = true
+    private var brokenCollections: [String: CalendarFailure] = [:]
+    /// Simulated network time per write, so concurrent passes interleave in tests.
+    public var writeDelay: Duration = .zero
     /// How many times `changes` ran: lets tests see the polling schedule.
     public private(set) var reads = 0
     private let schedules: Bool
@@ -35,7 +39,24 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
 
     public var schedulesInvitations: Bool { get async { schedules } }
 
-    public func failNext(_ failure: CalendarFailure) { self.failure = failure }
+    public func failNext(_ failure: CalendarFailure) {
+        self.failure = failure
+        failureApplies = true
+    }
+
+    /// An unknown outcome whose write never reached the server.
+    public func failNextWithoutApplying(_ failure: CalendarFailure) {
+        self.failure = failure
+        failureApplies = false
+    }
+
+    public func setWriteDelay(_ delay: Duration) { writeDelay = delay }
+
+    /// A calendar that now fails on read (deleted or unshared on the server).
+    public func breakCollection(_ externalID: String, with failure: CalendarFailure) { brokenCollections[externalID] = failure }
+
+    /// A calendar created or shared on the server after the account was connected.
+    public func addCollection(_ collection: RemoteCollection) { remote.append(collection) }
 
     /// Every read and listing throws `failure` until cleared with nil.
     public func failReads(_ failure: CalendarFailure?) { readFailure = failure }
@@ -79,11 +100,15 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
         log.append((revision, collection, event.externalID!, false))
     }
 
+    private func pause() async {
+        if writeDelay > .zero { try? await Task.sleep(for: writeDelay) }
+    }
+
     /// Throws the injected failure; an unknown outcome applies `body` first.
     private func write<T>(_ body: () throws -> T) throws -> T {
         guard let pending = failure else { return try body() }
         failure = nil
-        if case .unknownOutcome = pending { _ = try body() }
+        if case .unknownOutcome = pending, failureApplies { _ = try body() }
         throw pending
     }
 
@@ -94,7 +119,9 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
 
     public func changes(collection: CalendarCollection, cursor: Data?, window: DateInterval) async throws -> RemoteChangeSet {
         reads += 1
+        await pause()
         if let readFailure { throw readFailure }
+        if let broken = brokenCollections[collection.externalID] { throw broken }
         let since = cursor.flatMap { Int(String(decoding: $0, as: UTF8.self)) }
         let entries = log.filter { $0.collection == collection.externalID && $0.revision > (since ?? 0) }
         var result = RemoteChangeSet(cursor: Data(String(revision).utf8), full: since == nil)
@@ -125,7 +152,8 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     }
 
     public func create(_ event: CalendarEvent, in collection: CalendarCollection, notify: Bool) async throws -> RemoteEventRef {
-        try write {
+        await pause()
+        return try write {
             counter += 1
             var stored = event
             stored.externalID = "syn-\(counter)"
@@ -141,7 +169,8 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     ) async throws
         -> RemoteEventRef
     {
-        try write {
+        await pause()
+        return try write {
             guard store[collection.externalID]?[ref.externalID] != nil else { throw CalendarFailure.rejected(code: 404, stage: "update") }
             var stored = event
             stored.externalID = ref.externalID
@@ -152,12 +181,14 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     }
 
     public func delete(ref: RemoteEventRef, in collection: CalendarCollection, notify: Bool) async throws {
-        try write { remove(externalID: ref.externalID, collectionExternalID: collection.externalID) }
+        await pause()
+        return try write { remove(externalID: ref.externalID, collectionExternalID: collection.externalID) }
     }
 
     public func respond(_ response: CalendarResponse, ref: RemoteEventRef, in collection: CalendarCollection) async throws -> RemoteEventRef
     {
-        try write {
+        await pause()
+        return try write {
             guard var event = store[collection.externalID]?[ref.externalID], let index = event.attendees.firstIndex(where: \.isSelf) else {
                 throw CalendarFailure.invalidInput("not invited")
             }
@@ -172,7 +203,8 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     }
 
     public func createBusyCopy(_ copy: DesiredBusyCopy, in collection: CalendarCollection) async throws -> RemoteEventRef {
-        try write {
+        await pause()
+        return try write {
             counter += 1
             let event = CalendarEvent(
                 collectionID: collection.id, externalID: "syn-busy-\(counter)", uid: "busy-\(counter)", title: "Занято", time: copy.time,
@@ -187,7 +219,8 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     )
         async throws -> RemoteEventRef
     {
-        try write {
+        await pause()
+        return try write {
             guard var event = store[collection.externalID]?[ref.externalID] else {
                 throw CalendarFailure.rejected(code: 404, stage: "copy")
             }

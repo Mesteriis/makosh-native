@@ -108,6 +108,10 @@ package enum CalendarConflictChoice: Sendable {
         return localCollectionID
     }
 
+    /// Where planner slots become events unless a slot chose a calendar: the local, private
+    /// calendar, never the last used one (task titles must not reach a work calendar by default).
+    package var slotCollectionID: UUID? { localCollectionID }
+
     package var writableCollections: [CalendarCollection] {
         guard let snapshot else { return [] }
         let live = Set(snapshot.accounts.filter { $0.state != .disabled }.map(\.id))

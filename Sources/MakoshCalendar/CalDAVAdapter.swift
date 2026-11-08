@@ -178,11 +178,10 @@ public actor CalDAVAdapter: CalendarAdapter {
     )
         async throws -> RemoteChangeSet
     {
-        let from = ICalendar.utc(window.start.addingTimeInterval(-30 * 86400)), to = ICalendar.utc(window.end)
+        // The whole calendar, not a time range: an event that merely aged out of a range is not gone.
         let body =
             #"<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/></d:prop>"#
-            + #"<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start=""# + from + #"" end=""# + to
-            + #""/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>"#
+            + #"<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"/></c:comp-filter></c:filter></c:calendar-query>"#
         let (data, _) = try await http.send(request(url, method: "REPORT", depth: "1", body: body), stage: "query")
         var current: [String: String] = [:]
         for response in try CalDAVNode.responses(data) {
@@ -258,13 +257,35 @@ public actor CalDAVAdapter: CalendarAdapter {
         return try await put(url, ics: ICalendar.serialize(try await prepared(event)), etag: nil, create: true, stage: "create")
     }
 
+    /// An edit rewrites the resource from what the server holds: overrides stay (except
+    /// occurrences now excluded), and an invitation someone else organizes keeps its attendees.
     public func update(
         _ event: CalendarEvent, ref: RemoteEventRef, in collection: CalendarCollection, notify: Bool
     ) async throws
         -> RemoteEventRef
     {
         guard let url = URL(string: ref.externalID.components(separatedBy: "#")[0]) else { throw CalendarFailure.invalidInput("href") }
-        return try await put(url, ics: ICalendar.serialize(try await prepared(event)), etag: ref.etag, create: false, stage: "update")
+        let (data, reply) = try await http.send(request(url, method: "GET"), stage: "update")
+        let current = try ICalendar.parse(String(decoding: data, as: UTF8.self), collectionID: collection.id)
+        let currentMaster = current.first { $0.recurrenceID == nil }
+        var master = event.recurrenceID == nil ? event : (currentMaster ?? event)
+        var overrides = current.filter { $0.recurrenceID != nil }
+        if let changed = event.recurrenceID {
+            overrides.removeAll { $0.recurrenceID == changed }
+            overrides.append(event)
+        }
+        let excluded = Set(master.recurrence?.exdates ?? [])
+        overrides.removeAll { $0.recurrenceID.map(excluded.contains) == true }
+        if let organizer = currentMaster?.organizerEmail, organizer.caseInsensitiveCompare(login) != .orderedSame {
+            master.organizerEmail = organizer
+            master.attendees = currentMaster?.attendees ?? master.attendees
+        } else {
+            master = try await prepared(master)
+        }
+        return try await put(
+            url, ics: ICalendar.serialize(master, overrides: overrides), etag: reply.value(forHTTPHeaderField: "ETag") ?? ref.etag,
+            create: false,
+            stage: "update")
     }
 
     public func delete(ref: RemoteEventRef, in collection: CalendarCollection, notify: Bool) async throws {

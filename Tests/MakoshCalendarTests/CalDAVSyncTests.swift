@@ -107,7 +107,13 @@ final class CalDAVSyncTests: XCTestCase {
     }
 
     func testCreateUsesIfNoneMatchAndUpdateIfMatch() async throws {
-        let adapter = adapter { request, _ in request.httpMethod == "PUT" ? .init(status: 201, headers: ["ETag": "\"5\""]) : nil }
+        let adapter = adapter { request, _ in
+            switch request.httpMethod {
+            case "PUT": return .init(status: 201, headers: ["ETag": "\"5\""])
+            case "GET": return .init(status: 200, headers: ["ETag": "\"5\""], body: Data(Self.ics("a").utf8))
+            default: return nil
+            }
+        }
         let ref = try await adapter.create(
             CalendarEvent.fixture(start: 9, end: 10, collectionID: collection.id), in: collection, notify: false)
         XCTAssertTrue(ref.externalID.hasPrefix("https://caldav.test/calendars/me/work/") && ref.externalID.hasSuffix(".ics"))
@@ -175,5 +181,67 @@ final class CalDAVSyncTests: XCTestCase {
         let uid = { (text: String) in text.split(separator: "\r\n").first { $0.hasPrefix("UID:") } }
         XCTAssertEqual(uid(text), uid(moved), "a moved copy keeps its UID")
         XCTAssertEqual(requests("PUT").last?.url?.absoluteString, ref.externalID)
+    }
+}
+
+final class CalDAVReviewFixesTests: XCTestCase {
+    private lazy var collection = CalendarCollection(
+        accountID: UUID(), externalID: "https://caldav.test/calendars/me/work/", name: "Работа B")
+    private let window = DateInterval(start: Date(timeIntervalSince1970: 1_794_096_000), duration: 90 * 86400)
+    static let series =
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:s\r\nDTSTART:20261109T090000Z\r\nDTEND:20261109T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Планёрка\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:s\r\nRECURRENCE-ID:20261116T090000Z\r\nDTSTART:20261116T110000Z\r\nDTEND:20261116T120000Z\r\nSUMMARY:Планёрка (перенос)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+
+    private func adapter(schedule: Bool, get: String) -> CalDAVAdapter {
+        StubURLProtocol.install { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("PROPFIND", "/.well-known/caldav"): return .init(status: 207, body: CalDAVFixture.principal)
+            case ("PROPFIND", _): return .init(status: 207, body: CalDAVFixture.home)
+            case ("OPTIONS", _): return .init(status: 200, headers: ["DAV": schedule ? "1, calendar-auto-schedule" : "1"])
+            case ("GET", _): return .init(status: 200, headers: ["ETag": "\"3\""], body: Data(get.utf8))
+            case ("PUT", _): return .init(status: 204, headers: ["ETag": "\"4\""])
+            case ("REPORT", _):
+                let body = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+                XCTAssertFalse(body.contains("time-range"), "ETag listing must cover the whole calendar")
+                return .init(
+                    status: 207,
+                    body: CalDAVFixture.multistatus(
+                        "<d:response><d:href>/calendars/me/work/old.ics</d:href><d:propstat><d:prop><d:getetag>\"1\"</d:getetag></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+                    ))
+            default: return .init(status: 404)
+            }
+        }
+        return CalDAVAdapter(server: URL(string: "https://caldav.test")!, login: "me@ya.test", password: "p", http: StubURLProtocol.http())
+    }
+
+    func testUpdateKeepsOverridesOfTheResource() async throws {
+        let adapter = adapter(schedule: true, get: Self.series)
+        var master = try ICalendar.parse(Self.series, collectionID: collection.id).first { $0.recurrenceID == nil }!
+        master.title = "Еженедельная планёрка"
+        _ = try await adapter.update(
+            master, ref: RemoteEventRef(externalID: "https://caldav.test/calendars/me/work/s.ics", etag: "\"3\""), in: collection,
+            notify: false)
+        let put = String(decoding: StubURLProtocol.requests.last { $0.httpMethod == "PUT" }?.httpBody ?? Data(), as: UTF8.self)
+        XCTAssertTrue(put.contains("RECURRENCE-ID"), "the moved occurrence must survive an edit of its series")
+        XCTAssertTrue(put.contains("Еженедельная планёрка"))
+    }
+
+    func testUpdateOfAnInvitationKeepsItsAttendeesWithoutServerScheduling() async throws {
+        let invite = CalDAVSyncTests.invite
+        let adapter = adapter(schedule: false, get: invite)
+        var event = try ICalendar.parse(invite, collectionID: collection.id)[0]
+        event.reminders = [30]
+        _ = try await adapter.update(
+            event, ref: RemoteEventRef(externalID: "https://caldav.test/calendars/me/work/i.ics", etag: "\"3\""), in: collection,
+            notify: false)
+        let put = String(decoding: StubURLProtocol.requests.last { $0.httpMethod == "PUT" }?.httpBody ?? Data(), as: UTF8.self)
+        XCTAssertTrue(put.contains("ORGANIZER:mailto:boss@x.test"))
+        XCTAssertTrue(put.contains("mailto:me@ya.test"))
+    }
+
+    func testETagListingCoversTheWholeCalendar() async throws {
+        let adapter = adapter(schedule: true, get: "")
+        let previous = CalDAVCursor.etags(["https://caldav.test/calendars/me/work/old.ics": "\"1\""])
+        let changes = try await adapter.changes(collection: collection, cursor: previous.data, window: window)
+        XCTAssertTrue(changes.removedExternalIDs.isEmpty, "an old event still on the server is not removed")
     }
 }

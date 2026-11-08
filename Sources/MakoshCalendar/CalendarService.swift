@@ -17,6 +17,8 @@ public actor CalendarService {
     var pollTask: Task<Void, Never>?
     var reconcileTask: Task<Void, Never>?
     var reconcileAgain = false
+    var pendingRead = Set<UUID>()
+    var lastCollectionRefresh: [UUID: Date] = [:]
 
     public init(
         store: CalendarStore, vault: CalendarCredentialVault, adapterFactory: @escaping AdapterFactory, google: GoogleOAuth?,
@@ -176,7 +178,16 @@ public actor CalendarService {
             collection.groupIDs = []
             try await store.saveCollection(collection)
         }
-        await reconcileBusy(read: [])
+        // Passes are capped per calendar: repeat until nothing involving this account is left or nothing moves.
+        let own = Set(try await store.collections().filter { $0.accountID == accountID }.map(\.id))
+        var remaining = Int.max
+        for _ in 0..<40 {
+            await reconcileBusy(read: [])
+            let records = try await store.busyCopies(targetCollectionID: nil)
+            let left = records.count + (records.contains { own.contains($0.targetCollectionID) } ? 1 : 0)
+            if left == 0 || left >= remaining { break }
+            remaining = left
+        }
         try await store.removeAccount(id: accountID)
         switch account.kind {
         case .google:
@@ -199,6 +210,7 @@ public actor CalendarService {
     }
 
     func merge(_ remote: [RemoteCollection], accountID: UUID) async throws {
+        lastCollectionRefresh[accountID] = now()
         let existing = try await store.collections().filter { $0.accountID == accountID }
         for item in remote {
             if var current = existing.first(where: { $0.externalID == item.externalID }) {
@@ -271,45 +283,60 @@ public actor CalendarService {
     }
 
     public func sync(accountID: UUID) async {
-        guard !syncing.contains(accountID), var account = try? await account(accountID), account.kind != .local, account.state != .disabled
+        guard !syncing.contains(accountID), let account = try? await account(accountID), account.kind != .local, account.state != .disabled
         else { return }
         syncing.insert(accountID)
         defer { syncing.remove(accountID) }
         lastSync[accountID] = now()
         var read = Set<UUID>()
+        var state = CalendarAccountState.connected
+        var failure: CalendarFailure?
         do {
             let adapter = try await adapter(for: account)
+            // Calendars created, shared or removed on the server show up at most an hour later.
+            if now().timeIntervalSince(lastCollectionRefresh[accountID] ?? .distantPast) > 3600 {
+                try await merge(try await adapter.collections(), accountID: accountID)
+            }
             let preferences = try await store.preferences()
             let window = DateInterval(start: now(), duration: TimeInterval(preferences.horizonDays) * 86400)
             for collection in try await store.collections()
             where collection.accountID == accountID && (collection.shown || !collection.groupIDs.isEmpty) {
-                let changes = try await adapter.changes(
-                    collection: collection, cursor: try await store.cursor(collectionID: collection.id), window: window)
-                try await apply(changes, to: collection, window: window)
-                read.insert(collection.id)
+                do {
+                    let changes = try await adapter.changes(
+                        collection: collection, cursor: try await store.cursor(collectionID: collection.id), window: window)
+                    try await apply(changes, to: collection, window: window)
+                    read.insert(collection.id)
+                } catch CalendarFailure.rejected(let code, _) where [403, 404, 410].contains(code) {
+                    // One calendar deleted or unshared on the server must not starve the others.
+                    continue
+                }
             }
-            account.state = .connected
-            account.lastError = nil
             pausedUntil[accountID] = nil
         } catch let error as CalendarHTTPError {
             if case .retryAfter(let seconds) = error { pausedUntil[accountID] = now().addingTimeInterval(seconds) }
-            account.state = .unreachable
-            account.lastError = error.failure
-        } catch let failure as CalendarFailure {
-            account.state = Self.state(after: failure)
-            account.lastError = failure
-            if account.state == .needsSignIn { adapters[accountID] = nil }
+            state = .unreachable
+            failure = error.failure
+        } catch let known as CalendarFailure {
+            state = Self.state(after: known)
+            failure = known
+            if state == .needsSignIn { adapters[accountID] = nil }
         } catch {
-            account.state = .unreachable
-            account.lastError = .unreachable
+            state = .unreachable
+            failure = .unreachable
         }
-        try? await store.saveAccount(account)
+        // Only the connection state is ours to write: a rename or a disconnect made meanwhile stays.
+        if var current = try? await self.account(accountID), current.state != .disabled {
+            current.state = state
+            current.lastError = failure
+            try? await store.saveAccount(current)
+        }
         await reconcileBusy(read: read)
     }
 
-    /// Busy copies after a user command: one coalesced background pass, so the command
-    /// returns after its own write instead of waiting for copies across every calendar.
-    func reconcileSoon() {
+    /// Every busy pass goes through this one runner: requests coalesce (their read sets
+    /// merge) and passes never overlap, so no pass judges another's write in flight.
+    func reconcileSoon(read: Set<UUID> = []) {
+        pendingRead.formUnion(read)
         guard reconcileTask == nil else {
             reconcileAgain = true
             return
@@ -317,10 +344,18 @@ public actor CalendarService {
         reconcileTask = Task {
             repeat {
                 reconcileAgain = false
-                await reconcileBusy(read: [])
+                let batch = pendingRead
+                pendingRead = []
+                await runReconcilePass(read: batch)
             } while reconcileAgain
             reconcileTask = nil
         }
+    }
+
+    /// A pass through the runner, awaited.
+    public func reconcileBusy(read: Set<UUID>) async {
+        reconcileSoon(read: read)
+        await settled()
     }
 
     /// Waits until background busy-copy work has finished.
@@ -353,7 +388,13 @@ public actor CalendarService {
                 for event in try store.liveEvents(collectionID: collection.id) {
                     guard let id = event.externalID, !present.contains(id) else { continue }
                     let end = CalendarOccurrence(eventID: event.id, collectionID: collection.id, time: event.time, key: Date()).end
-                    if event.recurrence != nil || end > horizon { try store.observeRemoval(externalID: id, collectionID: collection.id) }
+                    let current =
+                        event.recurrence == nil
+                        ? end > horizon
+                        : !CalendarRecurrenceExpander.occurrences(
+                            of: event, overrides: [], in: DateInterval(start: horizon, end: max(window.end, horizon))
+                        ).isEmpty
+                    if current { try store.observeRemoval(externalID: id, collectionID: collection.id) }
                 }
             }
             try store.saveCursor(changes.cursor, collectionID: collection.id)

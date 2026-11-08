@@ -30,7 +30,7 @@ final class CalendarSlotSyncTests: XCTestCase {
         slot.end = w.h.at(14)
         try await w.h.service.syncSlots(day: day(w.h), slots: [slot], defaultCollectionID: w.personal.id)
         let moved = await w.a.externalEvents(collectionExternalID: "work-a").first { $0.uid == CalendarSlotValue.uid(slot.id) }
-        XCTAssertEqual(moved?.time, .timed(start: w.h.at(13), end: w.h.at(14), timeZone: nil))
+        XCTAssertEqual(moved?.time, .timed(start: w.h.at(13), end: w.h.at(14), timeZone: TimeZone.current.identifier))
     }
 
     func testRemovedSlotDeletesEvent() async throws {
@@ -58,7 +58,9 @@ final class CalendarSlotSyncTests: XCTestCase {
         let series = try await w.h.store.liveEvents(collectionID: w.personal.id).filter { $0.uid == CalendarSlotValue.uid(slot.id) }
         XCTAssertEqual(series.count, 1)
         XCTAssertEqual(series.first?.recurrence?.rrule, "FREQ=DAILY")
-        XCTAssertEqual(series.first?.time, .timed(start: w.h.at(12.5), end: w.h.at(13), timeZone: nil), "the series keeps its first day")
+        XCTAssertEqual(
+            series.first?.time, .timed(start: w.h.at(12.5), end: w.h.at(13), timeZone: TimeZone.current.identifier),
+            "the series keeps its first day")
     }
 
     func testExternalBusyExcludesSlotEvents() async throws {

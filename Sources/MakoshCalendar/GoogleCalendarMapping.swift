@@ -200,7 +200,9 @@ enum GoogleCalendarMapping {
                 overrides: event.reminders.isEmpty ? nil : event.reminders.map { .init(method: "popup", minutes: $0) }),
             transparency: event.transparency == .free ? "transparent" : "opaque")
         if let recurrence = event.recurrence {
-            body.recurrence = ["RRULE:" + recurrence.rrule] + recurrence.exdates.map { "EXDATE:" + ICalendar.utc($0) }
+            let allDay: Bool
+            if case .allDay = event.time { allDay = true } else { allDay = false }
+            body.recurrence = ["RRULE:" + recurrence.rrule] + recurrence.exdates.map { ICalendar.exdateLine($0, allDay: allDay) }
         }
         if !event.attendees.isEmpty {
             body.attendees = event.attendees.map {

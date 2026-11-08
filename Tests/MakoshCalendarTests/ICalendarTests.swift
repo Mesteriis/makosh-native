@@ -117,3 +117,27 @@ final class ICalendarTests: XCTestCase {
         XCTAssertThrowsError(try ICalendar.parse("<html>not a calendar</html>", collectionID: collection))
     }
 }
+
+final class ICalendarAllDayExceptionTests: XCTestCase {
+    func testAllDaySeriesWritesDateExceptions() throws {
+        let collection = UUID()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let skipped = calendar.date(from: DateComponents(year: 2027, month: 11, day: 20))!
+        let event = CalendarEvent(
+            collectionID: collection, uid: "bd", title: "День рождения",
+            time: .allDay(start: CalendarDay(year: 2026, month: 11, day: 20), endExclusive: CalendarDay(year: 2026, month: 11, day: 21)),
+            recurrence: CalendarRecurrence(rrule: "FREQ=YEARLY", exdates: [skipped]))
+        var moved = event
+        moved.recurrence = nil
+        moved.recurrenceID = calendar.date(from: DateComponents(year: 2028, month: 11, day: 20))!
+        moved.time = .allDay(start: CalendarDay(year: 2028, month: 11, day: 21), endExclusive: CalendarDay(year: 2028, month: 11, day: 22))
+        let text = ICalendar.serialize(event, overrides: [moved])
+        XCTAssertTrue(text.contains("EXDATE;VALUE=DATE:20271120"), text)
+        XCTAssertTrue(text.contains("RECURRENCE-ID;VALUE=DATE:20281120"), text)
+        let parsed = try ICalendar.parse(text, collectionID: collection)
+        XCTAssertEqual(parsed.first { $0.recurrenceID == nil }?.recurrence?.exdates, [skipped])
+        let body = GoogleCalendarMapping.body(event)
+        XCTAssertEqual(body.recurrence, ["RRULE:FREQ=YEARLY", "EXDATE;VALUE=DATE:20271120"])
+    }
+}

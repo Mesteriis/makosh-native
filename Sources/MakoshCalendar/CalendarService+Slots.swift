@@ -51,7 +51,7 @@ extension CalendarService {
             let target =
                 slot.collectionID.flatMap { id in collections.contains { $0.id == id && $0.access == .write } ? id : nil }
                 ?? defaultCollectionID
-            let time = CalendarEventTime.timed(start: slot.start, end: slot.end, timeZone: nil)
+            let time = CalendarEventTime.timed(start: slot.start, end: slot.end, timeZone: TimeZone.current.identifier)
             guard let event = existing.removeValue(forKey: uid) else {
                 _ = try await create(
                     CalendarDraft(
@@ -74,7 +74,7 @@ extension CalendarService {
                 let offset = slot.start.timeIntervalSince(calendar.startOfDay(for: slot.start))
                 wanted = .timed(
                     start: day.addingTimeInterval(offset), end: day.addingTimeInterval(offset + slot.end.timeIntervalSince(slot.start)),
-                    timeZone: nil)
+                    timeZone: TimeZone.current.identifier)
             }
             if event.time != wanted || event.title != slot.title || event.recurrence?.rrule != slot.rrule {
                 var draft = draft(of: event)

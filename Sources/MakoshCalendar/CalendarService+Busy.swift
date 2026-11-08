@@ -48,7 +48,8 @@ extension CalendarService {
 
     /// Brings busy copies in line with the originals. `read` names calendars read
     /// in this pass: only there does a missing or moved copy on the server count.
-    public func reconcileBusy(read: Set<UUID>) async {
+    /// Runs only through the serialized runner (`reconcileSoon` / `reconcileBusy`).
+    func runReconcilePass(read: Set<UUID>) async {
         do { try await reconcile(read: read) } catch {}
     }
 
@@ -97,6 +98,8 @@ extension CalendarService {
             case .adopt(let copy, _): target = copy.targetCollectionID
             case .deleteStray(let copy): target = copy.collectionID
             }
+            // A copy whose original this store never had belongs to another Makosh install.
+            if case .deleteStray(let copy) = action, try await store.event(id: copy.marker.sourceEventID) == nil { continue }
             guard let collection = collections.first(where: { $0.id == target }), let account = accountOf[target] ?? nil,
                 !blocked.contains(account.id)
             else { continue }

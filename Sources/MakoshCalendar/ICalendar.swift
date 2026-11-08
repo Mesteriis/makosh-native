@@ -347,13 +347,17 @@ public enum ICalendar {
     static func eventLines(_ event: CalendarEvent) -> [String] {
         var lines = ["BEGIN:VEVENT", "UID:" + escape(event.uid), "DTSTAMP:" + utc(Date())]
         lines += timeLines(event.time)
-        if let recurrenceID = event.recurrenceID { lines.append("RECURRENCE-ID:" + utc(recurrenceID)) }
+        let allDay: Bool
+        if case .allDay = event.time { allDay = true } else { allDay = false }
+        if let recurrenceID = event.recurrenceID {
+            lines.append(allDay ? "RECURRENCE-ID;VALUE=DATE:" + localDay(recurrenceID) : "RECURRENCE-ID:" + utc(recurrenceID))
+        }
         lines.append("SUMMARY:" + escape(event.title))
         if !event.notes.isEmpty { lines.append("DESCRIPTION:" + escape(event.notes)) }
         if !event.location.isEmpty { lines.append("LOCATION:" + escape(event.location)) }
         if let recurrence = event.recurrence {
             lines.append("RRULE:" + recurrence.rrule)
-            for date in recurrence.exdates { lines.append("EXDATE:" + utc(date)) }
+            for date in recurrence.exdates { lines.append(exdateLine(date, allDay: allDay)) }
         }
         if let organizer = event.organizerEmail { lines.append("ORGANIZER:mailto:" + organizer) }
         for attendee in event.attendees {
@@ -392,6 +396,19 @@ public enum ICalendar {
         case .tentative: "TENTATIVE"
         case .declined: "DECLINED"
         }
+    }
+
+    /// RFC 5545: exceptions of an all-day series are dates, not instants.
+    static func exdateLine(_ date: Date, allDay: Bool) -> String {
+        allDay ? "EXDATE;VALUE=DATE:" + localDay(date) : "EXDATE:" + utc(date)
+    }
+
+    /// The local calendar day of an instant stored as local midnight.
+    static func localDay(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return dayString(CalendarDay(year: c.year!, month: c.month!, day: c.day!))
     }
 
     static func dayString(_ day: CalendarDay) -> String { String(format: "%04d%02d%02d", day.year, day.month, day.day) }

@@ -121,14 +121,33 @@ enum PersonReconciliation {
     static func merged(_ survivor: Person, absorbing removed: Person) -> Person {
         var merged = survivor
         if merged.displayName.isEmpty { merged.displayName = removed.displayName }
+        if merged.givenName.isEmpty { merged.givenName = removed.givenName }
+        if merged.familyName.isEmpty { merged.familyName = removed.familyName }
+        if merged.middleName.isEmpty { merged.middleName = removed.middleName }
         if merged.organization.isEmpty { merged.organization = removed.organization }
         if merged.jobTitle.isEmpty { merged.jobTitle = removed.jobTitle }
         if survivor.displayName != removed.displayName { merged.manualFields.insert("displayName") }
         if survivor.organization != removed.organization { merged.manualFields.insert("organization") }
         if survivor.jobTitle != removed.jobTitle { merged.manualFields.insert("jobTitle") }
-        merged.phones = union(merged.phones, removed.phones)
-        merged.emails = union(merged.emails, removed.emails)
-        merged.tags = union(merged.tags, removed.tags)
+        for field in PersonListField.allCases {
+            // A value the survivor retired stays former even if the other person still carried it.
+            let additions = removed.values(field).filter { !isFormer(survivor, field: field, value: $0) }
+            merged.setValues(union(merged.values(field), additions), for: field)
+        }
+        merged.manualValues.formUnion(
+            removed.manualValues.filter { !isFormer(survivor, field: PersonListField(rawValue: $0.field)!, value: $0.value) })
+        for former in removed.former
+        where !merged.former.contains(where: { $0.field == former.field && $0.value == former.value })
+            && !merged.values(PersonListField(rawValue: former.field)!).contains(former.value)
+        {
+            merged.former.append(former)
+        }
+        merged.addressBook = survivor.addressBook || removed.addressBook
+        merged.addressBookOrigin = survivor.addressBookOrigin ?? removed.addressBookOrigin
+        if survivor.isActive || removed.isActive {
+            merged.deletedAt = nil
+            merged.hiddenAsSpam = false
+        }
         merged.identities = union(merged.identities, removed.identities)
         // Keep every distinct observation from both histories, including conflicting scalar values.
         for observation in removed.observations

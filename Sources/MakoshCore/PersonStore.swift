@@ -1,5 +1,20 @@
 import Foundation
 
+/// Two persons the user pulled apart; auto-merge never joins them again.
+public struct NoMergePair: Hashable, Codable, Sendable {
+    public let first: UUID
+    public let second: UUID
+    public init(_ a: UUID, _ b: UUID) {
+        if a.uuidString < b.uuidString {
+            first = a
+            second = b
+        } else {
+            first = b
+            second = a
+        }
+    }
+}
+
 /// Local PostgreSQL contact book. Every mutation runs in one transaction under a
 /// schema-scoped writer lock and rereads the rows it changes, so independent app
 /// connections cannot overwrite each other's state. Persistence is in
@@ -419,18 +434,107 @@ public final class PersonStore {
         return result
     }
 
+    /// Joins two persons of one kind without further conditions: this is also «склеить принудительно».
     public func merge(survivorID: UUID, removedID: UUID) throws -> UUID {
-        guard survivorID != removedID else { throw StoreError.invalid("Нельзя объединить контакт с собой.") }
+        guard survivorID != removedID else { throw StoreError.invalid("Нельзя объединить персону с собой.") }
         return try write { repository in
             guard let survivor = try repository.person(id: survivorID),
                 let removed = try repository.person(id: removedID)
             else { throw StoreError.missingPerson }
+            guard survivor.kind == removed.kind else { throw StoreError.invalid("Нельзя объединить человека с организацией.") }
             let merged = Rules.merged(survivor, absorbing: removed)
             let record = MergeRecord(survivorBefore: survivor, removedBefore: removed, expectedRevision: merged.revision)
+            try moveMemberships(from: removed, to: survivor, repository: repository)
             try repository.delete(contactID: removed.id)
             try repository.update(merged)
             try repository.insert(record)
             return record.id
+        }
+    }
+
+    /// Memberships of the absorbed person (or organization) follow the survivor; a pair the
+    /// survivor already has is kept once, the duplicate is marked removed.
+    private func moveMemberships(from removed: Person, to survivor: Person, repository: PersonRecordRepository) throws {
+        let own = try repository.memberships(personID: survivor.id) + repository.memberships(organizationID: survivor.id)
+        for var membership in try repository.memberships(personID: removed.id) + repository.memberships(organizationID: removed.id) {
+            if membership.personID == removed.id { membership.personID = survivor.id }
+            if membership.organizationID == removed.id { membership.organizationID = survivor.id }
+            let duplicate = own.contains { $0.personID == membership.personID && $0.organizationID == membership.organizationID }
+            if duplicate && membership.state != .removed { membership.state = .removed }
+            membership.updatedAt = Date()
+            try repository.upsert(membership)
+        }
+    }
+
+    /// Moves one source identity, with its observations and notes, into a new person. The
+    /// original keeps every manual field and value; the pair is remembered as «не склеивать».
+    public func detachIdentity(personID: UUID, identity: ServiceIdentity) throws -> UUID {
+        try write { repository in
+            guard var original = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            guard original.identities.contains(identity) else { throw StoreError.invalid("Источник не принадлежит этой персоне.") }
+            guard original.identities.count > 1 || !original.manualFields.isEmpty || !original.manualValues.isEmpty else {
+                throw StoreError.invalid("Нечего отделять: это единственный источник персоны.")
+            }
+            let moved = original.observations.filter { $0.source.identity == identity }
+            let movedNotes = original.notes.filter { $0.source.identity == identity }
+            func latest(_ field: String) -> String? {
+                moved.filter { $0.field == field && $0.status != .proposed }.max { $0.source.fetchedAt < $1.source.fetchedAt }?.value
+            }
+            var detached = Person(displayName: latest("displayName") ?? identity.externalID, identities: [identity], observations: moved)
+            detached.kind = original.kind
+            detached.givenName = latest("givenName") ?? ""
+            detached.familyName = latest("familyName") ?? ""
+            detached.middleName = latest("middleName") ?? ""
+            detached.organization = latest("organization") ?? ""
+            detached.jobTitle = latest("jobTitle") ?? ""
+            detached.notes = movedNotes
+            for field in PersonListField.allCases {
+                detached.setValues(
+                    Rules.unique(moved.filter { $0.field == field.rawValue && $0.status != .proposed }.map(\.value)), for: field)
+            }
+            original.identities.removeAll { $0 == identity }
+            original.observations.removeAll { $0.source.identity == identity }
+            original.notes.removeAll { $0.source.identity == identity }
+            for field in PersonListField.allCases {
+                let kept = original.values(field).filter { value in
+                    original.manualValues.contains(ManualValue(field: field.rawValue, value: value))
+                        || original.observations.contains { $0.field == field.rawValue && $0.value == value && $0.status != .proposed }
+                }
+                original.setValues(kept, for: field)
+            }
+            original.revision += 1
+            original.events.append(PersonEvent(kind: "identityDetached", detail: "Источник \(identity.service) отделён в новую персону"))
+            detached.events.append(PersonEvent(kind: "identityDetached", detail: "Отделено от персоны \(original.displayName)"))
+            try repository.update(original)
+            try repository.insert(detached)
+            try repository.insert(NoMergePair(original.id, detached.id))
+            return detached.id
+        }
+    }
+
+    public func noMergePairs() throws -> Set<NoMergePair> {
+        try read { try $0.noMergePairs() }
+    }
+
+    /// Sets or clears the address-book flag. A flag the user set outlives flags from source accounts.
+    public func setAddressBook(personID: UUID, _ on: Bool, origin: AddressBookOrigin) throws {
+        try write { repository in
+            guard var person = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            if on {
+                guard !person.hiddenAsSpam else { throw StoreError.invalid("Персона скрыта как спам.") }
+                let newOrigin: AddressBookOrigin = person.addressBookOrigin == .user ? .user : origin
+                guard !(person.addressBook && person.addressBookOrigin == newOrigin) else { return }
+                person.addressBook = true
+                person.addressBookOrigin = newOrigin
+                person.events.append(PersonEvent(kind: "addressBookOn", detail: "Включена адресная книга"))
+            } else {
+                guard person.addressBook || person.addressBookOrigin != nil else { return }
+                person.addressBook = false
+                person.addressBookOrigin = nil
+                person.events.append(PersonEvent(kind: "addressBookOff", detail: "Выключена адресная книга"))
+            }
+            person.revision += 1
+            try repository.update(person)
         }
     }
 

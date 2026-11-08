@@ -197,6 +197,22 @@ final class PersonRecordRepository {
             [membership.id.uuidString, membership.organizationID.uuidString, membership.personID.uuidString, try encode(membership)])
     }
 
+    // MARK: No-merge pairs
+
+    func noMergePairs() throws -> Set<NoMergePair> {
+        Set(
+            try connection.query("SELECT first_id::text, second_id::text FROM \(noMerge)").compactMap { row in
+                guard let first = UUID(uuidString: row[0]), let second = UUID(uuidString: row[1]) else { return nil }
+                return NoMergePair(first, second)
+            })
+    }
+
+    func insert(_ pair: NoMergePair) throws {
+        try connection.execute(
+            "INSERT INTO \(noMerge) (first_id, second_id) VALUES ($1::uuid, $2::uuid) ON CONFLICT DO NOTHING",
+            [pair.first.uuidString, pair.second.uuidString])
+    }
+
     // MARK: Merges
 
     func allMerges() throws -> [MergeRecord] {

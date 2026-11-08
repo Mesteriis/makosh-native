@@ -120,33 +120,232 @@ public actor CalDAVAdapter: CalendarAdapter {
         }
     }
 
+    // MARK: Reading
+
+    static func collectionURL(_ collection: CalendarCollection) throws -> URL {
+        guard let url = URL(string: collection.externalID), url.scheme == "https" else { throw CalendarFailure.invalidInput("collection") }
+        return url
+    }
+
     public func changes(collection: CalendarCollection, cursor: Data?, window: DateInterval) async throws -> RemoteChangeSet {
-        throw CalendarFailure.invalidInput("not implemented")
+        let url = try Self.collectionURL(collection)
+        switch CalDAVCursor(data: cursor) {
+        case .etags(let previous)?:
+            return try await etagDiff(collection, url: url, previous: previous, window: window, full: false)
+        case .token(let token)?:
+            do {
+                return try await syncCollection(collection, url: url, token: token, full: false)
+            } catch CalendarFailure.rejected(let code, _) where [400, 403, 409].contains(code) {
+                return try await syncCollection(collection, url: url, token: "", full: true)
+            }
+        case nil:
+            do {
+                return try await syncCollection(collection, url: url, token: "", full: true)
+            } catch CalendarFailure.rejected(let code, _) where [400, 403, 405, 409, 501].contains(code) {
+                return try await etagDiff(collection, url: url, previous: [:], window: window, full: true)
+            }
+        }
     }
+
+    private func syncCollection(_ collection: CalendarCollection, url: URL, token: String, full: Bool) async throws -> RemoteChangeSet {
+        let body =
+            #"<?xml version="1.0" encoding="utf-8"?><d:sync-collection xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">"#
+            + "<d:sync-token>\(token.xmlEscaped)</d:sync-token><d:sync-level>1</d:sync-level><d:prop><d:getetag/><c:calendar-data/></d:prop></d:sync-collection>"
+        let (data, _) = try await http.send(request(url, method: "REPORT", depth: "1", body: body), stage: "sync")
+        let root = try CalDAVNode.parse(data)
+        let newToken = root.child("sync-token")?.trimmed
+        var result = RemoteChangeSet(cursor: newToken.map { CalDAVCursor.token($0).data }, full: full)
+        var missing: [URL] = []
+        for response in try CalDAVNode.responses(data) {
+            guard let href = URL(string: response.href, relativeTo: url)?.absoluteURL, href.host == url.host, href != url else { continue }
+            if response.status?.contains(" 404 ") == true {
+                result.removedExternalIDs.append(href.absoluteString)
+                continue
+            }
+            let etag = response.props.child("getetag")?.trimmed
+            if let text = response.props.child("calendar-data", CalDAVNode.caldav)?.text, !text.isEmpty {
+                try append(text, href: href, etag: etag, collection: collection, into: &result)
+            } else {
+                missing.append(href)
+            }
+        }
+        if !missing.isEmpty { try await multiget(missing, collection: collection, url: url, into: &result) }
+        return result
+    }
+
+    private func etagDiff(
+        _ collection: CalendarCollection, url: URL, previous: [String: String], window: DateInterval, full: Bool
+    )
+        async throws -> RemoteChangeSet
+    {
+        let from = ICalendar.utc(window.start.addingTimeInterval(-30 * 86400)), to = ICalendar.utc(window.end)
+        let body =
+            #"<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/></d:prop>"#
+            + #"<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start=""# + from + #"" end=""# + to
+            + #""/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>"#
+        let (data, _) = try await http.send(request(url, method: "REPORT", depth: "1", body: body), stage: "query")
+        var current: [String: String] = [:]
+        for response in try CalDAVNode.responses(data) {
+            guard let href = URL(string: response.href, relativeTo: url)?.absoluteURL, href.host == url.host, href != url,
+                let etag = response.props.child("getetag")?.trimmed
+            else { continue }
+            current[href.absoluteString] = etag
+        }
+        var result = RemoteChangeSet(cursor: CalDAVCursor.etags(current).data, full: full)
+        result.removedExternalIDs = previous.keys.filter { current[$0] == nil }.sorted()
+        let changed = current.filter { previous[$0.key] != $0.value }.keys.sorted().compactMap(URL.init(string:))
+        if !changed.isEmpty { try await multiget(changed, collection: collection, url: url, into: &result) }
+        return result
+    }
+
+    private func multiget(_ hrefs: [URL], collection: CalendarCollection, url: URL, into result: inout RemoteChangeSet) async throws {
+        for chunk in stride(from: 0, to: hrefs.count, by: 100).map({ Array(hrefs[$0..<min($0 + 100, hrefs.count)]) }) {
+            let body =
+                #"<?xml version="1.0" encoding="utf-8"?><c:calendar-multiget xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop>"#
+                + chunk.map { "<d:href>\($0.path.xmlEscaped)</d:href>" }.joined() + "</c:calendar-multiget>"
+            let (data, _) = try await http.send(request(url, method: "REPORT", depth: "1", body: body), stage: "multiget")
+            for response in try CalDAVNode.responses(data) {
+                guard let href = URL(string: response.href, relativeTo: url)?.absoluteURL, href.host == url.host,
+                    let text = response.props.child("calendar-data", CalDAVNode.caldav)?.text, !text.isEmpty
+                else { continue }
+                try append(text, href: href, etag: response.props.child("getetag")?.trimmed, collection: collection, into: &result)
+            }
+        }
+    }
+
+    /// One resource may hold a series and its overrides: the master keeps the
+    /// resource URL as its id, each override gets `<url>#<recurrence id>`.
+    private func append(_ text: String, href: URL, etag: String?, collection: CalendarCollection, into result: inout RemoteChangeSet) throws
+    {
+        for var event in try ICalendar.parse(text, collectionID: collection.id) {
+            event.externalID = href.absoluteString + (event.recurrenceID.map { "#" + ICalendar.utc($0) } ?? "")
+            event.etag = etag
+            for index in event.attendees.indices where event.attendees[index].email.caseInsensitiveCompare(login) == .orderedSame {
+                event.attendees[index].isSelf = true
+            }
+            result.events.append(event)
+            if let marker = event.busyMarker, let id = event.externalID {
+                result.busyCopies.append(ObservedBusyCopy(externalID: id, marker: marker, time: event.time, collectionID: collection.id))
+            }
+        }
+    }
+
+    // MARK: Writing
+
+    private func put(_ url: URL, ics: String, etag: String?, create: Bool, stage: String) async throws -> RemoteEventRef {
+        var headers = ["Content-Type": "text/calendar; charset=utf-8"]
+        if create { headers["If-None-Match"] = "*" } else if let etag { headers["If-Match"] = etag }
+        var put = request(url, method: "PUT", headers: headers)
+        put.httpBody = Data(ics.utf8)
+        let (_, response) = try await http.send(put, stage: stage)
+        return RemoteEventRef(externalID: url.absoluteString, etag: response.value(forHTTPHeaderField: "ETag"))
+    }
+
+    private func prepared(_ event: CalendarEvent) async throws -> CalendarEvent {
+        var event = event
+        let schedules = try await discovery().schedules
+        if event.attendees.isEmpty || !schedules {
+            event.attendees = []
+            event.organizerEmail = nil
+        } else {
+            event.organizerEmail = event.organizerEmail ?? login
+        }
+        return event
+    }
+
     public func create(_ event: CalendarEvent, in collection: CalendarCollection, notify: Bool) async throws -> RemoteEventRef {
-        throw CalendarFailure.invalidInput("not implemented")
+        let url = try Self.collectionURL(collection).appendingPathComponent(UUID().uuidString.lowercased() + ".ics")
+        return try await put(url, ics: ICalendar.serialize(try await prepared(event)), etag: nil, create: true, stage: "create")
     }
+
     public func update(
         _ event: CalendarEvent, ref: RemoteEventRef, in collection: CalendarCollection, notify: Bool
     ) async throws
         -> RemoteEventRef
-    { throw CalendarFailure.invalidInput("not implemented") }
-    public func delete(ref: RemoteEventRef, in collection: CalendarCollection, notify: Bool) async throws {
-        throw CalendarFailure.invalidInput("not implemented")
+    {
+        guard let url = URL(string: ref.externalID.components(separatedBy: "#")[0]) else { throw CalendarFailure.invalidInput("href") }
+        return try await put(url, ics: ICalendar.serialize(try await prepared(event)), etag: ref.etag, create: false, stage: "update")
     }
+
+    public func delete(ref: RemoteEventRef, in collection: CalendarCollection, notify: Bool) async throws {
+        guard let url = URL(string: ref.externalID.components(separatedBy: "#")[0]) else { throw CalendarFailure.invalidInput("href") }
+        do {
+            _ = try await http.send(request(url, method: "DELETE", headers: ref.etag.map { ["If-Match": $0] } ?? [:]), stage: "delete")
+        } catch CalendarFailure.rejected(code: 404, _) {
+            // Already gone.
+        }
+    }
+
     public func respond(_ response: CalendarResponse, ref: RemoteEventRef, in collection: CalendarCollection) async throws -> RemoteEventRef
     {
-        throw CalendarFailure.invalidInput("not implemented")
+        guard let url = URL(string: ref.externalID.components(separatedBy: "#")[0]) else { throw CalendarFailure.invalidInput("href") }
+        let (data, reply) = try await http.send(request(url, method: "GET"), stage: "respond")
+        var events = try ICalendar.parse(String(decoding: data, as: UTF8.self), collectionID: collection.id)
+        var changed = false
+        for e in events.indices {
+            for a in events[e].attendees.indices where events[e].attendees[a].email.caseInsensitiveCompare(login) == .orderedSame {
+                events[e].attendees[a].response = response
+                changed = true
+            }
+        }
+        guard changed, let master = events.first(where: { $0.recurrenceID == nil }) ?? events.first else {
+            throw CalendarFailure.invalidInput("not invited")
+        }
+        let overrides = events.filter { $0.id != master.id }
+        return try await put(
+            url, ics: ICalendar.serialize(master, overrides: overrides), etag: reply.value(forHTTPHeaderField: "ETag") ?? ref.etag,
+            create: false,
+            stage: "respond")
     }
+
     public func find(uid: String, in collection: CalendarCollection) async throws -> CalendarEvent? {
-        throw CalendarFailure.invalidInput("not implemented")
+        let url = try Self.collectionURL(collection)
+        let body =
+            #"<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop>"#
+            + #"<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:prop-filter name="UID"><c:text-match collation="i;octet">"#
+            + uid.xmlEscaped + "</c:text-match></c:prop-filter></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>"
+        let (data, _) = try await http.send(request(url, method: "REPORT", depth: "1", body: body), stage: "find")
+        var result = RemoteChangeSet(cursor: nil, full: false)
+        for response in try CalDAVNode.responses(data) {
+            guard let href = URL(string: response.href, relativeTo: url)?.absoluteURL,
+                let text = response.props.child("calendar-data", CalDAVNode.caldav)?.text
+            else { continue }
+            try append(text, href: href, etag: response.props.child("getetag")?.trimmed, collection: collection, into: &result)
+        }
+        return result.events.first { $0.uid == uid && $0.recurrenceID == nil }
     }
+
+    static func busyUID(_ marker: CalendarBusyMarker) -> String {
+        "makosh-busy-" + marker.sourceEventID.uuidString.lowercased() + "-" + String(Int(marker.occurrenceStart.timeIntervalSince1970))
+    }
+
     public func createBusyCopy(_ copy: DesiredBusyCopy, in collection: CalendarCollection) async throws -> RemoteEventRef {
-        throw CalendarFailure.invalidInput("not implemented")
+        let uid = Self.busyUID(copy.marker)
+        let url = try Self.collectionURL(collection).appendingPathComponent(uid + ".ics")
+        return try await put(
+            url, ics: ICalendar.serializeBusyCopy(uid: uid, time: copy.time, marker: copy.marker), etag: nil, create: true, stage: "copy")
     }
+
     public func moveBusyCopy(
         ref: RemoteEventRef, to time: CalendarEventTime, marker: CalendarBusyMarker, in collection: CalendarCollection
     )
         async throws -> RemoteEventRef
-    { throw CalendarFailure.invalidInput("not implemented") }
+    {
+        guard let url = URL(string: ref.externalID) else { throw CalendarFailure.invalidInput("href") }
+        return try await put(
+            url, ics: ICalendar.serializeBusyCopy(uid: Self.busyUID(marker), time: time, marker: marker), etag: ref.etag, create: false,
+            stage: "copy")
+    }
+}
+
+/// Where the last CalDAV read stopped: a sync token, or the ETags of every resource.
+enum CalDAVCursor: Codable, Equatable {
+    case token(String)
+    case etags([String: String])
+
+    init?(data: Data?) {
+        guard let data, let value = try? JSONDecoder().decode(CalDAVCursor.self, from: data) else { return nil }
+        self = value
+    }
+    var data: Data { (try? JSONEncoder().encode(self)) ?? Data() }
 }

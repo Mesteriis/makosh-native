@@ -53,6 +53,8 @@ extension EnvironmentValues {
 
     var googleClientID: String? { GoogleOAuthClient.embedded?.clientID }
 
+    /// Mail accounts for the CalDAV hint (address and IMAP host); set by the workspace.
+    var mailAccounts: [(email: String, imapHost: String)] = []
     /// Contact e-mail addresses for attendee suggestions; set by the workspace.
     var contactEmails: [String] = []
     /// «Добавить Telemost» for a Yandex calendar; set by the workspace when a Telemost account exists.

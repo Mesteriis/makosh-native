@@ -235,6 +235,34 @@ package enum CalendarConflictChoice: Sendable {
         await refresh()
     }
 
+    // MARK: Accounts
+
+    @discardableResult package func addGoogle() async -> Bool {
+        await account { _ = try await self.service.addGoogleAccount(loginHint: nil) }
+    }
+
+    @discardableResult package func addCalDAV(name: String, server: URL, login: String, password: String) async -> Bool {
+        await account { _ = try await self.service.addCalDAVAccount(name: name, server: server, login: login, password: password) }
+    }
+
+    @discardableResult package func addSubscription(name: String, url: URL) async -> Bool {
+        await account { _ = try await self.service.addSubscription(name: name, url: url) }
+    }
+
+    package func reauthorize(accountID: UUID) async { await account { try await self.service.reauthorize(accountID: accountID) } }
+    package func disconnect(accountID: UUID) async { await account { try await self.service.disconnect(accountID: accountID) } }
+
+    private func account(_ body: @escaping () async throws -> Void) async -> Bool {
+        defer { _Concurrency.Task { await self.refresh() } }
+        do {
+            try await body()
+            return true
+        } catch {
+            self.error = Self.describe(error)
+            return false
+        }
+    }
+
     // MARK: Settings
 
     package func setShown(collectionID: UUID, _ shown: Bool) async {
@@ -407,6 +435,10 @@ package enum CalendarConflictChoice: Sendable {
         case .invalidInput("busy copy")?: "Плашку «Занято» меняет только её исходное событие."
         case .invalidInput("occurrence of shared series")?: "Одно вхождение встречи с участниками меняется в календаре организатора."
         case .invalidInput("read only")?: "Этот календарь только для чтения."
+        case .invalidInput("https required")?: "Нужен адрес сервера по https."
+        case .invalidInput("subscription url")?: "Ссылка на календарь должна начинаться с https:// или webcal://."
+        case .invalidInput("other account")?: "Вход выполнен в другой аккаунт Google."
+        case .invalidInput("google not configured")?: "Вход Google не настроен в этой сборке."
         case .invalidInput("attempt open")?: "Предыдущая запись этого события ещё не подтверждена."
         case .signInRequired?, .rejected(code: 401, _)?: "Нужно войти в учётную запись снова."
         case .adminBlocked?: "Администратор организации запретил Makosh доступ к этому аккаунту."

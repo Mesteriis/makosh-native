@@ -241,12 +241,14 @@ struct MakoshApp: App {
                         TeamsCommonSettingsView().tabItem { Label("Teams", systemImage: "person.3") }.tag("teams")
                         FilesSettingsView().tabItem { Label("Файлы", systemImage: "folder") }.tag(MakoshSettingsTab.files)
                         TasksSettingsView().tabItem { Label("Задачи", systemImage: "checklist") }.tag(MakoshSettingsTab.tasks)
+                        CalendarSettingsView().tabItem { Label("Календарь", systemImage: "calendar") }.tag(MakoshSettingsTab.calendar)
                         AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }.tag("ai")
                     }
                 }
             }.environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(
                 delegate.telegramNotificationRouter
             ).environmentObject(delegate.ai).environmentObject(delegate.files).environmentObject(delegate.tasks)
+                .environmentObject(delegate.calendar)
         }
     }
 }
@@ -256,4 +258,5 @@ enum MakoshSettingsTab {
     static let key = "makosh.settings.tab"
     static let files = "files"
     static let tasks = "tasks"
+    static let calendar = "calendar"
 }

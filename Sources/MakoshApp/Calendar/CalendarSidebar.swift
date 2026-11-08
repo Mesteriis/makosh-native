@@ -18,7 +18,7 @@ struct CalendarSidebar: View {
                     groups(snapshot)
                 }
                 Button {
-                    UserDefaults.standard.set("calendar", forKey: MakoshSettingsTab.key)
+                    UserDefaults.standard.set(MakoshSettingsTab.calendar, forKey: MakoshSettingsTab.key)
                     openSettings()
                 } label: {
                     Label("Учётные записи и группы…", systemImage: "gearshape")

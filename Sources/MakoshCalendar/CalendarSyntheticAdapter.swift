@@ -10,6 +10,9 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     private var revision = 0
     private var counter = 0
     private var failure: CalendarFailure?
+    private var readFailure: CalendarFailure?
+    /// How many times `changes` ran: lets tests see the polling schedule.
+    public private(set) var reads = 0
     private let schedules: Bool
     public private(set) var sentInvitations: [String] = []
 
@@ -33,6 +36,9 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
     public var schedulesInvitations: Bool { get async { schedules } }
 
     public func failNext(_ failure: CalendarFailure) { self.failure = failure }
+
+    /// Every read and listing throws `failure` until cleared with nil.
+    public func failReads(_ failure: CalendarFailure?) { readFailure = failure }
 
     public func externalEvents(collectionExternalID: String) -> [CalendarEvent] {
         (store[collectionExternalID] ?? [:]).values.sorted { ($0.externalID ?? "") < ($1.externalID ?? "") }
@@ -81,9 +87,14 @@ public actor CalendarSyntheticAdapter: CalendarAdapter {
         throw pending
     }
 
-    public func collections() async throws -> [RemoteCollection] { remote }
+    public func collections() async throws -> [RemoteCollection] {
+        if let readFailure { throw readFailure }
+        return remote
+    }
 
     public func changes(collection: CalendarCollection, cursor: Data?, window: DateInterval) async throws -> RemoteChangeSet {
+        reads += 1
+        if let readFailure { throw readFailure }
         let since = cursor.flatMap { Int(String(decoding: $0, as: UTF8.self)) }
         let entries = log.filter { $0.collection == collection.externalID && $0.revision > (since ?? 0) }
         var result = RemoteChangeSet(cursor: Data(String(revision).utf8), full: since == nil)

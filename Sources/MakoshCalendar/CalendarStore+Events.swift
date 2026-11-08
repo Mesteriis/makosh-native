@@ -200,6 +200,8 @@ extension CalendarStore {
         return (data, sealed)
     }
 
+    func readEventRow(data: String, sealed: String) throws -> CalendarEvent { try readEvent(data: data, sealed: sealed) }
+
     private func readEvent(data: String, sealed: String) throws -> CalendarEvent {
         var event = try decode(CalendarEvent.self, data)
         let fields = try decoder.decode(CalendarSealedFields.self, from: try open(sealed, eventID: event.id))
@@ -261,6 +263,28 @@ extension CalendarStore {
         let context = Data((vault.uuidString + "/" + eventID.uuidString).utf8)
         do { return try AES.GCM.open(.init(combined: combined), using: key, authenticating: context) } catch {
             throw CalendarFailure.keyUnavailable
+        }
+    }
+}
+
+extension CalendarStore {
+    /// Every live event of a calendar, copies included: the full-resync check needs them.
+    public func liveEvents(collectionID: UUID) throws -> [CalendarEvent] {
+        try query(
+            "SELECT data, sealed FROM \(t("calendar_events")) WHERE collection_id = $1 AND deleted_at IS NULL ORDER BY starts_at, id",
+            [collectionID.uuidString]
+        ).map { try readEventRow(data: $0[0], sealed: $0[1]) }
+    }
+
+    /// A removal by a resource URL also removes the overrides stored as `<url>#<recurrence id>`.
+    public func observeRemoval(resource externalID: String, collectionID: UUID) throws {
+        try transaction {
+            let ids = try query(
+                """
+                SELECT external_id FROM \(t("calendar_events"))
+                WHERE collection_id = $1 AND deleted_at IS NULL AND (external_id = $2 OR starts_with(external_id, $2 || '#'))
+                """, [collectionID.uuidString, externalID])
+            for row in ids { try observeRemoval(externalID: row[0], collectionID: collectionID) }
         }
     }
 }

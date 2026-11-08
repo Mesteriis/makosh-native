@@ -25,7 +25,10 @@ import MakoshCalendar
     nonisolated static let mailCategory = "makosh.mail.incoming"
     nonisolated static let mailArchive = "makosh.mail.archive", mailTrash = "makosh.mail.trash"
     private var badgeObservation: AnyCancellable?
+    /// Whether this process owns the system notification delegate (false in isolated QA).
+    let systemDelegateRegistered: Bool
     init(registerSystemDelegate: Bool = true) {
+        systemDelegateRegistered = registerSystemDelegate
         super.init()
         if registerSystemDelegate {
             let center = UNUserNotificationCenter.current()

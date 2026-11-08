@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 private enum Destination: String, CaseIterable, Identifiable {
     case contacts = "Контакты", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи",
-        files = "Файлы", tasks = "Задачи", ai = "ИИ"
+        files = "Файлы", tasks = "Задачи", calendar = "Календарь", ai = "ИИ"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -24,6 +24,7 @@ private enum Destination: String, CaseIterable, Identifiable {
         case .meetings: "video"
         case .files: "folder"
         case .tasks: "checklist"
+        case .calendar: "calendar"
         case .ai: "sparkles"
         }
     }
@@ -38,6 +39,7 @@ struct WorkspaceView: View {
     @EnvironmentObject private var ai: AIHost
     @EnvironmentObject private var files: FilesHost
     @EnvironmentObject private var tasks: TasksHost
+    @EnvironmentObject private var calendarHost: CalendarHost
     /// Sources for the chat panel's "+" and "@"; made once the window appears.
     @State private var aiContextSearch: AIContextSearch?
     @StateObject private var systemAppearance = TelegramSystemAppearance()
@@ -208,6 +210,7 @@ struct WorkspaceView: View {
         .onReceive(whatsapp.$notificationActivation.dropFirst()) { _ in destination = .whatsapp }
         .onReceive(mail.$notificationActivation.dropFirst()) { _ in destination = .mail }
         .onReceive(teams.$notificationActivation.dropFirst()) { _ in destination = .teams }
+        .onReceive(calendarHost.$openEventRequest.compactMap { $0 }) { _ in destination = .calendar }
         .task {
             await model.load()
             if let configuration = model.mailConfiguration, ordinaryLaunch {
@@ -215,6 +218,7 @@ struct WorkspaceView: View {
                     configuration: configuration,
                     resolver: FileSourceBridge(telegram: telegram, whatsapp: whatsapp, mail: mail, teams: teams))
                 Task { await tasks.start(configuration: configuration) }
+                Task { await calendarHost.start(configuration: configuration, taskFeed: nil) }
                 Task {
                     await ai.start(
                         configuration: configuration, contacts: model.dossierWorker, telegram: { [telegram] in telegram.aiContextReader },
@@ -532,6 +536,8 @@ struct WorkspaceView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }.frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
+        } else if destination == .calendar {
+            CalendarSidebarColumn(host: calendarHost).frame(minWidth: 260, idealWidth: 280, maxWidth: 360)
         } else if destination == .ai {
             AIConversationListView(model: ai.workspace, openChat: openAICard).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else {
@@ -620,6 +626,8 @@ struct WorkspaceView: View {
                     FilesDetailView(model: files.model, host: files, openSource: openFileSource)
                 } else if destination == .tasks {
                     TasksDetailView(host: tasks)
+                } else if destination == .calendar {
+                    CalendarDetailView(host: calendarHost)
                 } else if destination == .ai {
                     AIConversationView(model: ai.workspace, openCard: openAICard) { source in
                         // Opens the source's section; the message itself is not yet selected there.

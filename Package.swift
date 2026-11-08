@@ -118,7 +118,8 @@ let package = Package(
         .executableTarget(
             name: "MakoshApp",
             dependencies: [
-                "MakoshAI", "MakoshFiles", "MakoshTasks", "MakoshJira", "MakoshTelemost", "MakoshTeams", "MakoshCore", "MakoshTelegram",
+                "MakoshAI", "MakoshFiles", "MakoshTasks", "MakoshJira", "MakoshCalendar", "MakoshTelemost", "MakoshTeams", "MakoshCore",
+                "MakoshTelegram",
                 "MakoshMail", "MakoshWhatsApp",
             ]),
         .testTarget(name: "MakoshCoreTests", dependencies: ["MakoshCore", "CPostgres"]),

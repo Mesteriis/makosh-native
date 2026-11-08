@@ -10,11 +10,13 @@ import UserNotifications
     private(set) var identifiers = Set<String>()
     var open: ((UUID) -> Void)?
     private weak var router: ApplicationSystemNotificationRouter?
-    private let systemEnabled: Bool
+    private var systemEnabled = false
 
-    init(router: ApplicationSystemNotificationRouter?, systemEnabled: Bool) {
+    /// Joins the application's delegate; until then reminders are planned but not scheduled.
+    func attach(_ router: ApplicationSystemNotificationRouter?) {
         self.router = router
-        self.systemEnabled = systemEnabled
+        systemEnabled = router?.systemDelegateRegistered ?? false
+        router?.calendar = self
     }
 
     /// Replaces scheduled reminders with `planned`: stale ones are removed, new ones added.

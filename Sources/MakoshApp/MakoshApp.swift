@@ -28,6 +28,8 @@ import MakoshFiles
     lazy var ai = AIHost()
     lazy var files = FilesHost()
     lazy var tasks = TasksHost()
+    /// Owned here, not by a window: the calendar keeps polling and reminding with every window closed.
+    lazy var calendar = CalendarHost(router: { [unowned self] in self.telegramNotificationRouter })
     private var instanceLock: MakoshInstanceLock?
     /// One running copy per bundle: a second launch brings the first one forward and quits.
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -39,6 +41,12 @@ import MakoshFiles
             .first { $0.processIdentifier != current }?.activate()
         exit(0)
     }
+    /// Closing the last window keeps Makosh running, like the Codex and Claude desktop apps.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// The Dock icon reopens the workspace window after it was closed.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { true }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -197,6 +205,7 @@ struct MakoshApp: App {
                 .environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(delegate.ai)
                 .environmentObject(delegate.files).environment(\.filesHost, delegate.files)
                 .environmentObject(delegate.tasks).environment(\.tasksHost, delegate.tasks)
+                .environmentObject(delegate.calendar).environment(\.calendarHost, delegate.calendar)
         }
         .defaultSize(width: 1200, height: 854)
         .windowResizability(.contentMinSize)

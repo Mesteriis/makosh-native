@@ -51,6 +51,23 @@ public struct CalendarHTTP: Sendable {
         self.timeout = timeout
     }
 
+    /// Any status comes back; only transport failures throw. For OAuth, whose
+    /// error codes live in the body.
+    func raw(_ request: URLRequest, stage: String, limit: Int = 64 << 10) async throws -> (Data, HTTPURLResponse) {
+        var request = request
+        request.timeoutInterval = timeout
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request, delegate: CalendarRedirectGuard())
+        } catch {
+            throw CalendarFailure.unknownOutcome(stage: stage)
+        }
+        guard let http = response as? HTTPURLResponse else { throw CalendarFailure.unknownOutcome(stage: stage) }
+        guard data.count <= limit else { throw CalendarFailure.invalidInput("response too large") }
+        return (data, http)
+    }
+
     public func send(_ request: URLRequest, stage: String, limit: Int = 10 << 20) async throws -> (Data, HTTPURLResponse) {
         var request = request
         request.timeoutInterval = timeout

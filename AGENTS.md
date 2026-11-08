@@ -75,6 +75,15 @@
 - Inside `MakoshTasks` and `Sources/MakoshApp/Tasks` Swift's `Task` is spelled `_Concurrency.Task`; `MakoshApp.swift` and `WorkspaceView.swift` do not import `MakoshTasks`. Synthetic QA uses one `qa_tasks_` schema and the in-memory `JiraSyntheticAdapter`; live Jira only on the user's command, on the connection and issue they choose.
 - The interface follows `yuriyda/TaskOrchestrator` (`docs/superpowers/specs/2026-11-07-tasks-interface-design.md`); differences are recorded in `docs/reference-interface.md`, not silently. The closing rules (activation, recurrence spawn, spawn withdrawal) run inside `TaskStore.apply` for every actor and path; never reimplement them in a command. Time entries come only from a draft: focus sessions and planner slots never write `tasks_time_entries`, and a session's time is never dropped silently — it becomes a queued draft.
 
+## Calendar decisions
+
+- Continue `MakoshCalendar` / `Sources/MakoshApp/Calendar`; read `docs/calendar.md` and the approved `docs/superpowers/specs/2026-11-08-calendar-design.md` before changing busy groups, adapters, the journal or the planner bridge. `MakoshCalendar` imports no other service module; the app bridges Tasks, Telemost and mail.
+- A busy copy carries only «Занято», start and end; it is never a source; only its original moves or removes it, and edits made on the server are rolled back on the next pass of that calendar. Group changes show the preview before any write.
+- Every external write is one journaled attempt; `unknown` is settled by reading (UID or busy mark) or dismissal, never by resending. Absence on a server counts only for calendars read in that pass. User commands do not wait for copies (`reconcileSoon`); tests wait with `settled()`.
+- The Google client comes only from private build input (`scripts/prepare-google-oauth-config.py`); a build without it disables Google sign-in. Grants live in the shared Keychain item (`org.makosh.google.grants.v1`), CalDAV passwords in `org.makosh.calendar.caldav.v1`. A Workspace administrator's refusal is reported, never worked around.
+- Synthetic QA uses one `qa_calendar_` schema and synthetic servers (`scripts/run-calendar-qa.py`); live Google/CalDAV only on the user's command, on the account and calendar they choose, first write one busy copy into a test calendar.
+- Closing the last window keeps Makosh running; `CalendarHost` is owned by the application delegate. Reminders use the shared notification delegate with `makosh.calendar.` identifiers.
+
 ## Live QA and authorization
 
 - Read the current QA scope/status in `docs/development-status.md` before using a real account. Use only the user-selected account and test peer; authorization for that test is not blanket access to other dialogs, account settings or sessions. Reading, messages/files, calls and microphone/camera use must stay within the actions authorized in the conversation; reuse existing authorization within that scope.

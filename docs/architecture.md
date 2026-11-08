@@ -326,3 +326,31 @@ session is the task the timer runs on, switching keeps time in the session,
 and only ending a session yields a time draft; the drafts queue, so a task
 closed from Jira while a sheet is open never loses its minutes. The planner's
 slots are a plan, not a fact: they never write time entries.
+
+## ADR-019: Calendar — busy groups over Google, CalDAV and the local calendar — 2026-11-08
+
+Spec: `docs/superpowers/specs/2026-11-08-calendar-design.md`. `MakoshCalendar`
+sits above `MakoshCore` and imports no other service module. One PostgreSQL
+store (`calendar_*`, application schema) keeps accounts, calendars, groups,
+events with append-only versions (description, place, attendees, organizer and
+meeting link sealed with AES-GCM under a key derived from the archive vault),
+sync cursors, busy-copy records and a write journal. Google goes through REST
+v3 with a desktop OAuth client compiled from private build input (PKCE,
+loopback 127.0.0.1); CalDAV through RFC 4791/6578 over HTTPS; link
+subscriptions are read-only. One `CalendarAdapter` protocol serves all three
+and the synthetic server.
+
+The busy engine is pure: calendars sharing a group are neighbours; every
+occurrence of an original that gives busy time within 90 days becomes a
+desired copy in each writable neighbour; reconciliation against records and
+copies read back from servers creates, moves, removes, adopts (after an
+unknown outcome) and deletes strays, judging absence only for calendars read
+in that pass. Copies are never sources. Every external write is a journaled
+attempt; unknown outcomes are settled by reading, never by resending. User
+commands write their own event and leave copies to a coalesced background
+pass. `CalendarService` is an actor; `CalendarWorkspaceModel` on the main
+actor only coordinates. `CalendarHost` belongs to the application delegate,
+and closing the last window no longer terminates Makosh, so polling, copies
+and reminders continue. The Tasks planner keeps its slots and a bridge
+mirrors them into calendar events by UID; calendar busy time comes back as
+read-only planner blocks. Details: [calendar.md](calendar.md).

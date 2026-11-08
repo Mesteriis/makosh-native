@@ -320,6 +320,8 @@ public struct ImportSource: Codable, Equatable, Sendable {
 public struct ImportedPerson: Codable, Equatable, Sendable {
     public var externalID: String
     public var displayName: String
+    /// Set when a source knows the record is an organization; nil means a person.
+    public var kind: PersonKind?
     public var givenName: String?
     public var familyName: String?
     public var middleName: String?
@@ -331,12 +333,13 @@ public struct ImportedPerson: Codable, Equatable, Sendable {
     public var tags: [String]
     public var notes: [String]
     public init(
-        externalID: String, displayName: String, givenName: String? = nil, familyName: String? = nil, middleName: String? = nil,
-        organization: String? = nil, jobTitle: String? = nil,
+        externalID: String, displayName: String, kind: PersonKind? = nil, givenName: String? = nil, familyName: String? = nil,
+        middleName: String? = nil, organization: String? = nil, jobTitle: String? = nil,
         phones: [String] = [], emails: [String] = [], usernames: [String] = [], tags: [String] = [], notes: [String] = []
     ) {
         self.externalID = externalID
         self.displayName = displayName
+        self.kind = kind
         self.givenName = givenName
         self.familyName = familyName
         self.middleName = middleName
@@ -349,12 +352,14 @@ public struct ImportedPerson: Codable, Equatable, Sendable {
         self.notes = notes
     }
     private enum CodingKeys: String, CodingKey {
-        case externalID, displayName, givenName, familyName, middleName, organization, jobTitle, phones, emails, usernames, tags, notes
+        case externalID, displayName, kind, givenName, familyName, middleName, organization, jobTitle, phones, emails, usernames, tags,
+            notes
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         externalID = try c.decode(String.self, forKey: .externalID)
         displayName = try c.decode(String.self, forKey: .displayName)
+        kind = try c.decodeIfPresent(PersonKind.self, forKey: .kind)
         givenName = try c.decodeIfPresent(String.self, forKey: .givenName)
         familyName = try c.decodeIfPresent(String.self, forKey: .familyName)
         middleName = try c.decodeIfPresent(String.self, forKey: .middleName)

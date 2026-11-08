@@ -26,10 +26,13 @@ public struct PersonSourceObservation: Equatable, Sendable {
     public var person: ImportedPerson
     public var observedAt: Date
     public var evidence: PersonSourceEvidence
-    public init(source: ImportSource, person: ImportedPerson, observedAt: Date, evidence: PersonSourceEvidence) {
+    /// The person this card is known to belong to (a card Makosh wrote, or one carrying its mark).
+    public var personID: UUID?
+    public init(source: ImportSource, person: ImportedPerson, observedAt: Date, evidence: PersonSourceEvidence, personID: UUID? = nil) {
         self.source = source
         self.person = person
         self.observedAt = observedAt
         self.evidence = evidence
+        self.personID = personID
     }
 }

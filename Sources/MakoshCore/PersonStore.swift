@@ -307,6 +307,7 @@ public final class PersonStore: @unchecked Sendable {
                 existing = owners.first
             }
             var contact = existing ?? Person(displayName: Rules.trimmed(incoming.displayName))
+            if existing == nil, let kind = incoming.kind { contact.kind = kind }
             let before = contact
             let attached = !contact.identities.contains(identity)
             if attached { contact.identities.append(identity) }

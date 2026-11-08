@@ -27,7 +27,7 @@ public enum PersonMatching {
         return roleLocalParts.contains(String(normalized[..<at]))
     }
 
-    static func normalized(_ field: PersonListField, _ value: String) -> String {
+    public static func normalized(_ field: PersonListField, _ value: String) -> String {
         switch field {
         case .phones: normalizedPhone(value)
         case .emails: normalizedEmail(value)

@@ -25,6 +25,7 @@ public actor PersonsService {
     let google: GoogleOAuth?
     let grants: GoogleGrantVault
     let now: @Sendable () -> Date
+    let collector: PersonCollector
     var adapters: [UUID: any PersonBookAdapter] = [:]
     var capabilities: [UUID: PersonBookCapabilities] = [:]
     /// The last full read of each book: what reconciliation adopts from.
@@ -46,6 +47,110 @@ public actor PersonsService {
         self.google = google
         self.grants = grants
         self.now = now
+        collector = PersonCollector(persons: persons, store: store, now: now)
+    }
+
+    // MARK: Collection
+
+    /// Channels hand their observations here: the collector applies them, merged persons'
+    /// cards follow the survivor, and a write pass is scheduled.
+    @discardableResult
+    public func collect(
+        _ observations: [PersonSourceObservation], spam: [MailEvidence] = [], addressBookSource: ImportSource? = nil
+    )
+        async throws -> CollectResult
+    {
+        let result = try await collector.collect(observations, spam: spam, addressBookSource: addressBookSource)
+        for pair in result.merged { try await moveEntries(from: pair.removed, to: pair.survivor) }
+        if !observations.isEmpty { requestWritePass() }
+        return result
+    }
+
+    // MARK: Snapshot
+
+    public func snapshot() async throws -> PersonsSnapshot {
+        let books = try await store.books()
+        var capabilityMap: [UUID: PersonBookCapabilities] = [:]
+        for book in books where book.kind.isBook && book.state == .connected {
+            if let capability = await capabilities(for: book) { capabilityMap[book.id] = capability }
+        }
+        return PersonsSnapshot(
+            books: books, entries: try await store.allEntries(), openAttempts: try await store.attempts(open: true),
+            blocked: AddressBookEngine.blockedReasons(persons: try persons.persons(), books: books, capabilities: capabilityMap),
+            preferences: try await store.preferences(), googleAvailable: google != nil)
+    }
+
+    // MARK: Books
+
+    /// Registers an account without a network book (a channel) or a synthetic book for QA.
+    @discardableResult
+    public func connectSynthetic(name: String, accountID: String, isAddressBookSource: Bool = false) async throws -> PersonBook {
+        let book = PersonBook(kind: .synthetic, name: name, accountID: accountID, isAddressBookSource: isAddressBookSource)
+        try await store.saveBook(book)
+        return book
+    }
+
+    @discardableResult
+    public func connectTelegram(accountID: String, name: String) async throws -> PersonBook {
+        if let existing = try await store.books().first(where: { $0.kind == .telegram && $0.accountID == accountID }) { return existing }
+        let book = PersonBook(kind: .telegram, name: name, accountID: accountID)
+        try await store.saveBook(book)
+        return book
+    }
+
+    /// A channel account (mail, WhatsApp, Teams) known to the section for its «collect conversations» switch.
+    @discardableResult
+    public func ensureChannelSource(kind: PersonBookKind, accountID: String, name: String) async throws -> PersonBook {
+        if let existing = try await store.books().first(where: { $0.kind == kind && $0.accountID == accountID }) { return existing }
+        let book = PersonBook(kind: kind, name: name, accountID: accountID)
+        try await store.saveBook(book)
+        return book
+    }
+
+    /// Disconnects a book: its password goes first, its cards stay in the book as not managed.
+    public func removeBook(id: UUID) async throws {
+        guard let book = try await store.book(id: id) else { throw PersonsFailure.notFound }
+        try? await vault.removePassword(bookID: id)
+        adapters[id] = nil
+        capabilities[id] = nil
+        lastRemote[id] = nil
+        if book.isAddressBookSource { _ = try persons.clearAddressBook(fromSource: book.source) }
+        try await store.removeBook(id: id)
+    }
+
+    /// Switches of one account. Dropping «её контакты — моя адресная книга» clears the flags it set;
+    /// raising it flags the persons this book already gave.
+    public func setBookOptions(
+        id: UUID, readBook: Bool?, isAddressBookSource: Bool?, acceptsAddressBook: Bool?, collectConversations: Bool?
+    ) async throws {
+        guard var book = try await store.book(id: id) else { throw PersonsFailure.notFound }
+        if let readBook, book.kind.isBook { book.readBook = readBook }
+        if let acceptsAddressBook, book.kind.isBook { book.acceptsAddressBook = acceptsAddressBook }
+        if let collectConversations, book.kind.hasConversations { book.collectConversations = collectConversations }
+        if let isAddressBookSource, book.kind.isBook, isAddressBookSource != book.isAddressBookSource {
+            book.isAddressBookSource = isAddressBookSource
+            if isAddressBookSource {
+                for person in try persons.persons()
+                where person.identities.contains(where: { $0.service == book.kind.service && $0.accountID == book.accountID }) {
+                    try persons.setAddressBook(personID: person.id, true, origin: .sourceAccount(book.source))
+                }
+            } else {
+                _ = try persons.clearAddressBook(fromSource: book.source)
+            }
+        }
+        try await store.saveBook(book)
+        if acceptsAddressBook == true || isAddressBookSource == true { requestWritePass() }
+    }
+
+    /// «Повторный вход» or a reconnect: the book is connected again and read.
+    public func reconnect(id: UUID) async throws {
+        guard var book = try await store.book(id: id) else { throw PersonsFailure.notFound }
+        book.state = .connected
+        book.lastError = nil
+        book.pausedUntil = nil
+        adapters[id] = nil
+        try await store.saveBook(book)
+        _ = try await readBook(id: id)
     }
 
     public func open() async throws {

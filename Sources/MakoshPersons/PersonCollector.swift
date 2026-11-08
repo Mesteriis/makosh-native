@@ -43,8 +43,10 @@ public actor PersonCollector {
             let identity = ServiceIdentity(
                 service: observation.source.service, accountID: observation.source.accountID, externalID: observation.person.externalID)
             let existed = try persons.personsOwning(identity).first
+            // A known target (a card Makosh wrote) attaches the identity there; an unknown card finds or creates its own person.
+            let target = try observation.personID.flatMap { try persons.person(id: $0) }?.id
             var id = try persons.linkImportedPerson(
-                observation.person, source: observation.source, fetchedAt: observation.observedAt, contactID: nil)
+                observation.person, source: observation.source, fetchedAt: observation.observedAt, contactID: existed == nil ? target : nil)
             if existed == nil { result.created += 1 } else { result.updated += 1 }
             if case .mail(let evidence) = observation.evidence {
                 _ = try persons.recordMailEvidence(accountID: evidence.accountID, address: evidence.address, spam: false)

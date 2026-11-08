@@ -39,6 +39,9 @@ struct IMAPMessage: Sendable {
     var messageID: String
     var inReplyTo: String
     var keywords: [String]
+    var listHeaders = false
+    var precedenceBulk = false
+    var autoSubmitted = false
 }
 
 // NIO-free flag kind so the app layer doesn't import NIOIMAPCore.

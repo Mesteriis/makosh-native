@@ -267,6 +267,9 @@ public actor MailAccountWorker {
                 flagged: row.flagged, messageID: row.messageID)
             letter.cc = row.ccEmail
             letter.bcc = row.bccEmail
+            letter.listHeaders = row.listHeaders
+            letter.precedenceBulk = row.precedenceBulk
+            letter.autoSubmitted = row.autoSubmitted
             return letter
         }
         let known = Array(

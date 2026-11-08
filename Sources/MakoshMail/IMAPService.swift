@@ -211,7 +211,7 @@ final class IMAPService: @unchecked Sendable {
         let hi = UInt32(total)
         let lo = UInt32(max(1, total - limit + 1))
         let range = MessageIdentifierRange<SequenceNumber>(SequenceNumber(rawValue: lo)...SequenceNumber(rawValue: hi))
-        let responses = try await send(.fetch(.range(range), [.uid, .flags, .envelope, .internalDate], []))
+        let responses = try await send(.fetch(.range(range), Self.envelopeAttributes, []))
         return parseMessages(responses).sorted { $0.date > $1.date }
     }
 
@@ -225,7 +225,7 @@ final class IMAPService: @unchecked Sendable {
         var newMessages: [IMAPMessage] = []
         if afterUID < UInt32.max {
             let newRange = MessageIdentifierRange<UID>(UID(rawValue: afterUID + 1)...UID.max)
-            let r = try await send(.uidFetch(.range(newRange), [.uid, .flags, .envelope, .internalDate], []))
+            let r = try await send(.uidFetch(.range(newRange), Self.envelopeAttributes, []))
             newMessages = parseMessages(r).sorted { $0.date > $1.date }
             if newMessages.count > newLimit { newMessages = Array(newMessages.prefix(newLimit)) }
         }
@@ -270,7 +270,7 @@ final class IMAPService: @unchecked Sendable {
         let chosen = Array(uids.sorted(by: >).prefix(limit))
         let ranges = chosen.map { MessageIdentifierRange<UID>(UID(rawValue: $0)...UID(rawValue: $0)) }
         guard let set = MessageIdentifierSetNonEmpty(set: MessageIdentifierSet(ranges)) else { return [] }
-        let responses2 = try await send(.uidFetch(.set(set), [.uid, .flags, .envelope, .internalDate], []))
+        let responses2 = try await send(.uidFetch(.set(set), Self.envelopeAttributes, []))
         return parseMessages(responses2).sorted { $0.date > $1.date }
     }
 
@@ -294,7 +294,7 @@ final class IMAPService: @unchecked Sendable {
         guard let highest = chosen.last else { return ([], afterUID, false) }
         let ranges = chosen.map { MessageIdentifierRange<UID>(UID(rawValue: $0)...UID(rawValue: $0)) }
         guard let set = MessageIdentifierSetNonEmpty(set: MessageIdentifierSet(ranges)) else { return ([], afterUID, false) }
-        let fetched = try await send(.uidFetch(.set(set), [.uid, .flags, .envelope, .internalDate], []))
+        let fetched = try await send(.uidFetch(.set(set), Self.envelopeAttributes, []))
         let allowed = Set(chosen)
         return (parseMessages(fetched).filter { allowed.contains($0.uid) }, highest, uids.count > chosen.count)
     }
@@ -497,9 +497,35 @@ final class IMAPService: @unchecked Sendable {
         throw MailError.noResult
     }
 
-    private func parseMessages(_ responses: [Response]) -> [IMAPMessage] {
+    /// Header fields that mark mailing lists and robots; the Persons section skips such letters.
+    static let bulkHeaderFields = ["List-Id", "List-Unsubscribe", "Precedence", "Auto-Submitted"]
+    /// What every envelope fetch asks for: the envelope plus the bulk header fields.
+    static let envelopeAttributes: [FetchAttribute] = [
+        .uid, .flags, .envelope, .internalDate, .bodySection(peek: true, .headerFields(bulkHeaderFields), nil),
+    ]
+
+    /// `List-Id`/`List-Unsubscribe`, `Precedence: bulk|list|junk`, `Auto-Submitted` other than `no`.
+    static func bulkFlags(_ headers: String) -> (list: Bool, bulk: Bool, auto: Bool) {
+        var list = false, bulk = false, auto = false
+        for raw in headers.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n") {
+            guard let colon = raw.firstIndex(of: ":") else { continue }
+            let name = raw[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = raw[raw.index(after: colon)...].trimmingCharacters(in: .whitespaces).lowercased()
+            switch name {
+            case "list-id", "list-unsubscribe": list = true
+            case "precedence": bulk = bulk || ["bulk", "list", "junk"].contains(value)
+            case "auto-submitted": auto = auto || (!value.isEmpty && value != "no")
+            default: continue
+            }
+        }
+        return (list, bulk, auto)
+    }
+
+    func parseMessages(_ responses: [Response]) -> [IMAPMessage] {
         var out: [IMAPMessage] = []
         var uid: UInt32 = 0
+        var headerBytes = ByteBuffer()
+        var streamingHeaders = false
         var subject = ""
         var fromName = ""
         var fromEmail = ""
@@ -528,6 +554,8 @@ final class IMAPService: @unchecked Sendable {
             keywords = []
             ccEmail = ""
             bccEmail = ""
+            headerBytes.clear()
+            streamingHeaders = false
         }
 
         for r in responses {
@@ -535,6 +563,12 @@ final class IMAPService: @unchecked Sendable {
             switch fr {
             case .start, .startUID:
                 reset()
+            case .streamingBegin(let kind, _):
+                if case .body(let section, _) = kind, case .headerFields = section.kind { streamingHeaders = true }
+            case .streamingBytes(var chunk):
+                if streamingHeaders { headerBytes.writeBuffer(&chunk) }
+            case .streamingEnd:
+                streamingHeaders = false
             case .simpleAttribute(let attr):
                 switch attr {
                 case .uid(let u):
@@ -564,12 +598,14 @@ final class IMAPService: @unchecked Sendable {
                 }
             case .finish:
                 if uid > 0 {
+                    let flags = Self.bulkFlags(String(decoding: headerBytes.readableBytesView, as: UTF8.self))
                     out.append(
                         IMAPMessage(
                             uid: uid, subject: subject, fromName: fromName,
                             fromEmail: fromEmail, toName: toName, toEmail: toEmail, ccEmail: ccEmail, bccEmail: bccEmail,
                             date: date, seen: seen, flagged: flagged,
-                            messageID: messageID, inReplyTo: inReplyTo, keywords: keywords))
+                            messageID: messageID, inReplyTo: inReplyTo, keywords: keywords, listHeaders: flags.list,
+                            precedenceBulk: flags.bulk, autoSubmitted: flags.auto))
                 }
             default:
                 break

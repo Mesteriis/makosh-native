@@ -84,7 +84,7 @@ try:
                     lower = int(match.group(1)) if match else 1
                     write('* SEARCH '+ ' '.join(str(i) for i in range(lower,52))+f'\r\n{tag} OK found\r\n')
                 else: write(f'* SEARCH 11\r\n{tag} OK found\r\n')
-            elif 'FETCH' in verb and 'BODY' in verb:
+            elif 'FETCH' in verb and 'BODY' in verb and 'HEADER.FIELDS' not in verb:
                 count['body_fetch'] = count.get('body_fetch', 0) + 1
                 raw = b'Content-Type: text/plain; charset=utf-8\r\n\r\nMail fixture body'
                 if scenario == 'rule-big-starttls': raw += b'x' * (32 * 1024 * 1024)

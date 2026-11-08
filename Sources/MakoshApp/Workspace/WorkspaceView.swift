@@ -216,6 +216,11 @@ struct WorkspaceView: View {
         .modifier(
             CalendarWorkspaceLinks(host: calendarHost, contacts: model.persons, mailAccounts: mail.accounts) { destination = .calendar }
         )
+        .modifier(
+            PersonsWorkspaceLinks(
+                host: personsHost, workspace: model, mail: mail, telegram: telegram, whatsapp: whatsapp, teams: teams,
+                enabled: !isolatedWhatsApp && !teams.isSynthetic && !telemost.isSynthetic)
+        )
         .task {
             await model.load()
             if let configuration = model.mailConfiguration, ordinaryLaunch {

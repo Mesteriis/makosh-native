@@ -157,6 +157,10 @@ public struct MailLetter: Codable, Equatable, Identifiable, Sendable {
     public var cc: String?
     public var bcc: String?
     public var removedFromSource: Bool?
+    /// Mailing-list and robot markers from the headers; nil for letters cached before they were fetched.
+    public var listHeaders: Bool?
+    public var precedenceBulk: Bool?
+    public var autoSubmitted: Bool?
     public var messageID: String
     public var text: String?
     public var html: String?

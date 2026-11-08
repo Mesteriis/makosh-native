@@ -48,6 +48,10 @@ public actor MailRepository {
     public func cachedPage(folder: MailFolder?, beforeSequence: Int64?, limit: Int = 50) throws -> [MailLetter] {
         try db().headers(folder: folder, beforeSequence: beforeSequence, limit: limit)
     }
+    /// Cached letters of one folder in cache order, for a forward pass over history (the Persons collector).
+    public func letters(accountID: String, folder: String, afterSequence: Int64, limit: Int) throws -> [MailLetter] {
+        try db().letters(accountID: accountID, folder: folder, afterSequence: afterSequence, limit: limit)
+    }
     public func saveAccount(_ account: MailAccount) throws {
         try account.validate()
         try db().mutate { state in
@@ -559,6 +563,18 @@ private final class MailDatabase {
         let rows = try query(
             "SELECT sequence,token,preview FROM \(letterTable)" + predicate + " ORDER BY sequence DESC LIMIT \(min(1000, max(1, limit)))",
             parameters)
+        return try rows.map { row in
+            var value = try decodeLetter(row[2], token: row[1], preview: true)
+            value.cacheSequence = Int64(row[0])
+            return value
+        }
+    }
+    func letters(accountID: String, folder: String, afterSequence: Int64, limit: Int) throws -> [MailLetter] {
+        guard afterSequence >= 0 else { throw MailFailure.invalidInput }
+        let token = SHA256.hash(data: Data((accountID + "|" + folder).utf8)).map { String(format: "%02x", $0) }.joined()
+        let rows = try query(
+            "SELECT sequence,token,preview FROM \(letterTable) WHERE folder_token=$1 AND NOT removed AND sequence>$2::bigint ORDER BY sequence ASC LIMIT \(min(1000, max(1, limit)))",
+            [token, String(afterSequence)])
         return try rows.map { row in
             var value = try decodeLetter(row[2], token: row[1], preview: true)
             value.cacheSequence = Int64(row[0])

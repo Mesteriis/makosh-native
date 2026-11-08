@@ -42,6 +42,8 @@ import MakoshCore
     private var notificationRecoveryAccounts = Set<String>()
     @Published private var openedLetter: MailLetter?
     private var repository: MailRepository?
+    /// The letter cache, for the Persons collector's pass over history.
+    package var letterRepository: MailRepository? { repository }
     private var workers: [String: MailAccountWorker] = [:]
     private var configuration: PersonWorkspaceConfiguration?
     private var revision: UInt64 = 0

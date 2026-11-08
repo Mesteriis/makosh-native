@@ -83,7 +83,7 @@ extension PersonsService {
             let adapter = try await adapter(for: book)
             let ref: RemoteCardRef
             switch write {
-            case .create: ref = try await adapter.create(wanted.card)
+            case .create: ref = try await adapter.create(wanted.card, hint: wanted.bookExternalID)
             case .adopt(_, let externalID, let etag): ref = try await adapter.update(externalID: externalID, etag: etag, card: wanted.card)
             case .update(_, let existing):
                 ref = try await adapter.update(externalID: existing.externalID, etag: existing.etag, card: wanted.card)

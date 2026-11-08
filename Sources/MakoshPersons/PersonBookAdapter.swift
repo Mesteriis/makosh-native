@@ -45,8 +45,14 @@ public protocol PersonBookAdapter: Sendable {
     var capabilities: PersonBookCapabilities { get async }
     func changes(cursor: Data?) async throws -> RemoteCardChanges
     func create(_ card: PersonCard) async throws -> RemoteCardRef
+    /// Creates with the person's identity in this book as a hint (Telegram's peer); books without peers ignore it.
+    func create(_ card: PersonCard, hint externalID: String?) async throws -> RemoteCardRef
     func update(externalID: String, etag: String?, card: PersonCard) async throws -> RemoteCardRef
     func delete(externalID: String, etag: String?) async throws
     /// The card carrying Makosh's mark for this person, if the book can tell.
     func find(makoshID: UUID) async throws -> RemoteCardRef?
+}
+
+extension PersonBookAdapter {
+    public func create(_ card: PersonCard, hint externalID: String?) async throws -> RemoteCardRef { try await create(card) }
 }

@@ -66,7 +66,7 @@ let package = Package(
         .target(name: "MakoshFiles", dependencies: ["MakoshCore", "CPostgres"]),
         .target(name: "MakoshJira"),
         .target(name: "MakoshTasks", dependencies: ["MakoshCore", "MakoshJira", "CPostgres"]),
-        .target(name: "MakoshCalendar", dependencies: ["MakoshCore", "CPostgres"]),
+        .target(name: "MakoshCalendar", dependencies: ["MakoshCore", "MakoshBuildConfiguration", "CPostgres"]),
         .testTarget(name: "MakoshCalendarTests", dependencies: ["MakoshCalendar", "MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshFilesTests", dependencies: ["MakoshFiles", "MakoshCore", "CPostgres"]),
         .testTarget(name: "MakoshJiraTests", dependencies: ["MakoshJira"]),

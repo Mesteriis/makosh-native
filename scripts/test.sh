@@ -10,6 +10,8 @@ bash scripts/test-dropdown-navigation.sh
 # Tests use synthetic accounts. Public source/CI can explicitly omit the API pair.
 python3 scripts/prepare-telegram-build-config.py --allow-unconfigured
 python3 scripts/test-telegram-build-config.py
+python3 scripts/prepare-google-oauth-config.py
+python3 scripts/test-google-oauth-config.py
 python3 scripts/prepare-telegram.py
 python3 scripts/prepare-opus.py
 python3 scripts/prepare-opusfile.py

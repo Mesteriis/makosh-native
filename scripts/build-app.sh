@@ -8,6 +8,8 @@ if [[ "${1:-}" == "--allow-unconfigured-telegram" ]]; then
 else
     python3 scripts/prepare-telegram-build-config.py
 fi
+# Google sign-in is optional: without private input the calendar builds with it disabled.
+python3 scripts/prepare-google-oauth-config.py
 if [[ $# -ne 0 ]]; then echo "Usage: scripts/build-app.sh [--allow-unconfigured-telegram]" >&2; exit 2; fi
 python3 scripts/prepare-telegram.py
 python3 scripts/prepare-opus.py

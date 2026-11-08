@@ -13,12 +13,38 @@ public final class PersonStore {
         repository = try PersonRecordRepository(connectionString: connectionString, schema: schema)
     }
 
+    /// Active persons (not deleted, not hidden as spam), sorted by name.
     public func persons() throws -> [Person] {
-        try read { try $0.allPersons() }.sorted {
+        try allPersons(includingInactive: false)
+    }
+
+    public func allPersons(includingInactive: Bool) throws -> [Person] {
+        Self.sorted(try read { includingInactive ? try $0.allPersons() : try $0.activePersons() })
+    }
+
+    /// Active persons whose name, company, title, address, phone or username contains `query`.
+    public func summaries(matching query: String, limit: Int) throws -> [PersonSummary] {
+        let needle = Rules.trimmed(query)
+        let all = Self.sorted(try read { try $0.activePersons() })
+        let matched =
+            needle.isEmpty
+            ? all
+            : all.filter { person in
+                ([person.displayName, person.organization, person.jobTitle] + person.emails + person.phones + person.usernames)
+                    .contains { $0.localizedCaseInsensitiveContains(needle) }
+            }
+        return matched.prefix(max(0, min(limit, 2000))).map(\.summary)
+    }
+
+    private static func sorted(_ persons: [Person]) -> [Person] {
+        persons.sorted {
             let comparison = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
             return comparison == .orderedSame ? $0.id.uuidString < $1.id.uuidString : comparison == .orderedAscending
         }
     }
+
+    /// Tests reach rows the public API does not yet write (deletion arrives with its own command).
+    var repositoryForTests: PersonRecordRepository { repository }
 
     public func person(id: UUID) throws -> Person? {
         try read { try $0.person(id: id) }

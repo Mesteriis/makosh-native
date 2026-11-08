@@ -5,7 +5,9 @@ import Foundation
 /// transaction advisory lock, so mutations stay serialized across connections
 /// while each write touches only the contacts it changes.
 final class PersonRecordRepository {
-    static let schemaVersion = 2
+    static let schemaVersion = 3
+    /// The only earlier version that upgrades in place: its JSONB rows decode with version-3 defaults.
+    static let upgradableVersion = 2
 
     private let connection: PostgresConnection
     private let schema: String
@@ -13,6 +15,10 @@ final class PersonRecordRepository {
     private let fetches: String
     private let merges: String
     private let meta: String
+    let memberships: String
+    let values: String
+    let noMerge: String
+    let mailEvidence: String
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -32,6 +38,10 @@ final class PersonRecordRepository {
         fetches = prefix + "contact_source_fetches"
         merges = prefix + "contact_merges"
         meta = prefix + "contact_store_meta"
+        memberships = prefix + "person_memberships"
+        values = prefix + "person_values"
+        noMerge = prefix + "person_no_merge"
+        mailEvidence = prefix + "person_mail_evidence"
         do {
             try connection.transaction {
                 // Serialize initial creation for two connections opening the same schema.
@@ -42,7 +52,6 @@ final class PersonRecordRepository {
                 try connection.execute(
                     "INSERT INTO \(meta) (id, schema_version) VALUES (1, $1) ON CONFLICT (id) DO NOTHING",
                     [String(Self.schemaVersion)])
-                try checkVersion()
                 try connection.execute("CREATE TABLE IF NOT EXISTS \(contacts) (id UUID PRIMARY KEY, payload JSONB NOT NULL)")
                 try connection.execute(
                     "CREATE INDEX IF NOT EXISTS contact_records_identities ON \(contacts) USING gin ((payload->'identities') jsonb_path_ops)"
@@ -52,6 +61,23 @@ final class PersonRecordRepository {
                 try connection.execute(
                     "CREATE TABLE IF NOT EXISTS \(fetches) (identity_key TEXT PRIMARY KEY, fetched_at DOUBLE PRECISION NOT NULL)")
                 try connection.execute("CREATE TABLE IF NOT EXISTS \(merges) (id UUID PRIMARY KEY, payload JSONB NOT NULL)")
+                try connection.execute(
+                    "CREATE TABLE IF NOT EXISTS \(memberships) (id UUID PRIMARY KEY, organization_id UUID NOT NULL, person_id UUID NOT NULL, payload JSONB NOT NULL)"
+                )
+                try connection.execute("CREATE INDEX IF NOT EXISTS person_memberships_organization ON \(memberships) (organization_id)")
+                try connection.execute("CREATE INDEX IF NOT EXISTS person_memberships_person ON \(memberships) (person_id)")
+                try connection.execute(
+                    "CREATE TABLE IF NOT EXISTS \(values) (person_id UUID NOT NULL, field TEXT NOT NULL, normalized TEXT NOT NULL, raw TEXT NOT NULL, PRIMARY KEY (person_id, field, normalized))"
+                )
+                try connection.execute("CREATE INDEX IF NOT EXISTS person_values_lookup ON \(values) (field, normalized)")
+                try connection.execute(
+                    "CREATE TABLE IF NOT EXISTS \(noMerge) (first_id UUID NOT NULL, second_id UUID NOT NULL, PRIMARY KEY (first_id, second_id))"
+                )
+                try connection.execute(
+                    "CREATE TABLE IF NOT EXISTS \(mailEvidence) (account_id TEXT NOT NULL, address TEXT NOT NULL, clean_count INTEGER NOT NULL, spam_count INTEGER NOT NULL, PRIMARY KEY (account_id, address))"
+                )
+                try upgradeIfNeeded()
+                try checkVersion()
             }
         } catch {
             connection.close()
@@ -80,10 +106,17 @@ final class PersonRecordRepository {
         }
     }
 
-    // MARK: Contacts
+    // MARK: Persons
 
     func allPersons() throws -> [Person] {
         try connection.query("SELECT payload::text FROM \(contacts)").map { try decode(Person.self, $0[0]) }
+    }
+
+    /// Persons that are neither deleted nor hidden as spam.
+    func activePersons() throws -> [Person] {
+        try connection.query(
+            "SELECT payload::text FROM \(contacts) WHERE payload->>'deletedAt' IS NULL AND COALESCE((payload->>'hiddenAsSpam')::boolean, false) = false"
+        ).map { try decode(Person.self, $0[0]) }
     }
 
     func person(id: UUID) throws -> Person? {
@@ -163,6 +196,21 @@ final class PersonRecordRepository {
     }
 
     // MARK: Helpers
+
+    /// Version 2 rows decode with version-3 defaults; manual list fields become manual values.
+    private func upgradeIfNeeded() throws {
+        guard let text = try connection.query("SELECT schema_version::text FROM \(meta) WHERE id=1").first?[0], let version = Int(text),
+            version == Self.upgradableVersion
+        else { return }
+        for var person in try allPersons() {
+            for field in PersonListField.allCases where person.manualFields.contains(field.rawValue) {
+                person.manualFields.remove(field.rawValue)
+                for value in person.values(field) { person.manualValues.insert(ManualValue(field: field.rawValue, value: value)) }
+            }
+            try update(person)
+        }
+        try connection.execute("UPDATE \(meta) SET schema_version=$1 WHERE id=1", [String(Self.schemaVersion)])
+    }
 
     private func checkVersion() throws {
         guard let text = try connection.query("SELECT schema_version::text FROM \(meta) WHERE id=1").first?[0],

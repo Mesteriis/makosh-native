@@ -116,11 +116,16 @@ enum PersonReconciliation {
     }
 
     static func apply(_ draft: PersonDraft, to contact: inout Person) {
+        contact.kind = draft.kind
         contact.displayName = trimmed(draft.displayName)
+        contact.givenName = trimmed(draft.givenName)
+        contact.familyName = trimmed(draft.familyName)
+        contact.middleName = trimmed(draft.middleName)
         contact.organization = trimmed(draft.organization)
         contact.jobTitle = trimmed(draft.jobTitle)
         contact.phones = unique(draft.phones)
         contact.emails = unique(draft.emails)
+        contact.usernames = unique(draft.usernames)
         contact.tags = unique(draft.tags)
     }
 

@@ -53,14 +53,14 @@ final class PersonStoreTests: XCTestCase {
         let store = try database.makeStore()
         _ = try store.createPerson(draft: PersonDraft(displayName: "Preserved"))
         let before = try database.contactStoreSnapshot()
-        try database.execute("UPDATE contact_store_meta SET schema_version=3 WHERE id=1")
+        try database.execute("UPDATE contact_store_meta SET schema_version=4 WHERE id=1")
         XCTAssertThrowsError(try database.makeStore()) { error in
-            guard case StoreError.unsupportedSchema(3) = error else { return XCTFail("Wrong error type") }
+            guard case StoreError.unsupportedSchema(4) = error else { return XCTFail("Wrong error type") }
         }
         XCTAssertThrowsError(try store.persons())
         XCTAssertThrowsError(try store.createPerson(draft: PersonDraft(displayName: "Blocked")))
         XCTAssertEqual(try database.contactStoreSnapshot(), before)
-        XCTAssertEqual(try database.execute("SELECT schema_version::text FROM contact_store_meta WHERE id=1"), [["3"]])
+        XCTAssertEqual(try database.execute("SELECT schema_version::text FROM contact_store_meta WHERE id=1"), [["4"]])
     }
     func testWritesOnlyTouchChangedContactRows() throws {
         let store = try database.makeStore()

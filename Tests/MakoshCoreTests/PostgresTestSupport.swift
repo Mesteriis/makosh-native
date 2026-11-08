@@ -12,7 +12,12 @@ struct PostgresTestDatabase {
         try execute(
             "SELECT 'contact', id::text, payload::text FROM contact_records UNION ALL "
                 + "SELECT 'fetch', identity_key, fetched_at::text FROM contact_source_fetches UNION ALL "
-                + "SELECT 'merge', id::text, payload::text FROM contact_merges ORDER BY 1, 2")
+                + "SELECT 'merge', id::text, payload::text FROM contact_merges UNION ALL "
+                + "SELECT 'membership', id::text, payload::text FROM person_memberships UNION ALL "
+                + "SELECT 'value', person_id::text || '|' || field || '|' || normalized, raw FROM person_values UNION ALL "
+                + "SELECT 'nomerge', first_id::text, second_id::text FROM person_no_merge UNION ALL "
+                + "SELECT 'mail', account_id || '|' || address, clean_count::text || '|' || spam_count::text FROM person_mail_evidence ORDER BY 1, 2"
+        )
     }
 
     init() throws {

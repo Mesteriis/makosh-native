@@ -14,7 +14,7 @@ private actor ComposerService: WhatsAppServing {
     private var pending: [UUID: CheckedContinuation<WhatsAppOutgoing, any Error>] = [:]
     private var requests: [UUID: (String, WhatsAppOutgoingContent)] = [:]
     func waiting(_ account: UUID) -> Bool { pending[account] != nil }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         var status = WhatsAppConnectionStatus()
@@ -97,7 +97,7 @@ private actor InspectService: WhatsAppServing {
     ) async throws
         -> WhatsAppPeerInfo
     { try await withCheckedThrowingContinuation { response = $0 } }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: [])
@@ -134,7 +134,7 @@ private actor ActionScopeBoundary: WhatsAppServing {
             id: UUID(), accountID: accountID, chat: chat,
             content: .init(text: action.text, action: action), created: Date(), state: .sent)
     }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: [])

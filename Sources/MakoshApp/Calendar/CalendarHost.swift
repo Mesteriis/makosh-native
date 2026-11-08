@@ -62,7 +62,7 @@ extension EnvironmentValues {
 
     /// Mail accounts for the CalDAV hint (address and IMAP host); set by the workspace.
     var mailAccounts: [(email: String, imapHost: String)] = []
-    /// Contact e-mail addresses for attendee suggestions; set by the workspace.
+    /// Person e-mail addresses for attendee suggestions; set by the workspace.
     var contactEmails: [String] = []
     /// «Добавить Telemost» for a Yandex calendar; set by the workspace when a Telemost account exists.
     var telemostCreator: ((String) async -> URL?)?
@@ -84,7 +84,7 @@ extension EnvironmentValues {
 
     /// Opens the store in the application schema and starts polling and reminders; safe to call once.
     func start(
-        configuration: ContactWorkspaceConfiguration, taskFeed: (any CalendarTaskFeed)?,
+        configuration: PersonWorkspaceConfiguration, taskFeed: (any CalendarTaskFeed)?,
         seed: ((CalendarStore, CalendarService) async throws -> Void)? = nil
     ) async {
         guard !configured else { return }

@@ -14,21 +14,22 @@ final class SampleAcceptanceTests: XCTestCase {
         XCTAssertEqual(candidates.count, 1, "The same-name third person must not become a merge candidate")
         let candidate = try XCTUnwrap(candidates.first)
         let journalID = try store.merge(survivorID: candidate.firstID, removedID: candidate.secondID)
-        let merged = try XCTUnwrap(store.contact(id: candidate.firstID))
+        let merged = try XCTUnwrap(store.person(id: candidate.firstID))
         XCTAssertEqual(merged.identities.count, 2)
         XCTAssertEqual(merged.notes.count, 2)
         XCTAssertEqual(merged.emails.count, 2)
         XCTAssertEqual(try store.importJSON(data: sample).created, 0)
-        XCTAssertEqual(try store.contacts().count, 2)
+        XCTAssertEqual(try store.persons().count, 2)
         try store.undoMerge(id: journalID)
         let reopened = try database.makeStore()
-        XCTAssertEqual(try reopened.contacts().count, 3)
+        XCTAssertEqual(try reopened.persons().count, 3)
         XCTAssertEqual(try reopened.duplicateCandidates().count, 1)
         XCTAssertNotNil(try reopened.mergeHistory().first?.undoneAt)
-        let restored = try XCTUnwrap(reopened.contact(id: candidate.firstID))
-        var edit = restored.draft; edit.organization = "Ручная компания"
-        try reopened.updateContact(id: restored.id, draft: edit)
+        let restored = try XCTUnwrap(reopened.person(id: candidate.firstID))
+        var edit = restored.draft
+        edit.organization = "Ручная компания"
+        try reopened.updatePerson(id: restored.id, draft: edit)
         _ = try reopened.importJSON(data: sample)
-        XCTAssertEqual(try reopened.contact(id: restored.id)?.organization, "Ручная компания")
+        XCTAssertEqual(try reopened.person(id: restored.id)?.organization, "Ручная компания")
     }
 }

@@ -26,7 +26,7 @@ private actor HistoryBoundary: WhatsAppServing {
     ) async throws -> WhatsAppSearchPage {
         try await withCheckedThrowingContinuation { response = $0 }
     }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: [])

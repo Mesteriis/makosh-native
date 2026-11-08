@@ -15,7 +15,7 @@ public struct MailSnapshot: Codable, Sendable {
 }
 /// All SQL/encryption lives on this executor. State contains text/metadata, never file bytes.
 public actor MailRepository {
-    private let configuration: ContactWorkspaceConfiguration
+    private let configuration: PersonWorkspaceConfiguration
     private let keyProvider: @Sendable (UUID, Bool) throws -> Data
     private var database: MailDatabase?
     private var attempts: [String: MailOperationLease] = [:]
@@ -24,7 +24,7 @@ public actor MailRepository {
     }
     func endSubmissionAttempt(_ id: UUID) { attempts.removeValue(forKey: "smtp|" + id.uuidString) }
     public init(
-        configuration: ContactWorkspaceConfiguration,
+        configuration: PersonWorkspaceConfiguration,
         keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open
     ) {
         self.configuration = configuration
@@ -466,7 +466,7 @@ private final class MailDatabase {
     private var key: SymmetricKey!
     private var vault: UUID!
     private var blocked = false
-    init(configuration: ContactWorkspaceConfiguration, keyProvider: (UUID, Bool) throws -> Data) throws {
+    init(configuration: PersonWorkspaceConfiguration, keyProvider: (UUID, Bool) throws -> Data) throws {
         let schema = configuration.schema
         guard PostgresConnection.isValidSchemaName(schema), !configuration.connectionString.utf8.contains(0) else {
             throw MailFailure.storage

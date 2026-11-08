@@ -28,7 +28,7 @@ actor TelemostServiceGate: TelemostServing {
         pending?.resume()
         pending = nil
     }
-    func open(configuration: ContactWorkspaceConfiguration) async throws { try await base.open(configuration: configuration) }
+    func open(configuration: PersonWorkspaceConfiguration) async throws { try await base.open(configuration: configuration) }
     func snapshot() async throws -> TelemostWorkspaceSnapshot { try await base.snapshot() }
     func addAccount(_ account: TelemostAccount) async throws { try await base.addAccount(account) }
     func authorize(accountID: UUID, mode: TelemostAuthorizationMode) async throws -> TelemostAuthorizationRequest {

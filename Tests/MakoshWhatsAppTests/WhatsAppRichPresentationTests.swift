@@ -31,7 +31,7 @@ import XCTest
             throw XCTSkip("PG required")
         }
         let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let config = ContactWorkspaceConfiguration(
+        let config = PersonWorkspaceConfiguration(
             connectionString: connection, schema: "qa_whatsapp_" + suffix,
             archiveSchema: "qa_whatsapp_archive_" + suffix)
         let repository = WhatsAppRepository(
@@ -71,7 +71,7 @@ private actor WAPresentationService: WhatsAppServing {
         self.account = account
         self.chats = chats
     }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: chats)

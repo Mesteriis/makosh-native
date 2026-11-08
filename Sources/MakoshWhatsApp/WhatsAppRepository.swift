@@ -3,12 +3,12 @@ import Foundation
 import MakoshCore
 
 public actor WhatsAppRepository {
-  private let configuration: ContactWorkspaceConfiguration
+  private let configuration: PersonWorkspaceConfiguration
   private let keyProvider: @Sendable (UUID, Bool) throws -> Data
   private var database: WhatsAppPostgres?
   private var archive: MessageArchiveStore?
   public init(
-    configuration: ContactWorkspaceConfiguration,
+    configuration: PersonWorkspaceConfiguration,
     keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open
   ) {
     self.configuration = configuration
@@ -95,7 +95,11 @@ public actor WhatsAppRepository {
               ? Date(timeIntervalSince1970: TimeInterval(entry.observed)) : nil, text: message.text,
             author: message.sender, authorID: message.sender, isOutgoing: message.outgoing,
             attachments: message.details?.resourceID.map { resource in
-              [.init(id: resource, kind: message.kind, name: message.details?.name ?? "", size: message.details?.size.flatMap(Int64.init(exactly:)))]
+              [
+                .init(
+                  id: resource, kind: message.kind, name: message.details?.name ?? "",
+                  size: message.details?.size.flatMap(Int64.init(exactly:)))
+              ]
             } ?? []))
       _ = try retained().append([
         .init(
@@ -160,7 +164,9 @@ public actor WhatsAppRepository {
       }
     }
   }
-  public func messages(accountID: UUID, chat: String, before: WhatsAppCursor?, limit: Int = 50)
+  public func messages(
+    accountID: UUID, chat: String, before: WhatsAppCursor?, limit: Int = 50
+  )
     throws -> [WhatsAppMessage]
   {
     guard (1...100).contains(limit) else { throw WhatsAppFailure.invalid }
@@ -186,7 +192,9 @@ public actor WhatsAppRepository {
       service: "whatsapp", accountID: accountID.uuidString, conversationID: chat, before: nil,
       limit: 200)
   }
-  public func retainedEntries(accountID: UUID, chat: String, before: Int64? = nil, limit: Int = 50)
+  public func retainedEntries(
+    accountID: UUID, chat: String, before: Int64? = nil, limit: Int = 50
+  )
     throws -> [WhatsAppJournalEntry]
   {
     guard (1...100).contains(limit) else { throw WhatsAppFailure.invalid }

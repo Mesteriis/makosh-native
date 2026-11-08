@@ -11,7 +11,7 @@ final class WhatsAppConnectionReleaseTests: XCTestCase {
             throw XCTSkip("PostgreSQL required")
         }
         let schema = "qa_whatsapp_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let config = ContactWorkspaceConfiguration(connectionString: connection, schema: schema)
+        let config = PersonWorkspaceConfiguration(connectionString: connection, schema: schema)
         let keys: (UUID, Bool) throws -> Data = { _, _ in Data(repeating: 0x7a, count: 32) }
         let lock = "SELECT pg_try_advisory_lock(hashtextextended($1,17402))"
         let id = UUID().uuidString

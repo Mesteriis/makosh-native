@@ -23,14 +23,14 @@ final class TeamsPGConnection {
 }
 
 final class TeamsPostgres {
-    let configuration: ContactWorkspaceConfiguration
+    let configuration: PersonWorkspaceConfiguration
     let connection: TeamsPGConnection
     let prefix: String
     private var encryptionKey: SymmetricKey?
     private var lookupKey: SymmetricKey?
     private var vault: UUID?
     private(set) var blocked = false
-    init(configuration: ContactWorkspaceConfiguration) throws {
+    init(configuration: PersonWorkspaceConfiguration) throws {
         guard ArchiveBackup.isValidSchemaName(configuration.schema), !configuration.connectionString.utf8.contains(0) else {
             throw TeamsFailure.invalidConfiguration
         }

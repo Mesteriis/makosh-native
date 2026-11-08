@@ -17,7 +17,7 @@ public struct WhatsAppWorkspaceSnapshot: Sendable {
   }
 }
 public protocol WhatsAppServing: Sendable {
-  func load(configuration: ContactWorkspaceConfiguration) async throws -> [WhatsAppAccount]
+  func load(configuration: PersonWorkspaceConfiguration) async throws -> [WhatsAppAccount]
   func addAccount(name: String) async throws -> WhatsAppAccount
   func snapshot(accountID: UUID) async throws -> WhatsAppWorkspaceSnapshot
   func openChat(accountID: UUID, chat: String) async throws
@@ -142,7 +142,7 @@ public actor WhatsAppWorker: WhatsAppServing {
     self.factory = factory
     vaultKeys = keyProvider
   }
-  public func load(configuration: ContactWorkspaceConfiguration) async throws -> [WhatsAppAccount] {
+  public func load(configuration: PersonWorkspaceConfiguration) async throws -> [WhatsAppAccount] {
     if synthetic {
       guard configuration.schema.hasPrefix("qa_whatsapp_"),
         (configuration.archiveSchema ?? configuration.schema).hasPrefix("qa_whatsapp_")

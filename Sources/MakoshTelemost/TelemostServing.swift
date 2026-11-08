@@ -6,9 +6,13 @@ public enum TelemostConnectionState: Equatable, Sendable {
     public var title: String {
         switch self {
         case .synthetic: "QA: подставной API · Яндекс не подключён"
-        case .disconnected: "Не подключено"; case .authorizing: "Вход…"; case .confirmation: "Подтвердите аккаунт"
-        case .authorized: "Доступ сохранён; API ещё не проверен"; case .connected: "API доступен"
-        case .expired: "Нужен повторный вход"; case .failed(let error): error.localizedDescription
+        case .disconnected: "Не подключено"
+        case .authorizing: "Вход…"
+        case .confirmation: "Подтвердите аккаунт"
+        case .authorized: "Доступ сохранён; API ещё не проверен"
+        case .connected: "API доступен"
+        case .expired: "Нужен повторный вход"
+        case .failed(let error): error.localizedDescription
         }
     }
 }
@@ -18,15 +22,20 @@ public struct TelemostWorkspaceSnapshot: Sendable {
     public let operations: [TelemostOperation]
     public let pendingDossier: [TelemostDossierJob]
     public let grantedCapabilities: [UUID: Set<TelemostCapability>]
-    public init(accounts: [TelemostAccount] = [], connections: [UUID: TelemostConnectionState] = [:], operations: [TelemostOperation] = [],
-                pendingDossier: [TelemostDossierJob] = [], grantedCapabilities: [UUID: Set<TelemostCapability>] = [:]) {
-        self.accounts = accounts; self.connections = connections; self.operations = operations
-        self.pendingDossier = pendingDossier; self.grantedCapabilities = grantedCapabilities
+    public init(
+        accounts: [TelemostAccount] = [], connections: [UUID: TelemostConnectionState] = [:], operations: [TelemostOperation] = [],
+        pendingDossier: [TelemostDossierJob] = [], grantedCapabilities: [UUID: Set<TelemostCapability>] = [:]
+    ) {
+        self.accounts = accounts
+        self.connections = connections
+        self.operations = operations
+        self.pendingDossier = pendingDossier
+        self.grantedCapabilities = grantedCapabilities
     }
 }
 public enum TelemostResolution: Sendable { case attachVerifiedMeetingURL(TelemostMeetingURL), dismissUnknownAndAllowNewAttempt }
 public protocol TelemostServing: Sendable {
-    func open(configuration: ContactWorkspaceConfiguration) async throws
+    func open(configuration: PersonWorkspaceConfiguration) async throws
     func snapshot() async throws -> TelemostWorkspaceSnapshot
     func addAccount(_ account: TelemostAccount) async throws
     func authorize(accountID: UUID, mode: TelemostAuthorizationMode) async throws -> TelemostAuthorizationRequest

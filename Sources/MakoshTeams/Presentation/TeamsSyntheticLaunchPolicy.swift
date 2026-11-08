@@ -6,7 +6,7 @@ package enum TeamsSyntheticLaunchPolicy {
         package let telegramSynthetic = true, mailSynthetic = true, whatsappSynthetic = true, startOtherWorkers = false
     }
     package static let serviceModes = ServiceModes()
-    package static func admits(arguments: [String], configuration: ContactWorkspaceConfiguration) -> Bool {
+    package static func admits(arguments: [String], configuration: PersonWorkspaceConfiguration) -> Bool {
         guard arguments.contains("--teams-synthetic-preview"), let index = arguments.firstIndex(of: "--database-config"),
             arguments.indices.contains(index + 1), !arguments[index + 1].hasPrefix("--"),
             let archive = configuration.archiveSchema

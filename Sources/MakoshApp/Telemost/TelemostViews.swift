@@ -78,7 +78,7 @@ struct TelemostCatalogueView: View {
 
 struct TelemostDetailView: View {
     @ObservedObject var model: TelemostWorkspaceModel
-    let contacts: [Contact]
+    let contacts: [Person]
     let dossier: (UUID) -> Void
     @State private var connectionSheet = false
     @State private var editSheet = false

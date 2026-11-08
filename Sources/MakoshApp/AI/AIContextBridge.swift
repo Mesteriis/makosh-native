@@ -12,7 +12,7 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
     private let telegram: @MainActor () -> (any TelegramAIContextReading)?
     private let whatsapp: @MainActor () -> (any WhatsAppServing)?
     private let mail: MailRepository?
-    private let contacts: ContactWorkspaceWorker?
+    private let contacts: PersonWorkspaceWorker?
     private let access: any AIAccessProvider
     /// WhatsApp pages are read until the period is covered, at most this many messages.
     static let whatsappLimit = 5_000
@@ -36,7 +36,7 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
 
     init(
         telegram: @escaping @MainActor () -> (any TelegramAIContextReading)?, whatsapp: @escaping @MainActor () -> (any WhatsAppServing)?,
-        mail: MailRepository?, contacts: ContactWorkspaceWorker?, access: any AIAccessProvider
+        mail: MailRepository?, contacts: PersonWorkspaceWorker?, access: any AIAccessProvider
     ) {
         self.telegram = telegram
         self.whatsapp = whatsapp
@@ -274,7 +274,7 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
     }
 
     private func contactMaterial(_ card: AIContextCard, id: UUID, snapshot: AIAccessSnapshot) async throws -> AIContextMaterial {
-        guard let contacts, let contact = try await contacts.snapshot().contacts.first(where: { $0.id == id }) else {
+        guard let contacts, let contact = try await contacts.snapshot().persons.first(where: { $0.id == id }) else {
             throw AIFailure.contextUnavailable("Контакт не найден.")
         }
         guard contact.aiAccess != .forbidden else {

@@ -180,7 +180,7 @@ public struct MailLetter: Codable, Equatable, Identifiable, Sendable {
         self.html = html
         self.attachments = attachments
     }
-    public var dossierContact: ImportedContact {
+    public var dossierPerson: ImportedPerson {
         .init(externalID: sender.lowercased(), displayName: senderName.isEmpty ? sender : senderName, emails: [sender])
     }
     /// The readable body: plain text, else HTML reduced to text.

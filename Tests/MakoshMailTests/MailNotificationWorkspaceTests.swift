@@ -4,7 +4,7 @@ import MakoshCore
 import MakoshMail
 
 @MainActor final class MailNotificationWorkspaceTests: XCTestCase {
-    private func configuration() throws -> ContactWorkspaceConfiguration {
+    private func configuration() throws -> PersonWorkspaceConfiguration {
         guard let dsn = ProcessInfo.processInfo.environment["MAKOSH_TEST_DATABASE_URL"] else { throw XCTSkip("PostgreSQL required") }
         return .init(connectionString: dsn, schema: "qa_mail_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
     }
@@ -124,7 +124,7 @@ private final class MailStateLock {
     private let connection: OpaquePointer
     private let schema: String
     private var held = true
-    init(_ configuration: ContactWorkspaceConfiguration) throws {
+    init(_ configuration: PersonWorkspaceConfiguration) throws {
         schema = configuration.schema
         guard let connection = PQconnectdb(configuration.connectionString), PQstatus(connection) == CONNECTION_OK else {
             throw MailFailure.storage

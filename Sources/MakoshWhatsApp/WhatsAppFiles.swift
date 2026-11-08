@@ -38,18 +38,22 @@ extension WhatsAppRepository {
       [token, file.accountID.uuidString, try db.seal(file, token: token)])
   }
   func preparedFileIfExists(id: UUID, accountID: UUID, chat: String) throws -> WhatsAppPreparedFile? {
-    let db = try db(), token=db.token([accountID.uuidString,"file",id.uuidString])
-    guard try !db.query("SELECT token FROM \(db.filesTable) WHERE token=$1 AND account=$2",[token,accountID.uuidString]).isEmpty else { return nil }
-    return try preparedFile(id:id,accountID:accountID,chat:chat)
+    let db = try db(), token = db.token([accountID.uuidString, "file", id.uuidString])
+    guard try !db.query("SELECT token FROM \(db.filesTable) WHERE token=$1 AND account=$2", [token, accountID.uuidString]).isEmpty else {
+      return nil
+    }
+    return try preparedFile(id: id, accountID: accountID, chat: chat)
   }
   func reservePreparedFile(_ file: WhatsAppPreparedFile) throws -> WhatsAppPreparedFile {
-    let db=try db()
+    let db = try db()
     return try db.transaction {
-      if let prior=try preparedFileIfExists(id:file.id,accountID:file.accountID,chat:file.chat) { return prior }
+      if let prior = try preparedFileIfExists(id: file.id, accountID: file.accountID, chat: file.chat) { return prior }
       guard try db.accounts().contains(where: { $0.id == file.accountID }) else { throw WhatsAppFailure.invalid }
-      let token=db.token([file.accountID.uuidString,"file",file.id.uuidString])
-      _=try db.query("INSERT INTO \(db.filesTable) VALUES($1,$2,$3) ON CONFLICT(token) DO NOTHING",[token,file.accountID.uuidString,try db.seal(file,token:token)])
-      return try preparedFile(id:file.id,accountID:file.accountID,chat:file.chat)
+      let token = db.token([file.accountID.uuidString, "file", file.id.uuidString])
+      _ = try db.query(
+        "INSERT INTO \(db.filesTable) VALUES($1,$2,$3) ON CONFLICT(token) DO NOTHING",
+        [token, file.accountID.uuidString, try db.seal(file, token: token)])
+      return try preparedFile(id: file.id, accountID: file.accountID, chat: file.chat)
     }
   }
   func preparedFile(id: UUID, accountID: UUID, chat: String) throws -> WhatsAppPreparedFile {
@@ -71,7 +75,7 @@ extension WhatsAppRepository {
 /// File/crypto/SQL/S3 work stays on this concrete service actor. IPC transfers
 /// private temporary leases, never a whole file encoded in a JSON frame.
 public actor WhatsAppFiles {
-  private let configuration: ContactWorkspaceConfiguration
+  private let configuration: PersonWorkspaceConfiguration
   private let storageFile: URL
   private let spool: URL
   let repository: WhatsAppRepository
@@ -79,7 +83,7 @@ public actor WhatsAppFiles {
   private var archive: MessageArchiveStore?
   private var files: ArchiveFileRepository?
   public init(
-    configuration: ContactWorkspaceConfiguration, storageFile: URL, spool: URL,
+    configuration: PersonWorkspaceConfiguration, storageFile: URL, spool: URL,
     repository: WhatsAppRepository,
     keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open
   ) {
@@ -124,7 +128,9 @@ public actor WhatsAppFiles {
     try archiveStore().setConversationFileSavingEnabled(
       identity: identity(accountID, chat), enabled: enabled)
   }
-  private func incomingIdentity(_ account: UUID, _ message: WhatsAppMessage) throws -> (
+  private func incomingIdentity(
+    _ account: UUID, _ message: WhatsAppMessage
+  ) throws -> (
     MessageArchiveIdentity, String
   ) {
     guard !message.chat.isEmpty, !message.id.isEmpty, let resource = message.details?.resourceID,
@@ -137,7 +143,9 @@ public actor WhatsAppFiles {
         messageID: message.id), resource
     )
   }
-  public func archived(accountID: UUID, message: WhatsAppMessage) async throws
+  public func archived(
+    accountID: UUID, message: WhatsAppMessage
+  ) async throws
     -> [ArchiveFileRecord]
   {
     let (identity, resource) = try incomingIdentity(accountID, message)
@@ -145,7 +153,9 @@ public actor WhatsAppFiles {
       $0.state == .stored
     }
   }
-  public func archiveIncoming(file: URL, accountID: UUID, message: WhatsAppMessage) async throws
+  public func archiveIncoming(
+    file: URL, accountID: UUID, message: WhatsAppMessage
+  ) async throws
     -> ArchiveFileRecord?
   {
     let (identity, resource) = try incomingIdentity(accountID, message)
@@ -184,7 +194,9 @@ public actor WhatsAppFiles {
       throw error
     }
   }
-  public func prepare(file: URL, accountID: UUID, chat: String, kind: String, mime: String, reservedID: UUID? = nil, localOnly: Bool = false)
+  public func prepare(
+    file: URL, accountID: UUID, chat: String, kind: String, mime: String, reservedID: UUID? = nil, localOnly: Bool = false
+  )
     async throws -> WhatsAppPreparedFile
   {
     guard !chat.isEmpty, chat.utf8.count <= 1024,
@@ -202,40 +214,49 @@ public actor WhatsAppFiles {
       id: reservedID ?? UUID(), accountID: accountID, chat: chat, name: file.lastPathComponent, kind: kind,
       mime: mime, size: count.int64Value)
     // Reserve before capture. A retry recovers the same envelope without PUT or promotion.
-    let prior=try await repository.reservePreparedFile(value)
-    guard prior.name == value.name,prior.kind == kind,prior.mime == mime,prior.size == value.size else { throw WhatsAppFailure.invalid }
-    value=prior
-    let store=try fileStore()
+    let prior = try await repository.reservePreparedFile(value)
+    guard prior.name == value.name, prior.kind == kind, prior.mime == mime, prior.size == value.size else { throw WhatsAppFailure.invalid }
+    value = prior
+    let store = try fileStore()
     if value.record == nil {
-      value.record=try await store.recoverOutgoingCapture(id:value.id,identity:value.identity,attachmentID:value.attachment.id,uploadPending:false)
+      value.record = try await store.recoverOutgoingCapture(
+        id: value.id, identity: value.identity, attachmentID: value.attachment.id, uploadPending: false)
     }
-    if let receipt=value.record {
-      guard receipt.plaintextSHA256 == (try capture.plaintextSHA256()),!localOnly || receipt.state == .local else { throw WhatsAppFailure.invalid }
+    if let receipt = value.record {
+      guard receipt.plaintextSHA256 == (try capture.plaintextSHA256()), !localOnly || receipt.state == .local else {
+        throw WhatsAppFailure.invalid
+      }
     } else if localOnly {
-      value.record=try await store.captureLocalPreparation(capture,identity:value.identity,attachment:value.attachment,reservedID:value.id)
+      value.record = try await store.captureLocalPreparation(
+        capture, identity: value.identity, attachment: value.attachment, reservedID: value.id)
     } else {
-      value.record=try await store.capture(capture,identity:value.identity,attachment:value.attachment,
-        defaultEnabled:Self.defaultSaving(chat:chat),reservedID:value.id)
+      value.record = try await store.capture(
+        capture, identity: value.identity, attachment: value.attachment,
+        defaultEnabled: Self.defaultSaving(chat: chat), reservedID: value.id)
     }
     try await repository.savePreparedFile(value)
     return value
   }
   public func prepared(id: UUID, accountID: UUID, chat: String) async throws -> WhatsAppPreparedFile {
-    let value=try await repository.preparedFile(id:id,accountID:accountID,chat:chat)
-    guard let recovered=try await recoverRecord(value) else { throw WhatsAppFailure.storage }
+    let value = try await repository.preparedFile(id: id, accountID: accountID, chat: chat)
+    guard let recovered = try await recoverRecord(value) else { throw WhatsAppFailure.storage }
     return recovered
   }
   /// Nil proves no capture was admitted. Corruption/missing keys never become nil.
-  func recoveredPrepared(id: UUID,accountID: UUID,chat: String) async throws -> WhatsAppPreparedFile? {
-    guard let value=try await repository.preparedFileIfExists(id:id,accountID:accountID,chat:chat) else { return nil }
+  func recoveredPrepared(id: UUID, accountID: UUID, chat: String) async throws -> WhatsAppPreparedFile? {
+    guard let value = try await repository.preparedFileIfExists(id: id, accountID: accountID, chat: chat) else { return nil }
     return try await recoverRecord(value)
   }
   private func recoverRecord(_ input: WhatsAppPreparedFile) async throws -> WhatsAppPreparedFile? {
-    var value=input
-    _=try saving(accountID:value.accountID,chat:value.chat)
+    var value = input
+    _ = try saving(accountID: value.accountID, chat: value.chat)
     if value.record == nil {
-      guard let record=try await fileStore().recoverOutgoingCapture(id:value.id,identity:value.identity,attachmentID:value.attachment.id,uploadPending:false) else { return nil }
-      value.record=record;try await repository.savePreparedFile(value)
+      guard
+        let record = try await fileStore().recoverOutgoingCapture(
+          id: value.id, identity: value.identity, attachmentID: value.attachment.id, uploadPending: false)
+      else { return nil }
+      value.record = record
+      try await repository.savePreparedFile(value)
     }
     return value
   }

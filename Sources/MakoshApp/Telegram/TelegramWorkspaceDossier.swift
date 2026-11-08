@@ -32,9 +32,12 @@ struct TelegramWorkspaceDossier: View {
                             Label("Telegram", systemImage: "paperplane").foregroundStyle(WorkspaceStyle.accent)
                             if let username = profile.username, !username.isEmpty { Text("@\(username)").textSelection(.enabled) }
                             if let phone = profile.phone, !phone.isEmpty { Text(phone).textSelection(.enabled) }
-                            if profile.isScam || profile.isFake { Text("У аккаунта есть предупреждение Telegram.").foregroundStyle(.orange) }
-                            else if let about = profile.about, !about.isEmpty { Text(about).font(.callout).foregroundStyle(.secondary).textSelection(.enabled) }
-                            let owners = workspace.contacts.filter { $0.identities.contains(profile.dossierIdentity) }
+                            if profile.isScam || profile.isFake {
+                                Text("У аккаунта есть предупреждение Telegram.").foregroundStyle(.orange)
+                            } else if let about = profile.about, !about.isEmpty {
+                                Text(about).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
+                            let owners = workspace.persons.filter { $0.identities.contains(profile.dossierIdentity) }
                             if owners.count == 1, let contact = owners.first {
                                 if !contact.organization.isEmpty { Text(contact.organization).foregroundStyle(.secondary) }
                                 Divider()
@@ -43,7 +46,9 @@ struct TelegramWorkspaceDossier: View {
                                 ForEach(contact.notes) { note in Text(note.text).font(.callout).textSelection(.enabled) }
                             }
                             Divider()
-                            TelegramDossierLinkView(workspace: workspace, telegram: model, profile: profile, contextID: model.contactProfileContextID, openDossier: open)
+                            TelegramDossierLinkView(
+                                workspace: workspace, telegram: model, profile: profile, contextID: model.contactProfileContextID,
+                                openDossier: open)
                         }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(18)

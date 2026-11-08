@@ -1,7 +1,7 @@
 import Foundation
 
 /// Connection configuration is read by the Contacts service, never by the UI executor.
-public struct ContactWorkspaceConfiguration: Decodable, Sendable {
+public struct PersonWorkspaceConfiguration: Decodable, Sendable {
     public let connectionString: String
     public let schema: String
     public let archiveSchema: String?
@@ -20,38 +20,38 @@ public struct ContactWorkspaceConfiguration: Decodable, Sendable {
 }
 
 /// Only value snapshots cross from the serialized service to the presentation layer.
-public struct ContactWorkspaceSnapshot: Sendable {
-    public let contacts: [Contact]
+public struct PersonWorkspaceSnapshot: Sendable {
+    public let persons: [Person]
     public let duplicates: [DuplicateCandidate]
     public let merges: [MergeRecord]
 }
 
-public struct ContactWorkspaceOpened: Sendable {
-    public let configuration: ContactWorkspaceConfiguration
-    public let snapshot: ContactWorkspaceSnapshot
+public struct PersonWorkspaceOpened: Sendable {
+    public let configuration: PersonWorkspaceConfiguration
+    public let snapshot: PersonWorkspaceSnapshot
 }
 
-public enum ContactWorkspaceCommand: Sendable {
-    case save(draft: ContactDraft, id: UUID?)
+public enum PersonWorkspaceCommand: Sendable {
+    case save(draft: PersonDraft, id: UUID?)
     case addNote(contactID: UUID, text: String)
-    case addSourceNote(contactID: UUID, note: ContactNote)
-    case link(ImportedContact, source: ImportSource, fetchedAt: Date, contactID: UUID?)
+    case addSourceNote(contactID: UUID, note: PersonNote)
+    case link(ImportedPerson, source: ImportSource, fetchedAt: Date, contactID: UUID?)
     case importFile(URL)
     case merge(survivorID: UUID, removedID: UUID)
     case undo(UUID)
     case setAIAccess(contactID: UUID, access: AIContactAccess)
 }
 
-public struct ContactWorkspaceWriteResult: Sendable {
+public struct PersonWorkspaceWriteResult: Sendable {
     public enum Value: Equatable, Sendable {
         case saved(UUID), noted, sourceNoted(UUID), linked(UUID), imported(ImportResult), merged(UUID), undone, aiAccessSet
     }
     public let value: Value
     /// Nil means the write committed but its display refresh failed. Never replay it.
-    public let snapshot: ContactWorkspaceSnapshot?
+    public let snapshot: PersonWorkspaceSnapshot?
 }
 
-public enum ContactWorkspaceError: LocalizedError, Equatable, Sendable {
+public enum PersonWorkspaceError: LocalizedError, Equatable, Sendable {
     case setup, missingConfigurationPath, explicitConfigurationRequired, invalidExplicitConfiguration
     case unavailable, writesBlocked
     case operation(String, blocksWrites: Bool)
@@ -79,39 +79,39 @@ public enum ContactWorkspaceError: LocalizedError, Equatable, Sendable {
     }
 }
 
-/// Non-Sendable persistence stays exclusively inside ContactWorkspaceWorker.
-protocol ContactWorkspacePersistence: AnyObject {
-    func contacts() throws -> [Contact]
+/// Non-Sendable persistence stays exclusively inside PersonWorkspaceWorker.
+protocol PersonWorkspacePersistence: AnyObject {
+    func persons() throws -> [Person]
     func duplicateCandidates() throws -> [DuplicateCandidate]
     func mergeHistory() throws -> [MergeRecord]
-    func createContact(draft: ContactDraft) throws -> UUID
-    func updateContact(id: UUID, draft: ContactDraft) throws
+    func createPerson(draft: PersonDraft) throws -> UUID
+    func updatePerson(id: UUID, draft: PersonDraft) throws
     func addNote(contactID: UUID, text: String) throws
-    func addSourceNote(contactID: UUID, note: ContactNote) throws -> UUID
+    func addSourceNote(contactID: UUID, note: PersonNote) throws -> UUID
     func importDocument(_ document: ImportDocument) throws -> ImportResult
-    func linkImportedContact(_ incoming: ImportedContact, source: ImportSource, fetchedAt: Date, contactID: UUID?) throws -> UUID
+    func linkImportedPerson(_ incoming: ImportedPerson, source: ImportSource, fetchedAt: Date, contactID: UUID?) throws -> UUID
     func merge(survivorID: UUID, removedID: UUID) throws -> UUID
     func undoMerge(id: UUID) throws
     func setAIAccess(contactID: UUID, access: AIContactAccess) throws
 }
-extension ContactStore: ContactWorkspacePersistence {}
-extension ContactWorkspacePersistence {
+extension PersonStore: PersonWorkspacePersistence {}
+extension PersonWorkspacePersistence {
     /// Stores that predate AI access refuse it instead of silently ignoring it.
-    func setAIAccess(contactID: UUID, access: AIContactAccess) throws { throw ContactWorkspaceError.unavailable }
+    func setAIAccess(contactID: UUID, access: AIContactAccess) throws { throw PersonWorkspaceError.unavailable }
 }
 
 /// Owns configuration IO, connection creation, SQL, import decoding and duplicate analysis.
 /// Methods contain no suspension points: each write and its refresh finish before another
 /// command can use the connection. No retry occurs after a failed or uncertain COMMIT.
-public actor ContactWorkspaceWorker {
+public actor PersonWorkspaceWorker {
     private enum ConfigurationSource: Sendable {
         case arguments([String], requireExplicit: Bool, syntheticSchemaPrefix: String)
-        case value(ContactWorkspaceConfiguration)
+        case value(PersonWorkspaceConfiguration)
     }
     private let source: ConfigurationSource
-    private let storeFactory: @Sendable (ContactWorkspaceConfiguration) throws -> any ContactWorkspacePersistence
-    private var store: (any ContactWorkspacePersistence)?
-    private var configuration: ContactWorkspaceConfiguration?
+    private let storeFactory: @Sendable (PersonWorkspaceConfiguration) throws -> any PersonWorkspacePersistence
+    private var store: (any PersonWorkspacePersistence)?
+    private var configuration: PersonWorkspaceConfiguration?
     private var blocked = false
 
     public init(
@@ -119,19 +119,19 @@ public actor ContactWorkspaceWorker {
         syntheticSchemaPrefix: String = "qa_telegram_dossier_"
     ) {
         source = .arguments(arguments, requireExplicit: requireExplicitDatabaseConfiguration, syntheticSchemaPrefix: syntheticSchemaPrefix)
-        storeFactory = { try ContactStore(connectionString: $0.connectionString, schema: $0.schema) }
+        storeFactory = { try PersonStore(connectionString: $0.connectionString, schema: $0.schema) }
     }
     init(
-        configuration: ContactWorkspaceConfiguration,
-        storeFactory: @escaping @Sendable (ContactWorkspaceConfiguration) throws -> any ContactWorkspacePersistence = {
-            try ContactStore(connectionString: $0.connectionString, schema: $0.schema)
+        configuration: PersonWorkspaceConfiguration,
+        storeFactory: @escaping @Sendable (PersonWorkspaceConfiguration) throws -> any PersonWorkspacePersistence = {
+            try PersonStore(connectionString: $0.connectionString, schema: $0.schema)
         }
     ) {
         source = .value(configuration)
         self.storeFactory = storeFactory
     }
 
-    public func open() throws -> ContactWorkspaceOpened {
+    public func open() throws -> PersonWorkspaceOpened {
         if let configuration, store != nil {
             return try .init(configuration: configuration, snapshot: snapshot())
         }
@@ -143,20 +143,20 @@ public actor ContactWorkspaceWorker {
             return .init(configuration: configuration, snapshot: snapshot)
         } catch {
             store = nil
-            if let safe = error as? ContactWorkspaceError { throw safe }
+            if let safe = error as? PersonWorkspaceError { throw safe }
             // Decoding and connection diagnostics may embed credentials or local paths.
-            throw ContactWorkspaceError.setup
+            throw PersonWorkspaceError.setup
         }
     }
 
-    public func snapshot() throws -> ContactWorkspaceSnapshot {
-        guard let store else { throw ContactWorkspaceError.unavailable }
-        return try .init(contacts: store.contacts(), duplicates: store.duplicateCandidates(), merges: store.mergeHistory())
+    public func snapshot() throws -> PersonWorkspaceSnapshot {
+        guard let store else { throw PersonWorkspaceError.unavailable }
+        return try .init(persons: store.persons(), duplicates: store.duplicateCandidates(), merges: store.mergeHistory())
     }
 
-    public func apply(_ command: ContactWorkspaceCommand) throws -> ContactWorkspaceWriteResult {
-        guard let store else { throw ContactWorkspaceError.unavailable }
-        guard !blocked else { throw ContactWorkspaceError.writesBlocked }
+    public func apply(_ command: PersonWorkspaceCommand) throws -> PersonWorkspaceWriteResult {
+        guard let store else { throw PersonWorkspaceError.unavailable }
+        guard !blocked else { throw PersonWorkspaceError.writesBlocked }
         if case .addSourceNote = command { try Task.checkCancellation() }
         // File access and decoding happen before entering a possible database mutation.
         let document: ImportDocument?
@@ -164,31 +164,31 @@ public actor ContactWorkspaceWorker {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             do { document = try ImportDocument.decode(Data(contentsOf: url)) } catch {
-                throw ContactWorkspaceError.operation(
+                throw PersonWorkspaceError.operation(
                     "Не удалось прочитать JSON-файл контактов. Проверьте формат файла.", blocksWrites: false)
             }
         } else {
             document = nil
         }
 
-        let value: ContactWorkspaceWriteResult.Value
+        let value: PersonWorkspaceWriteResult.Value
         do {
             switch command {
             case .save(let draft, let id):
                 if let id {
-                    try store.updateContact(id: id, draft: draft)
+                    try store.updatePerson(id: id, draft: draft)
                     value = .saved(id)
                 } else {
-                    value = try .saved(store.createContact(draft: draft))
+                    value = try .saved(store.createPerson(draft: draft))
                 }
             case .addNote(let id, let text):
                 try store.addNote(contactID: id, text: text)
                 value = .noted
             case .addSourceNote(let id, let note): value = .sourceNoted(try store.addSourceNote(contactID: id, note: note))
             case .link(let incoming, let source, let fetchedAt, let id):
-                value = try .linked(store.linkImportedContact(incoming, source: source, fetchedAt: fetchedAt, contactID: id))
+                value = try .linked(store.linkImportedPerson(incoming, source: source, fetchedAt: fetchedAt, contactID: id))
             case .importFile:
-                guard let document else { throw ContactWorkspaceError.unavailable }
+                guard let document else { throw PersonWorkspaceError.unavailable }
                 value = try .imported(store.importDocument(document))
             case .merge(let survivor, let removed):
                 _ = try store.merge(survivorID: survivor, removedID: removed)
@@ -213,7 +213,7 @@ public actor ContactWorkspaceWorker {
         }
     }
 
-    private func mutationError(_ error: Error) -> ContactWorkspaceError {
+    private func mutationError(_ error: Error) -> PersonWorkspaceError {
         if let error = error as? StoreError {
             switch error {
             case .database: return .writesBlocked
@@ -223,8 +223,8 @@ public actor ContactWorkspaceWorker {
         return .writesBlocked
     }
 
-    private func readConfiguration() throws -> ContactWorkspaceConfiguration {
-        let configuration: ContactWorkspaceConfiguration
+    private func readConfiguration() throws -> PersonWorkspaceConfiguration {
+        let configuration: PersonWorkspaceConfiguration
         let requireExplicit: Bool
         let syntheticSchemaPrefix: String
         switch source {
@@ -238,17 +238,17 @@ public actor ContactWorkspaceWorker {
             let url: URL
             if let index = arguments.firstIndex(of: "--database-config") {
                 guard arguments.indices.contains(index + 1), !arguments[index + 1].hasPrefix("--") else {
-                    throw ContactWorkspaceError.missingConfigurationPath
+                    throw PersonWorkspaceError.missingConfigurationPath
                 }
                 url = URL(fileURLWithPath: arguments[index + 1])
             } else {
-                guard !explicit else { throw ContactWorkspaceError.explicitConfigurationRequired }
+                guard !explicit else { throw PersonWorkspaceError.explicitConfigurationRequired }
                 url = try FileManager.default.url(
                     for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
                 )
                 .appendingPathComponent("Makosh/database.json")
             }
-            configuration = try JSONDecoder().decode(ContactWorkspaceConfiguration.self, from: Data(contentsOf: url))
+            configuration = try JSONDecoder().decode(PersonWorkspaceConfiguration.self, from: Data(contentsOf: url))
         }
         guard
             !requireExplicit
@@ -256,12 +256,12 @@ public actor ContactWorkspaceWorker {
                     && configuration.schema.hasPrefix(syntheticSchemaPrefix)
                     && (configuration.archiveSchema ?? configuration.schema).hasPrefix(syntheticSchemaPrefix))
         else {
-            throw ContactWorkspaceError.invalidExplicitConfiguration
+            throw PersonWorkspaceError.invalidExplicitConfiguration
         }
         guard !configuration.connectionString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             ArchiveBackup.isValidSchemaName(configuration.schema),
             configuration.archiveSchema.map(ArchiveBackup.isValidSchemaName) ?? true
-        else { throw ContactWorkspaceError.setup }
+        else { throw PersonWorkspaceError.setup }
         return configuration
     }
 }

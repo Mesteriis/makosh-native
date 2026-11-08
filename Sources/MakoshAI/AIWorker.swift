@@ -38,7 +38,7 @@ public actor AIWorker {
         self.now = now
     }
 
-    public func open(configuration: ContactWorkspaceConfiguration) async throws { try await repository.open(configuration: configuration) }
+    public func open(configuration: PersonWorkspaceConfiguration) async throws { try await repository.open(configuration: configuration) }
 
     public func close() async {
         let tasks = Array(active.values)

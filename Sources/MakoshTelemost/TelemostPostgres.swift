@@ -23,7 +23,7 @@ final class TelemostPGConnection {
 }
 
 final class TelemostPostgres {
-    let configuration: ContactWorkspaceConfiguration
+    let configuration: PersonWorkspaceConfiguration
     let connection: TelemostPGConnection
     let prefix: String
     private(set) var blocked = false
@@ -31,7 +31,7 @@ final class TelemostPostgres {
     private var vault: UUID?
     private var encryptionKey: SymmetricKey?
     private var lookupKey: SymmetricKey?
-    init(configuration: ContactWorkspaceConfiguration) throws {
+    init(configuration: PersonWorkspaceConfiguration) throws {
         guard ArchiveBackup.isValidSchemaName(configuration.schema), !configuration.connectionString.utf8.contains(0) else {
             throw TelemostFailure.invalidConfiguration
         }

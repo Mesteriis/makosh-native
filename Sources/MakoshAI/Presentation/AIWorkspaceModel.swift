@@ -35,7 +35,7 @@ import MakoshCore
         settings.$roles.dropFirst().sink { [weak self] roles in self?.roles = roles }.store(in: &subscriptions)
     }
 
-    package func start(configuration: ContactWorkspaceConfiguration) async {
+    package func start(configuration: PersonWorkspaceConfiguration) async {
         guard !ready else { return }
         do {
             try await worker.open(configuration: configuration)

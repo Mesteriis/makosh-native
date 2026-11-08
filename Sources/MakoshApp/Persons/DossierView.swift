@@ -4,7 +4,7 @@ import MakoshTelemost
 
 struct DossierView: View {
     @EnvironmentObject private var ai: AIHost
-    let contact: Contact
+    let contact: Person
     @ObservedObject var model: WorkspaceModel
     var openMeeting: (String) -> Void = { _ in }
     let edit: () -> Void
@@ -143,8 +143,8 @@ struct DossierView: View {
     }
 }
 
-struct ContactEditor: View {
-    let contact: Contact?
+struct PersonEditor: View {
+    let contact: Person?
     @ObservedObject var model: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
@@ -155,7 +155,7 @@ struct ContactEditor: View {
     @State private var tags: String
     @State private var error: String?
     @State private var submitting = false
-    init(contact: Contact?, model: WorkspaceModel) {
+    init(contact: Person?, model: WorkspaceModel) {
         self.contact = contact
         self.model = model
         _name = State(initialValue: contact?.displayName ?? "")
@@ -183,7 +183,7 @@ struct ContactEditor: View {
                 Button("Отмена", role: .cancel) { dismiss() }.disabled(submitting)
                 Spacer()
                 Button("Сохранить") {
-                    let draft = ContactDraft(
+                    let draft = PersonDraft(
                         displayName: name, organization: organization, jobTitle: job, phones: split(phones), emails: split(emails),
                         tags: split(tags))
                     guard model.canWrite, !submitting else { return }

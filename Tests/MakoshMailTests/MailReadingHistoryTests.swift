@@ -13,13 +13,19 @@ final class MailReadingHistoryTests: XCTestCase {
     }
     func testHistoryReturnsFullVersionsByCursorWithoutChangingCurrentLetter() async throws {
         guard let dsn = ProcessInfo.processInfo.environment["MAKOSH_TEST_DATABASE_URL"] else { throw XCTSkip("PostgreSQL required") }
-        let configuration = ContactWorkspaceConfiguration(connectionString: dsn, schema: "qa_mail_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
-        let repository = MailRepository(configuration: configuration, keyProvider: { _,_ in Data(repeating: 0x47, count: 32) })
-        var letter = MailLetter(key: .init(accountID: "a", folder: "INBOX", uidValidity: 42, uid: 1), subject: "History", senderName: "QA", sender: "qa@example.invalid", recipient: "peer@example.invalid", date: Date(), text: "Original")
+        let configuration = PersonWorkspaceConfiguration(
+            connectionString: dsn, schema: "qa_mail_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
+        let repository = MailRepository(configuration: configuration, keyProvider: { _, _ in Data(repeating: 0x47, count: 32) })
+        var letter = MailLetter(
+            key: .init(accountID: "a", folder: "INBOX", uidValidity: 42, uid: 1), subject: "History", senderName: "QA",
+            sender: "qa@example.invalid", recipient: "peer@example.invalid", date: Date(), text: "Original")
         try await repository.saveLetters([letter])
-        letter.text = String(repeating: "Long", count: 40000) + "END"; letter.html = "<p>Changed</p>"
+        letter.text = String(repeating: "Long", count: 40000) + "END"
+        letter.html = "<p>Changed</p>"
         try await repository.saveLetters([letter])
-        var other = letter; other.key = .init(accountID: "b", folder: "INBOX", uidValidity: 42, uid: 1); other.text = "Other account"
+        var other = letter
+        other.key = .init(accountID: "b", folder: "INBOX", uidValidity: 42, uid: 1)
+        other.text = "Other account"
         try await repository.saveLetters([other])
         let recent = try await repository.versions(letter.id, beforeSequence: nil, limit: 1)
         XCTAssertEqual(recent.first?.letter.text, letter.text)

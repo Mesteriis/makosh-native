@@ -43,7 +43,7 @@ import MakoshCore
     @Published private var openedLetter: MailLetter?
     private var repository: MailRepository?
     private var workers: [String: MailAccountWorker] = [:]
-    private var configuration: ContactWorkspaceConfiguration?
+    private var configuration: PersonWorkspaceConfiguration?
     private var revision: UInt64 = 0
     private var cacheCursors: [String: Int64] = [:]
     private var watchTask: Task<Void, Never>?
@@ -99,7 +99,7 @@ import MakoshCore
             return inScope && matches && (!unreadOnly || !letter.seen || letter.id == selectedID) && (!starredOnly || letter.flagged)
         }.sorted { $0.date > $1.date }
     }
-    package func load(configuration: ContactWorkspaceConfiguration) async {
+    package func load(configuration: PersonWorkspaceConfiguration) async {
         guard !ready, !busy else { return }
         guard
             !synthetic

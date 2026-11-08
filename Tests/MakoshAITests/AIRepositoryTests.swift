@@ -4,7 +4,7 @@ import XCTest
 @testable import MakoshAI
 
 struct AITestDatabase: Sendable {
-    let configuration: ContactWorkspaceConfiguration
+    let configuration: PersonWorkspaceConfiguration
     init() throws {
         guard let dsn = ProcessInfo.processInfo.environment["MAKOSH_TEST_DATABASE_URL"], !dsn.isEmpty else { throw AIFailure.storage }
         let schema = "qa_ai_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()

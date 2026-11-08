@@ -6,7 +6,7 @@ import MakoshCore
 /// Crashes close the session and release the lock; wall-clock expiry never permits replay.
 final class MailOperationLease: @unchecked Sendable {
     private let connection: PostgresConnection
-    init(configuration: ContactWorkspaceConfiguration, kind: String, id: UUID) throws {
+    init(configuration: PersonWorkspaceConfiguration, kind: String, id: UUID) throws {
         do { connection = try PostgresConnection(connectionString: configuration.connectionString) } catch { throw MailFailure.storage }
         let digest = SHA256.hash(data: Data(("makosh-mail|" + configuration.schema + "|" + kind + "|" + id.uuidString).utf8))
         let raw = digest.prefix(8).reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }

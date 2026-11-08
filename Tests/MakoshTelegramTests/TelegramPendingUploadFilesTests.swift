@@ -21,12 +21,13 @@ struct PendingFilesTestDatabase {
         schema = "makosh_test_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         _ = try makeStore()
     }
-    func makeStore() throws -> ContactStore {
-        try ContactStore(connectionString: connectionString, schema: schema)
+    func makeStore() throws -> PersonStore {
+        try PersonStore(connectionString: connectionString, schema: schema)
     }
     func cleanup() throws {
         guard schema.hasPrefix("makosh_test_"), schema.utf8.count == 44,
-              schema.dropFirst(12).utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            schema.dropFirst(12).utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) })
+        else {
             throw StoreError.invalid("Refusing cleanup outside a generated test schema.")
         }
         try execute("DROP SCHEMA \"\(schema)\" CASCADE")
@@ -79,14 +80,21 @@ final class TelegramPendingUploadFilesTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         addTeardownBlock { try FileManager.default.removeItem(at: root) }
-        let repository = try ArchiveFileRepository(connectionString: database.connectionString, schema: database.schema,
-            configuration: config, spoolDirectory: root.appendingPathComponent("queue"), keyProvider: { _, _ in Data(repeating: 0x45, count: 32) })
+        let repository = try ArchiveFileRepository(
+            connectionString: database.connectionString, schema: database.schema,
+            configuration: config, spoolDirectory: root.appendingPathComponent("queue"),
+            keyProvider: { _, _ in Data(repeating: 0x45, count: 32) })
         for mode: TelegramUploadMode in [.file, .photo] {
             let source = root.appendingPathComponent(mode == .file ? "synthetic.txt" : "synthetic.jpg")
-            if mode == .file { try Data("synthetic preserved bytes".utf8).write(to: source) }
-            else {
-                let context = try XCTUnwrap(CGContext(data: nil, width: 40, height: 20, bitsPerComponent: 8, bytesPerRow: 40, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0))
-                context.setFillColor(gray: 0.4, alpha: 1); context.fill(CGRect(x: 0, y: 0, width: 40, height: 20))
+            if mode == .file {
+                try Data("synthetic preserved bytes".utf8).write(to: source)
+            } else {
+                let context = try XCTUnwrap(
+                    CGContext(
+                        data: nil, width: 40, height: 20, bitsPerComponent: 8, bytesPerRow: 40, space: CGColorSpaceCreateDeviceGray(),
+                        bitmapInfo: 0))
+                context.setFillColor(gray: 0.4, alpha: 1)
+                context.fill(CGRect(x: 0, y: 0, width: 40, height: 20))
                 let image = try XCTUnwrap(context.makeImage())
                 let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, "public.jpeg" as CFString, 1, nil))
                 CGImageDestinationAddImage(destination, image, nil)
@@ -98,25 +106,45 @@ final class TelegramPendingUploadFilesTests: XCTestCase {
             let adapter = TelegramPendingUploadFiles(repository: repository)
             let record = try await adapter.save(file: staged, accountID: 1, chatID: 2, preparationID: preparation)
             try TelegramUploadFileIO.discard(staged)
-            let restored = try await TelegramPendingUploadFiles(repository: repository).restore(record: record, accountID: 1, chatID: 2, preparationID: preparation)
+            let restored = try await TelegramPendingUploadFiles(repository: repository).restore(
+                record: record, accountID: 1, chatID: 2, preparationID: preparation)
             addTeardownBlock { try TelegramUploadFileIO.discard(restored) }
             XCTAssertEqual(try Data(contentsOf: restored.url), bytes)
-            XCTAssertEqual(restored.name, staged.name); XCTAssertEqual(restored.mode, mode)
-            XCTAssertEqual(restored.pixelWidth, staged.pixelWidth); XCTAssertEqual(restored.pixelHeight, staged.pixelHeight)
+            XCTAssertEqual(restored.name, staged.name)
+            XCTAssertEqual(restored.mode, mode)
+            XCTAssertEqual(restored.pixelWidth, staged.pixelWidth)
+            XCTAssertEqual(restored.pixelHeight, staged.pixelHeight)
             for scope in [(Int64(9), Int64(2), preparation), (1, 9, preparation), (1, 2, UUID())] {
-                do { _ = try await adapter.restore(record: record, accountID: scope.0, chatID: scope.1, preparationID: scope.2); XCTFail("Foreign scope must fail") } catch {}
+                do {
+                    _ = try await adapter.restore(record: record, accountID: scope.0, chatID: scope.1, preparationID: scope.2)
+                    XCTFail("Foreign scope must fail")
+                } catch {}
             }
             var altered = record
             altered.state = .pending
-            do { _ = try await adapter.restore(record: altered, accountID: 1, chatID: 2, preparationID: preparation); XCTFail("Unstored reference must fail") } catch {}
+            do {
+                _ = try await adapter.restore(record: altered, accountID: 1, chatID: 2, preparationID: preparation)
+                XCTFail("Unstored reference must fail")
+            } catch {}
             var metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
             var attachment = try XCTUnwrap(metadata["attachment"] as? [String: Any])
-            attachment["name"] = "different.txt"; metadata["attachment"] = attachment
+            attachment["name"] = "different.txt"
+            metadata["attachment"] = attachment
             let forgedRecord = try JSONDecoder().decode(ArchiveFileRecord.self, from: JSONSerialization.data(withJSONObject: metadata))
-            do { _ = try await adapter.restore(record: forgedRecord, accountID: 1, chatID: 2, preparationID: preparation); XCTFail("Unauthenticated metadata must fail") } catch {}
-            let cancelled = Task { @MainActor in try Task.checkCancellation(); return try await adapter.restore(record: record, accountID: 1, chatID: 2, preparationID: preparation) }
+            do {
+                _ = try await adapter.restore(record: forgedRecord, accountID: 1, chatID: 2, preparationID: preparation)
+                XCTFail("Unauthenticated metadata must fail")
+            } catch {}
+            let cancelled = Task { @MainActor in
+                try Task.checkCancellation()
+                return try await adapter.restore(record: record, accountID: 1, chatID: 2, preparationID: preparation)
+            }
             cancelled.cancel()
-            do { let unexpected = try await cancelled.value; try TelegramUploadFileIO.discard(unexpected); XCTFail("Cancellation must fail") } catch {}
+            do {
+                let unexpected = try await cancelled.value
+                try TelegramUploadFileIO.discard(unexpected)
+                XCTFail("Cancellation must fail")
+            } catch {}
             XCTAssertEqual(try Data(contentsOf: restored.url), bytes)
         }
     }
@@ -124,10 +152,14 @@ final class TelegramPendingUploadFilesTests: XCTestCase {
     func testForeignAndMissingStageRejectedBeforeRepositoryAccess() async throws {
         // Owned-stage validation is synchronous and cannot access arbitrary paths.
         let id = UUID(), root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let foreign = TelegramUploadFile(id: id, name: "foreign", size: 1, mode: .file, pixelWidth: nil, pixelHeight: nil, url: root.appendingPathComponent("unrelated"), directory: root)
+        let foreign = TelegramUploadFile(
+            id: id, name: "foreign", size: 1, mode: .file, pixelWidth: nil, pixelHeight: nil, url: root.appendingPathComponent("unrelated"),
+            directory: root)
         XCTAssertThrowsError(try TelegramUploadFileIO.validateOwnedStage(foreign))
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("makosh-upload-" + id.uuidString)
-        let absent = TelegramUploadFile(id: id, name: "absent", size: 1, mode: .file, pixelWidth: nil, pixelHeight: nil, url: directory.appendingPathComponent("payload-" + id.uuidString), directory: directory)
+        let absent = TelegramUploadFile(
+            id: id, name: "absent", size: 1, mode: .file, pixelWidth: nil, pixelHeight: nil,
+            url: directory.appendingPathComponent("payload-" + id.uuidString), directory: directory)
         XCTAssertThrowsError(try TelegramUploadFileIO.validateOwnedStage(absent))
     }
 }

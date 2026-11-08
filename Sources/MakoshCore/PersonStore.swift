@@ -3,44 +3,44 @@ import Foundation
 /// Local PostgreSQL contact book. Every mutation runs in one transaction under a
 /// schema-scoped writer lock and rereads the rows it changes, so independent app
 /// connections cannot overwrite each other's state. Persistence is in
-/// `ContactRecordRepository`; provenance rules are in `ContactReconciliation`.
-public final class ContactStore {
-    private typealias Rules = ContactReconciliation
+/// `PersonRecordRepository`; provenance rules are in `PersonReconciliation`.
+public final class PersonStore {
+    private typealias Rules = PersonReconciliation
     private let lock = NSLock()
-    private let repository: ContactRecordRepository
+    private let repository: PersonRecordRepository
 
     public init(connectionString: String, schema: String = "makosh") throws {
-        repository = try ContactRecordRepository(connectionString: connectionString, schema: schema)
+        repository = try PersonRecordRepository(connectionString: connectionString, schema: schema)
     }
 
-    public func contacts() throws -> [Contact] {
-        try read { try $0.allContacts() }.sorted {
+    public func persons() throws -> [Person] {
+        try read { try $0.allPersons() }.sorted {
             let comparison = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
             return comparison == .orderedSame ? $0.id.uuidString < $1.id.uuidString : comparison == .orderedAscending
         }
     }
 
-    public func contact(id: UUID) throws -> Contact? {
-        try read { try $0.contact(id: id) }
+    public func person(id: UUID) throws -> Person? {
+        try read { try $0.person(id: id) }
     }
 
-    public func createContact(draft: ContactDraft) throws -> UUID {
+    public func createPerson(draft: PersonDraft) throws -> UUID {
         try Rules.validate(draft)
         return try write { repository in
-            var contact = Contact(displayName: Rules.trimmed(draft.displayName))
+            var contact = Person(displayName: Rules.trimmed(draft.displayName))
             Rules.apply(draft, to: &contact)
             contact.manualFields = ["displayName", "organization", "jobTitle", "phones", "emails", "tags"]
             Rules.recordManualChanges(from: nil, contact: &contact)
-            contact.events.append(ContactEvent(kind: "created", detail: "Контакт создан вручную"))
+            contact.events.append(PersonEvent(kind: "created", detail: "Контакт создан вручную"))
             try repository.insert(contact)
             return contact.id
         }
     }
 
-    public func updateContact(id: UUID, draft: ContactDraft) throws {
+    public func updatePerson(id: UUID, draft: PersonDraft) throws {
         try Rules.validate(draft)
         try write { repository in
-            guard var contact = try repository.contact(id: id) else { throw StoreError.missingContact }
+            guard var contact = try repository.person(id: id) else { throw StoreError.missingPerson }
             let before = contact.draft
             Rules.apply(draft, to: &contact)
             let after = contact.draft
@@ -53,19 +53,19 @@ public final class ContactStore {
             if before.tags != after.tags { contact.manualFields.insert("tags") }
             Rules.recordManualChanges(from: before, contact: &contact)
             contact.revision += 1
-            contact.events.append(ContactEvent(kind: "edited", detail: "Изменено вручную"))
+            contact.events.append(PersonEvent(kind: "edited", detail: "Изменено вручную"))
             try repository.update(contact)
         }
     }
 
-    public func addSourceNote(contactID: UUID, note: ContactNote) throws -> UUID {
+    public func addSourceNote(contactID: UUID, note: PersonNote) throws -> UUID {
         let source = note.source.identity
         guard !Rules.trimmed(note.text).isEmpty, note.text.utf8.count <= 64 * 1024,
             [source.service, source.accountID, source.externalID].allSatisfy({ !$0.isEmpty && $0.utf8.count <= 4096 }),
             note.source.fetchedAt.timeIntervalSince1970.isFinite
         else { throw StoreError.invalid("Некорректная заметка источника.") }
         return try write { repository in
-            let owners = try repository.contacts(owningNote: note.id)
+            let owners = try repository.persons(owningNote: note.id)
             if let owner = owners.first {
                 guard owners.count == 1, let existing = owner.notes.first(where: { $0.id == note.id }),
                     existing.text.utf8.elementsEqual(note.text.utf8), existing.source == note.source
@@ -74,7 +74,7 @@ public final class ContactStore {
                 }
                 return owner.id
             }
-            guard var contact = try repository.contact(id: contactID) else { throw StoreError.missingContact }
+            guard var contact = try repository.person(id: contactID) else { throw StoreError.missingPerson }
             contact.notes.append(note)
             contact.revision += 1
             contact.events.append(.init(kind: "sourceNote", detail: "Добавлена заметка с источником"))
@@ -86,22 +86,22 @@ public final class ContactStore {
     public func addNote(contactID: UUID, text: String) throws {
         guard !Rules.trimmed(text).isEmpty else { throw StoreError.invalid("Заметка не может быть пустой.") }
         try write { repository in
-            guard var contact = try repository.contact(id: contactID) else { throw StoreError.missingContact }
+            guard var contact = try repository.person(id: contactID) else { throw StoreError.missingPerson }
             let identity = ServiceIdentity(service: "manual", accountID: "local", externalID: contactID.uuidString)
-            contact.notes.append(ContactNote(text: Rules.trimmed(text), source: SourceStamp(identity: identity)))
+            contact.notes.append(PersonNote(text: Rules.trimmed(text), source: SourceStamp(identity: identity)))
             contact.revision += 1
-            contact.events.append(ContactEvent(kind: "note", detail: "Добавлена заметка"))
+            contact.events.append(PersonEvent(kind: "note", detail: "Добавлена заметка"))
             try repository.update(contact)
         }
     }
 
     public func setAIAccess(contactID: UUID, access: AIContactAccess) throws {
         try write { repository in
-            guard var contact = try repository.contact(id: contactID) else { throw StoreError.missingContact }
+            guard var contact = try repository.person(id: contactID) else { throw StoreError.missingPerson }
             guard contact.aiAccess != access else { return }
             contact.aiAccess = access
             contact.revision += 1
-            contact.events.append(ContactEvent(kind: "aiAccess", detail: "Доступ для ИИ изменён"))
+            contact.events.append(PersonEvent(kind: "aiAccess", detail: "Доступ для ИИ изменён"))
             try repository.update(contact)
         }
     }
@@ -118,7 +118,7 @@ public final class ContactStore {
         var keys = Set<String>()
         for incoming in document.contacts {
             guard !Rules.trimmed(incoming.externalID).isEmpty else { throw StoreError.invalid("Отсутствует внешний идентификатор.") }
-            try Rules.validate(ContactDraft(displayName: incoming.displayName))
+            try Rules.validate(PersonDraft(displayName: incoming.displayName))
             let identity = ServiceIdentity(
                 service: document.source.service, accountID: document.source.accountID, externalID: incoming.externalID)
             guard keys.insert(identity.id).inserted else { throw StoreError.invalid("Повтор внешнего идентификатора в одном импорте.") }
@@ -131,8 +131,8 @@ public final class ContactStore {
                 let previous = try repository.fetchedAt(identity)
                 if let previous, document.fetchedAt < previous { continue }
                 let stamp = SourceStamp(identity: identity, fetchedAt: document.fetchedAt)
-                let existing = try repository.contacts(owning: identity).first
-                var contact = existing ?? Contact(displayName: Rules.trimmed(incoming.displayName), identities: [identity])
+                let existing = try repository.persons(owning: identity).first
+                var contact = existing ?? Person(displayName: Rules.trimmed(incoming.displayName), identities: [identity])
                 Rules.absorb(incoming, source: stamp, into: &contact)
                 try repository.setFetchedAt(max(previous ?? document.fetchedAt, document.fetchedAt), for: identity)
                 if let before = existing {
@@ -140,13 +140,13 @@ public final class ContactStore {
                     contact.revision += 1
                     if Rules.contentWithoutFetchDates(contact) != Rules.contentWithoutFetchDates(before) {
                         contact.events.append(
-                            ContactEvent(date: document.fetchedAt, kind: "import", detail: "Обновлено из \(identity.service)"))
+                            PersonEvent(date: document.fetchedAt, kind: "import", detail: "Обновлено из \(identity.service)"))
                     }
                     try repository.update(contact)
                     result.updated += 1
                 } else {
                     contact.events.append(
-                        ContactEvent(date: document.fetchedAt, kind: "import", detail: "Импортировано из \(identity.service)"))
+                        PersonEvent(date: document.fetchedAt, kind: "import", detail: "Импортировано из \(identity.service)"))
                     try repository.insert(contact)
                     result.created += 1
                 }
@@ -157,8 +157,8 @@ public final class ContactStore {
 
     /// Explicitly attaches a source identity without moving it between contacts.
     @discardableResult
-    public func linkImportedContact(
-        _ incoming: ImportedContact, source: ImportSource,
+    public func linkImportedPerson(
+        _ incoming: ImportedPerson, source: ImportSource,
         fetchedAt: Date, contactID: UUID?
     ) throws -> UUID {
         guard !Rules.trimmed(source.service).isEmpty, !Rules.trimmed(source.accountID).isEmpty,
@@ -166,23 +166,23 @@ public final class ContactStore {
         else {
             throw StoreError.invalid("Некорректные данные привязки контакта.")
         }
-        try Rules.validate(ContactDraft(displayName: incoming.displayName))
+        try Rules.validate(PersonDraft(displayName: incoming.displayName))
         let identity = ServiceIdentity(service: source.service, accountID: source.accountID, externalID: incoming.externalID)
         return try write { repository in
-            let owners = try repository.contacts(owning: identity)
+            let owners = try repository.persons(owning: identity)
             guard owners.count <= 1, owners.allSatisfy({ $0.identities.filter { $0 == identity }.count == 1 }) else {
                 throw StoreError.invalid("Неоднозначная привязка источника контакта.")
             }
-            let existing: Contact?
+            let existing: Person?
             if let contactID {
-                guard let target = try repository.contact(id: contactID), owners.first.map({ $0.id == target.id }) ?? true else {
+                guard let target = try repository.person(id: contactID), owners.first.map({ $0.id == target.id }) ?? true else {
                     throw StoreError.invalid("Не удалось привязать источник к выбранному контакту.")
                 }
                 existing = target
             } else {
                 existing = owners.first
             }
-            var contact = existing ?? Contact(displayName: Rules.trimmed(incoming.displayName))
+            var contact = existing ?? Person(displayName: Rules.trimmed(incoming.displayName))
             let before = contact
             let attached = !contact.identities.contains(identity)
             if attached { contact.identities.append(identity) }
@@ -195,9 +195,9 @@ public final class ContactStore {
             }
             let sourceChanged = currentFetched != previousFetched
             if attached {
-                contact.events.append(ContactEvent(date: fetchedAt, kind: "identityLink", detail: "Привязан источник контакта"))
+                contact.events.append(PersonEvent(date: fetchedAt, kind: "identityLink", detail: "Привязан источник контакта"))
             } else if Rules.contentWithoutFetchDates(contact) != Rules.contentWithoutFetchDates(before) {
-                contact.events.append(ContactEvent(date: fetchedAt, kind: "import", detail: "Обновлено из источника контакта"))
+                contact.events.append(PersonEvent(date: fetchedAt, kind: "import", detail: "Обновлено из источника контакта"))
             }
             if existing != nil {
                 if contact != before || sourceChanged {
@@ -212,7 +212,7 @@ public final class ContactStore {
     }
 
     public func duplicateCandidates() throws -> [DuplicateCandidate] {
-        let all = try contacts()
+        let all = try persons()
         var result: [DuplicateCandidate] = []
         for (index, first) in all.enumerated() {
             for second in all.dropFirst(index + 1) {
@@ -226,9 +226,9 @@ public final class ContactStore {
     public func merge(survivorID: UUID, removedID: UUID) throws -> UUID {
         guard survivorID != removedID else { throw StoreError.invalid("Нельзя объединить контакт с собой.") }
         return try write { repository in
-            guard let survivor = try repository.contact(id: survivorID),
-                let removed = try repository.contact(id: removedID)
-            else { throw StoreError.missingContact }
+            guard let survivor = try repository.person(id: survivorID),
+                let removed = try repository.person(id: removedID)
+            else { throw StoreError.missingPerson }
             let merged = Rules.merged(survivor, absorbing: removed)
             let record = MergeRecord(survivorBefore: survivor, removedBefore: removed, expectedRevision: merged.revision)
             try repository.delete(contactID: removed.id)
@@ -245,16 +245,16 @@ public final class ContactStore {
     public func undoMerge(id: UUID) throws {
         try write { repository in
             guard var record = try repository.merge(id: id), record.undoneAt == nil,
-                let current = try repository.contact(id: record.survivorBefore.id),
+                let current = try repository.person(id: record.survivorBefore.id),
                 current.revision == record.expectedRevision,
-                try repository.contact(id: record.removedBefore.id) == nil
+                try repository.person(id: record.removedBefore.id) == nil
             else { throw StoreError.undoConflict }
             let revision = current.revision + 1
             var survivor = record.survivorBefore, removed = record.removedBefore
             survivor.revision = revision
             removed.revision = max(revision, removed.revision + 1)
-            survivor.events.append(ContactEvent(kind: "undoMerge", detail: "Объединение отменено"))
-            removed.events.append(ContactEvent(kind: "undoMerge", detail: "Контакт восстановлен"))
+            survivor.events.append(PersonEvent(kind: "undoMerge", detail: "Объединение отменено"))
+            removed.events.append(PersonEvent(kind: "undoMerge", detail: "Контакт восстановлен"))
             try repository.update(survivor)
             try repository.insert(removed)
             record.undoneAt = Date()
@@ -262,13 +262,13 @@ public final class ContactStore {
         }
     }
 
-    private func read<T>(_ body: (ContactRecordRepository) throws -> T) throws -> T {
+    private func read<T>(_ body: (PersonRecordRepository) throws -> T) throws -> T {
         lock.lock()
         defer { lock.unlock() }
         return try repository.read { try body(repository) }
     }
 
-    private func write<T>(_ body: (ContactRecordRepository) throws -> T) throws -> T {
+    private func write<T>(_ body: (PersonRecordRepository) throws -> T) throws -> T {
         lock.lock()
         defer { lock.unlock() }
         return try repository.write { try body(repository) }

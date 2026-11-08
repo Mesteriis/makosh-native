@@ -98,7 +98,7 @@ private actor GroupCallBoundary: WhatsAppServing {
             audio: [], video: nil, keyframe: false, orientation: 0,
             visibilityRevision: request.visibilityRevision)
     }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         var s = WhatsAppConnectionStatus()

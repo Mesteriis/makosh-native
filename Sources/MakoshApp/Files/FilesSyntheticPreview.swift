@@ -63,7 +63,7 @@ struct FilesSyntheticPreview: View {
                     guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
                         let mode = attributes[.posixPermissions] as? NSNumber, mode.intValue & 0o077 == 0
                     else { throw FilesQAIsolation.Failure.invalidConfiguration }
-                    let value = try JSONDecoder().decode(ContactWorkspaceConfiguration.self, from: Data(contentsOf: file))
+                    let value = try JSONDecoder().decode(PersonWorkspaceConfiguration.self, from: Data(contentsOf: file))
                     try FilesQAIsolation.validate(configuration: value, arguments: args)
                     return value
                 }

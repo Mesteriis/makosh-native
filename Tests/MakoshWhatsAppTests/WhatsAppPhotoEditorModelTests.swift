@@ -121,7 +121,7 @@ actor PhotoEditorFixtureService: WhatsAppServing {
         pauseExport = false
         pauseSave = false
     }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: [])

@@ -49,7 +49,7 @@ import MakoshCore
         let service = service
         Task { await service.close() }
     }
-    package func start(configuration: ContactWorkspaceConfiguration) async {
+    package func start(configuration: PersonWorkspaceConfiguration) async {
         guard !ready, !loading, !closed else { return }
         loading = true
         defer { loading = false }

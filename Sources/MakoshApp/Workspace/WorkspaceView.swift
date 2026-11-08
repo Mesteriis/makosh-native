@@ -32,7 +32,7 @@ private enum Destination: String, CaseIterable, Identifiable {
 }
 private struct EditorSelection: Identifiable {
     let id = UUID()
-    let contact: Contact?
+    let contact: Person?
 }
 
 struct WorkspaceView: View {
@@ -175,7 +175,7 @@ struct WorkspaceView: View {
         }
         .onAppear {
             if aiContextSearch == nil {
-                let search = AIContextSearch(telegram: telegram, whatsapp: whatsapp, mail: mail) { [model] in model.contacts }
+                let search = AIContextSearch(telegram: telegram, whatsapp: whatsapp, mail: mail) { [model] in model.persons }
                 let filesModel = files.model
                 search.attach(
                     files: FilePickerSearch(
@@ -212,7 +212,7 @@ struct WorkspaceView: View {
         .onReceive(mail.$notificationActivation.dropFirst()) { _ in destination = .mail }
         .onReceive(teams.$notificationActivation.dropFirst()) { _ in destination = .teams }
         .modifier(
-            CalendarWorkspaceLinks(host: calendarHost, contacts: model.contacts, mailAccounts: mail.accounts) { destination = .calendar }
+            CalendarWorkspaceLinks(host: calendarHost, contacts: model.persons, mailAccounts: mail.accounts) { destination = .calendar }
         )
         .task {
             await model.load()
@@ -276,7 +276,7 @@ struct WorkspaceView: View {
             if telegram.isSyntheticPreview { model.configurePendingUploadRecoveryQAIfRequested(telegram) }
             #endif
         }
-        .sheet(item: $editor) { selection in ContactEditor(contact: selection.contact, model: model).makoshAppearance() }
+        .sheet(item: $editor) { selection in PersonEditor(contact: selection.contact, model: model).makoshAppearance() }
         .sheet(item: $files.pendingSend) { request in PaperlessSendSheet(model: files.model, request: request).makoshAppearance() }
         .onChange(of: files.pendingAsk?.id) { _, _ in
             guard let request = files.pendingAsk else { return }
@@ -340,7 +340,7 @@ struct WorkspaceView: View {
                 }
             }
         case .mail:
-            for contact in model.contacts {
+            for contact in model.persons {
                 for address in contact.emails where !address.isEmpty {
                     result.append(
                         FileDestination(kind: .mail(address: address, contactID: contact.id), title: contact.displayName, subtitle: address)
@@ -448,7 +448,7 @@ struct WorkspaceView: View {
             // The letter itself is not yet selected there.
             destination = .mail
         case .contact(let id, _):
-            Task { if await model.selectContact(id) { destination = .contacts } }
+            Task { if await model.selectPerson(id) { destination = .contacts } }
         }
     }
 
@@ -459,7 +459,7 @@ struct WorkspaceView: View {
     }
     /// Mail, contacts and Telemost for the calendar: the organizer letter, attendee hints, «Добавить Telemost».
     private func connectCalendar() {
-        calendarHost.contactEmails = Array(Set(model.contacts.flatMap(\.emails))).sorted()
+        calendarHost.contactEmails = Array(Set(model.persons.flatMap(\.emails))).sorted()
         calendarHost.mailAccounts = mail.accounts.map { ($0.email, $0.imapHost) }
         calendarHost.model?.writeToOrganizer = { address, _ in
             destination = .mail
@@ -505,7 +505,7 @@ struct WorkspaceView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Контакты").font(.title2.bold())
-                        Text("\(model.contacts.count) в вашей картотеке").font(.caption).foregroundStyle(.secondary)
+                        Text("\(model.persons.count) в вашей картотеке").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button {
@@ -518,7 +518,7 @@ struct WorkspaceView: View {
                     .bottom, 12
                 ).accessibilityIdentifier("contacts.search")
                 Divider()
-                if model.contacts.isEmpty {
+                if model.persons.isEmpty {
                     ContentUnavailableView(
                         "Пока нет контактов", systemImage: "person.crop.rectangle.stack",
                         description: Text("Создайте контакт или импортируйте JSON-файл.")
@@ -605,7 +605,7 @@ struct WorkspaceView: View {
                 } else if destination == .mail {
                     MailReadingView(model: mail, dossier: model) { id in
                         Task {
-                            if await model.selectContact(id) {
+                            if await model.selectPerson(id) {
                                 mail.showDossier = false
                                 destination = .contacts
                             }
@@ -614,7 +614,7 @@ struct WorkspaceView: View {
                 } else if destination == .telegram {
                     TelegramDetailView(
                         model: telegram, dossier: model,
-                        openDossier: { id in Task { if await model.selectContact(id) { destination = .contacts } } },
+                        openDossier: { id in Task { if await model.selectPerson(id) { destination = .contacts } } },
                         aiPanel: telegramAIPanel)
                 } else if destination == .whatsapp {
                     WhatsAppDetailView(
@@ -623,7 +623,7 @@ struct WorkspaceView: View {
                             guard let account = whatsapp.selectedAccountID, let chat = whatsapp.selectedChat else { return }
                             Task {
                                 if let id = await model.linkWhatsAppChat(chat, accountID: account), whatsapp.selectedAccountID == account,
-                                    whatsapp.selectedChatID == chat.id, await model.selectContact(id)
+                                    whatsapp.selectedChatID == chat.id, await model.selectPerson(id)
                                 {
                                     destination = .contacts
                                 }
@@ -644,7 +644,7 @@ struct WorkspaceView: View {
                         }
                     }.id(teams.selectedScope?.storageKey.base64EncodedString() ?? "teams-empty")
                 } else if destination == .meetings {
-                    TelemostDetailView(model: telemost, contacts: model.contacts) { contact in
+                    TelemostDetailView(model: telemost, contacts: model.persons) { contact in
                         let request = UUID(), window = NSApp.keyWindow
                         telemostDossierRequest = request
                         Task {
@@ -687,9 +687,9 @@ struct WorkspaceView: View {
         .tint(destination == .telegram ? resolvedTelegramAccent : WorkspaceStyle.accent)
         .environment(\.colorScheme, destination == .telegram ? resolvedTelegramScheme : .dark)
     }
-    private var filteredContacts: [Contact] {
-        if search.isEmpty { return model.contacts }
-        return model.contacts.filter {
+    private var filteredContacts: [Person] {
+        if search.isEmpty { return model.persons }
+        return model.persons.filter {
             [$0.displayName, $0.organization, $0.jobTitle, $0.emails.joined(separator: " "), $0.phones.joined(separator: " ")].joined(
                 separator: " "
             ).localizedCaseInsensitiveContains(search)

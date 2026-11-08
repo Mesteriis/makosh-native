@@ -44,7 +44,7 @@ public struct Observation: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-public struct ContactNote: Codable, Hashable, Identifiable, Sendable {
+public struct PersonNote: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
     public var text: String
     public var source: SourceStamp
@@ -55,7 +55,7 @@ public struct ContactNote: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-public struct ContactEvent: Codable, Hashable, Identifiable, Sendable {
+public struct PersonEvent: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
     public var date: Date
     public var kind: String
@@ -68,7 +68,7 @@ public struct ContactEvent: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-public struct ContactDraft: Equatable, Sendable {
+public struct PersonDraft: Equatable, Sendable {
     public var displayName: String
     public var organization: String
     public var jobTitle: String
@@ -88,7 +88,7 @@ public struct ContactDraft: Equatable, Sendable {
     }
 }
 
-public struct Contact: Codable, Equatable, Identifiable, Sendable {
+public struct Person: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var displayName: String
     public var organization: String
@@ -98,13 +98,13 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
     public var tags: [String]
     public var identities: [ServiceIdentity]
     public var observations: [Observation]
-    public var notes: [ContactNote]
-    public var events: [ContactEvent]
+    public var notes: [PersonNote]
+    public var events: [PersonEvent]
     public var manualFields: Set<String>
     public var revision: Int
     public var aiAccess: AIContactAccess = .inherit
-    public var draft: ContactDraft {
-        ContactDraft(
+    public var draft: PersonDraft {
+        PersonDraft(
             displayName: displayName, organization: organization, jobTitle: jobTitle,
             phones: phones, emails: emails, tags: tags)
     }
@@ -112,7 +112,7 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
         id: UUID = UUID(), displayName: String, organization: String = "", jobTitle: String = "",
         phones: [String] = [], emails: [String] = [], tags: [String] = [],
         identities: [ServiceIdentity] = [], observations: [Observation] = [],
-        notes: [ContactNote] = [], events: [ContactEvent] = [],
+        notes: [PersonNote] = [], events: [PersonEvent] = [],
         manualFields: Set<String> = [], revision: Int = 1
     ) {
         self.id = id
@@ -144,8 +144,8 @@ public struct Contact: Codable, Equatable, Identifiable, Sendable {
         tags = try c.decode([String].self, forKey: .tags)
         identities = try c.decode([ServiceIdentity].self, forKey: .identities)
         observations = try c.decode([Observation].self, forKey: .observations)
-        notes = try c.decode([ContactNote].self, forKey: .notes)
-        events = try c.decode([ContactEvent].self, forKey: .events)
+        notes = try c.decode([PersonNote].self, forKey: .notes)
+        events = try c.decode([PersonEvent].self, forKey: .events)
         manualFields = try c.decode(Set<String>.self, forKey: .manualFields)
         revision = try c.decode(Int.self, forKey: .revision)
         // Rows written before AI access existed default to inherit.
@@ -162,7 +162,7 @@ public struct ImportSource: Codable, Equatable, Sendable {
     }
 }
 
-public struct ImportedContact: Codable, Equatable, Sendable {
+public struct ImportedPerson: Codable, Equatable, Sendable {
     public var externalID: String
     public var displayName: String
     public var organization: String?
@@ -204,8 +204,8 @@ public struct ImportDocument: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var source: ImportSource
     public var fetchedAt: Date
-    public var contacts: [ImportedContact]
-    public init(schemaVersion: Int = 1, source: ImportSource, fetchedAt: Date = Date(), contacts: [ImportedContact]) {
+    public var contacts: [ImportedPerson]
+    public init(schemaVersion: Int = 1, source: ImportSource, fetchedAt: Date = Date(), contacts: [ImportedPerson]) {
         self.schemaVersion = schemaVersion
         self.source = source
         self.fetchedAt = fetchedAt
@@ -241,13 +241,13 @@ public struct DuplicateCandidate: Identifiable, Equatable, Sendable {
 
 public struct MergeRecord: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
-    public var survivorBefore: Contact
-    public var removedBefore: Contact
+    public var survivorBefore: Person
+    public var removedBefore: Person
     public var expectedRevision: Int
     public var mergedAt: Date
     public var undoneAt: Date?
     public init(
-        id: UUID = UUID(), survivorBefore: Contact, removedBefore: Contact,
+        id: UUID = UUID(), survivorBefore: Person, removedBefore: Person,
         expectedRevision: Int, mergedAt: Date = Date(), undoneAt: Date? = nil
     ) {
         self.id = id
@@ -260,11 +260,11 @@ public struct MergeRecord: Codable, Equatable, Identifiable, Sendable {
 }
 
 public enum StoreError: LocalizedError {
-    case invalid(String), missingContact, undoConflict, database(String), unsupportedSchema(Int)
+    case invalid(String), missingPerson, undoConflict, database(String), unsupportedSchema(Int)
     public var errorDescription: String? {
         switch self {
         case .invalid(let message): return message
-        case .missingContact: return "Контакт больше не существует. Обновите список."
+        case .missingPerson: return "Контакт больше не существует. Обновите список."
         case .undoConflict: return "Отмена остановлена: после объединения данные изменились. Последующие изменения сохранены."
         case .database: return "Не удалось выполнить действие в PostgreSQL. Проверьте доступность базы данных и повторите попытку."
         case .unsupportedSchema(let version): return "Версия хранилища \(version) не поддерживается."

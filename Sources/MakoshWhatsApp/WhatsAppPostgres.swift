@@ -31,7 +31,7 @@ final class WhatsAppPostgres {
     return derived.withUnsafeBytes { Data($0) }
   }
   init(
-    configuration: ContactWorkspaceConfiguration, keyProvider: (UUID, Bool) throws -> Data
+    configuration: PersonWorkspaceConfiguration, keyProvider: (UUID, Bool) throws -> Data
   )
     throws
   {

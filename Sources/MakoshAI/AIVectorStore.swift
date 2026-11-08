@@ -61,7 +61,7 @@ public actor AIVectorStore {
         self.extensionName = extensionName
     }
 
-    public func open(configuration: ContactWorkspaceConfiguration) throws {
+    public func open(configuration: PersonWorkspaceConfiguration) throws {
         guard database == nil else { return }
         let db = try AIPostgres(configuration: configuration)
         try db.open(keyProvider: keyProvider)

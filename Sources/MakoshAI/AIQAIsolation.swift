@@ -7,7 +7,7 @@ import MakoshCore
 public enum AIQAIsolation {
     public static let flag = "--ai-synthetic-preview"
 
-    public static func validate(configuration: ContactWorkspaceConfiguration, arguments: [String]) throws {
+    public static func validate(configuration: PersonWorkspaceConfiguration, arguments: [String]) throws {
         let flags = [flag, "--database-config"]
         guard flags.allSatisfy({ flag in arguments.filter { $0 == flag }.count == 1 }),
             arguments.filter({ $0.hasPrefix("--") }).allSatisfy({ flags.contains($0) }),

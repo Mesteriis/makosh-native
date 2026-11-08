@@ -14,7 +14,7 @@ private actor PickerBoundary: WhatsAppServing {
     func finish(_ chat: String, _ info: WhatsAppPeerInfo) {
         pending.removeValue(forKey: chat)?.resume(returning: info)
     }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: [])

@@ -412,7 +412,7 @@ private struct MailDossierInspector: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text(letter.senderName.isEmpty ? letter.sender : letter.senderName).font(.title3.bold())
                 Text(letter.sender).font(.caption).textSelection(.enabled)
-                if let contact = dossier.contacts.first(where: {
+                if let contact = dossier.persons.first(where: {
                     $0.identities.contains(.init(service: "mail", accountID: letter.key.accountID, externalID: letter.sender.lowercased()))
                 }) {
                     Text(contact.organization).foregroundStyle(.secondary)

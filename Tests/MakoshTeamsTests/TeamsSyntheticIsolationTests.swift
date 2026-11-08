@@ -90,7 +90,7 @@ final class TeamsSyntheticIsolationTests: XCTestCase {
                     connectionString: "postgresql://synthetic@127.0.0.1/test?hostaddr=127.0.0.1", schema: "qa_teams_app",
                     archiveSchema: "qa_teams_archive")))
         for config in [
-            ContactWorkspaceConfiguration(
+            PersonWorkspaceConfiguration(
                 connectionString: "postgresql://synthetic@127.0.0.1/test?hostaddr=127.0.0.1", schema: "makosh",
                 archiveSchema: "qa_teams_archive"),
             .init(

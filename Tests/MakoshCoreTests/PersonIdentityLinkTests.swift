@@ -2,7 +2,7 @@ import XCTest
 import Foundation
 @testable import MakoshCore
 
-final class ContactIdentityLinkTests: XCTestCase {
+final class PersonIdentityLinkTests: XCTestCase {
     private var database: PostgresTestDatabase!
     override func setUpWithError() throws { database = try PostgresTestDatabase() }
     override func tearDownWithError() throws {
@@ -11,15 +11,15 @@ final class ContactIdentityLinkTests: XCTestCase {
     }
     private let source = ImportSource(service: "telegram", accountID: "synthetic")
     private func date(_ value: Double) -> Date { Date(timeIntervalSince1970: value) }
-    private func incoming(_ id: String = "42", name: String = "Imported") -> ImportedContact {
-        ImportedContact(externalID: id, displayName: name, organization: "Source organization", phones: ["123"], notes: ["Source note"])
+    private func incoming(_ id: String = "42", name: String = "Imported") -> ImportedPerson {
+        ImportedPerson(externalID: id, displayName: name, organization: "Source organization", phones: ["123"], notes: ["Source note"])
     }
     func testExplicitAttachPreservesManualFieldsAndProvenanceAndIsIdempotent() throws {
         let store = try database.makeStore()
-        let target = try store.createContact(draft: ContactDraft(displayName: "Manual", phones: []))
+        let target = try store.createPerson(draft: PersonDraft(displayName: "Manual", phones: []))
         try store.addNote(contactID: target, text: "Manual note")
-        XCTAssertEqual(try store.linkImportedContact(incoming(), source: source, fetchedAt: date(100), contactID: target), target)
-        let linked = try XCTUnwrap(store.contact(id: target))
+        XCTAssertEqual(try store.linkImportedPerson(incoming(), source: source, fetchedAt: date(100), contactID: target), target)
+        let linked = try XCTUnwrap(store.person(id: target))
         XCTAssertEqual(linked.displayName, "Manual")
         XCTAssertTrue(linked.phones.isEmpty)
         XCTAssertEqual(Set(linked.notes.map(\.text)), ["Manual note", "Source note"])
@@ -28,33 +28,33 @@ final class ContactIdentityLinkTests: XCTestCase {
         )
         XCTAssertTrue(linked.observations.contains { $0.field == "phones" && $0.value == "123" })
         XCTAssertEqual(linked.events.filter { $0.kind == "identityLink" }.count, 1)
-        XCTAssertEqual(try store.linkImportedContact(incoming(), source: source, fetchedAt: date(100), contactID: nil), target)
-        XCTAssertEqual(try store.contact(id: target), linked)
-        XCTAssertEqual(try database.makeStore().contact(id: target), linked)
+        XCTAssertEqual(try store.linkImportedPerson(incoming(), source: source, fetchedAt: date(100), contactID: nil), target)
+        XCTAssertEqual(try store.person(id: target), linked)
+        XCTAssertEqual(try database.makeStore().person(id: target), linked)
     }
     func testNewReuseAndOldSnapshotCannotOverwriteNewerSource() throws {
         let store = try database.makeStore()
-        let id = try store.linkImportedContact(incoming(name: "First"), source: source, fetchedAt: date(100), contactID: nil)
-        XCTAssertEqual(try store.linkImportedContact(incoming(name: "Newest"), source: source, fetchedAt: date(200), contactID: nil), id)
-        let latest = try XCTUnwrap(store.contact(id: id))
+        let id = try store.linkImportedPerson(incoming(name: "First"), source: source, fetchedAt: date(100), contactID: nil)
+        XCTAssertEqual(try store.linkImportedPerson(incoming(name: "Newest"), source: source, fetchedAt: date(200), contactID: nil), id)
+        let latest = try XCTUnwrap(store.person(id: id))
         XCTAssertEqual(latest.displayName, "Newest")
-        XCTAssertEqual(try store.linkImportedContact(incoming(name: "Old"), source: source, fetchedAt: date(50), contactID: id), id)
-        XCTAssertEqual(try store.contact(id: id), latest)
-        XCTAssertEqual(try store.contacts().count, 1)
+        XCTAssertEqual(try store.linkImportedPerson(incoming(name: "Old"), source: source, fetchedAt: date(50), contactID: id), id)
+        XCTAssertEqual(try store.person(id: id), latest)
+        XCTAssertEqual(try store.persons().count, 1)
     }
     func testConflictMissingAndInvalidInputRollBackEntireState() throws {
         let store = try database.makeStore()
-        _ = try store.linkImportedContact(incoming(), source: source, fetchedAt: date(100), contactID: nil)
-        let target = try store.createContact(draft: ContactDraft(displayName: "Other"))
+        _ = try store.linkImportedPerson(incoming(), source: source, fetchedAt: date(100), contactID: nil)
+        let target = try store.createPerson(draft: PersonDraft(displayName: "Other"))
         let before = try database.contactStoreSnapshot()
         for id in [target, UUID()] {
             XCTAssertThrowsError(
-                try store.linkImportedContact(incoming(name: "Changed"), source: source, fetchedAt: date(200), contactID: id)
+                try store.linkImportedPerson(incoming(name: "Changed"), source: source, fetchedAt: date(200), contactID: id)
             ) { error in
                 guard case StoreError.invalid = error else { return XCTFail("Expected sanitized invalid error") }
             }
         }
-        XCTAssertThrowsError(try store.linkImportedContact(incoming(""), source: source, fetchedAt: date(100), contactID: target))
+        XCTAssertThrowsError(try store.linkImportedPerson(incoming(""), source: source, fetchedAt: date(100), contactID: target))
         XCTAssertEqual(try database.contactStoreSnapshot(), before)
     }
     func testAccountsServicesAndUnicodeBytesRemainDistinct() throws {
@@ -63,66 +63,66 @@ final class ContactIdentityLinkTests: XCTestCase {
         for scope in [
             source, ImportSource(service: "telegram", accountID: "other"), ImportSource(service: "other", accountID: "synthetic"),
         ] {
-            ids.insert(try store.linkImportedContact(incoming(), source: scope, fetchedAt: date(100), contactID: nil))
+            ids.insert(try store.linkImportedPerson(incoming(), source: scope, fetchedAt: date(100), contactID: nil))
         }
         for externalID in ["é", "e\u{301}"] {
-            ids.insert(try store.linkImportedContact(incoming(externalID), source: source, fetchedAt: date(100), contactID: nil))
+            ids.insert(try store.linkImportedPerson(incoming(externalID), source: source, fetchedAt: date(100), contactID: nil))
         }
         for account in ["é", "e\u{301}"] {
             ids.insert(
-                try store.linkImportedContact(
+                try store.linkImportedPerson(
                     incoming(), source: ImportSource(service: "telegram", accountID: account), fetchedAt: date(100), contactID: nil))
         }
         XCTAssertEqual(ids.count, 7)
-        XCTAssertEqual(try store.contacts().count, 7)
+        XCTAssertEqual(try store.persons().count, 7)
     }
     func testMergedIdentityRoutesToSurvivorAndLinkChangeBlocksUndo() throws {
         let store = try database.makeStore()
-        let first = try store.linkImportedContact(incoming("1"), source: source, fetchedAt: date(100), contactID: nil)
-        let second = try store.linkImportedContact(incoming("2"), source: source, fetchedAt: date(100), contactID: nil)
+        let first = try store.linkImportedPerson(incoming("1"), source: source, fetchedAt: date(100), contactID: nil)
+        let second = try store.linkImportedPerson(incoming("2"), source: source, fetchedAt: date(100), contactID: nil)
         let mergeID = try store.merge(survivorID: first, removedID: second)
-        let before = try XCTUnwrap(store.contact(id: first))
-        XCTAssertEqual(try store.linkImportedContact(incoming("2"), source: source, fetchedAt: date(100), contactID: nil), first)
-        XCTAssertEqual(try store.contact(id: first), before)
-        _ = try store.linkImportedContact(incoming("3"), source: source, fetchedAt: date(100), contactID: first)
+        let before = try XCTUnwrap(store.person(id: first))
+        XCTAssertEqual(try store.linkImportedPerson(incoming("2"), source: source, fetchedAt: date(100), contactID: nil), first)
+        XCTAssertEqual(try store.person(id: first), before)
+        _ = try store.linkImportedPerson(incoming("3"), source: source, fetchedAt: date(100), contactID: first)
         XCTAssertThrowsError(try store.undoMerge(id: mergeID))
         XCTAssertEqual(try store.importDocument(ImportDocument(source: source, fetchedAt: date(200), contacts: [incoming("2")])).created, 0)
-        XCTAssertNil(try store.contact(id: second))
-        XCTAssertEqual(try store.contacts().count, 1)
+        XCTAssertNil(try store.person(id: second))
+        XCTAssertEqual(try store.persons().count, 1)
     }
     func testNewerSourceStampOnExistingLinkBlocksMergeUndoWithoutFieldChange() throws {
         let store = try database.makeStore()
-        let first = try store.linkImportedContact(incoming("1"), source: source, fetchedAt: date(100), contactID: nil)
-        let second = try store.linkImportedContact(incoming("2"), source: source, fetchedAt: date(100), contactID: nil)
+        let first = try store.linkImportedPerson(incoming("1"), source: source, fetchedAt: date(100), contactID: nil)
+        let second = try store.linkImportedPerson(incoming("2"), source: source, fetchedAt: date(100), contactID: nil)
         let mergeID = try store.merge(survivorID: first, removedID: second)
-        let before = try XCTUnwrap(store.contact(id: first))
-        _ = try store.linkImportedContact(incoming("2"), source: source, fetchedAt: date(200), contactID: first)
-        let after = try XCTUnwrap(store.contact(id: first))
+        let before = try XCTUnwrap(store.person(id: first))
+        _ = try store.linkImportedPerson(incoming("2"), source: source, fetchedAt: date(200), contactID: first)
+        let after = try XCTUnwrap(store.person(id: first))
         XCTAssertEqual(after.draft, before.draft)
         XCTAssertGreaterThan(after.revision, before.revision)
         XCTAssertThrowsError(try store.undoMerge(id: mergeID))
     }
     func testDuplicateOwnerCorruptionFailsClosed() throws {
         let store = try database.makeStore()
-        _ = try store.linkImportedContact(incoming(), source: source, fetchedAt: date(100), contactID: nil)
-        _ = try store.createContact(draft: ContactDraft(displayName: "Other"))
+        _ = try store.linkImportedPerson(incoming(), source: source, fetchedAt: date(100), contactID: nil)
+        _ = try store.createPerson(draft: PersonDraft(displayName: "Other"))
         try database.execute(
             "UPDATE contact_records SET payload=jsonb_set(payload,'{identities}',(SELECT jsonb_agg(i) FROM contact_records c, jsonb_array_elements(c.payload->'identities') i)) WHERE payload->'identities'='[]'::jsonb"
         )
         let before = try database.contactStoreSnapshot()
-        XCTAssertThrowsError(try store.linkImportedContact(incoming(), source: source, fetchedAt: date(200), contactID: nil))
+        XCTAssertThrowsError(try store.linkImportedPerson(incoming(), source: source, fetchedAt: date(200), contactID: nil))
         XCTAssertEqual(try database.contactStoreSnapshot(), before)
     }
     private final class ConcurrentLinks: @unchecked Sendable {
-        let stores: [ContactStore]
+        let stores: [PersonStore]
         let lock = NSLock()
         var ids: [UUID] = []
         var errors = 0
-        init(_ stores: [ContactStore]) { self.stores = stores }
+        init(_ stores: [PersonStore]) { self.stores = stores }
         func link(_ index: Int) {
             do {
-                let id = try stores[index % stores.count].linkImportedContact(
-                    ImportedContact(externalID: "42", displayName: "Synthetic"),
+                let id = try stores[index % stores.count].linkImportedPerson(
+                    ImportedPerson(externalID: "42", displayName: "Synthetic"),
                     source: ImportSource(service: "telegram", accountID: "synthetic"), fetchedAt: Date(timeIntervalSince1970: 100),
                     contactID: nil)
                 lock.lock()
@@ -140,7 +140,7 @@ final class ContactIdentityLinkTests: XCTestCase {
         DispatchQueue.concurrentPerform(iterations: 12) { links.link($0) }
         XCTAssertEqual(links.errors, 0)
         XCTAssertEqual(Set(links.ids).count, 1)
-        XCTAssertEqual(try links.stores[0].contacts().count, 1)
-        XCTAssertEqual(try links.stores[0].contacts().first?.events.filter { $0.kind == "identityLink" }.count, 1)
+        XCTAssertEqual(try links.stores[0].persons().count, 1)
+        XCTAssertEqual(try links.stores[0].persons().first?.events.filter { $0.kind == "identityLink" }.count, 1)
     }
 }

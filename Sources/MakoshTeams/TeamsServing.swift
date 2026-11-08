@@ -3,9 +3,11 @@ import MakoshCore
 
 /// The concrete Teams boundary. Protocol/cache/key/file work remains in the service's actors.
 public protocol TeamsServing: TeamsNotificationServing {
-    func load(configuration: ContactWorkspaceConfiguration) async throws -> [TeamsAccount]
+    func load(configuration: PersonWorkspaceConfiguration) async throws -> [TeamsAccount]
     func addAccount(name: String, configuration: TeamsOAuthConfiguration, readOnly: Bool) async throws -> TeamsAccount
-    func beginAuthorization(accountID: UUID, method: TeamsAuthorizationMethod, capabilities: Set<TeamsCapability>) async throws -> TeamsAuthorizationPresentation
+    func beginAuthorization(
+        accountID: UUID, method: TeamsAuthorizationMethod, capabilities: Set<TeamsCapability>
+    ) async throws -> TeamsAuthorizationPresentation
     func authorizationStatus(accountID: UUID) async throws -> TeamsAuthorizationPresentation
     func cancelAuthorization(accountID: UUID) async throws
     func connect(accountID: UUID) async throws

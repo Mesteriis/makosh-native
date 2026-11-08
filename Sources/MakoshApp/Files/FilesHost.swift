@@ -88,7 +88,7 @@ extension EnvironmentValues {
 
     /// Opens the catalogue over the shared archive schema; export uses the same S3 configuration as every service.
     func start(
-        configuration: ContactWorkspaceConfiguration, resolver: (any FileSourceResolving)?,
+        configuration: PersonWorkspaceConfiguration, resolver: (any FileSourceResolving)?,
         keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open
     ) {
         guard !configured else { return }

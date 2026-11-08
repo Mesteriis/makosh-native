@@ -14,7 +14,7 @@ public enum WhatsAppQAIsolation {
     else { throw WhatsAppFailure.invalid }
     return URL(fileURLWithPath: arguments[i + 1]).standardizedFileURL
   }
-  public static func configuration(arguments: [String]) throws -> ContactWorkspaceConfiguration {
+  public static func configuration(arguments: [String]) throws -> PersonWorkspaceConfiguration {
     let flags = [
       "--whatsapp-synthetic-preview", "--database-config", "--storage-config", "--whatsapp-qa-root",
     ]
@@ -33,12 +33,14 @@ public enum WhatsAppQAIsolation {
       arguments[i + 1] == root.appendingPathComponent("database.json").path
     else { throw WhatsAppFailure.invalid }
     let value = try JSONDecoder().decode(
-      ContactWorkspaceConfiguration.self,
+      PersonWorkspaceConfiguration.self,
       from: readOwned(root.appendingPathComponent("database.json")))
     try validate(configuration: value, arguments: arguments)
     return value
   }
-  public static func validate(configuration: ContactWorkspaceConfiguration, arguments: [String])
+  public static func validate(
+    configuration: PersonWorkspaceConfiguration, arguments: [String]
+  )
     throws
   {
     let flags = [
@@ -80,7 +82,7 @@ public enum WhatsAppQAIsolation {
     guard let dbFile = paths["--database-config"], let storageFile = paths["--storage-config"]
     else { throw WhatsAppFailure.invalid }
     let saved = try JSONDecoder().decode(
-      ContactWorkspaceConfiguration.self, from: readOwned(dbFile))
+      PersonWorkspaceConfiguration.self, from: readOwned(dbFile))
     guard saved.connectionString == configuration.connectionString,
       saved.schema == configuration.schema, saved.archiveSchema == archive,
       !configuration.connectionString.utf8.contains(0)

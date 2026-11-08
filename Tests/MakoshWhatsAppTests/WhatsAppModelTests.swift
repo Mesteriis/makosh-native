@@ -7,7 +7,7 @@ private actor SelectionService: WhatsAppServing {
     let first = WhatsAppAccount(name: "First"), second = WhatsAppAccount(name: "Second")
     private var pending: CheckedContinuation<[WhatsAppMessage], any Error>?
     var waiting: Bool { pending != nil }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(
@@ -43,7 +43,7 @@ private actor BurstService: WhatsAppServing {
     let account = WhatsAppAccount(name: "Burst")
     var total = 50
     func burst() { total = 110 }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: [.init(id: "chat", name: "Burst")])
@@ -73,7 +73,7 @@ private actor DelayedRestoreService: WhatsAppServing {
         if chat == "a@lid" { await withCheckedContinuation { pause = $0 } }
         return nil
     }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         .init(accountID: accountID, status: .init(), chats: [])
@@ -234,7 +234,7 @@ private actor ReadRecordingService: WhatsAppServing {
     private(set) var marks: [String] = []
     private var latest: Int64 = 3
     func arrive() { latest += 1 }
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [account] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot {
         var status = WhatsAppConnectionStatus()
@@ -257,7 +257,7 @@ private actor ReadRecordingService: WhatsAppServing {
 private actor ConnectRecordingService: WhatsAppServing {
     let first = WhatsAppAccount(name: "First"), second = WhatsAppAccount(name: "Second")
     var connected: [UUID] = []
-    func load(configuration: ContactWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
+    func load(configuration: PersonWorkspaceConfiguration) -> [WhatsAppAccount] { [first, second] }
     func addAccount(name: String) -> WhatsAppAccount { .init(name: name) }
     func snapshot(accountID: UUID) -> WhatsAppWorkspaceSnapshot { .init(accountID: accountID, status: .init(), chats: []) }
     func messages(accountID: UUID, chat: String, before: WhatsAppCursor?) -> [WhatsAppMessage] { [] }

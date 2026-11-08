@@ -2,8 +2,8 @@ import Foundation
 
 /// Pure provenance rules shared by contact edits, imports and merges.
 /// Manual fields suppress import writes; every observation is retained.
-enum ContactReconciliation {
-    static func contentWithoutFetchDates(_ contact: Contact) -> Contact {
+enum PersonReconciliation {
+    static func contentWithoutFetchDates(_ contact: Person) -> Person {
         var copy = contact
         copy.revision = 0
         for index in copy.observations.indices { copy.observations[index].source.fetchedAt = Date(timeIntervalSince1970: 0) }
@@ -11,7 +11,7 @@ enum ContactReconciliation {
         return copy
     }
 
-    static func recordManualChanges(from before: ContactDraft?, contact: inout Contact) {
+    static func recordManualChanges(from before: PersonDraft?, contact: inout Person) {
         let source = SourceStamp(identity: ServiceIdentity(service: "manual", accountID: "local", externalID: contact.id.uuidString))
         for (field, value, old) in [
             ("displayName", contact.displayName, before?.displayName),
@@ -32,7 +32,7 @@ enum ContactReconciliation {
         }
     }
 
-    static func absorb(_ incoming: ImportedContact, source: SourceStamp, into contact: inout Contact) {
+    static func absorb(_ incoming: ImportedPerson, source: SourceStamp, into contact: inout Person) {
         let scalarFields: [(String, String?)] = [
             ("displayName", incoming.displayName), ("organization", incoming.organization),
             ("jobTitle", incoming.jobTitle),
@@ -63,14 +63,14 @@ enum ContactReconciliation {
             if let index = contact.notes.firstIndex(where: { $0.text == text && $0.source.identity == source.identity }) {
                 if source.fetchedAt > contact.notes[index].source.fetchedAt { contact.notes[index].source.fetchedAt = source.fetchedAt }
             } else {
-                contact.notes.append(ContactNote(text: text, source: source))
+                contact.notes.append(PersonNote(text: text, source: source))
             }
         }
     }
 
     /// Unions both histories. A confirmed merge also confirms the survivor's
     /// scalar choice, so re-import cannot silently reverse it.
-    static func merged(_ survivor: Contact, absorbing removed: Contact) -> Contact {
+    static func merged(_ survivor: Person, absorbing removed: Person) -> Person {
         var merged = survivor
         if merged.displayName.isEmpty { merged.displayName = removed.displayName }
         if merged.organization.isEmpty { merged.organization = removed.organization }
@@ -100,11 +100,11 @@ enum ContactReconciliation {
             merged.aiAccess = .allowed
         }
         merged.revision = max(survivor.revision, removed.revision) + 1
-        merged.events.append(ContactEvent(kind: "merge", detail: "Объединено с \(removed.displayName)"))
+        merged.events.append(PersonEvent(kind: "merge", detail: "Объединено с \(removed.displayName)"))
         return merged
     }
 
-    static func duplicateReasons(_ first: Contact, _ second: Contact) -> [String] {
+    static func duplicateReasons(_ first: Person, _ second: Person) -> [String] {
         let emails = Set(first.emails.map(normalizedEmail).filter { !$0.isEmpty })
             .intersection(second.emails.map(normalizedEmail).filter { !$0.isEmpty })
         let phones = Set(first.phones.map(normalizedPhone).filter { !$0.isEmpty })
@@ -115,7 +115,7 @@ enum ContactReconciliation {
         return reasons
     }
 
-    static func apply(_ draft: ContactDraft, to contact: inout Contact) {
+    static func apply(_ draft: PersonDraft, to contact: inout Person) {
         contact.displayName = trimmed(draft.displayName)
         contact.organization = trimmed(draft.organization)
         contact.jobTitle = trimmed(draft.jobTitle)
@@ -124,13 +124,13 @@ enum ContactReconciliation {
         contact.tags = unique(draft.tags)
     }
 
-    static func validate(_ draft: ContactDraft) throws {
+    static func validate(_ draft: PersonDraft) throws {
         guard !trimmed(draft.displayName).isEmpty else { throw StoreError.invalid("Укажите имя контакта.") }
     }
 
     static func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    private static func observe(field: String, value: String, source: SourceStamp, contact: inout Contact) {
+    private static func observe(field: String, value: String, source: SourceStamp, contact: inout Person) {
         if let index = contact.observations.firstIndex(where: {
             $0.field == field && $0.value == value && $0.source.identity == source.identity
         }) {

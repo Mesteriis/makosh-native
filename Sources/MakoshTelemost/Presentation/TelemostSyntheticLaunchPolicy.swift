@@ -1,7 +1,7 @@
 import MakoshCore
 
 package enum TelemostSyntheticLaunchPolicy {
-    package static func admits(arguments: [String], configuration: ContactWorkspaceConfiguration) -> Bool {
+    package static func admits(arguments: [String], configuration: PersonWorkspaceConfiguration) -> Bool {
         (try? TelemostQAIsolation.validate(configuration: configuration, arguments: arguments)) != nil
     }
     package static func permitsNormalLaunch(marker: String?, arguments: [String]) -> Bool {

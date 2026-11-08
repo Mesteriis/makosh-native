@@ -6,7 +6,7 @@ import XCTest
 @MainActor final class MailComposeAttachmentsTests: XCTestCase {
     func testComposeWithAttachmentsAndAddress() async throws {
         guard let dsn = ProcessInfo.processInfo.environment["MAKOSH_TEST_DATABASE_URL"] else { throw XCTSkip("PostgreSQL required") }
-        let config = ContactWorkspaceConfiguration(
+        let config = PersonWorkspaceConfiguration(
             connectionString: dsn, schema: "qa_mail_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
         let repository = MailRepository(configuration: config, keyProvider: { _, _ in Data(repeating: 0x73, count: 32) })
         let account = MailAccount(

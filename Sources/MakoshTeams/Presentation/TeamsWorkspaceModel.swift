@@ -79,7 +79,7 @@ package struct TeamsMessageRow: Identifiable, Sendable {
         let worker = worker
         Task { await worker.shutdown() }
     }
-    package func load(configuration: ContactWorkspaceConfiguration) async {
+    package func load(configuration: PersonWorkspaceConfiguration) async {
         guard !loaded, !loading else { return }
         if isSynthetic {
             let args = CommandLine.arguments

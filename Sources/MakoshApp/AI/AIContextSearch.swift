@@ -15,7 +15,7 @@ import MakoshWhatsApp
     private let telegram: TelegramModel
     private let whatsapp: WhatsAppWorkspaceModel
     private let mail: MailWorkspaceModel
-    private let contacts: () -> [Contact]
+    private let contacts: () -> [Person]
     static let limit = 30
     /// Files of the archive and Paperless; their late answers re-rank the list.
     private var files: FilePickerSearch?
@@ -35,7 +35,7 @@ import MakoshWhatsApp
         }
     }
 
-    init(telegram: TelegramModel, whatsapp: WhatsAppWorkspaceModel, mail: MailWorkspaceModel, contacts: @escaping () -> [Contact]) {
+    init(telegram: TelegramModel, whatsapp: WhatsAppWorkspaceModel, mail: MailWorkspaceModel, contacts: @escaping () -> [Person]) {
         self.telegram = telegram
         self.whatsapp = whatsapp
         self.mail = mail

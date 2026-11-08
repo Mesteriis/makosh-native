@@ -3,7 +3,7 @@ import TelegramCore
 import Postbox
 import SwiftSignalKit
 
-/// Contact profile, profile media, group membership and shared media navigation.
+/// Person profile, profile media, group membership and shared media navigation.
 extension TelegramModel {
     public func blockedUserChange(_ profile: TelegramContactProfile, contextID: UUID) -> TelegramBlockedUserChange? {
         guard isCurrentContactProfile(profile, contextID: contextID), profile.isPerson || profile.isBot,

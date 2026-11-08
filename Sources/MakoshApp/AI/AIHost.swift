@@ -16,7 +16,7 @@ import MakoshWhatsApp
     /// The chat panel's own selection, so it never moves the AI section's.
     let panel: AIWorkspaceModel
     let settings: AISettingsModel
-    @Published private(set) var configuration: ContactWorkspaceConfiguration?
+    @Published private(set) var configuration: PersonWorkspaceConfiguration?
     @Published private(set) var indexStatus = AIIndexStatus()
     @Published private(set) var enabledScopes: [AIAccessScope] = []
     /// Bumped after any access change so toggles reload their state.
@@ -54,7 +54,7 @@ import MakoshWhatsApp
     /// Opens the conversation store, then the index: the archive and mail
     /// sources, the access flags and the vector store, all off the main actor.
     func start(
-        configuration: ContactWorkspaceConfiguration, contacts: ContactWorkspaceWorker?,
+        configuration: PersonWorkspaceConfiguration, contacts: PersonWorkspaceWorker?,
         keyProvider: @escaping @Sendable (UUID, Bool) throws -> Data = MessageArchiveKeychain.open, mail: Bool = true,
         telegram: @escaping @MainActor () -> (any TelegramAIContextReading)? = { nil },
         whatsapp: @escaping @MainActor () -> (any WhatsAppServing)? = { nil }, files: FilesHost? = nil
@@ -118,7 +118,7 @@ import MakoshWhatsApp
         } catch { indexStatus.failure = error as? AIFailure ?? .storage }
     }
 
-    /// Contact flags live in the dossier; the index only needs to re-check.
+    /// Person flags live in the dossier; the index only needs to re-check.
     func contactAccessChanged() async {
         accessRevision += 1
         await indexer?.accessChanged()

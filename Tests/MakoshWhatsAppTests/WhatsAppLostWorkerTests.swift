@@ -41,7 +41,7 @@ final class WhatsAppLostWorkerTests: XCTestCase {
             throw XCTSkip("PostgreSQL required")
         }
         let schema = "qa_whatsapp_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let config = ContactWorkspaceConfiguration(connectionString: connection, schema: schema)
+        let config = PersonWorkspaceConfiguration(connectionString: connection, schema: schema)
         let keys: @Sendable (UUID, Bool) throws -> Data = { _, _ in Data(repeating: 0x76, count: 32) }
         let repository = WhatsAppRepository(configuration: config, keyProvider: keys)
         let account = WhatsAppAccount(name: "Lost worker")
@@ -71,7 +71,7 @@ final class WhatsAppLostWorkerTests: XCTestCase {
             throw XCTSkip("PostgreSQL required")
         }
         let schema = "qa_whatsapp_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let config = ContactWorkspaceConfiguration(connectionString: connection, schema: schema)
+        let config = PersonWorkspaceConfiguration(connectionString: connection, schema: schema)
         let keys: @Sendable (UUID, Bool) throws -> Data = { _, _ in Data(repeating: 0x76, count: 32) }
         let repository = WhatsAppRepository(configuration: config, keyProvider: keys)
         let account = WhatsAppAccount(name: "Lost then disconnected")

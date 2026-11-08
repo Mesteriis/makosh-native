@@ -8,14 +8,14 @@ func aiIdentityKey(_ fields: [String]) -> String { fields.map { "\($0.utf8.count
 /// Owned and closed by `AIRepository`; every value is AES-GCM sealed with a
 /// key derived from the shared archive vault key.
 final class AIPostgres {
-    let configuration: ContactWorkspaceConfiguration
+    let configuration: PersonWorkspaceConfiguration
     let prefix: String
     private var connection: PostgresConnection?
     private var vault: UUID?
     private var encryptionKey: SymmetricKey?
     private var lookupKey: SymmetricKey?
 
-    init(configuration: ContactWorkspaceConfiguration) throws {
+    init(configuration: PersonWorkspaceConfiguration) throws {
         guard ArchiveBackup.isValidSchemaName(configuration.schema), !configuration.connectionString.utf8.contains(0) else {
             throw AIFailure.invalidConfiguration
         }

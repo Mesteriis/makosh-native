@@ -4,7 +4,7 @@ import XCTest
 
 final class AIQAIsolationTests: XCTestCase {
     private let arguments = ["/Applications/Makosh", "--ai-synthetic-preview", "--database-config", "/tmp/qa.json"]
-    private func configuration(schema: String = "qa_ai_preview", host: String = "127.0.0.1") -> ContactWorkspaceConfiguration {
+    private func configuration(schema: String = "qa_ai_preview", host: String = "127.0.0.1") -> PersonWorkspaceConfiguration {
         .init(
             connectionString: "host=\(host) hostaddr=127.0.0.1 port=5432 dbname=makosh user=makosh", schema: schema, archiveSchema: schema)
     }

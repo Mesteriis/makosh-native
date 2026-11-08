@@ -2,7 +2,7 @@ import Foundation
 import MakoshCore
 
 extension WhatsAppChat {
-  public var dossierContact: ImportedContact? {
+  public var dossierPerson: ImportedPerson? {
     guard !group, id.hasSuffix("@lid") || id.hasSuffix("@s.whatsapp.net") else { return nil }
     let user = String(id.split(separator: "@", maxSplits: 1)[0])
     let phone =

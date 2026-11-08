@@ -6,7 +6,7 @@ import SwiftUI
 /// Keeps the calendar's attendee hints and CalDAV hints current and opens the section on a reminder click.
 struct CalendarWorkspaceLinks: ViewModifier {
     @ObservedObject var host: CalendarHost
-    let contacts: [Contact]
+    let contacts: [Person]
     let mailAccounts: [MailAccount]
     var showCalendar: () -> Void
 

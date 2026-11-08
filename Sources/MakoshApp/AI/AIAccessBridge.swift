@@ -6,9 +6,9 @@ import SwiftUI
 /// message archive, contact flags in the dossier.
 actor AIArchiveAccessProvider: AIAccessProvider {
     private let store: MessageArchiveStore
-    private let contacts: ContactWorkspaceWorker?
+    private let contacts: PersonWorkspaceWorker?
 
-    init(store: MessageArchiveStore, contacts: ContactWorkspaceWorker?) {
+    init(store: MessageArchiveStore, contacts: PersonWorkspaceWorker?) {
         self.store = store
         self.contacts = contacts
     }
@@ -17,7 +17,7 @@ actor AIArchiveAccessProvider: AIAccessProvider {
         let scopes = Set(try store.enabledAIScopes())
         var access: [ServiceIdentity: AIContactAccess] = [:]
         if let contacts {
-            for contact in try await contacts.snapshot().contacts where contact.aiAccess != .inherit {
+            for contact in try await contacts.snapshot().persons where contact.aiAccess != .inherit {
                 // An identity shared by several cards stays forbidden if any card forbids it.
                 for identity in contact.identities where access[identity] != .forbidden { access[identity] = contact.aiAccess }
             }

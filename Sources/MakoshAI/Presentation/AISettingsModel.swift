@@ -15,7 +15,7 @@ import MakoshCore
 
     package init(worker: AIWorker) { self.worker = worker }
 
-    package func start(configuration: ContactWorkspaceConfiguration) async {
+    package func start(configuration: PersonWorkspaceConfiguration) async {
         do {
             try await worker.open(configuration: configuration)
             await reload()

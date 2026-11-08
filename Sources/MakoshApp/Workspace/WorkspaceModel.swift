@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class WorkspaceModel: ObservableObject {
-    @Published var contacts: [Contact] = []
+    @Published var persons: [Person] = []
     @Published var duplicates: [DuplicateCandidate] = []
     @Published var merges: [MergeRecord] = []
     @Published var selectedID: UUID? {
@@ -22,17 +22,17 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var writesBlocked = false
     private var selectionRevision: UInt64 = 0
-    private let worker: ContactWorkspaceWorker
-    private var archiveConfiguration: ContactWorkspaceConfiguration?
+    private let worker: PersonWorkspaceWorker
+    private var archiveConfiguration: PersonWorkspaceConfiguration?
     @Published private(set) var archiveBackupContext: TelegramArchiveBackupContext?
     #if DEBUG
     private var pendingUploadQAConfigured = false
     #endif
     init(requireExplicitDatabaseConfiguration: Bool = false, syntheticSchemaPrefix: String = "qa_telegram_dossier_") {
-        worker = ContactWorkspaceWorker(
+        worker = PersonWorkspaceWorker(
             requireExplicitDatabaseConfiguration: requireExplicitDatabaseConfiguration, syntheticSchemaPrefix: syntheticSchemaPrefix)
     }
-    init(worker: ContactWorkspaceWorker) { self.worker = worker }
+    init(worker: PersonWorkspaceWorker) { self.worker = worker }
 
     /// The view owns startup lifetime; constructing the conductor performs no IO.
     func load() async {
@@ -46,9 +46,9 @@ final class WorkspaceModel: ObservableObject {
             ready = true
         } catch { self.error = error.localizedDescription }
     }
-    var dossierWorker: ContactWorkspaceWorker { worker }
-    var mailConfiguration: ContactWorkspaceConfiguration? { archiveConfiguration }
-    var selected: Contact? { contacts.first { $0.id == selectedID } }
+    var dossierWorker: PersonWorkspaceWorker { worker }
+    var mailConfiguration: PersonWorkspaceConfiguration? { archiveConfiguration }
+    var selected: Person? { persons.first { $0.id == selectedID } }
     var canWrite: Bool { ready && !busy && !writesBlocked }
     func configureArchive(_ archive: TelegramArchiveController, synthetic: Bool = false) {
         guard let configuration = archiveConfiguration else { return }
@@ -127,7 +127,7 @@ final class WorkspaceModel: ObservableObject {
             return false
         }
     }
-    func save(_ draft: ContactDraft, id: UUID?) async -> Bool {
+    func save(_ draft: PersonDraft, id: UUID?) async -> Bool {
         await perform(.save(draft: draft, id: id), selectResult: true) != nil
     }
     func linkTelegramProfile(
@@ -150,20 +150,20 @@ final class WorkspaceModel: ObservableObject {
         guard MailAddress.isValid(letter.sender) else { return nil }
         let result = await perform(
             .link(
-                letter.dossierContact, source: ImportSource(service: "mail", accountID: letter.key.accountID), fetchedAt: Date(),
+                letter.dossierPerson, source: ImportSource(service: "mail", accountID: letter.key.accountID), fetchedAt: Date(),
                 contactID: nil))
         guard case .linked(let id) = result?.value else { return nil }
         return id
     }
     func linkWhatsAppChat(_ chat: WhatsAppChat, accountID: UUID) async -> UUID? {
-        guard let contact = chat.dossierContact else { return nil }
+        guard let contact = chat.dossierPerson else { return nil }
         let result = await perform(
             .link(contact, source: ImportSource(service: "whatsapp", accountID: accountID.uuidString), fetchedAt: Date(), contactID: nil))
         guard case .linked(let id) = result?.value else { return nil }
         return id
     }
     func linkTeamsPerson(_ person: TeamsPerson, accountID: UUID) async -> UUID? {
-        guard let contact = try? await BackgroundWork.run({ person.dossierContact }) else {
+        guard let contact = try? await BackgroundWork.run({ person.dossierPerson }) else {
             error = "Для привязки нужен подтверждённый профиль человека и его организация Teams."
             return nil
         }
@@ -175,18 +175,18 @@ final class WorkspaceModel: ObservableObject {
     func openTelemostDossier(_ telemost: TelemostWorkspaceModel, contactID: UUID, while isCurrent: @MainActor () -> Bool) async -> UUID? {
         let context = telemost.contextID
         guard isCurrent(), let id = await telemost.openDossier(contactID: contactID), isCurrent(), context == telemost.contextID,
-            await selectContact(id, while: { isCurrent() && context == telemost.contextID }),
+            await selectPerson(id, while: { isCurrent() && context == telemost.contextID }),
             isCurrent(), context == telemost.contextID
         else { return nil }
         return id
     }
     func openTeamsDossier(_ person: TeamsPerson, accountID: UUID, while isCurrent: @MainActor () -> Bool) async -> UUID? {
         guard isCurrent(), let id = await linkTeamsPerson(person, accountID: accountID), isCurrent(),
-            await selectContact(id, while: isCurrent), isCurrent()
+            await selectPerson(id, while: isCurrent), isCurrent()
         else { return nil }
         return id
     }
-    func selectContact(_ id: UUID, while isCurrent: @MainActor () -> Bool = { true }) async -> Bool {
+    func selectPerson(_ id: UUID, while isCurrent: @MainActor () -> Bool = { true }) async -> Bool {
         guard ready, !busy, isCurrent() else { return false }
         let revision = selectionRevision
         busy = true
@@ -196,7 +196,7 @@ final class WorkspaceModel: ObservableObject {
             guard isCurrent() else { return false }
             let selectionUnchanged = revision == selectionRevision
             publish(snapshot)
-            guard snapshot.contacts.contains(where: { $0.id == id }) else {
+            guard snapshot.persons.contains(where: { $0.id == id }) else {
                 throw StoreError.invalid("Досье изменилось. Откройте карточку собеседника заново.")
             }
             guard selectionUnchanged else { return false }
@@ -207,13 +207,13 @@ final class WorkspaceModel: ObservableObject {
             return false
         }
     }
-    private func publish(_ snapshot: ContactWorkspaceSnapshot) {
-        contacts = snapshot.contacts
+    private func publish(_ snapshot: PersonWorkspaceSnapshot) {
+        persons = snapshot.persons
         duplicates = snapshot.duplicates
         merges = snapshot.merges
-        if let selectedID, !contacts.contains(where: { $0.id == selectedID }) { self.selectedID = nil }
+        if let selectedID, !persons.contains(where: { $0.id == selectedID }) { self.selectedID = nil }
     }
-    private func perform(_ command: ContactWorkspaceCommand, selectResult: Bool = false) async -> ContactWorkspaceWriteResult? {
+    private func perform(_ command: PersonWorkspaceCommand, selectResult: Bool = false) async -> PersonWorkspaceWriteResult? {
         guard canWrite else { return nil }
         let revision = selectionRevision
         busy = true
@@ -237,7 +237,7 @@ final class WorkspaceModel: ObservableObject {
             }
             return result
         } catch {
-            if let failure = error as? ContactWorkspaceError, failure.blocksWrites { writesBlocked = true }
+            if let failure = error as? PersonWorkspaceError, failure.blocksWrites { writesBlocked = true }
             self.error = error.localizedDescription
             return nil
         }
@@ -261,6 +261,6 @@ final class WorkspaceModel: ObservableObject {
                 removedID: survivor == candidate.firstID ? candidate.secondID : candidate.firstID), selectResult: true) != nil
     }
     @discardableResult func undo(_ record: MergeRecord) async -> Bool { await perform(.undo(record.id)) != nil }
-    func name(_ id: UUID) -> String { contacts.first { $0.id == id }?.displayName ?? "Контакт недоступен" }
+    func name(_ id: UUID) -> String { persons.first { $0.id == id }?.displayName ?? "Контакт недоступен" }
 
 }

@@ -23,8 +23,8 @@ struct PostgresTestDatabase {
         schema = "makosh_test_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         _ = try makeStore()
     }
-    func makeStore() throws -> ContactStore {
-        try ContactStore(connectionString: connectionString, schema: schema)
+    func makeStore() throws -> PersonStore {
+        try PersonStore(connectionString: connectionString, schema: schema)
     }
     func cleanup() throws {
         guard schema.hasPrefix("makosh_test_"), schema.utf8.count == 44,

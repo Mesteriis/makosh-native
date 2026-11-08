@@ -75,7 +75,7 @@ extension EnvironmentValues {
     }
 
     /// Opens the store in the application schema and starts polling; safe to call once.
-    func start(configuration: ContactWorkspaceConfiguration, seed: ((TaskStore) async throws -> Void)? = nil) async {
+    func start(configuration: PersonWorkspaceConfiguration, seed: ((TaskStore) async throws -> Void)? = nil) async {
         guard !configured else { return }
         configured = true
         let store = TaskStore(connectionString: configuration.connectionString, schema: configuration.schema)

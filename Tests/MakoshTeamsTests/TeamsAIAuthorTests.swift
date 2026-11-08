@@ -23,7 +23,7 @@ final class TeamsAIAuthorTests: XCTestCase {
             keyProvider: teamsTestKey, authorKeys: ["teams": TeamsPerson.archiveAuthorKey])
         let items = try await source.items(after: 0, limit: 200)
         XCTAssertEqual(items.map(\.text), ["from a guest"])
-        let expected = try XCTUnwrap(guest.dossierContact).externalID
+        let expected = try XCTUnwrap(guest.dossierPerson).externalID
         XCTAssertEqual(
             items.first?.author, ServiceIdentity(service: "teams", accountID: teamsTestScope.accountID.uuidString, externalID: expected))
     }

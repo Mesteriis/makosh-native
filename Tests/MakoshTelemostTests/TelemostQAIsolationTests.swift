@@ -9,7 +9,7 @@ final class TelemostQAIsolationTests: XCTestCase {
     func config(
         _ host: String = "host=127.0.0.1 hostaddr=127.0.0.1 user=synthetic dbname=qa", _ schema: String = "qa_telemost_app",
         _ archive: String? = "qa_telemost_archive"
-    ) -> ContactWorkspaceConfiguration { .init(connectionString: host, schema: schema, archiveSchema: archive) }
+    ) -> PersonWorkspaceConfiguration { .init(connectionString: host, schema: schema, archiveSchema: archive) }
     func testBothSchemaPrefixesAndExplicitArgumentsRequired() {
         XCTAssertNoThrow(try TelemostQAIsolation.validate(configuration: config(), arguments: args))
         for value in [

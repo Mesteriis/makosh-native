@@ -6,8 +6,8 @@ import XCTest
 final class TasksQAIsolationTests: XCTestCase {
     private func configuration(
         _ schema: String, connection: String = "host=127.0.0.1 hostaddr=127.0.0.1 dbname=qa user=qa"
-    ) -> ContactWorkspaceConfiguration {
-        ContactWorkspaceConfiguration(connectionString: connection, schema: schema, archiveSchema: schema)
+    ) -> PersonWorkspaceConfiguration {
+        PersonWorkspaceConfiguration(connectionString: connection, schema: schema, archiveSchema: schema)
     }
     private let arguments = ["--tasks-synthetic-preview", "--database-config", "/tmp/qa.json"]
 

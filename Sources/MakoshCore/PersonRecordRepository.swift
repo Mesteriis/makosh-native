@@ -1,10 +1,10 @@
 import Foundation
 
-/// Row-level persistence for `ContactStore`: one JSONB row per contact and per
+/// Row-level persistence for `PersonStore`: one JSONB row per contact and per
 /// merge, plus per-identity import watermarks. Writers hold a schema-scoped
 /// transaction advisory lock, so mutations stay serialized across connections
 /// while each write touches only the contacts it changes.
-final class ContactRecordRepository {
+final class PersonRecordRepository {
     static let schemaVersion = 2
 
     private let connection: PostgresConnection
@@ -82,37 +82,37 @@ final class ContactRecordRepository {
 
     // MARK: Contacts
 
-    func allContacts() throws -> [Contact] {
-        try connection.query("SELECT payload::text FROM \(contacts)").map { try decode(Contact.self, $0[0]) }
+    func allPersons() throws -> [Person] {
+        try connection.query("SELECT payload::text FROM \(contacts)").map { try decode(Person.self, $0[0]) }
     }
 
-    func contact(id: UUID) throws -> Contact? {
+    func person(id: UUID) throws -> Person? {
         try connection.query("SELECT payload::text FROM \(contacts) WHERE id=$1::uuid", [id.uuidString])
-            .first.map { try decode(Contact.self, $0[0]) }
+            .first.map { try decode(Person.self, $0[0]) }
     }
 
     /// Every contact whose identities contain `identity`; more than one is corruption.
-    func contacts(owning identity: ServiceIdentity) throws -> [Contact] {
+    func persons(owning identity: ServiceIdentity) throws -> [Person] {
         try connection.query(
             "SELECT payload::text FROM \(contacts) WHERE payload->'identities' @> $1::jsonb ORDER BY id",
             [try encode([identity])]
-        ).map { try decode(Contact.self, $0[0]) }
+        ).map { try decode(Person.self, $0[0]) }
     }
 
-    func contacts(owningNote id: UUID) throws -> [Contact] {
+    func persons(owningNote id: UUID) throws -> [Person] {
         try connection.query(
             "SELECT payload::text FROM \(contacts) WHERE payload->'notes' @> $1::jsonb ORDER BY id",
             [try encode([["id": id]])]
-        ).map { try decode(Contact.self, $0[0]) }
+        ).map { try decode(Person.self, $0[0]) }
     }
 
-    func insert(_ contact: Contact) throws {
+    func insert(_ contact: Person) throws {
         try connection.execute(
             "INSERT INTO \(contacts) (id, payload) VALUES ($1::uuid, $2::jsonb)",
             [contact.id.uuidString, try encode(contact)])
     }
 
-    func update(_ contact: Contact) throws {
+    func update(_ contact: Person) throws {
         let rows = try connection.query(
             "UPDATE \(contacts) SET payload=$2::jsonb WHERE id=$1::uuid RETURNING id",
             [contact.id.uuidString, try encode(contact)])

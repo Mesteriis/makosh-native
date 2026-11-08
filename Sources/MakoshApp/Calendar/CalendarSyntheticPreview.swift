@@ -53,7 +53,7 @@ struct CalendarSyntheticPreview: View {
                     guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
                         let mode = attributes[.posixPermissions] as? NSNumber, mode.intValue & 0o077 == 0
                     else { throw CalendarQAIsolation.Failure.invalidConfiguration }
-                    let value = try JSONDecoder().decode(ContactWorkspaceConfiguration.self, from: Data(contentsOf: file))
+                    let value = try JSONDecoder().decode(PersonWorkspaceConfiguration.self, from: Data(contentsOf: file))
                     try CalendarQAIsolation.validate(configuration: value, arguments: args)
                     return value
                 }

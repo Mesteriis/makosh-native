@@ -13,7 +13,7 @@ public actor AIRepository {
         self.keyProvider = keyProvider
     }
 
-    public func open(configuration: ContactWorkspaceConfiguration) throws {
+    public func open(configuration: PersonWorkspaceConfiguration) throws {
         if let database {
             guard database.configuration.schema == configuration.schema,
                 database.configuration.connectionString == configuration.connectionString

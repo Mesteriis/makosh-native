@@ -143,6 +143,7 @@ final class PersonRecordRepository {
         try connection.execute(
             "INSERT INTO \(contacts) (id, payload) VALUES ($1::uuid, $2::jsonb)",
             [contact.id.uuidString, try encode(contact)])
+        try reindexValues(contact)
     }
 
     func update(_ contact: Person) throws {
@@ -150,11 +151,54 @@ final class PersonRecordRepository {
             "UPDATE \(contacts) SET payload=$2::jsonb WHERE id=$1::uuid RETURNING id",
             [contact.id.uuidString, try encode(contact)])
         guard rows.count == 1 else { throw StoreError.database("PostgreSQL contact update did not affect exactly one row.") }
+        try reindexValues(contact)
     }
 
     func delete(contactID: UUID) throws {
         let rows = try connection.query("DELETE FROM \(contacts) WHERE id=$1::uuid RETURNING id", [contactID.uuidString])
         guard rows.count == 1 else { throw StoreError.database("PostgreSQL contact delete did not affect exactly one row.") }
+        try connection.execute("DELETE FROM \(values) WHERE person_id=$1::uuid", [contactID.uuidString])
+    }
+
+    // MARK: Value index
+
+    private func reindexValues(_ contact: Person) throws {
+        try connection.execute("DELETE FROM \(values) WHERE person_id=$1::uuid", [contact.id.uuidString])
+        for row in PersonMatching.indexRows(contact) {
+            try connection.execute(
+                "INSERT INTO \(values) (person_id, field, normalized, raw) VALUES ($1::uuid, $2, $3, $4)",
+                [contact.id.uuidString, row.field, row.normalized, row.raw])
+        }
+    }
+
+    struct SharedValue {
+        let field: String
+        let normalized: String
+        let personIDs: [UUID]
+    }
+
+    /// Every (field, value) held by two or more persons, with their ids in insertion order.
+    func sharedValues() throws -> [SharedValue] {
+        try connection.query(
+            "SELECT field, normalized, string_agg(person_id::text, ',' ORDER BY person_id) FROM \(values) GROUP BY field, normalized HAVING count(*) > 1 ORDER BY field, normalized"
+        ).map { row in
+            SharedValue(
+                field: row[0], normalized: row[1], personIDs: row[2].split(separator: ",").compactMap { UUID(uuidString: String($0)) })
+        }
+    }
+
+    /// Persons sharing a value with `personID`, with the value and how many persons hold it in all.
+    func valueMatches(personID: UUID) throws -> [(field: String, normalized: String, raw: String, otherID: UUID, holders: Int)] {
+        try connection.query(
+            "SELECT mine.field, mine.normalized, mine.raw, other.person_id::text, "
+                + "(SELECT count(*) FROM \(values) all_rows WHERE all_rows.field=mine.field AND all_rows.normalized=mine.normalized) "
+                + "FROM \(values) mine JOIN \(values) other ON other.field=mine.field AND other.normalized=mine.normalized AND other.person_id<>mine.person_id "
+                + "WHERE mine.person_id=$1::uuid ORDER BY mine.field, mine.normalized, other.person_id",
+            [personID.uuidString]
+        ).compactMap { row in
+            guard let other = UUID(uuidString: row[3]), let holders = Int(row[4]) else { return nil }
+            return (row[0], row[1], row[2], other, holders)
+        }
     }
 
     // MARK: Import watermarks

@@ -210,6 +210,8 @@ public struct Person: Codable, Equatable, Identifiable, Sendable {
     public var addressBookOrigin: AddressBookOrigin?
     public var deletedAt: Date?
     public var hiddenAsSpam: Bool = false
+    /// When this record appeared in Makosh; the older of two matches survives an automatic merge.
+    public var createdAt: Date = Date()
     public var revision: Int
     public var aiAccess: AIContactAccess = .inherit
     public var draft: PersonDraft {
@@ -270,7 +272,7 @@ public struct Person: Codable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, displayName, givenName, familyName, middleName, organization, jobTitle, phones, emails, usernames, tags, identities,
             observations, notes, events, manualFields, manualValues, former, addressBook, addressBookOrigin, deletedAt, hiddenAsSpam,
-            revision, aiAccess
+            createdAt, revision, aiAccess
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -298,6 +300,8 @@ public struct Person: Codable, Equatable, Identifiable, Sendable {
         addressBookOrigin = try c.decodeIfPresent(AddressBookOrigin.self, forKey: .addressBookOrigin)
         deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
         hiddenAsSpam = try c.decodeIfPresent(Bool.self, forKey: .hiddenAsSpam) ?? false
+        // Older rows carry no creation time: their earliest event stands in for it.
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? events.map(\.date).min() ?? Date()
         revision = try c.decode(Int.self, forKey: .revision)
         // Rows written before AI access existed default to inherit.
         aiAccess = try c.decodeIfPresent(AIContactAccess.self, forKey: .aiAccess) ?? .inherit

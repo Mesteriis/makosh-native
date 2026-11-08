@@ -422,16 +422,73 @@ public final class PersonStore {
         }
     }
 
+    /// Pairs of active persons of one kind sharing a phone or an address, from the value index.
     public func duplicateCandidates() throws -> [DuplicateCandidate] {
-        let all = try persons()
-        var result: [DuplicateCandidate] = []
-        for (index, first) in all.enumerated() {
-            for second in all.dropFirst(index + 1) {
-                let reasons = Rules.duplicateReasons(first, second)
-                if !reasons.isEmpty { result.append(DuplicateCandidate(firstID: first.id, secondID: second.id, reasons: reasons)) }
+        try read { repository in
+            let kinds = Dictionary(uniqueKeysWithValues: try repository.activePersons().map { ($0.id, $0.kind) })
+            let blocked = try repository.noMergePairs()
+            var reasons: [NoMergePair: Set<String>] = [:]
+            for shared in try repository.sharedValues() {
+                let ids = shared.personIDs.filter { kinds[$0] != nil }
+                for (index, first) in ids.enumerated() {
+                    for second in ids.dropFirst(index + 1) where kinds[first] == kinds[second] {
+                        let pair = NoMergePair(first, second)
+                        guard !blocked.contains(pair) else { continue }
+                        reasons[pair, default: []].insert(shared.field == "emails" ? "Совпадает email" : "Совпадает телефон")
+                    }
+                }
             }
+            return reasons.map { pair, reasons in
+                DuplicateCandidate(firstID: pair.first, secondID: pair.second, reasons: reasons.sorted())
+            }.sorted { ($0.firstID.uuidString, $0.secondID.uuidString) < ($1.firstID.uuidString, $1.secondID.uuidString) }
         }
-        return result
+    }
+
+    /// Another active person of the same kind sharing an exact phone or address that at most two
+    /// persons hold, which is not a role address and not a pair the user pulled apart. Several → the oldest.
+    public func autoMergeCandidate(for personID: UUID) throws -> UUID? {
+        try read { repository in try autoMergeMatch(for: personID, repository: repository)?.otherID }
+    }
+
+    private func autoMergeMatch(
+        for personID: UUID, repository: PersonRecordRepository
+    ) throws -> (otherID: UUID, field: String, raw: String)? {
+        guard let person = try repository.person(id: personID), person.isActive else { return nil }
+        let blocked = try repository.noMergePairs()
+        var candidates: [(otherID: UUID, field: String, raw: String, created: Date)] = []
+        for match in try repository.valueMatches(personID: personID) where match.holders <= 2 {
+            if match.field == "emails", PersonMatching.isRoleAddress(match.raw) { continue }
+            guard !blocked.contains(NoMergePair(personID, match.otherID)), !candidates.contains(where: { $0.otherID == match.otherID }),
+                let other = try repository.person(id: match.otherID), other.isActive, other.kind == person.kind
+            else { continue }
+            candidates.append((match.otherID, match.field, match.raw, Self.createdAt(other)))
+        }
+        return candidates.min { ($0.created, $0.otherID.uuidString) < ($1.created, $1.otherID.uuidString) }
+            .map { ($0.otherID, $0.field, $0.raw) }
+    }
+
+    static func createdAt(_ person: Person) -> Date { person.createdAt }
+
+    /// One automatic merge for this person, if an exact match exists: the older person survives.
+    public func autoMerge(personID: UUID) throws -> UUID? {
+        try write { repository in
+            guard let match = try autoMergeMatch(for: personID, repository: repository),
+                let person = try repository.person(id: personID), let other = try repository.person(id: match.otherID)
+            else { return nil }
+            let personFirst = (Self.createdAt(person), person.id.uuidString) <= (Self.createdAt(other), other.id.uuidString)
+            let survivor = personFirst ? person : other, removed = personFirst ? other : person
+            var merged = Rules.merged(survivor, absorbing: removed)
+            let record = MergeRecord(survivorBefore: survivor, removedBefore: removed, expectedRevision: merged.revision)
+            merged.events.append(
+                PersonEvent(
+                    kind: "autoMerged",
+                    detail: "Склеено автоматически: совпал " + (match.field == "emails" ? "адрес " : "телефон ") + match.raw))
+            try moveMemberships(from: removed, to: survivor, repository: repository)
+            try repository.delete(contactID: removed.id)
+            try repository.update(merged)
+            try repository.insert(record)
+            return survivor.id
+        }
     }
 
     /// Joins two persons of one kind without further conditions: this is also «склеить принудительно».

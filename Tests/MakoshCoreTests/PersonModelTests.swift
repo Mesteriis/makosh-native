@@ -17,7 +17,7 @@ enum PersonFixture {
              "identities":[{"service":"mail","accountID":"a","externalID":"ivanov@sidorov.ru"}],
              "observations":[{"id":"\(UUID().uuidString)","field":"displayName","value":"Иванов Пётр",
                "source":{"identity":{"service":"mail","accountID":"a","externalID":"ivanov@sidorov.ru"},"fetchedAt":100}}],
-             "notes":[],"events":[],"manualFields":[\(manual)],"revision":3}
+             "notes":[],"events":[{"id":"\(UUID().uuidString)","date":50,"kind":"import","detail":"x"}],"manualFields":[\(manual)],"revision":3}
             """.utf8)
     }
 }
@@ -34,6 +34,8 @@ final class PersonModelTests: XCTestCase {
         XCTAssertTrue(person.isActive)
         XCTAssertEqual(person.givenName, "")
         XCTAssertEqual(person.usernames, [])
+        XCTAssertEqual(
+            person.createdAt, Date(timeIntervalSinceReferenceDate: 50), "The earliest event stands in for a missing creation time")
     }
 
     func testNamePartsFallBackToDisplayName() {

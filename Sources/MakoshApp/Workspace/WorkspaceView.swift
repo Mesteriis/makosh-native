@@ -8,6 +8,7 @@ import MakoshTeams
 import MakoshTelemost
 import MakoshAI
 import MakoshFiles
+import MakoshCalendar
 import UniformTypeIdentifiers
 
 private enum Destination: String, CaseIterable, Identifiable {
@@ -217,8 +218,11 @@ struct WorkspaceView: View {
                 files.start(
                     configuration: configuration,
                     resolver: FileSourceBridge(telegram: telegram, whatsapp: whatsapp, mail: mail, teams: teams))
-                Task { await tasks.start(configuration: configuration) }
-                Task { await calendarHost.start(configuration: configuration, taskFeed: nil) }
+                Task {
+                    await tasks.start(configuration: configuration)
+                    await calendarHost.start(configuration: configuration, taskFeed: tasks.calendarFeed)
+                    await tasks.attachCalendar(calendarHost)
+                }
                 Task {
                     await ai.start(
                         configuration: configuration, contacts: model.dossierWorker, telegram: { [telegram] in telegram.aiContextReader },

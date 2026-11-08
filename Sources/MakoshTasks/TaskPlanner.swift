@@ -14,10 +14,14 @@ public struct TaskPlanSlot: Codable, Equatable, Identifiable, Sendable {
     public var end: Int
     public var kind: Kind
     public var recurrence: Recurrence?
+    /// The calendar this slot becomes an event in; nil means the calendar's default.
+    public var calendarID: UUID?
+    /// Busy time from the calendar, shown in the planner but never stored or edited here.
+    public var external: Bool?
 
     public init(
         id: UUID = UUID(), planID: UUID, taskID: UUID? = nil, title: String? = nil, start: Int, end: Int, kind: Kind,
-        recurrence: Recurrence? = nil
+        recurrence: Recurrence? = nil, calendarID: UUID? = nil, external: Bool? = nil
     ) {
         self.id = id
         self.planID = planID
@@ -27,8 +31,11 @@ public struct TaskPlanSlot: Codable, Equatable, Identifiable, Sendable {
         self.end = end
         self.kind = kind
         self.recurrence = recurrence
+        self.calendarID = calendarID
+        self.external = external
     }
 
+    public var isExternal: Bool { external == true }
     public var minutes: Int { max(0, end - start) }
     public var range: ClosedRange<Int> { start...max(start, end) }
 

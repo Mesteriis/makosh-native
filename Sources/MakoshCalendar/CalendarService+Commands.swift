@@ -53,18 +53,24 @@ extension CalendarService {
     // MARK: Commands
 
     public func create(_ draft: CalendarDraft, ignoringConflicts: Bool) async throws -> CalendarWriteOutcome {
+        try await create(draft, uid: nil, remember: true, ignoringConflicts: ignoringConflicts)
+    }
+
+    func create(_ draft: CalendarDraft, uid: String?, remember: Bool, ignoringConflicts: Bool) async throws -> CalendarWriteOutcome {
         let (collection, account) = try await context(draft.collectionID)
         if account.kind == .local, !draft.attendees.isEmpty { throw CalendarFailure.invalidInput("local calendar has no attendees") }
         var event = CalendarEvent(
-            collectionID: collection.id, uid: UUID().uuidString.lowercased() + "@makosh", title: draft.title, time: draft.time)
+            collectionID: collection.id, uid: uid ?? UUID().uuidString.lowercased() + "@makosh", title: draft.title, time: draft.time)
         fill(&event, from: draft)
         if !ignoringConflicts {
             let found = try await conflicts(for: event, excluding: nil)
             if !found.isEmpty { return .conflicts(found) }
         }
-        var preferences = try await store.preferences()
-        preferences.lastCollectionID = collection.id
-        try await store.savePreferences(preferences)
+        if remember {
+            var preferences = try await store.preferences()
+            preferences.lastCollectionID = collection.id
+            try await store.savePreferences(preferences)
+        }
         let saved = try await store.insert(event, actor: .user)
         guard account.kind != .local else {
             await reconcileBusy(read: [])

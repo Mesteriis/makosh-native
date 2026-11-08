@@ -23,6 +23,8 @@ extension EnvironmentValues {
     @Published private(set) var failure: String?
     /// An event to open, from a reminder click.
     @Published var openEventRequest: UUID?
+    /// Moving a planner slot's event in the calendar moves the slot (set by the Tasks host).
+    var slotMoved: ((UUID, Date, Date) async -> Void)?
     private(set) var service: CalendarService?
     private(set) var store: CalendarStore?
     private var configured = false

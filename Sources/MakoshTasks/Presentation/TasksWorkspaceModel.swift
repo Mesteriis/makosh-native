@@ -59,6 +59,8 @@ public enum JiraAction: Sendable {
     @Published public internal(set) var plan: TaskDayPlan?
     @Published public internal(set) var slots: [TaskPlanSlot] = []
     @Published public internal(set) var plannedTaskIDs: Set<UUID> = []
+    /// The calendar behind the planner, set by the app when the calendar section runs.
+    public var plannerMirror: (any TaskPlannerMirror)?
     @Published public internal(set) var todaySlots: [TaskPlanSlot] = []
     /// Where «Создать задачу здесь» puts the next created task.
     public internal(set) var pendingSlotStart: Int?

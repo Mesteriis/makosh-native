@@ -18,7 +18,7 @@ extension TasksWorkspaceModel {
                 return (plan, try store.effectiveSlots(for: day, planID: plan.id, calendar: calendar), try store.plannedTaskIDs())
             }
             plan = loaded.0
-            slots = loaded.1
+            slots = loaded.1 + (await plannerMirror?.externalBlocks(day: day, planID: loaded.0.id, calendar: calendar) ?? [])
             plannedTaskIDs = loaded.2
             await loadTodaySlots()
         } catch { self.error = Self.describe(error) }
@@ -99,7 +99,7 @@ extension TasksWorkspaceModel {
     }
 
     public func moveSlot(id: UUID, to start: Int) async {
-        guard let slot = slots.first(where: { $0.id == id }) else { return }
+        guard let slot = slots.first(where: { $0.id == id }), !slot.isExternal else { return }
         let hours = plannerHours
         let occupied = slots.filter { $0.id != id }.map(\.range)
         guard
@@ -116,7 +116,7 @@ extension TasksWorkspaceModel {
 
     /// The end moves; a task slot's new length becomes the task's estimate.
     public func resizeSlot(id: UUID, end: Int) async {
-        guard let slot = slots.first(where: { $0.id == id }) else { return }
+        guard let slot = slots.first(where: { $0.id == id }), !slot.isExternal else { return }
         var resized = slot
         resized.end = max(slot.start + plannerStep, min(end, plannerHours.end * 60))
         guard resized != slot else { return }
@@ -143,7 +143,7 @@ extension TasksWorkspaceModel {
     }
 
     public func removeSlot(id: UUID) async {
-        guard let slot = slots.first(where: { $0.id == id }) else { return }
+        guard let slot = slots.first(where: { $0.id == id }), !slot.isExternal else { return }
         do {
             try await service.store.removeSlot(id: id)
             undo.record(TaskUndoStep(changes: [], slots: [TaskSlotChange(before: slot, after: nil)], at: now()))
@@ -166,9 +166,19 @@ extension TasksWorkspaceModel {
     public func unblockSlot(id: UUID) async { await removeSlot(id: id) }
 
     public func updateSlot(id: UUID, title: String?, recurrence: TaskPlanSlot.Recurrence?) async {
-        guard var slot = slots.first(where: { $0.id == id }), slot.kind == .blocked else { return }
+        guard var slot = slots.first(where: { $0.id == id }), slot.kind == .blocked, !slot.isExternal else { return }
         slot.title = title?.trimmingCharacters(in: .whitespaces).isEmpty == false ? title?.trimmingCharacters(in: .whitespaces) : nil
         slot.recurrence = recurrence
+        do {
+            try await service.store.updateSlot(slot)
+            await reloadAfterSlotChange()
+        } catch { self.error = Self.describe(error) }
+    }
+
+    /// The calendar a slot becomes an event in; nil goes back to the calendar's default.
+    public func setSlotCalendar(id: UUID, calendarID: UUID?) async {
+        guard var slot = slots.first(where: { $0.id == id }), !slot.isExternal else { return }
+        slot.calendarID = calendarID
         do {
             try await service.store.updateSlot(slot)
             await reloadAfterSlotChange()
@@ -199,7 +209,15 @@ extension TasksWorkspaceModel {
             let loaded = try await service.store.performInTransaction { store -> ([TaskPlanSlot], Set<UUID>) in
                 (try store.effectiveSlots(for: day, planID: planID, calendar: calendar), try store.plannedTaskIDs())
             }
-            slots = loaded.0
+            if let mirror = plannerMirror {
+                let titles = Dictionary(
+                    loaded.0.compactMap { slot in slot.taskID.flatMap { id in task(id: id).map { (id, $0.title) } } },
+                    uniquingKeysWith: { a, _ in a })
+                await mirror.slotsChanged(day: day, slots: loaded.0, titles: titles, calendar: calendar)
+                slots = loaded.0 + (await mirror.externalBlocks(day: day, planID: planID ?? UUID(), calendar: calendar))
+            } else {
+                slots = loaded.0
+            }
             plannedTaskIDs = loaded.1
             await loadTodaySlots()
             await refresh()

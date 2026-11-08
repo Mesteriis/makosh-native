@@ -58,7 +58,8 @@ final class PersonMatchingTests: XCTestCase {
             .init(externalID: "tg", displayName: "A tg", phones: ["8 916 000 00 00"]), source: telegram, fetchedAt: date(100),
             contactID: nil)
         XCTAssertEqual(try store.autoMergeCandidate(for: newer), older)
-        XCTAssertEqual(try store.autoMerge(personID: newer), older)
+        XCTAssertEqual(try store.autoMerge(personID: newer)?.survivor, older)
+        XCTAssertEqual(try store.domainAddressCounts(domains: ["x.ru"]), ["x.ru": 0])
         XCTAssertNil(try store.person(id: newer))
         let merged = try XCTUnwrap(try store.person(id: older))
         XCTAssertEqual(merged.identities.count, 1)

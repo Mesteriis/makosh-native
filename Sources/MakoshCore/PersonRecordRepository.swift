@@ -171,6 +171,14 @@ final class PersonRecordRepository {
         }
     }
 
+    func personCount(emailDomain domain: String) throws -> Int {
+        let row = try connection.query(
+            "SELECT count(DISTINCT person_id)::text FROM \(values) WHERE field='emails' AND split_part(normalized, '@', 2)=$1",
+            [domain.lowercased()]
+        ).first
+        return Int(row?[0] ?? "0") ?? 0
+    }
+
     struct SharedValue {
         let field: String
         let normalized: String

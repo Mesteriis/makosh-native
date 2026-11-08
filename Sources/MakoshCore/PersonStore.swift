@@ -19,7 +19,8 @@ public struct NoMergePair: Hashable, Codable, Sendable {
 /// schema-scoped writer lock and rereads the rows it changes, so independent app
 /// connections cannot overwrite each other's state. Persistence is in
 /// `PersonRecordRepository`; provenance rules are in `PersonReconciliation`.
-public final class PersonStore {
+/// Internally serialized by its lock, so actors on different executors may share one instance.
+public final class PersonStore: @unchecked Sendable {
     private typealias Rules = PersonReconciliation
     private let lock = NSLock()
     private let repository: PersonRecordRepository
@@ -479,7 +480,7 @@ public final class PersonStore {
     static func createdAt(_ person: Person) -> Date { person.createdAt }
 
     /// One automatic merge for this person, if an exact match exists: the older person survives.
-    public func autoMerge(personID: UUID) throws -> UUID? {
+    public func autoMerge(personID: UUID) throws -> (survivor: UUID, removed: UUID)? {
         try write { repository in
             guard let match = try autoMergeMatch(for: personID, repository: repository),
                 let person = try repository.person(id: personID), let other = try repository.person(id: match.otherID)
@@ -496,7 +497,16 @@ public final class PersonStore {
             try repository.delete(contactID: removed.id)
             try repository.update(merged)
             try repository.insert(record)
-            return survivor.id
+            return (survivor.id, removed.id)
+        }
+    }
+
+    /// How many active persons hold an address in each of these domains.
+    public func domainAddressCounts(domains: Set<String>) throws -> [String: Int] {
+        try read { repository in
+            var counts: [String: Int] = [:]
+            for domain in domains { counts[domain] = try repository.personCount(emailDomain: domain) }
+            return counts
         }
     }
 

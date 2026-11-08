@@ -73,7 +73,7 @@ extension CalendarService {
         }
         let saved = try await store.insert(event, actor: .user)
         guard account.kind != .local else {
-            await reconcileBusy(read: [])
+            reconcileSoon()
             return .saved(saved)
         }
         return try await push(.createEvent, event: saved, account: account, collection: collection, undo: .delete) { adapter in
@@ -121,11 +121,11 @@ extension CalendarService {
                     fill(&changed, from: draft)
                     changed.recurrence = nil
                     let saved = try await store.update(changed, expectedRevision: existing.revision, actor: .user)
-                    await reconcileBusy(read: [])
+                    reconcileSoon()
                     return .saved(saved)
                 }
                 let saved = try await store.insert(override, actor: .user)
-                await reconcileBusy(read: [])
+                reconcileSoon()
                 return .saved(saved)
             }
             // External series: «только это» splits the occurrence off as its own event.
@@ -174,7 +174,7 @@ extension CalendarService {
         }
         if account.kind == .local {
             try await store.markDeleted(id: event.id, expectedRevision: event.revision, actor: .user)
-            await reconcileBusy(read: [])
+            reconcileSoon()
             return
         }
         if event.recurrenceID != nil, let masterID = event.masterID, let master = try await store.event(id: masterID) {
@@ -191,7 +191,7 @@ extension CalendarService {
             try await adapter.delete(ref: ref, in: collection, notify: !event.attendees.isEmpty)
             try await store.settle(attempt.id, state: .confirmed, failure: nil)
             try await store.markDeleted(id: event.id, expectedRevision: event.revision, actor: .user)
-            await reconcileBusy(read: [])
+            reconcileSoon()
         } catch {
             try await fail(attempt, error: error, accountID: account.id)
             throw Self.surface(error)
@@ -215,7 +215,7 @@ extension CalendarService {
             for index in changed.attendees.indices where changed.attendees[index].isSelf { changed.attendees[index].response = response }
             changed.etag = ref.etag
             _ = try await store.update(changed, expectedRevision: event.revision, actor: .engine)
-            await reconcileBusy(read: [])
+            reconcileSoon()
         } catch {
             try await fail(attempt, error: error, accountID: account.id)
             throw Self.surface(error)
@@ -248,7 +248,7 @@ extension CalendarService {
                     try await store.markDeleted(id: eventID, expectedRevision: event.revision, actor: .engine)
                 }
             }
-            await reconcileBusy(read: [])
+            reconcileSoon()
             return state
         }
     }
@@ -263,7 +263,7 @@ extension CalendarService {
         {
             try await store.markDeleted(id: eventID, expectedRevision: event.revision, actor: .user)
         }
-        await reconcileBusy(read: [])
+        reconcileSoon()
     }
 
     public func nearestFree(length: TimeInterval, after: Date, collectionID: UUID) async throws -> Date? {
@@ -353,7 +353,7 @@ extension CalendarService {
     {
         let saved = try await store.update(changed, expectedRevision: previous.revision, actor: .user)
         guard account.kind != .local else {
-            await reconcileBusy(read: [])
+            reconcileSoon()
             return .saved(saved)
         }
         guard let externalID = previous.externalID else { throw CalendarFailure.invalidInput("attempt open") }
@@ -385,12 +385,12 @@ extension CalendarService {
             confirmed.externalID = ref.externalID
             confirmed.etag = ref.etag
             let saved = try await store.update(confirmed, expectedRevision: confirmed.revision, actor: .engine)
-            await reconcileBusy(read: [])
+            reconcileSoon()
             return .saved(saved)
         } catch {
             let state = try await fail(attempt, error: error, accountID: account.id)
             if state == .unknown {
-                await reconcileBusy(read: [])
+                reconcileSoon()
                 return .attemptOpen(try await store.attempt(id: attempt.id) ?? attempt)
             }
             if let current = try await store.event(id: event.id) {

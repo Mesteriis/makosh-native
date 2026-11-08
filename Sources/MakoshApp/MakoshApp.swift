@@ -19,7 +19,7 @@ import MakoshFiles
             || CommandLine.arguments.contains("--teams-synthetic-preview")
             || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"
             || CommandLine.arguments.contains(AIQAIsolation.flag) || CommandLine.arguments.contains(FilesQAIsolation.flag)
-            || CommandLine.arguments.contains(TasksHost.qaFlag)))
+            || CommandLine.arguments.contains(TasksHost.qaFlag) || CommandLine.arguments.contains(CalendarHost.qaFlag)))
     lazy var telegramProxy = TelegramProxyController()
     let telegramCallCoordinator = TelegramCallCoordinator()
     let telegramCallWindows = TelegramCallWindows()
@@ -59,7 +59,8 @@ struct MakoshApp: App {
         WhatsAppQAIsolation.permitsNormalLaunch(marker: marker, arguments: arguments)
             && TelemostSyntheticLaunchPolicy.permitsNormalLaunch(marker: marker, arguments: arguments)
             && !arguments.contains("--teams-synthetic-preview") && !arguments.contains(AIQAIsolation.flag)
-            && !arguments.contains(FilesQAIsolation.flag) && !arguments.contains(TasksHost.qaFlag) && !requiresSynthetic
+            && !arguments.contains(FilesQAIsolation.flag) && !arguments.contains(TasksHost.qaFlag)
+            && !arguments.contains(CalendarHost.qaFlag) && !requiresSynthetic
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -101,6 +102,13 @@ struct MakoshApp: App {
                         minWidth: 600, minHeight: 240)
                 } else if CommandLine.arguments.contains(TasksHost.qaFlag) {
                     TasksSyntheticPreview().frame(minWidth: 1100, minHeight: 700)
+                } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "calendar",
+                    !CommandLine.arguments.contains(CalendarHost.qaFlag)
+                {
+                    Text("QA «Календарь» требует --calendar-synthetic-preview и отдельную конфигурацию PostgreSQL.").padding(24).frame(
+                        minWidth: 600, minHeight: 240)
+                } else if CommandLine.arguments.contains(CalendarHost.qaFlag) {
+                    CalendarSyntheticPreview().frame(minWidth: 1200, minHeight: 760)
                 } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams",
                     !CommandLine.arguments.contains("--teams-synthetic-preview")
                 {

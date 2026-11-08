@@ -13,7 +13,8 @@ struct BusyWorld {
     let group: CalendarGroup
 
     func copies(_ adapter: CalendarSyntheticAdapter, _ externalID: String) async -> [CalendarEvent] {
-        await adapter.externalEvents(collectionExternalID: externalID).filter { $0.busyMarker != nil }
+        await h.service.settled()
+        return await adapter.externalEvents(collectionExternalID: externalID).filter { $0.busyMarker != nil }
     }
     func draft(
         in collection: CalendarCollection, _ from: Double, _ to: Double, title: String = "Стоматолог", attendees: [String] = []
@@ -36,6 +37,7 @@ extension XCTestCase {
         var collections = try await h.store.collections()
         for index in collections.indices { collections[index].groupIDs = [group.id] }
         try await h.service.applyGroupChange(collections: collections, groups: [group])
+        await h.service.settled()
         let all = try await h.store.collections()
         return BusyWorld(
             h: h, personal: all.first { $0.externalID == "local" }!, workA: all.first { $0.accountID == accountA.id }!,
@@ -48,6 +50,7 @@ final class CalendarServiceCommandsTests: XCTestCase {
         let w = try await busyWorld()
         let outcome = try await w.h.service.create(w.draft(in: w.personal, 14, 15), ignoringConflicts: false)
         guard case .saved(let event) = outcome else { return XCTFail("saved expected, got \(outcome)") }
+        await w.h.service.settled()
         for (adapter, id) in [(w.a, "work-a"), (w.b, "work-b")] {
             let copies = await w.copies(adapter, id)
             XCTAssertEqual(copies.map(\.title), ["Занято"])
@@ -83,6 +86,7 @@ final class CalendarServiceCommandsTests: XCTestCase {
         let moved = await w.copies(w.a, "work-a")
         XCTAssertEqual(moved.map(\.time), [.timed(start: w.h.at(16), end: w.h.at(17), timeZone: nil)])
         try await w.h.service.delete(eventID: event.id, occurrenceKey: nil, scope: .series)
+        await w.h.service.settled()
         let afterA = await w.copies(w.a, "work-a"), afterB = await w.copies(w.b, "work-b")
         XCTAssertTrue(afterA.isEmpty && afterB.isEmpty)
         let records = try await w.h.store.busyCopies(targetCollectionID: nil)
@@ -137,6 +141,7 @@ final class CalendarServiceCommandsTests: XCTestCase {
         let w = try await busyWorld()
         await w.b.failNext(.unknownOutcome(stage: "copy"))
         _ = try await w.h.service.create(w.draft(in: w.personal, 14, 15), ignoringConflicts: false)
+        await w.h.service.settled()
         let open = try await w.h.store.openAttempts()
         XCTAssertEqual(open.map(\.state), [.unknown])
         await w.h.service.sync(accountID: w.workB.accountID)
@@ -223,6 +228,7 @@ final class CalendarServiceCommandsTests: XCTestCase {
         _ = try await w.h.service.create(w.draft(in: w.personal, 14, 15), ignoringConflicts: false)
         let bCopies = await w.copies(w.b, "work-b")
         XCTAssertEqual(bCopies.count, 1)
+        await w.h.service.settled()
         let accountA = try await w.h.store.accounts().first { $0.id == w.workA.accountID }
         XCTAssertEqual(accountA?.state, .needsSignIn)
         let snapshot = try await w.h.service.snapshot(window: DateInterval(start: w.h.at(0), duration: 86400))

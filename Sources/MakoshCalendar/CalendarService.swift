@@ -15,6 +15,8 @@ public actor CalendarService {
     var pausedUntil: [UUID: Date] = [:]
     var syncing = Set<UUID>()
     var pollTask: Task<Void, Never>?
+    var reconcileTask: Task<Void, Never>?
+    var reconcileAgain = false
 
     public init(
         store: CalendarStore, vault: CalendarCredentialVault, adapterFactory: @escaping AdapterFactory, google: GoogleOAuth?,
@@ -303,6 +305,27 @@ public actor CalendarService {
         }
         try? await store.saveAccount(account)
         await reconcileBusy(read: read)
+    }
+
+    /// Busy copies after a user command: one coalesced background pass, so the command
+    /// returns after its own write instead of waiting for copies across every calendar.
+    func reconcileSoon() {
+        guard reconcileTask == nil else {
+            reconcileAgain = true
+            return
+        }
+        reconcileTask = Task {
+            repeat {
+                reconcileAgain = false
+                await reconcileBusy(read: [])
+            } while reconcileAgain
+            reconcileTask = nil
+        }
+    }
+
+    /// Waits until background busy-copy work has finished.
+    public func settled() async {
+        while let task = reconcileTask { await task.value }
     }
 
     static func state(after failure: CalendarFailure) -> CalendarAccountState {

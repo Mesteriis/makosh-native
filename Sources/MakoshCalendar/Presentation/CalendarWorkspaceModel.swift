@@ -57,6 +57,14 @@ package enum CalendarConflictChoice: Sendable {
 
     // MARK: Loading
 
+    /// Refreshes now, and once more when background busy copies have caught up.
+    package func refreshAfterCopies() {
+        _Concurrency.Task {
+            await service.settled()
+            await refresh()
+        }
+    }
+
     package func refresh() async {
         let window = period.interval(calendar: calendar)
         do {
@@ -209,6 +217,8 @@ package enum CalendarConflictChoice: Sendable {
             conflict = nil
             do {
                 try await service.respond(eventID: item.eventID, .declined)
+                // The declined invitation's copies must be gone before the overlap is checked again.
+                await service.settled()
                 await perform(prompt.pending, ignoringConflicts: false)
             } catch {
                 self.error = Self.describe(error)
@@ -376,6 +386,7 @@ package enum CalendarConflictChoice: Sendable {
             self.error = Self.describe(error)
         }
         await refresh()
+        refreshAfterCopies()
     }
 
     private func handle(_ outcome: CalendarWriteOutcome, pending: CalendarPendingWrite?) {

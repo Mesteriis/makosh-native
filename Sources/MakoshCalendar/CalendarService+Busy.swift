@@ -34,7 +34,7 @@ extension CalendarService {
                 try store.saveCollection(collection)
             }
         }
-        await reconcileBusy(read: [])
+        reconcileSoon()
     }
 
     func desiredCopies(collections: [CalendarCollection]) async throws -> Set<DesiredBusyCopy> {
@@ -84,6 +84,8 @@ extension CalendarService {
         records = try await store.busyCopies(targetCollectionID: nil)
         let desired = try await desiredCopies(collections: collections)
         let actions = BusyEngine.reconcile(desired: desired, records: records, observed: observed, read: readNow, now: now())
+        var known: [String: BusyCopyRecord] = [:]
+        for record in records { known[Self.recordKey(record.sourceEventID, record.occurrenceKey, record.targetCollectionID)] = record }
 
         var written: [UUID: Int] = [:]
         var blocked = Set<UUID>()
@@ -103,12 +105,18 @@ extension CalendarService {
                 guard written[target, default: 0] < preferences.maxWritesPerPass else { continue }
                 written[target, default: 0] += 1
             }
+            let existing: BusyCopyRecord?
+            switch action {
+            case .create(let copy), .adopt(let copy, _):
+                existing = known[Self.recordKey(copy.sourceEventID, copy.occurrenceKey, collection.id)]
+            default: existing = nil
+            }
             if account.kind == .local {
-                try await applyLocal(action, collection: collection)
+                try await applyLocal(action, collection: collection, existing: existing)
                 continue
             }
             guard account.state == .connected || account.state == .unreachable else { continue }
-            let outcome = await applyRemote(action, collection: collection, account: account)
+            let outcome = await applyRemote(action, collection: collection, account: account, existing: existing)
             if outcome == .needsSignIn || outcome == .adminBlocked { blocked.insert(account.id) }
         }
         // Creates whose answer was lost and whose event now came back by UID need no check.
@@ -131,7 +139,11 @@ extension CalendarService {
             etag: etag)
     }
 
-    private func applyLocal(_ action: BusyAction, collection: CalendarCollection) async throws {
+    static func recordKey(_ source: UUID, _ occurrence: Date, _ target: UUID) -> String {
+        "\(source)/\(occurrence.timeIntervalSince1970)/\(target)"
+    }
+
+    private func applyLocal(_ action: BusyAction, collection: CalendarCollection, existing: BusyCopyRecord?) async throws {
         switch action {
         case .create(let copy), .adopt(let copy, _):
             if case .adopt(_, let found) = action, let id = UUID(uuidString: found.externalID) {
@@ -145,9 +157,7 @@ extension CalendarService {
             let event = try await store.insert(
                 copyEvent(copy.time, marker: copy.marker, collection: collection, externalID: nil, etag: nil), actor: .engine)
             var record =
-                try await store.busyCopies(targetCollectionID: collection.id).first {
-                    $0.sourceEventID == copy.sourceEventID && $0.occurrenceKey == copy.occurrenceKey
-                }
+                existing
                 ?? BusyCopyRecord(
                     sourceEventID: copy.sourceEventID, occurrenceKey: copy.occurrenceKey, targetCollectionID: collection.id,
                     time: copy.time, state: .placed)
@@ -186,16 +196,18 @@ extension CalendarService {
     }
 
     /// One remote busy-copy write through the journal; returns the account state it implies.
-    private func applyRemote(_ action: BusyAction, collection: CalendarCollection, account: CalendarAccount) async -> CalendarAccountState {
+    private func applyRemote(
+        _ action: BusyAction, collection: CalendarCollection, account: CalendarAccount, existing: BusyCopyRecord?
+    ) async
+        -> CalendarAccountState
+    {
         do {
             let adapter = try await adapter(for: account)
             switch action {
             case .create(let copy):
                 // A copy removed on the server is created again under its existing record.
                 var record =
-                    try await store.busyCopies(targetCollectionID: collection.id).first {
-                        $0.sourceEventID == copy.sourceEventID && $0.occurrenceKey == copy.occurrenceKey
-                    }
+                    existing
                     ?? BusyCopyRecord(
                         sourceEventID: copy.sourceEventID, occurrenceKey: copy.occurrenceKey, targetCollectionID: collection.id,
                         time: copy.time, state: .pending)
@@ -243,9 +255,6 @@ extension CalendarService {
                     try await self.store.observeRemoval(externalID: externalID, collectionID: collection.id)
                 }
             case .adopt(let copy, let found):
-                let existing = try await store.busyCopies(targetCollectionID: collection.id).first {
-                    $0.sourceEventID == copy.sourceEventID && $0.occurrenceKey == copy.occurrenceKey
-                }
                 var record =
                     existing
                     ?? BusyCopyRecord(

@@ -19,6 +19,7 @@ extension EnvironmentValues {
 /// One calendar service per process, owned by the application delegate rather than a
 /// window: polling, busy copies and reminders keep running with every window closed.
 @MainActor final class CalendarHost: ObservableObject {
+    nonisolated static let qaFlag = CalendarQAIsolation.flag
     @Published private(set) var model: CalendarWorkspaceModel?
     @Published private(set) var failure: String?
     /// An event to open, from a reminder click.

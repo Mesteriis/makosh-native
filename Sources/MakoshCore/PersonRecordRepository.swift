@@ -257,6 +257,29 @@ final class PersonRecordRepository {
             [pair.first.uuidString, pair.second.uuidString])
     }
 
+    // MARK: Mail evidence
+
+    func recordMailEvidence(accountID: String, address: String, spam: Bool) throws -> (clean: Int, spam: Int) {
+        let row = try connection.query(
+            "INSERT INTO \(mailEvidence) (account_id, address, clean_count, spam_count) VALUES ($1, $2, $3::integer, $4::integer) "
+                + "ON CONFLICT (account_id, address) DO UPDATE SET clean_count=\(mailEvidence).clean_count+EXCLUDED.clean_count, "
+                + "spam_count=\(mailEvidence).spam_count+EXCLUDED.spam_count RETURNING clean_count::text, spam_count::text",
+            [accountID, address, spam ? "0" : "1", spam ? "1" : "0"]
+        ).first
+        guard let row, let clean = Int(row[0]), let spamCount = Int(row[1]) else {
+            throw StoreError.database("PostgreSQL mail evidence update did not return counts.")
+        }
+        return (clean, spamCount)
+    }
+
+    func mailEvidence(address: String) throws -> (clean: Int, spam: Int) {
+        let row = try connection.query(
+            "SELECT COALESCE(sum(clean_count), 0)::text, COALESCE(sum(spam_count), 0)::text FROM \(mailEvidence) WHERE address=$1",
+            [address]
+        ).first
+        return (Int(row?[0] ?? "0") ?? 0, Int(row?[1] ?? "0") ?? 0)
+    }
+
     // MARK: Merges
 
     func allMerges() throws -> [MergeRecord] {

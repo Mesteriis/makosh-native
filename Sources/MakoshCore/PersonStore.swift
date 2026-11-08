@@ -569,6 +569,76 @@ public final class PersonStore {
         }
     }
 
+    // MARK: Lifecycle
+
+    /// Soft deletion: the person leaves the lists and the value index but keeps its identities,
+    /// so a later observation lands here instead of creating a second person.
+    public func deletePerson(id: UUID) throws {
+        try write { repository in
+            guard var person = try repository.person(id: id) else { throw StoreError.missingPerson }
+            guard person.deletedAt == nil else { return }
+            person.deletedAt = Date()
+            person.revision += 1
+            person.events.append(PersonEvent(kind: "deleted", detail: "Персона удалена"))
+            try repository.update(person)
+        }
+    }
+
+    public func restorePerson(id: UUID) throws {
+        try write { repository in
+            guard var person = try repository.person(id: id) else { throw StoreError.missingPerson }
+            guard person.deletedAt != nil else { return }
+            person.deletedAt = nil
+            person.revision += 1
+            person.events.append(PersonEvent(kind: "restored", detail: "Персона восстановлена"))
+            try repository.update(person)
+        }
+    }
+
+    /// A person whose only evidence turned out to be spam is hidden; its suggested memberships are withdrawn.
+    public func setHiddenAsSpam(id: UUID, _ hidden: Bool) throws {
+        try write { repository in
+            guard var person = try repository.person(id: id) else { throw StoreError.missingPerson }
+            guard person.hiddenAsSpam != hidden else { return }
+            person.hiddenAsSpam = hidden
+            person.revision += 1
+            person.events.append(
+                PersonEvent(kind: hidden ? "hiddenAsSpam" : "unhidden", detail: hidden ? "Скрыта как спам" : "Больше не считается спамом"))
+            try repository.update(person)
+            guard hidden else { return }
+            for var membership in try repository.memberships(personID: id) where membership.state == .suggested {
+                membership.state = .removed
+                membership.updatedAt = Date()
+                try repository.upsert(membership)
+            }
+        }
+    }
+
+    public func recordMailEvidence(accountID: String, address: String, spam: Bool) throws -> (clean: Int, spam: Int) {
+        try write { try $0.recordMailEvidence(accountID: accountID, address: PersonMatching.normalizedEmail(address), spam: spam) }
+    }
+
+    public func mailEvidence(address: String) throws -> (clean: Int, spam: Int) {
+        try read { try $0.mailEvidence(address: PersonMatching.normalizedEmail(address)) }
+    }
+
+    /// Clears the flag that this source account set; flags the user set stay.
+    public func clearAddressBook(fromSource source: ImportSource) throws -> [UUID] {
+        try write { repository in
+            var cleared: [UUID] = []
+            for var person in try repository.allPersons() where person.addressBookOrigin == .sourceAccount(source) {
+                person.addressBook = false
+                person.addressBookOrigin = nil
+                person.revision += 1
+                person.events.append(
+                    PersonEvent(kind: "addressBookOff", detail: "Учётная запись \(source.service) больше не адресная книга"))
+                try repository.update(person)
+                cleared.append(person.id)
+            }
+            return cleared
+        }
+    }
+
     public func noMergePairs() throws -> Set<NoMergePair> {
         try read { try $0.noMergePairs() }
     }

@@ -25,7 +25,7 @@ struct BusyWorld {
 }
 
 extension XCTestCase {
-    func busyWorld(aEvents: [CalendarEvent] = [], bEvents: [CalendarEvent] = []) async throws -> BusyWorld {
+    nonisolated(nonsending) func busyWorld(aEvents: [CalendarEvent] = [], bEvents: [CalendarEvent] = []) async throws -> BusyWorld {
         let a = synthetic("work-a", events: aEvents), b = synthetic("work-b", events: bEvents)
         let h = try await calendarHarness(["Работа A": a, "Работа B": b])
         let accountA = try await h.service.addCalDAVAccount(

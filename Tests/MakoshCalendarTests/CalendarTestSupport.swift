@@ -63,7 +63,7 @@ extension XCTestCase {
         addTeardownBlock { try database.cleanup() }
         return database
     }
-    func calendarStore(
+    nonisolated(nonsending) func calendarStore(
         _ db: CalendarTestDatabase, key: Data = Data(repeating: 7, count: 32), now: @escaping @Sendable () -> Date = Date.init
     ) async throws -> CalendarStore {
         let store = CalendarStore(connectionString: db.connectionString, schema: db.schema, keyProvider: { _, _ in key }, now: now)

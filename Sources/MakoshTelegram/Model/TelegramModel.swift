@@ -49,6 +49,8 @@ public final class TelegramModel: ObservableObject {
     var qrMigrationCount = 0
     public let accountPrivacy = TelegramPrivacyController()
     public let accountBlockedUsers = TelegramBlockedUsersController()
+    /// The contacts of the ready account for the Persons section; one provider per account session.
+    var contactsProviderValue: (any TelegramContactsProvider)?
     public let accountTwoStep = TelegramTwoStepController()
     public let media = TelegramMediaController()
     var backgroundDownloads: TelegramEngineDownloadJournal?

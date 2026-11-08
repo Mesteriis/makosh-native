@@ -43,6 +43,7 @@ extension TelegramModel {
         model.archive.configure(repository: TelegramSyntheticArchiveRepository(), synthetic: true)
         model.phase = .ready
         model.connectionDescription = "Синтетическая UI-проверка • сеть и отправка отключены"
+        model.contactsProviderValue = TelegramSyntheticContactsProvider(accountID: model.draftAccountID ?? -1)
         model.loadChatList(clear: true)
         return model
     }

@@ -54,6 +54,7 @@ cat > "$makosh_bundle/Contents/Info.plist" <<'PLIST'
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Makosh Telemost OAuth</string><key>CFBundleURLSchemes</key><array><string>org.makosh.desktop.telemost</string></array></dict></array>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Макош использует микрофон только после вашего действия для звонка и записи голосового сообщения в выбранном чате Telegram или WhatsApp.</string>
+  <key>NSContactsUsageDescription</key><string>Макош читает и дополняет Контакты macOS только после вашего включения книги macOS в Настройках → Персоны.</string>
   <key>NSCameraUsageDescription</key><string>Макош использует камеру только после вашего действия для видеозвонка в выбранном чате Telegram или WhatsApp, либо записи круглого видео Telegram.</string>
   <key>NSHumanReadableCopyright</key><string>2026 Makosh contributors; includes Telegram-iOS. Combined application GPLv3; see third-party notices.</string>
 </dict></plist>

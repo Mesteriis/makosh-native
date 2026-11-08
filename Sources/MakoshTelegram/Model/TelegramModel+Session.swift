@@ -388,6 +388,7 @@ extension TelegramModel {
         appearanceCatalog.bind(TelegramEngineAppearanceCatalogProvider(account: account))
         accountPrivacy.bind(TelegramEnginePrivacyProvider(account: account))
         accountBlockedUsers.bind(TelegramEngineBlockedUsersProvider(account: account))
+        contactsProviderValue = TelegramEngineContactsProvider(account: account)
         accountTwoStep.bind(TelegramEngineTwoStepProvider(account: account))
         notifications.bind(account: account)
         archive.bind(journal: TelegramEngineArchiveJournal(account: account))

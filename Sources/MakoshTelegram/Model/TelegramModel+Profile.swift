@@ -5,6 +5,12 @@ import SwiftSignalKit
 
 /// Person profile, profile media, group membership and shared media navigation.
 extension TelegramModel {
+    /// The ready account's contacts for the Persons section; nil until the account is ready.
+    public func contactsProvider() -> (any TelegramContactsProvider)? {
+        guard phase == .ready else { return nil }
+        return contactsProviderValue
+    }
+
     public func blockedUserChange(_ profile: TelegramContactProfile, contextID: UUID) -> TelegramBlockedUserChange? {
         guard isCurrentContactProfile(profile, contextID: contextID), profile.isPerson || profile.isBot,
             PeerId(profile.peerID).namespace == Namespaces.Peer.CloudUser,

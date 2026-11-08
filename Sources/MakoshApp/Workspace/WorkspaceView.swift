@@ -553,13 +553,13 @@ struct WorkspaceView: View {
             Group {
                 if destination == .persons {
                     if let contact = model.selected {
-                        DossierView(contact: contact, model: model, openMeeting: telemost.openMeeting) {
+                        PersonCardView(contact: contact, model: model, host: personsHost, openMeeting: telemost.openMeeting) {
                             editor = EditorSelection(contact: contact)
                         }
                     } else {
                         ContentUnavailableView(
                             "Всё о человеке — рядом", systemImage: "person.text.rectangle",
-                            description: Text("Выберите контакт, чтобы открыть досье, заметки и источники."))
+                            description: Text("Выберите персону, чтобы открыть досье, книги, заметки и источники."))
                     }
                 } else if destination == .mail {
                     MailReadingView(model: mail, dossier: model) { id in

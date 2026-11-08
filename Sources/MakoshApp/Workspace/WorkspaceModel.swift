@@ -305,6 +305,6 @@ final class WorkspaceModel: ObservableObject {
                 removedID: survivor == candidate.firstID ? candidate.secondID : candidate.firstID), selectResult: true) != nil
     }
     @discardableResult func undo(_ record: MergeRecord) async -> Bool { await perform(.undo(record.id)) != nil }
-    func name(_ id: UUID) -> String { persons.first { $0.id == id }?.displayName ?? "Контакт недоступен" }
+    func name(_ id: UUID) -> String { persons.first { $0.id == id }?.displayName ?? "Персона недоступна" }
 
 }

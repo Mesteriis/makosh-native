@@ -21,9 +21,24 @@ public struct PersonWorkspaceConfiguration: Decodable, Sendable {
 
 /// Only value snapshots cross from the serialized service to the presentation layer.
 public struct PersonWorkspaceSnapshot: Sendable {
+    /// Active persons (not deleted, not hidden as spam).
     public let persons: [Person]
     public let duplicates: [DuplicateCandidate]
     public let merges: [MergeRecord]
+    /// Every membership that is not removed.
+    public let memberships: [PersonMembership]
+    /// Deleted and spam-hidden persons, which the lists leave out.
+    public let inactiveCount: Int
+    public init(
+        persons: [Person], duplicates: [DuplicateCandidate], merges: [MergeRecord], memberships: [PersonMembership] = [],
+        inactiveCount: Int = 0
+    ) {
+        self.persons = persons
+        self.duplicates = duplicates
+        self.merges = merges
+        self.memberships = memberships
+        self.inactiveCount = inactiveCount
+    }
 }
 
 public struct PersonWorkspaceOpened: Sendable {
@@ -40,11 +55,25 @@ public enum PersonWorkspaceCommand: Sendable {
     case merge(survivorID: UUID, removedID: UUID)
     case undo(UUID)
     case setAIAccess(contactID: UUID, access: AIContactAccess)
+    case setAddressBook(personID: UUID, on: Bool)
+    case removeValue(personID: UUID, field: PersonListField, value: String)
+    case restoreValue(personID: UUID, field: PersonListField, value: String)
+    case detachIdentity(personID: UUID, identity: ServiceIdentity)
+    case createOrganization(name: String)
+    case suggestMembership(personID: UUID, organizationID: UUID, role: String)
+    case setMembershipState(id: UUID, state: MembershipState)
+    case setMembershipRole(id: UUID, role: String)
+    case delete(personID: UUID)
+    case restore(personID: UUID)
+    case confirmObservation(personID: UUID, observationID: UUID)
+    case rejectObservation(personID: UUID, observationID: UUID)
 }
 
 public struct PersonWorkspaceWriteResult: Sendable {
     public enum Value: Equatable, Sendable {
         case saved(UUID), noted, sourceNoted(UUID), linked(UUID), imported(ImportResult), merged(UUID), undone, aiAccessSet
+        case flagSet, valueRemoved, valueRestored, detached(UUID), organizationCreated(UUID), membershipChanged, deleted, restored
+        case observationResolved
     }
     public let value: Value
     /// Nil means the write committed but its display refresh failed. Never replay it.
@@ -93,11 +122,59 @@ protocol PersonWorkspacePersistence: AnyObject {
     func merge(survivorID: UUID, removedID: UUID) throws -> UUID
     func undoMerge(id: UUID) throws
     func setAIAccess(contactID: UUID, access: AIContactAccess) throws
+    func allPersons(includingInactive: Bool) throws -> [Person]
+    func memberships(of personID: UUID, includingRemoved: Bool) throws -> [PersonMembership]
+    func allMemberships() throws -> [PersonMembership]
+    func summaries(matching query: String, limit: Int) throws -> [PersonSummary]
+    func person(id: UUID) throws -> Person?
+    func persons(owning identity: ServiceIdentity) throws -> [Person]
+    func setAddressBook(personID: UUID, _ on: Bool, origin: AddressBookOrigin) throws
+    func removeValue(personID: UUID, field: PersonListField, value: String, reason: FormerReason) throws
+    func restoreValue(personID: UUID, field: PersonListField, value: String) throws
+    func detachIdentity(personID: UUID, identity: ServiceIdentity) throws -> UUID
+    func createOrganization(name: String) throws -> UUID
+    func suggestMembership(personID: UUID, organizationID: UUID, role: String, origin: MembershipOrigin) throws -> PersonMembership?
+    func setMembershipState(id: UUID, state: MembershipState) throws
+    func setMembershipRole(id: UUID, role: String) throws
+    func deletePerson(id: UUID) throws
+    func restorePerson(id: UUID) throws
+    func setObservationStatus(personID: UUID, observationID: UUID, status: ObservationStatus) throws
+    func rejectProposedObservation(personID: UUID, observationID: UUID) throws
 }
-extension PersonStore: PersonWorkspacePersistence {}
+extension PersonStore: PersonWorkspacePersistence {
+    func allMemberships() throws -> [PersonMembership] { try allMemberships(includingRemoved: false) }
+    func persons(owning identity: ServiceIdentity) throws -> [Person] { try personsOwning(identity) }
+}
 extension PersonWorkspacePersistence {
     /// Stores that predate AI access refuse it instead of silently ignoring it.
     func setAIAccess(contactID: UUID, access: AIContactAccess) throws { throw PersonWorkspaceError.unavailable }
+    // Doubles that predate persons answer from what they have, or refuse the write.
+    func allPersons(includingInactive: Bool) throws -> [Person] { try persons() }
+    func memberships(of personID: UUID, includingRemoved: Bool) throws -> [PersonMembership] { [] }
+    func allMemberships() throws -> [PersonMembership] { [] }
+    func summaries(matching query: String, limit: Int) throws -> [PersonSummary] {
+        try persons().filter { query.isEmpty || $0.displayName.localizedCaseInsensitiveContains(query) }.prefix(limit).map(\.summary)
+    }
+    func person(id: UUID) throws -> Person? { try persons().first { $0.id == id } }
+    func persons(owning identity: ServiceIdentity) throws -> [Person] { try persons().filter { $0.identities.contains(identity) } }
+    func setAddressBook(personID: UUID, _ on: Bool, origin: AddressBookOrigin) throws { throw PersonWorkspaceError.unavailable }
+    func removeValue(personID: UUID, field: PersonListField, value: String, reason: FormerReason) throws {
+        throw PersonWorkspaceError.unavailable
+    }
+    func restoreValue(personID: UUID, field: PersonListField, value: String) throws { throw PersonWorkspaceError.unavailable }
+    func detachIdentity(personID: UUID, identity: ServiceIdentity) throws -> UUID { throw PersonWorkspaceError.unavailable }
+    func createOrganization(name: String) throws -> UUID { throw PersonWorkspaceError.unavailable }
+    func suggestMembership(personID: UUID, organizationID: UUID, role: String, origin: MembershipOrigin) throws -> PersonMembership? {
+        throw PersonWorkspaceError.unavailable
+    }
+    func setMembershipState(id: UUID, state: MembershipState) throws { throw PersonWorkspaceError.unavailable }
+    func setMembershipRole(id: UUID, role: String) throws { throw PersonWorkspaceError.unavailable }
+    func deletePerson(id: UUID) throws { throw PersonWorkspaceError.unavailable }
+    func restorePerson(id: UUID) throws { throw PersonWorkspaceError.unavailable }
+    func setObservationStatus(personID: UUID, observationID: UUID, status: ObservationStatus) throws {
+        throw PersonWorkspaceError.unavailable
+    }
+    func rejectProposedObservation(personID: UUID, observationID: UUID) throws { throw PersonWorkspaceError.unavailable }
 }
 
 /// Owns configuration IO, connection creation, SQL, import decoding and duplicate analysis.
@@ -151,7 +228,28 @@ public actor PersonWorkspaceWorker {
 
     public func snapshot() throws -> PersonWorkspaceSnapshot {
         guard let store else { throw PersonWorkspaceError.unavailable }
-        return try .init(persons: store.persons(), duplicates: store.duplicateCandidates(), merges: store.mergeHistory())
+        let active = try store.persons()
+        let inactive = try store.allPersons(includingInactive: true).count - active.count
+        return try .init(
+            persons: active, duplicates: store.duplicateCandidates(), merges: store.mergeHistory(), memberships: store.allMemberships(),
+            inactiveCount: max(0, inactive))
+    }
+
+    // MARK: Reads without mutation
+
+    public func summaries(matching query: String, limit: Int) throws -> [PersonSummary] {
+        guard let store else { throw PersonWorkspaceError.unavailable }
+        return try store.summaries(matching: query, limit: limit)
+    }
+
+    public func person(id: UUID) throws -> Person? {
+        guard let store else { throw PersonWorkspaceError.unavailable }
+        return try store.person(id: id)
+    }
+
+    public func persons(owning identity: ServiceIdentity) throws -> [Person] {
+        guard let store else { throw PersonWorkspaceError.unavailable }
+        return try store.persons(owning: identity)
     }
 
     public func apply(_ command: PersonWorkspaceCommand) throws -> PersonWorkspaceWriteResult {
@@ -199,6 +297,40 @@ public actor PersonWorkspaceWorker {
             case .setAIAccess(let id, let access):
                 try store.setAIAccess(contactID: id, access: access)
                 value = .aiAccessSet
+            case .setAddressBook(let id, let on):
+                try store.setAddressBook(personID: id, on, origin: .user)
+                value = .flagSet
+            case .removeValue(let id, let field, let text):
+                try store.removeValue(personID: id, field: field, value: text, reason: .removedByUser)
+                value = .valueRemoved
+            case .restoreValue(let id, let field, let text):
+                try store.restoreValue(personID: id, field: field, value: text)
+                value = .valueRestored
+            case .detachIdentity(let id, let identity):
+                value = .detached(try store.detachIdentity(personID: id, identity: identity))
+            case .createOrganization(let name):
+                value = .organizationCreated(try store.createOrganization(name: name))
+            case .suggestMembership(let id, let organizationID, let role):
+                _ = try store.suggestMembership(personID: id, organizationID: organizationID, role: role, origin: .manual)
+                value = .membershipChanged
+            case .setMembershipState(let id, let state):
+                try store.setMembershipState(id: id, state: state)
+                value = .membershipChanged
+            case .setMembershipRole(let id, let role):
+                try store.setMembershipRole(id: id, role: role)
+                value = .membershipChanged
+            case .delete(let id):
+                try store.deletePerson(id: id)
+                value = .deleted
+            case .restore(let id):
+                try store.restorePerson(id: id)
+                value = .restored
+            case .confirmObservation(let id, let observationID):
+                try store.setObservationStatus(personID: id, observationID: observationID, status: .confirmed)
+                value = .observationResolved
+            case .rejectObservation(let id, let observationID):
+                try store.rejectProposedObservation(personID: id, observationID: observationID)
+                value = .observationResolved
             }
         } catch {
             let safe = mutationError(error)

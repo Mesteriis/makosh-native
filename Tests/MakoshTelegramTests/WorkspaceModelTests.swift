@@ -104,6 +104,30 @@ import XCTest
         XCTAssertEqual(model.persons.last?.notes.count, 0)
     }
 
+    func testSetAddressBookPublishesSnapshot() async throws {
+        let probe = WorkspacePersistenceProbe()
+        let model = WorkspaceModel(worker: worker(probe: probe))
+        await model.load()
+        let id = try XCTUnwrap(model.persons.first).id
+        let flagged = await model.setAddressBook(true, personID: id)
+        XCTAssertTrue(flagged)
+        XCTAssertEqual(model.persons.first?.addressBook, true)
+        XCTAssertEqual(probe.writes, 1)
+    }
+
+    func testDetachSelectsNewPerson() async throws {
+        let probe = WorkspacePersistenceProbe()
+        let model = WorkspaceModel(worker: worker(probe: probe))
+        await model.load()
+        let first = try XCTUnwrap(model.persons.first)
+        model.selectedID = first.id
+        let identity = ServiceIdentity(service: "telegram", accountID: "t", externalID: "1")
+        let newID = await model.detachIdentity(identity, personID: first.id)
+        XCTAssertNotNil(newID)
+        XCTAssertEqual(model.selectedID, newID)
+        XCTAssertEqual(model.persons.count, 3)
+    }
+
     private func worker(
         probe: WorkspacePersistenceProbe, onOpen: @escaping @Sendable () -> Void = {},
         onWrite: @escaping @Sendable () -> Void = {}, failRefreshAfterWrite: Bool = false
@@ -190,4 +214,19 @@ private final class WorkspacePersistence: PersonWorkspacePersistence {
     }
     func merge(survivorID: UUID, removedID: UUID) throws -> UUID { throw StoreError.invalid("unused") }
     func undoMerge(id: UUID) throws { throw StoreError.invalid("unused") }
+    func setAddressBook(personID: UUID, _ on: Bool, origin: AddressBookOrigin) throws {
+        probe.write()
+        onWrite()
+        guard let index = all.firstIndex(where: { $0.id == personID }) else { throw StoreError.missingPerson }
+        all[index].addressBook = on
+        all[index].addressBookOrigin = on ? origin : nil
+        all[index].revision += 1
+    }
+    func detachIdentity(personID: UUID, identity: ServiceIdentity) throws -> UUID {
+        probe.write()
+        onWrite()
+        let detached = Person(displayName: "Detached", identities: [identity])
+        all.append(detached)
+        return detached.id
+    }
 }

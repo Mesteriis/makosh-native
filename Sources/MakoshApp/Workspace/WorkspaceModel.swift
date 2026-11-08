@@ -13,6 +13,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var persons: [Person] = []
     @Published var duplicates: [DuplicateCandidate] = []
     @Published var merges: [MergeRecord] = []
+    @Published var memberships: [PersonMembership] = []
+    @Published private(set) var inactiveCount = 0
     @Published var selectedID: UUID? {
         didSet { if selectedID != oldValue { selectionRevision &+= 1 } }
     }
@@ -211,6 +213,8 @@ final class WorkspaceModel: ObservableObject {
         persons = snapshot.persons
         duplicates = snapshot.duplicates
         merges = snapshot.merges
+        memberships = snapshot.memberships
+        inactiveCount = snapshot.inactiveCount
         if let selectedID, !persons.contains(where: { $0.id == selectedID }) { self.selectedID = nil }
     }
     private func perform(_ command: PersonWorkspaceCommand, selectResult: Bool = false) async -> PersonWorkspaceWriteResult? {
@@ -231,7 +235,7 @@ final class WorkspaceModel: ObservableObject {
             }
             if selectResult, selectionUnchanged {
                 switch result.value {
-                case .saved(let id), .merged(let id): selectedID = id
+                case .saved(let id), .merged(let id), .organizationCreated(let id): selectedID = id
                 default: break
                 }
             }
@@ -248,6 +252,41 @@ final class WorkspaceModel: ObservableObject {
     }
     func setAIAccess(_ access: AIContactAccess, contactID: UUID) async -> Bool {
         await perform(.setAIAccess(contactID: contactID, access: access)) != nil
+    }
+    func setAddressBook(_ on: Bool, personID: UUID) async -> Bool { await perform(.setAddressBook(personID: personID, on: on)) != nil }
+    func removeValue(_ value: String, field: PersonListField, personID: UUID) async -> Bool {
+        await perform(.removeValue(personID: personID, field: field, value: value)) != nil
+    }
+    func restoreValue(_ value: String, field: PersonListField, personID: UUID) async -> Bool {
+        await perform(.restoreValue(personID: personID, field: field, value: value)) != nil
+    }
+    /// The new person is selected, as the user asked to look at what came apart.
+    func detachIdentity(_ identity: ServiceIdentity, personID: UUID) async -> UUID? {
+        guard let result = await perform(.detachIdentity(personID: personID, identity: identity)), case .detached(let id) = result.value
+        else { return nil }
+        selectedID = id
+        return id
+    }
+    func createOrganization(name: String) async -> UUID? {
+        guard let result = await perform(.createOrganization(name: name), selectResult: true),
+            case .organizationCreated(let id) = result.value
+        else { return nil }
+        return id
+    }
+    func suggestMembership(personID: UUID, organizationID: UUID, role: String = "") async -> Bool {
+        await perform(.suggestMembership(personID: personID, organizationID: organizationID, role: role)) != nil
+    }
+    func setMembershipState(_ state: MembershipState, id: UUID) async -> Bool {
+        await perform(.setMembershipState(id: id, state: state)) != nil
+    }
+    func setMembershipRole(_ role: String, id: UUID) async -> Bool { await perform(.setMembershipRole(id: id, role: role)) != nil }
+    func deletePerson(_ id: UUID) async -> Bool { await perform(.delete(personID: id)) != nil }
+    func restorePerson(_ id: UUID) async -> Bool { await perform(.restore(personID: id)) != nil }
+    func confirmObservation(_ observationID: UUID, personID: UUID) async -> Bool {
+        await perform(.confirmObservation(personID: personID, observationID: observationID)) != nil
+    }
+    func rejectObservation(_ observationID: UUID, personID: UUID) async -> Bool {
+        await perform(.rejectObservation(personID: personID, observationID: observationID)) != nil
     }
     func importFile(_ url: URL) async {
         guard let result = await perform(.importFile(url)), case .imported(let count) = result.value else { return }

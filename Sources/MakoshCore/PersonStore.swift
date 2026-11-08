@@ -356,6 +356,15 @@ public final class PersonStore {
         try read { try $0.memberships(personID: personID) }.filter { includingRemoved || $0.state != .removed }
     }
 
+    public func allMemberships(includingRemoved: Bool) throws -> [PersonMembership] {
+        try read { try $0.allMemberships() }.filter { includingRemoved || $0.state != .removed }
+    }
+
+    /// Persons (active or not) whose identities include `identity`.
+    public func personsOwning(_ identity: ServiceIdentity) throws -> [Person] {
+        try read { try $0.persons(owning: identity) }
+    }
+
     public func members(of organizationID: UUID, includingRemoved: Bool = false) throws -> [PersonMembership] {
         try read { try $0.memberships(organizationID: organizationID) }.filter { includingRemoved || $0.state != .removed }
     }

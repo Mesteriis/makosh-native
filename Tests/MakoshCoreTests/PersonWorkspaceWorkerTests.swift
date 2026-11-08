@@ -211,6 +211,57 @@ final class PersonWorkspaceWorkerTests: XCTestCase {
         XCTAssertEqual(final.persons.first?.notes.first?.text, "Preserve later edit")
     }
 
+    func testNewCommandsReachTheStoreAndSnapshotCarriesMemberships() async throws {
+        let database = try PostgresTestDatabase()
+        defer { try? database.cleanup() }
+        let worker = PersonWorkspaceWorker(configuration: .init(connectionString: database.connectionString, schema: database.schema))
+        _ = try await worker.open()
+        guard
+            case .saved(let person) = try await worker.apply(.save(draft: .init(displayName: "Иванов", phones: ["+7 1", "+7 2"]), id: nil))
+                .value
+        else { return XCTFail("save") }
+        guard case .organizationCreated(let organization) = try await worker.apply(.createOrganization(name: "ИП Сидоров")).value
+        else { return XCTFail("createOrganization") }
+        let suggested = try await worker.apply(.suggestMembership(personID: person, organizationID: organization, role: "Менеджер"))
+        XCTAssertEqual(suggested.value, .membershipChanged)
+        let membership = try XCTUnwrap(suggested.snapshot?.memberships.first)
+        XCTAssertEqual(membership.state, .confirmed)
+        let renamed = try await worker.apply(.setMembershipRole(id: membership.id, role: "Директор"))
+        XCTAssertEqual(renamed.snapshot?.memberships.first?.role, "Директор")
+        let withdrawn = try await worker.apply(.setMembershipState(id: membership.id, state: .removed))
+        XCTAssertEqual(withdrawn.snapshot?.memberships.count, 0)
+        let flagged = try await worker.apply(.setAddressBook(personID: person, on: true))
+        XCTAssertEqual(flagged.value, .flagSet)
+        XCTAssertEqual(flagged.snapshot?.persons.first { $0.id == person }?.addressBookOrigin, .user)
+        let removed = try await worker.apply(.removeValue(personID: person, field: .phones, value: "+7 2"))
+        XCTAssertEqual(removed.value, .valueRemoved)
+        XCTAssertEqual(removed.snapshot?.persons.first { $0.id == person }?.phones, ["+7 1"])
+        let restored = try await worker.apply(.restoreValue(personID: person, field: .phones, value: "+7 2"))
+        XCTAssertEqual(restored.value, .valueRestored)
+        XCTAssertEqual(restored.snapshot?.persons.first { $0.id == person }?.phones, ["+7 1", "+7 2"])
+        let identity = ServiceIdentity(service: "telegram", accountID: "t", externalID: "42")
+        _ = try await worker.apply(
+            .link(
+                .init(externalID: "42", displayName: "TG"), source: .init(service: "telegram", accountID: "t"), fetchedAt: Date(),
+                contactID: person))
+        let detached = try await worker.apply(.detachIdentity(personID: person, identity: identity))
+        guard case .detached(let newID) = detached.value else { return XCTFail("detach") }
+        XCTAssertEqual(detached.snapshot?.persons.first { $0.id == newID }?.identities, [identity])
+        let deleted = try await worker.apply(.delete(personID: newID))
+        XCTAssertEqual(deleted.value, .deleted)
+        XCTAssertEqual(deleted.snapshot?.inactiveCount, 1)
+        XCTAssertFalse(deleted.snapshot?.persons.contains { $0.id == newID } ?? true)
+        let back = try await worker.apply(.restore(personID: newID))
+        XCTAssertEqual(back.value, .restored)
+        XCTAssertEqual(back.snapshot?.inactiveCount, 0)
+        let summaries = try await worker.summaries(matching: "ива", limit: 10)
+        XCTAssertEqual(summaries.map(\.displayName), ["Иванов"])
+        let fetched = try await worker.person(id: person)
+        XCTAssertEqual(fetched?.id, person)
+        let owners = try await worker.persons(owning: identity)
+        XCTAssertEqual(owners.map(\.id), [newID])
+    }
+
     private func configuration() -> PersonWorkspaceConfiguration {
         .init(connectionString: "synthetic-only", schema: "qa_telegram_dossier_worker")
     }

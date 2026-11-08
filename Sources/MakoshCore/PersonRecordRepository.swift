@@ -229,6 +229,10 @@ final class PersonRecordRepository {
         ).map { try decode(PersonMembership.self, $0[0]) }
     }
 
+    func allMemberships() throws -> [PersonMembership] {
+        try connection.query("SELECT payload::text FROM \(memberships) ORDER BY id").map { try decode(PersonMembership.self, $0[0]) }
+    }
+
     func membership(id: UUID) throws -> PersonMembership? {
         try connection.query("SELECT payload::text FROM \(memberships) WHERE id=$1::uuid", [id.uuidString]).first
             .map { try decode(PersonMembership.self, $0[0]) }

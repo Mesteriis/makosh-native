@@ -337,3 +337,28 @@ public actor CalendarService {
         }
     }
 }
+
+extension CalendarService {
+    /// Appearance and reminder settings of a calendar; groups change only through the group preview.
+    public func updateCollection(_ collection: CalendarCollection) async throws {
+        guard let current = try await store.collections().first(where: { $0.id == collection.id }) else { throw CalendarFailure.notFound }
+        var value = collection
+        value.groupIDs = current.groupIDs
+        value.access = current.access
+        value.externalID = current.externalID
+        value.accountID = current.accountID
+        try await store.saveCollection(value)
+    }
+
+    /// Name and working hours; connection fields stay as they are (a new server is a new account).
+    public func updateAccount(_ account: CalendarAccount) async throws {
+        guard var current = try await store.accounts().first(where: { $0.id == account.id }) else { throw CalendarFailure.notFound }
+        current.name = account.name
+        current.workingHours = account.workingHours
+        try await store.saveAccount(current)
+    }
+
+    public func savePreferences(_ preferences: CalendarPreferences) async throws {
+        try await store.savePreferences(preferences)
+    }
+}

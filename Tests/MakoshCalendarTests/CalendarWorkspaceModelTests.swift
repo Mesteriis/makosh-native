@@ -185,3 +185,32 @@ final class CalendarWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(model.tasks.map(\.title), ["Ревью"])
     }
 }
+
+@MainActor
+final class CalendarWorkspaceModelSettingsTests: XCTestCase {
+    func testShownToggleHidesFromSummaryButKeepsGroups() async throws {
+        let w = try await busyWorld(aEvents: [timed("Созвон A", 10, 11)])
+        let model = CalendarWorkspaceModel(service: w.h.service, now: { w.h.clock.get() })
+        model.period = CalendarPeriod(mode: .week, anchor: w.h.at(0))
+        await model.refresh()
+        await model.setShown(collectionID: w.workA.id, false)
+        XCTAssertTrue(model.shownOccurrences().isEmpty || !model.shownOccurrences().contains { $0.collectionID == w.workA.id })
+        let stored = try await w.h.store.collections().first { $0.id == w.workA.id }
+        XCTAssertEqual(stored?.shown, false)
+        XCTAssertEqual(stored?.groupIDs, [w.group.id], "hiding a calendar does not take it out of its groups")
+        let copies = await w.copies(w.b, "work-b")
+        XCTAssertEqual(copies.count, 1, "a hidden calendar still gives busy time")
+    }
+
+    func testWorkingHoursAndReminderDefaultsSaved() async throws {
+        let w = try await busyWorld()
+        let model = CalendarWorkspaceModel(service: w.h.service, now: { w.h.clock.get() })
+        await model.refresh()
+        await model.setWorkingHours(accountID: w.workA.accountID, CalendarWorkingHours(days: [1: [540...900], 2: [540...900]]))
+        await model.setDefaultReminder(collectionID: w.workA.id, minutes: 30)
+        let account = try await w.h.store.accounts().first { $0.id == w.workA.accountID }
+        XCTAssertEqual(account?.workingHours.days[2], [540...900])
+        let collection = try await w.h.store.collections().first { $0.id == w.workA.id }
+        XCTAssertEqual(collection?.defaultReminderMinutes, 30)
+    }
+}

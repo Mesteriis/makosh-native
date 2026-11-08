@@ -53,6 +53,26 @@ extension EnvironmentValues {
 
     var googleClientID: String? { GoogleOAuthClient.embedded?.clientID }
 
+    /// Contact e-mail addresses for attendee suggestions; set by the workspace.
+    var contactEmails: [String] = []
+    /// «Добавить Telemost» for a Yandex calendar; set by the workspace when a Telemost account exists.
+    var telemostCreator: ((String) async -> URL?)?
+
+    func contactSuggestions(for text: String) -> [String] {
+        let typed = text.split(separator: ",").last.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
+        guard typed.count >= 2, !typed.contains("@") || !contactEmails.contains(typed) else { return [] }
+        return Array(contactEmails.filter { $0.lowercased().contains(typed) }.prefix(4))
+    }
+
+    func canAddTelemost(collectionID: UUID?) -> Bool {
+        guard telemostCreator != nil, let collectionID, let model, let collection = model.collection(collectionID),
+            let account = model.snapshot?.accounts.first(where: { $0.id == collection.accountID }), account.kind == .caldav
+        else { return false }
+        return account.caldavServer?.host?.hasSuffix("yandex.ru") == true
+    }
+
+    func createTelemost(title: String) async -> URL? { await telemostCreator?(title) }
+
     /// Opens the store in the application schema and starts polling and reminders; safe to call once.
     func start(
         configuration: ContactWorkspaceConfiguration, taskFeed: (any CalendarTaskFeed)?,

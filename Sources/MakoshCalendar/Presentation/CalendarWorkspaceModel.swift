@@ -235,6 +235,45 @@ package enum CalendarConflictChoice: Sendable {
         await refresh()
     }
 
+    // MARK: Settings
+
+    package func setShown(collectionID: UUID, _ shown: Bool) async {
+        guard var collection = collection(collectionID) else { return }
+        collection.shown = shown
+        await save(collection)
+    }
+
+    package func setDefaultReminder(collectionID: UUID, minutes: Int) async {
+        guard var collection = collection(collectionID) else { return }
+        collection.defaultReminderMinutes = max(0, minutes)
+        await save(collection)
+    }
+
+    package func setColor(collectionID: UUID, _ color: String) async {
+        guard var collection = collection(collectionID) else { return }
+        collection.color = color
+        await save(collection)
+    }
+
+    package func save(_ collection: CalendarCollection) async {
+        do { try await service.updateCollection(collection) } catch { self.error = Self.describe(error) }
+        await refresh()
+    }
+
+    package func setWorkingHours(accountID: UUID, _ hours: CalendarWorkingHours) async {
+        guard var account = snapshot?.accounts.first(where: { $0.id == accountID }) else { return }
+        account.workingHours = hours
+        do { try await service.updateAccount(account) } catch { self.error = Self.describe(error) }
+        await refresh()
+    }
+
+    package func savePreferences(_ change: (inout CalendarPreferences) -> Void) async {
+        guard var preferences = snapshot?.preferences else { return }
+        change(&preferences)
+        do { try await service.savePreferences(preferences) } catch { self.error = Self.describe(error) }
+        await refresh()
+    }
+
     // MARK: Groups
 
     package func stage(collections: [CalendarCollection], groups: [CalendarGroup]) async {

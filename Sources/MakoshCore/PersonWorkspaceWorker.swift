@@ -140,6 +140,7 @@ protocol PersonWorkspacePersistence: AnyObject {
     func restorePerson(id: UUID) throws
     func setObservationStatus(personID: UUID, observationID: UUID, status: ObservationStatus) throws
     func rejectProposedObservation(personID: UUID, observationID: UUID) throws
+    func mailEvidence(address: String) throws -> (clean: Int, spam: Int)
 }
 extension PersonStore: PersonWorkspacePersistence {
     func allMemberships() throws -> [PersonMembership] { try allMemberships(includingRemoved: false) }
@@ -175,6 +176,7 @@ extension PersonWorkspacePersistence {
         throw PersonWorkspaceError.unavailable
     }
     func rejectProposedObservation(personID: UUID, observationID: UUID) throws { throw PersonWorkspaceError.unavailable }
+    func mailEvidence(address: String) throws -> (clean: Int, spam: Int) { (0, 0) }
 }
 
 /// Owns configuration IO, connection creation, SQL, import decoding and duplicate analysis.
@@ -198,11 +200,14 @@ public actor PersonWorkspaceWorker {
         source = .arguments(arguments, requireExplicit: requireExplicitDatabaseConfiguration, syntheticSchemaPrefix: syntheticSchemaPrefix)
         storeFactory = { try PersonStore(connectionString: $0.connectionString, schema: $0.schema) }
     }
+    /// A worker over an already resolved configuration (the Persons section shares the dossier's).
+    public init(configuration: PersonWorkspaceConfiguration) {
+        source = .value(configuration)
+        storeFactory = { try PersonStore(connectionString: $0.connectionString, schema: $0.schema) }
+    }
     init(
         configuration: PersonWorkspaceConfiguration,
-        storeFactory: @escaping @Sendable (PersonWorkspaceConfiguration) throws -> any PersonWorkspacePersistence = {
-            try PersonStore(connectionString: $0.connectionString, schema: $0.schema)
-        }
+        storeFactory: @escaping @Sendable (PersonWorkspaceConfiguration) throws -> any PersonWorkspacePersistence
     ) {
         source = .value(configuration)
         self.storeFactory = storeFactory
@@ -250,6 +255,17 @@ public actor PersonWorkspaceWorker {
     public func persons(owning identity: ServiceIdentity) throws -> [Person] {
         guard let store else { throw PersonWorkspaceError.unavailable }
         return try store.persons(owning: identity)
+    }
+
+    /// Every membership that is not removed, for the section's tree.
+    public func allMembershipsForPresentation() throws -> [PersonMembership] {
+        guard let store else { throw PersonWorkspaceError.unavailable }
+        return try store.allMemberships()
+    }
+
+    public func mailEvidence(address: String) throws -> (clean: Int, spam: Int) {
+        guard let store else { throw PersonWorkspaceError.unavailable }
+        return try store.mailEvidence(address: address)
     }
 
     public func apply(_ command: PersonWorkspaceCommand) throws -> PersonWorkspaceWriteResult {

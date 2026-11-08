@@ -211,7 +211,9 @@ struct WorkspaceView: View {
         .onReceive(whatsapp.$notificationActivation.dropFirst()) { _ in destination = .whatsapp }
         .onReceive(mail.$notificationActivation.dropFirst()) { _ in destination = .mail }
         .onReceive(teams.$notificationActivation.dropFirst()) { _ in destination = .teams }
-        .onReceive(calendarHost.$openEventRequest.compactMap { $0 }) { _ in destination = .calendar }
+        .modifier(
+            CalendarWorkspaceLinks(host: calendarHost, contacts: model.contacts, mailAccounts: mail.accounts) { destination = .calendar }
+        )
         .task {
             await model.load()
             if let configuration = model.mailConfiguration, ordinaryLaunch {
@@ -222,6 +224,7 @@ struct WorkspaceView: View {
                     await tasks.start(configuration: configuration)
                     await calendarHost.start(configuration: configuration, taskFeed: tasks.calendarFeed)
                     await tasks.attachCalendar(calendarHost)
+                    connectCalendar()
                 }
                 Task {
                     await ai.start(
@@ -454,6 +457,34 @@ struct WorkspaceView: View {
         !isolatedWhatsApp && !mail.synthetic && !whatsapp.isSynthetic && !teams.isSynthetic && !telemost.isSynthetic
             && !telegram.isSyntheticPreview
     }
+    /// Mail, contacts and Telemost for the calendar: the organizer letter, attendee hints, «Добавить Telemost».
+    private func connectCalendar() {
+        calendarHost.contactEmails = Array(Set(model.contacts.flatMap(\.emails))).sorted()
+        calendarHost.mailAccounts = mail.accounts.map { ($0.email, $0.imapHost) }
+        calendarHost.model?.writeToOrganizer = { address, _ in
+            destination = .mail
+            mail.compose(to: address, attachments: [])
+        }
+        calendarHost.telemostCreator = { [telemost] _ in
+            // The meeting is created through the Telemost service and its journal; the calendar gets the link once confirmed.
+            guard let account = await MainActor.run(body: { telemost.selectedAccountID ?? telemost.accounts.first?.id }),
+                let operation = try? await telemost.service.create(
+                    accountID: account, request: TelemostCreateRequest(waitingRoom: .organization))
+            else { return nil }
+            for _ in 0..<30 {
+                if let snapshot = try? await telemost.service.snapshot(),
+                    let url = snapshot.operations.first(where: { $0.id == operation })?.receipt?.joinURL.url
+                {
+                    return url
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            await MainActor.run { calendarHost.model?.notice = "Встреча создаётся, ссылка появится в разделе «Встречи»." }
+            return nil
+        }
+        // Writing the meeting into attendees' dossiers is the next stage (spec 2026-11-08): no projection here yet.
+    }
+
     private var sidebarLayout: (min: CGFloat, ideal: CGFloat, max: CGFloat) {
         switch destination {
         case .mail: (320, 400, 420)

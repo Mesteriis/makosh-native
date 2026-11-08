@@ -82,7 +82,7 @@
 - Every external write is one journaled attempt; `unknown` is settled by reading (UID or busy mark) or dismissal, never by resending. Absence on a server counts only for calendars read in that pass. User commands do not wait for copies (`reconcileSoon`); tests wait with `settled()`.
 - The Google client comes only from private build input (`scripts/prepare-google-oauth-config.py`); a build without it disables Google sign-in. Grants live in the shared Keychain item (`org.makosh.google.grants.v1`), CalDAV passwords in `org.makosh.calendar.caldav.v1`. A Workspace administrator's refusal is reported, never worked around.
 - Synthetic QA uses one `qa_calendar_` schema and synthetic servers (`scripts/run-calendar-qa.py`); live Google/CalDAV only on the user's command, on the account and calendar they choose, first write one busy copy into a test calendar.
-- Closing the last window keeps Makosh running; `CalendarHost` is owned by the application delegate. Reminders use the shared notification delegate with `makosh.calendar.` identifiers.
+- Closing the workspace window hides it (`WorkspaceWindowKeeper`): window-owned services keep running and the Dock or a second launch shows the same window; launch always presents it. `CalendarHost` is owned by the application delegate. Reminders use the shared notification delegate with `makosh.calendar.` identifiers.
 
 ## Live QA and authorization
 

@@ -30,6 +30,8 @@ import MakoshFiles
     lazy var tasks = TasksHost()
     /// Owned here, not by a window: the calendar keeps polling and reminding with every window closed.
     lazy var calendar = CalendarHost(router: { [unowned self] in self.telegramNotificationRouter })
+    /// Closing the workspace window hides it: its services keep running and the same window comes back.
+    let windowKeeper = WorkspaceWindowKeeper()
     private var instanceLock: MakoshInstanceLock?
     /// One running copy per bundle: a second launch brings the first one forward and quits.
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -37,15 +39,26 @@ import MakoshFiles
         instanceLock = MakoshInstanceLock.acquire(at: MakoshInstanceLock.defaultURL(bundleIdentifier: identifier))
         guard instanceLock == nil else { return }
         let current = ProcessInfo.processInfo.processIdentifier
-        NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
-            .first { $0.processIdentifier != current }?.activate()
+        // A reopen (not a bare activate) makes the first copy show its window even when it was closed.
+        if let first = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first(where: {
+            $0.processIdentifier != current
+        }),
+            let url = first.bundleURL
+        {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in exit(0) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { exit(0) }
+            return
+        }
         exit(0)
     }
     /// Closing the last window keeps Makosh running, like the Codex and Claude desktop apps.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// The Dock icon reopens the workspace window after it was closed.
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { true }
+    /// The Dock icon or a second launch shows the kept workspace window; without one SwiftUI opens a new window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag, windowKeeper.reopen() { return false }
+        return true
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -195,7 +208,8 @@ struct MakoshApp: App {
                     TelegramSyntheticPreviewView().frame(minWidth: 1000, minHeight: 640)
                 } else {
                     WorkspaceView(proxy: delegate.telegramProxy, callCoordinator: delegate.telegramCallCoordinator).frame(
-                        minWidth: 1000, minHeight: 640)
+                        minWidth: 1000, minHeight: 640
+                    ).background(WorkspaceWindowAccessor(keeper: delegate.windowKeeper))
                 }
                 #else
                 if !Self.permitsOrdinaryReleaseLaunch(
@@ -206,7 +220,8 @@ struct MakoshApp: App {
                     Text("Эта сборка не поддерживает синтетический запуск. Используйте отдельную debug-сборку QA.").padding(24)
                 } else {
                     WorkspaceView(proxy: delegate.telegramProxy, callCoordinator: delegate.telegramCallCoordinator).frame(
-                        minWidth: 1000, minHeight: 640)
+                        minWidth: 1000, minHeight: 640
+                    ).background(WorkspaceWindowAccessor(keeper: delegate.windowKeeper))
                 }
                 #endif
             }.makoshAppearance().environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
@@ -217,6 +232,8 @@ struct MakoshApp: App {
         }
         .defaultSize(width: 1200, height: 854)
         .windowResizability(.contentMinSize)
+        // Makosh keeps running without windows, so a launch must always present the workspace.
+        .defaultLaunchBehavior(.presented)
         .commands {
             TelegramSearchCommands()
             TelegramSelectionCommands()

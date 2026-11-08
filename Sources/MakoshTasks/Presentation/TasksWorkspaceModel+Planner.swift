@@ -114,6 +114,22 @@ extension TasksWorkspaceModel {
         await writeSlot(moved, before: slot, taskChange: nil)
     }
 
+    /// A slot moved from the calendar: its own day is loaded first, so a slot of another day
+    /// moves too; the planner then returns to the day it showed.
+    public func moveSlot(id: UUID, day: Date, start: Int, end: Int) async {
+        let shown = plannerDay, target = calendar.startOfDay(for: day)
+        if plannerDay != target {
+            plannerDay = target
+            await loadPlanner()
+        }
+        await moveSlot(id: id, to: start)
+        await resizeSlot(id: id, end: end)
+        if shown != target, shown != .distantPast {
+            plannerDay = shown
+            await loadPlanner()
+        }
+    }
+
     /// The end moves; a task slot's new length becomes the task's estimate.
     public func resizeSlot(id: UUID, end: Int) async {
         guard let slot = slots.first(where: { $0.id == id }), !slot.isExternal else { return }

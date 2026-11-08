@@ -95,3 +95,30 @@ final class FakePlannerMirror: TaskPlannerMirror, @unchecked Sendable {
         XCTAssertFalse(slot.isExternal)
     }
 }
+
+@MainActor final class TaskPlannerMoveFromCalendarTests: XCTestCase {
+    func testMovingASlotOfAnotherDayFromTheCalendar() async throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let db = try tasksDatabase()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let store = TaskStore(connectionString: db.connectionString, schema: db.schema, now: { now })
+        let service = TasksService(store: store, vault: JiraTokenVault(access: .memory()), now: { now }) { _, _ in FakeJiraAdapter() }
+        try await service.open()
+        let model = TasksWorkspaceModel(service: service, calendar: calendar, now: { now })
+        await model.refresh()
+        let task = try await store.insert(Task(title: "Отчёт", estimateMinutes: 60), actor: .user)
+        await model.refresh()
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
+        model.plannerDay = tomorrow
+        await model.loadPlanner()
+        await model.dropTasks([task.id], at: 10 * 60)
+        let slot = try XCTUnwrap(model.slots.first { $0.taskID == task.id })
+        model.plannerDay = calendar.startOfDay(for: now)
+        await model.loadPlanner()
+        await model.moveSlot(id: slot.id, day: tomorrow, start: 14 * 60, end: 15 * 60 + 30)
+        let stored = try await store.slot(id: slot.id)
+        XCTAssertEqual(stored?.start, 14 * 60)
+        XCTAssertEqual(stored?.end, 15 * 60 + 30)
+    }
+}

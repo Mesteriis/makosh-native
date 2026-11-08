@@ -115,15 +115,14 @@ extension TasksHost {
     /// Puts the calendar behind the planner and mirrors today's and the next two weeks' slots.
     func attachCalendar(_ calendarHost: CalendarHost) async {
         guard let model, let calendarService = calendarHost.service else { return }
-        let bridge = CalendarPlannerBridge(service: calendarService) { await MainActor.run { calendarHost.model?.defaultCollectionID } }
+        let bridge = CalendarPlannerBridge(service: calendarService) { await MainActor.run { calendarHost.model?.slotCollectionID } }
         model.plannerMirror = bridge
         calendarHost.slotMoved = { [weak model] slotID, start, end in
             guard let model else { return }
-            await model.loadPlanner()
-            let calendar = Calendar.current
-            let minutes = Int(start.timeIntervalSince(calendar.startOfDay(for: start)) / 60)
-            await model.moveSlot(id: slotID, to: minutes)
-            await model.resizeSlot(id: slotID, end: minutes + Int(end.timeIntervalSince(start) / 60))
+            // The slot's own day, not the day the planner happens to show.
+            let day = Calendar.current.startOfDay(for: start)
+            let minutes = Int(start.timeIntervalSince(day) / 60)
+            await model.moveSlot(id: slotID, day: day, start: minutes, end: minutes + Int(end.timeIntervalSince(start) / 60))
         }
         let calendar = Calendar.current, today = calendar.startOfDay(for: Date())
         for offset in 0..<15 {

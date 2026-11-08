@@ -350,7 +350,9 @@ attempt; unknown outcomes are settled by reading, never by resending. User
 commands write their own event and leave copies to a coalesced background
 pass. `CalendarService` is an actor; `CalendarWorkspaceModel` on the main
 actor only coordinates. `CalendarHost` belongs to the application delegate,
-and closing the last window no longer terminates Makosh, so polling, copies
-and reminders continue. The Tasks planner keeps its slots and a bridge
+and closing the workspace window only hides it (its delegate is proxied so
+SwiftUI keeps everything else), so every window-owned service, the calendar's
+polling, copies and reminders continue; the Dock or a second launch shows the
+same window. The Tasks planner keeps its slots and a bridge
 mirrors them into calendar events by UID; calendar busy time comes back as
 read-only planner blocks. Details: [calendar.md](calendar.md).

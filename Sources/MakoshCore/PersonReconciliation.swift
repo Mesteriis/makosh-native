@@ -11,53 +11,101 @@ enum PersonReconciliation {
         return copy
     }
 
-    static func recordManualChanges(from before: PersonDraft?, contact: inout Person) {
-        let source = SourceStamp(identity: ServiceIdentity(service: "manual", accountID: "local", externalID: contact.id.uuidString))
+    static let scalarFields = ["displayName", "givenName", "familyName", "middleName", "organization", "jobTitle"]
+
+    static func manualSource(_ contact: Person) -> SourceStamp {
+        SourceStamp(identity: ServiceIdentity(service: "manual", accountID: "local", externalID: contact.id.uuidString))
+    }
+
+    /// Scalars changed by hand become manual fields; list entries typed by hand become
+    /// manual values, and entries the user dropped move to `former`.
+    static func recordManualChanges(from before: PersonDraft?, contact: inout Person, at now: Date = Date()) {
+        let source = manualSource(contact)
         for (field, value, old) in [
             ("displayName", contact.displayName, before?.displayName),
+            ("givenName", contact.givenName, before?.givenName),
+            ("familyName", contact.familyName, before?.familyName),
+            ("middleName", contact.middleName, before?.middleName),
             ("organization", contact.organization, before?.organization),
             ("jobTitle", contact.jobTitle, before?.jobTitle),
         ] {
-            if old == nil || value != old { observe(field: field, value: value, source: source, contact: &contact) }
+            // An empty scalar on creation is nothing typed, so it leaves no manual observation.
+            if old == nil ? !value.isEmpty : value != old { observe(field: field, value: value, source: source, contact: &contact) }
         }
-        for (field, values, old) in [
-            ("phones", contact.phones, before?.phones),
-            ("emails", contact.emails, before?.emails),
-            ("tags", contact.tags, before?.tags),
-        ] {
-            if old == nil || values != old {
-                // Empty is an explicit manual clearance, retained in provenance.
-                for value in values.isEmpty ? [""] : values { observe(field: field, value: value, source: source, contact: &contact) }
+        for field in PersonListField.allCases {
+            let values = contact.values(field)
+            let old = before.map { draftValues($0, field) }
+            guard old == nil || values != old else { continue }
+            for value in values where !(old?.contains(value) ?? false) {
+                observe(field: field.rawValue, value: value, source: source, contact: &contact)
+                contact.manualValues.insert(ManualValue(field: field.rawValue, value: value))
+            }
+            for value in old ?? [] where !values.contains(value) {
+                markFormer(field: field, value: value, reason: .removedByUser, at: now, contact: &contact)
             }
         }
     }
 
+    static func draftValues(_ draft: PersonDraft, _ field: PersonListField) -> [String] {
+        switch field {
+        case .phones: unique(draft.phones)
+        case .emails: unique(draft.emails)
+        case .usernames: unique(draft.usernames)
+        case .tags: unique(draft.tags)
+        }
+    }
+
+    /// Moves a current list value into `former`; a value that is already former stays as it was.
+    @discardableResult
+    static func retire(field: PersonListField, value: String, reason: FormerReason, at now: Date, contact: inout Person) -> Bool {
+        var values = contact.values(field)
+        guard let index = values.firstIndex(of: value) else { return false }
+        values.remove(at: index)
+        contact.setValues(values, for: field)
+        markFormer(field: field, value: value, reason: reason, at: now, contact: &contact)
+        return true
+    }
+
+    /// Records a value as former (replacing an older former entry for the same value) and drops its manual mark.
+    static func markFormer(field: PersonListField, value: String, reason: FormerReason, at now: Date, contact: inout Person) {
+        contact.manualValues.remove(ManualValue(field: field.rawValue, value: value))
+        contact.former.removeAll { $0.field == field.rawValue && $0.value == value }
+        contact.former.append(FormerValue(field: field.rawValue, value: value, since: now, reason: reason))
+    }
+
+    /// Brings a former value back as a manual entry.
+    static func restore(field: PersonListField, value: String, contact: inout Person) -> Bool {
+        guard let index = contact.former.firstIndex(where: { $0.field == field.rawValue && $0.value == value }) else { return false }
+        contact.former.remove(at: index)
+        contact.setValues(union(contact.values(field), [value]), for: field)
+        contact.manualValues.insert(ManualValue(field: field.rawValue, value: value))
+        return true
+    }
+
+    static func isFormer(_ contact: Person, field: PersonListField, value: String) -> Bool {
+        contact.former.contains { $0.field == field.rawValue && $0.value == value }
+    }
+
+    /// Sources add: scalars only when the field is not manual and the source is the newest;
+    /// list entries always, except values the user retired, which stay former.
     static func absorb(_ incoming: ImportedPerson, source: SourceStamp, into contact: inout Person) {
         let scalarFields: [(String, String?)] = [
-            ("displayName", incoming.displayName), ("organization", incoming.organization),
-            ("jobTitle", incoming.jobTitle),
+            ("displayName", incoming.displayName), ("givenName", incoming.givenName), ("familyName", incoming.familyName),
+            ("middleName", incoming.middleName), ("organization", incoming.organization), ("jobTitle", incoming.jobTitle),
         ]
         for (field, value) in scalarFields {
             guard let value else { continue }
             let cleaned = trimmed(value)
-            let latest = contact.observations.filter { $0.field == field }.map(\.source.fetchedAt).max()
+            let latest = contact.observations.filter { $0.field == field && $0.status != .proposed }.map(\.source.fetchedAt).max()
             observe(field: field, value: cleaned, source: source, contact: &contact)
             guard !contact.manualFields.contains(field), latest.map({ source.fetchedAt >= $0 }) ?? true else { continue }
-            switch field {
-            case "displayName": contact.displayName = cleaned
-            case "organization": contact.organization = cleaned
-            default: contact.jobTitle = cleaned
-            }
+            setScalar(field, cleaned, contact: &contact)
         }
-        for (field, values) in [("phones", incoming.phones), ("emails", incoming.emails), ("tags", incoming.tags)] {
-            let cleaned = unique(values)
-            for value in cleaned { observe(field: field, value: value, source: source, contact: &contact) }
-            guard !contact.manualFields.contains(field) else { continue }
-            switch field {
-            case "phones": contact.phones = union(contact.phones, cleaned)
-            case "emails": contact.emails = union(contact.emails, cleaned)
-            default: contact.tags = union(contact.tags, cleaned)
-            }
+        for field in PersonListField.allCases {
+            let cleaned = unique(importedValues(incoming, field))
+            for value in cleaned { observe(field: field.rawValue, value: value, source: source, contact: &contact) }
+            let additions = cleaned.filter { !isFormer(contact, field: field, value: $0) }
+            contact.setValues(union(contact.values(field), additions), for: field)
         }
         for text in unique(incoming.notes) {
             if let index = contact.notes.firstIndex(where: { $0.text == text && $0.source.identity == source.identity }) {
@@ -115,6 +163,27 @@ enum PersonReconciliation {
         return reasons
     }
 
+    static func setScalar(_ field: String, _ value: String, contact: inout Person) {
+        switch field {
+        case "displayName": contact.displayName = value
+        case "givenName": contact.givenName = value
+        case "familyName": contact.familyName = value
+        case "middleName": contact.middleName = value
+        case "organization": contact.organization = value
+        case "jobTitle": contact.jobTitle = value
+        default: break
+        }
+    }
+
+    static func importedValues(_ incoming: ImportedPerson, _ field: PersonListField) -> [String] {
+        switch field {
+        case .phones: incoming.phones
+        case .emails: incoming.emails
+        case .usernames: incoming.usernames
+        case .tags: incoming.tags
+        }
+    }
+
     static func apply(_ draft: PersonDraft, to contact: inout Person) {
         contact.kind = draft.kind
         contact.displayName = trimmed(draft.displayName)
@@ -137,7 +206,7 @@ enum PersonReconciliation {
 
     private static func observe(field: String, value: String, source: SourceStamp, contact: inout Person) {
         if let index = contact.observations.firstIndex(where: {
-            $0.field == field && $0.value == value && $0.source.identity == source.identity
+            $0.field == field && $0.value == value && $0.source.identity == source.identity && $0.status != .proposed
         }) {
             if source.fetchedAt > contact.observations[index].source.fetchedAt {
                 contact.observations[index].source.fetchedAt = source.fetchedAt
@@ -146,8 +215,8 @@ enum PersonReconciliation {
             contact.observations.append(Observation(field: field, value: value, source: source))
         }
     }
-    private static func unique(_ values: [String]) -> [String] { union([], values.map(trimmed).filter { !$0.isEmpty }) }
-    private static func union<T: Equatable>(_ first: [T], _ second: [T]) -> [T] {
+    static func unique(_ values: [String]) -> [String] { union([], values.map(trimmed).filter { !$0.isEmpty }) }
+    static func union<T: Equatable>(_ first: [T], _ second: [T]) -> [T] {
         var result = first
         for value in second where !result.contains(value) { result.append(value) }
         return result

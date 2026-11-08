@@ -104,7 +104,7 @@ final class PersonStoreTests: XCTestCase {
             ImportResult(created: 0, updated: 0))
         XCTAssertEqual(Set(try reopened.persons().flatMap(\.identities).map(\.id)).count, 4)
     }
-    func testManualOverridesAndRemovedArraysRemainSuppressedWithProvenance() throws {
+    func testManualClearanceRetiresOldValuesWhileNewSourceValuesArrive() throws {
         let store = try database.makeStore()
         _ = try store.importDocument(document([imported("1", emails: ["old@example.org"], phones: ["123456"], tags: ["Imported"])]))
         var contact = try XCTUnwrap(store.persons().first)
@@ -118,10 +118,15 @@ final class PersonStoreTests: XCTestCase {
             document([imported("1", name: "Remote", emails: ["new@example.org"], phones: ["987654"], tags: ["New"])], time: 200))
         contact = try XCTUnwrap(store.person(id: contact.id))
         XCTAssertEqual(contact.displayName, "Manual")
-        XCTAssertTrue(contact.emails.isEmpty)
-        XCTAssertTrue(contact.phones.isEmpty)
-        XCTAssertTrue(contact.tags.isEmpty)
+        // Cleared values are former and stay former; values the source learnt later still arrive.
+        XCTAssertEqual(contact.emails, ["new@example.org"])
+        XCTAssertEqual(contact.phones, ["987654"])
+        XCTAssertEqual(contact.tags, ["New"])
+        XCTAssertEqual(Set(contact.former.map(\.value)), ["old@example.org", "123456", "Imported"])
+        XCTAssertTrue(contact.former.allSatisfy { $0.reason == .removedByUser })
         XCTAssertTrue(contact.observations.contains { $0.field == "emails" && $0.value == "new@example.org" })
+        _ = try store.importDocument(document([imported("1", emails: ["old@example.org"])], time: 300))
+        XCTAssertEqual(try store.person(id: contact.id)?.emails, ["new@example.org"])
     }
     func testOldImportDoesNotOverwriteNewerStateOrGrowHistory() throws {
         let store = try database.makeStore()

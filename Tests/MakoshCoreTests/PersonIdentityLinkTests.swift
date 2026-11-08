@@ -21,7 +21,7 @@ final class PersonIdentityLinkTests: XCTestCase {
         XCTAssertEqual(try store.linkImportedPerson(incoming(), source: source, fetchedAt: date(100), contactID: target), target)
         let linked = try XCTUnwrap(store.person(id: target))
         XCTAssertEqual(linked.displayName, "Manual")
-        XCTAssertTrue(linked.phones.isEmpty)
+        XCTAssertEqual(linked.phones, ["123"], "Sources add list values beside manual ones")
         XCTAssertEqual(Set(linked.notes.map(\.text)), ["Manual note", "Source note"])
         XCTAssertTrue(
             linked.observations.contains { $0.field == "displayName" && $0.value == "Imported" && $0.source.identity.service == "telegram" }

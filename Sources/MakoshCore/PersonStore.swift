@@ -55,9 +55,22 @@ public final class PersonStore {
         return try write { repository in
             var contact = Person(displayName: Rules.trimmed(draft.displayName))
             Rules.apply(draft, to: &contact)
-            contact.manualFields = ["displayName", "organization", "jobTitle", "phones", "emails", "tags"]
+            // Only what the user typed is manual: empty scalars stay open to sources.
+            contact.manualFields = Set(
+                Rules.scalarFields.filter { field in
+                    switch field {
+                    case "displayName": !contact.displayName.isEmpty
+                    case "givenName": !contact.givenName.isEmpty
+                    case "familyName": !contact.familyName.isEmpty
+                    case "middleName": !contact.middleName.isEmpty
+                    case "organization": !contact.organization.isEmpty
+                    default: !contact.jobTitle.isEmpty
+                    }
+                })
             Rules.recordManualChanges(from: nil, contact: &contact)
-            contact.events.append(PersonEvent(kind: "created", detail: "Контакт создан вручную"))
+            contact.events.append(
+                PersonEvent(
+                    kind: "created", detail: contact.kind == .organization ? "Организация создана вручную" : "Персона создана вручную"))
             try repository.insert(contact)
             return contact.id
         }
@@ -72,14 +85,83 @@ public final class PersonStore {
             let after = contact.draft
             guard before != after else { return }
             if before.displayName != after.displayName { contact.manualFields.insert("displayName") }
+            if before.givenName != after.givenName { contact.manualFields.insert("givenName") }
+            if before.familyName != after.familyName { contact.manualFields.insert("familyName") }
+            if before.middleName != after.middleName { contact.manualFields.insert("middleName") }
             if before.organization != after.organization { contact.manualFields.insert("organization") }
             if before.jobTitle != after.jobTitle { contact.manualFields.insert("jobTitle") }
-            if before.phones != after.phones { contact.manualFields.insert("phones") }
-            if before.emails != after.emails { contact.manualFields.insert("emails") }
-            if before.tags != after.tags { contact.manualFields.insert("tags") }
             Rules.recordManualChanges(from: before, contact: &contact)
             contact.revision += 1
             contact.events.append(PersonEvent(kind: "edited", detail: "Изменено вручную"))
+            try repository.update(contact)
+        }
+    }
+
+    /// Moves a current list value to the former values; sources will not bring it back.
+    public func removeValue(personID: UUID, field: PersonListField, value: String, reason: FormerReason) throws {
+        try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            guard Rules.retire(field: field, value: value, reason: reason, at: Date(), contact: &contact) else { return }
+            contact.revision += 1
+            let detail: String =
+                switch reason {
+                case .removedByUser: "Значение убрано: \(value)"
+                case .removedInBook(let book): "Значение убрано во внешней книге \(book.service): \(value)"
+                case .replacedByMerge: "Значение заменено при объединении: \(value)"
+                }
+            contact.events.append(PersonEvent(kind: "valueRemoved", detail: detail))
+            try repository.update(contact)
+        }
+    }
+
+    /// Brings a former value back as a manual entry.
+    public func restoreValue(personID: UUID, field: PersonListField, value: String) throws {
+        try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            guard Rules.restore(field: field, value: value, contact: &contact) else { return }
+            contact.revision += 1
+            contact.events.append(PersonEvent(kind: "valueRestored", detail: "Значение возвращено: \(value)"))
+            try repository.update(contact)
+        }
+    }
+
+    /// Confirming a proposed observation makes its value current; proposals never return to observed.
+    public func setObservationStatus(personID: UUID, observationID: UUID, status: ObservationStatus) throws {
+        guard status == .confirmed else { throw StoreError.invalid("Предложенное наблюдение можно только принять или отклонить.") }
+        try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            guard let index = contact.observations.firstIndex(where: { $0.id == observationID }) else {
+                throw StoreError.invalid("Наблюдение не найдено.")
+            }
+            guard contact.observations[index].status == .proposed else {
+                throw StoreError.invalid("Наблюдение уже не является предложением.")
+            }
+            contact.observations[index].status = .confirmed
+            let observation = contact.observations[index]
+            if let field = PersonListField(rawValue: observation.field) {
+                if !Rules.isFormer(contact, field: field, value: observation.value) {
+                    contact.setValues(Rules.union(contact.values(field), [observation.value]), for: field)
+                }
+            } else if !contact.manualFields.contains(observation.field) {
+                Rules.setScalar(observation.field, observation.value, contact: &contact)
+            }
+            contact.revision += 1
+            contact.events.append(PersonEvent(kind: "observationConfirmed", detail: "Принято предложение: \(observation.value)"))
+            try repository.update(contact)
+        }
+    }
+
+    public func rejectProposedObservation(personID: UUID, observationID: UUID) throws {
+        try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            guard let index = contact.observations.firstIndex(where: { $0.id == observationID }) else {
+                throw StoreError.invalid("Наблюдение не найдено.")
+            }
+            guard contact.observations[index].status == .proposed else { throw StoreError.invalid("Отклонить можно только предложение.") }
+            let value = contact.observations[index].value
+            contact.observations.remove(at: index)
+            contact.revision += 1
+            contact.events.append(PersonEvent(kind: "observationRejected", detail: "Отклонено предложение: \(value)"))
             try repository.update(contact)
         }
     }

@@ -36,7 +36,19 @@ public enum CalendarConflictFinder {
         events: [UUID: CalendarEvent], collections: [CalendarCollection]
     ) -> [CalendarConflict] {
         let scope = CalendarNeighbours.of(collectionID, in: collections).union([collectionID])
-        return busy(in: scope, occurrences: occurrences, events: events, excluding: eventID).filter { $0.0.start < end && $0.0.end > start }
+        let overlapping = busy(in: scope, occurrences: occurrences, events: events, excluding: eventID).filter {
+            $0.0.start < end && $0.0.end > start
+        }
+        // One commitment is one conflict: copies collapse into their original, or into one copy when it is out of scope.
+        let originals = Set(overlapping.filter { !$0.1.isBusyCopy }.map { $0.1.masterID ?? $0.1.id })
+        var seenSources = Set<UUID>()
+        let distinct = overlapping.filter { _, event in
+            guard let source = event.busyMarker?.sourceEventID else { return true }
+            if originals.contains(source) { return false }
+            return seenSources.insert(source).inserted
+        }
+        return
+            distinct
             .map { occurrence, event in
                 CalendarConflict(
                     eventID: event.id, collectionID: occurrence.collectionID, start: occurrence.start, end: occurrence.end,

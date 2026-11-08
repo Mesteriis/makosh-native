@@ -336,7 +336,4 @@ public actor CalendarService {
             try store.saveCursor(changes.cursor, collectionID: collection.id)
         }
     }
-
-    /// Placeholder until task 9 implements busy reconciliation.
-    func reconcileBusy(read: Set<UUID>) async {}
 }

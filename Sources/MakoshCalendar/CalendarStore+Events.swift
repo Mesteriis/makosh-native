@@ -66,10 +66,18 @@ extension CalendarStore {
     @discardableResult public func observe(_ remote: CalendarEvent, collectionID: UUID) throws -> CalendarEvent {
         guard let externalID = remote.externalID else { throw CalendarFailure.invalidInput("external id") }
         return try transaction {
-            let existing = try query(
-                "SELECT data, sealed FROM \(t("calendar_events")) WHERE collection_id = $1 AND external_id = $2",
-                [collectionID.uuidString, externalID]
-            ).first.map { try readEvent(data: $0[0], sealed: $0[1]) }
+            // A row written here before the server confirmed it (unknown outcome) is adopted by UID, never duplicated.
+            let existing =
+                try query(
+                    "SELECT data, sealed FROM \(t("calendar_events")) WHERE collection_id = $1 AND external_id = $2",
+                    [collectionID.uuidString, externalID]
+                ).first.map { try readEvent(data: $0[0], sealed: $0[1]) }
+                ?? query(
+                    """
+                    SELECT data, sealed FROM \(t("calendar_events")) WHERE collection_id = $1 AND uid = $2 AND external_id IS NULL
+                      AND recurrence_id IS NOT DISTINCT FROM $3::timestamptz AND deleted_at IS NULL LIMIT 1
+                    """, [collectionID.uuidString, remote.uid, remote.recurrenceID.map(CalendarStore.iso)]
+                ).first.map { try readEvent(data: $0[0], sealed: $0[1]) }
             var stored = remote
             if let existing {
                 stored = CalendarEvent(

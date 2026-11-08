@@ -1,6 +1,7 @@
 import Foundation
+import MakoshGoogle
 
-/// Transport outcomes the service handles itself rather than as plain failures.
+/// Transport outcomes the calendar service handles itself rather than as plain failures.
 public enum CalendarHTTPError: Error, Equatable, Sendable {
     /// 429 or 503: pause this account for the given seconds.
     case retryAfter(TimeInterval)
@@ -17,79 +18,62 @@ public enum CalendarHTTPError: Error, Equatable, Sendable {
 
 extension URLSession {
     /// No cache, no cookies, no stored credentials.
-    public static var calendarEphemeral: URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.urlCache = nil
-        configuration.httpCookieStorage = nil
-        configuration.urlCredentialStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 30
-        return URLSession(configuration: configuration)
-    }
+    public static var calendarEphemeral: URLSession { .serviceEphemeral }
 }
 
-/// Refuses redirects to another host or to plain HTTP.
-final class CalendarRedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
-    func urlSession(
-        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
-        completionHandler: @escaping @Sendable (URLRequest?) -> Void
-    ) {
-        let same = request.url?.host?.lowercased() == task.originalRequest?.url?.host?.lowercased() && request.url?.scheme == "https"
-        completionHandler(same ? request : nil)
-    }
-}
-
-/// HTTP for calendar servers. Failures carry the status code and a stage name only:
-/// never the body, the URL or a token.
+/// The shared `ServiceHTTP` with its outcomes expressed as calendar failures.
 public struct CalendarHTTP: Sendable {
-    let session: URLSession
-    let timeout: TimeInterval
+    public let service: ServiceHTTP
 
-    public init(session: URLSession = .calendarEphemeral, timeout: TimeInterval = 30) {
-        self.session = session
-        self.timeout = timeout
+    public init(session: URLSession = .serviceEphemeral, timeout: TimeInterval = 30) {
+        service = ServiceHTTP(session: session, timeout: timeout)
     }
 
-    /// Any status comes back; only transport failures throw. For OAuth, whose
-    /// error codes live in the body.
+    public init(service: ServiceHTTP) { self.service = service }
+
+    /// Any status comes back; only transport failures throw.
     func raw(_ request: URLRequest, stage: String, limit: Int = 64 << 10) async throws -> (Data, HTTPURLResponse) {
-        var request = request
-        request.timeoutInterval = timeout
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request, delegate: CalendarRedirectGuard())
-        } catch {
-            throw CalendarFailure.unknownOutcome(stage: stage)
+        do { return try await service.raw(request, stage: stage, limit: limit) } catch let error as ServiceHTTPError {
+            throw Self.failure(error)
         }
-        guard let http = response as? HTTPURLResponse else { throw CalendarFailure.unknownOutcome(stage: stage) }
-        guard data.count <= limit else { throw CalendarFailure.invalidInput("response too large") }
-        return (data, http)
     }
 
     public func send(_ request: URLRequest, stage: String, limit: Int = 10 << 20) async throws -> (Data, HTTPURLResponse) {
-        var request = request
-        request.timeoutInterval = timeout
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request, delegate: CalendarRedirectGuard())
-        } catch {
-            throw CalendarFailure.unknownOutcome(stage: stage)
+        do { return try await service.send(request, stage: stage, limit: limit) } catch let error as ServiceHTTPError {
+            throw Self.failure(error)
         }
-        guard let http = response as? HTTPURLResponse else { throw CalendarFailure.unknownOutcome(stage: stage) }
-        guard data.count <= limit else { throw CalendarFailure.invalidInput("response too large") }
-        let status = http.statusCode
-        switch status {
-        case 200..<300, 304: return (data, http)
-        case 412: throw CalendarHTTPError.preconditionFailed
-        case 429, 503:
-            if status == 503, http.value(forHTTPHeaderField: "Retry-After") == nil { throw CalendarFailure.unknownOutcome(stage: stage) }
-            let seconds = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init) ?? 60
-            throw CalendarHTTPError.retryAfter(min(max(seconds, 1), 3600))
-        case 408, 409, 500...: throw CalendarFailure.unknownOutcome(stage: stage)
-        default: throw CalendarFailure.rejected(code: status, stage: stage)
+    }
+
+    static func failure(_ error: ServiceHTTPError) -> Error {
+        switch error {
+        case .retryAfter(let seconds): CalendarHTTPError.retryAfter(seconds)
+        case .preconditionFailed: CalendarHTTPError.preconditionFailed
+        case .transport(let stage), .unknownOutcome(let stage): CalendarFailure.unknownOutcome(stage: stage)
+        case .rejected(let code, let stage): CalendarFailure.rejected(code: code, stage: stage)
+        case .responseTooLarge: CalendarFailure.invalidInput("response too large")
         }
+    }
+}
+
+extension GoogleOAuth {
+    /// What the calendar asks Google for.
+    public static let calendarScopes = GoogleOAuth.identityScopes + " https://www.googleapis.com/auth/calendar"
+}
+
+extension CalendarFailure {
+    /// A Google sign-in or token failure as the calendar reports it.
+    public init(google failure: GoogleOAuthFailure) {
+        switch failure {
+        case .notConfigured, .signInRequired: self = .signInRequired
+        case .adminBlocked: self = .adminBlocked
+        case .transport(let stage): self = .unknownOutcome(stage: stage)
+        case .rejected(let code, let stage): self = .rejected(code: code, stage: stage)
+        case .listenerUnavailable: self = .unreachable
+        }
+    }
+
+    /// Rethrows Google failures as calendar failures; everything else passes through.
+    static func mapGoogle<T>(_ body: () async throws -> T) async throws -> T {
+        do { return try await body() } catch let failure as GoogleOAuthFailure { throw CalendarFailure(google: failure) }
     }
 }

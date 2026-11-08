@@ -1,10 +1,11 @@
 import CryptoKit
 import Foundation
 import XCTest
-@testable import MakoshCalendar
+@testable import MakoshGoogle
 
 final class GoogleOAuthTests: XCTestCase {
     private let client = GoogleOAuthClient(clientID: "client-1.apps.googleusercontent.com", clientSecret: "secret-1")
+    private static let scopes = "openid email https://www.googleapis.com/auth/calendar"
 
     private static func base64URL(_ data: Data) -> String {
         data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
@@ -33,7 +34,7 @@ final class GoogleOAuthTests: XCTestCase {
         )
         let challenge = LockedBox<String?>(nil)
         let oauth = GoogleOAuth(
-            client: client, http: StubURLProtocol.http(),
+            client: client, http: StubURLProtocol.http(), scopes: Self.scopes,
             openBrowser: browser { components in
                 challenge.set(components.queryItems!.first { $0.name == "code_challenge" }?.value)
                 XCTAssertEqual(components.host, "accounts.google.com")
@@ -61,18 +62,19 @@ final class GoogleOAuthTests: XCTestCase {
     func testStateMismatchIsIgnoredUntilTimeout() async {
         tokenReply("{}")
         let oauth = GoogleOAuth(
-            client: client, http: StubURLProtocol.http(), openBrowser: browser { _ in "code=x&state=forged" }, timeout: 0.7)
+            client: client, http: StubURLProtocol.http(), scopes: Self.scopes, openBrowser: browser { _ in "code=x&state=forged" },
+            timeout: 0.7)
         do {
             _ = try await oauth.signIn(loginHint: nil)
             XCTFail("a forged state must not sign in")
-        } catch { XCTAssertEqual(error as? CalendarFailure, .signInRequired) }
+        } catch { XCTAssertEqual(error as? GoogleOAuthFailure, .signInRequired) }
         XCTAssertTrue(StubURLProtocol.requests.isEmpty)
     }
 
     func testListenerClosedOnTimeout() async throws {
         let redirect = LockedBox<String?>(nil)
         let oauth = GoogleOAuth(
-            client: client, http: StubURLProtocol.http(),
+            client: client, http: StubURLProtocol.http(), scopes: Self.scopes,
             openBrowser: { url in
                 redirect.set(
                     URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "redirect_uri" }!.value)
@@ -91,27 +93,50 @@ final class GoogleOAuthTests: XCTestCase {
         for code in ["admin_policy_enforced", "org_internal", "access_denied"] {
             tokenReply("{}")
             let oauth = GoogleOAuth(
-                client: client, http: StubURLProtocol.http(), openBrowser: browser { "error=\(code)&state=\(Self.state($0))" }, timeout: 10)
+                client: client, http: StubURLProtocol.http(), scopes: Self.scopes,
+                openBrowser: browser { "error=\(code)&state=\(Self.state($0))" }, timeout: 10)
             do {
                 _ = try await oauth.signIn(loginHint: nil)
                 XCTFail("consent error must fail")
-            } catch { XCTAssertEqual(error as? CalendarFailure, .adminBlocked, code) }
+            } catch { XCTAssertEqual(error as? GoogleOAuthFailure, .adminBlocked, code) }
         }
     }
 
     func testInvalidGrantMapsToSignInRequired() async {
         tokenReply(#"{"error":"invalid_grant","error_description":"secret detail"}"#, status: 400)
-        let oauth = GoogleOAuth(client: client, http: StubURLProtocol.http(), openBrowser: { _ in }, timeout: 1)
+        let oauth = GoogleOAuth(client: client, http: StubURLProtocol.http(), scopes: Self.scopes, openBrowser: { _ in }, timeout: 1)
         do {
             _ = try await oauth.accessToken(for: GoogleGrant(subject: "1", email: "me@gmail.test", scopes: [], refreshToken: "rt"))
             XCTFail("revoked grant must fail")
-        } catch { XCTAssertEqual(error as? CalendarFailure, .signInRequired) }
+        } catch { XCTAssertEqual(error as? GoogleOAuthFailure, .signInRequired) }
+    }
+
+    func testIncrementalSignInSendsIncludeGrantedScopesAndLoginHint() async throws {
+        tokenReply(
+            #"{"access_token":"at-3","expires_in":3600,"refresh_token":"rt-3","scope":"openid email https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/contacts","id_token":"\#(Self.idToken)"}"#
+        )
+        let seen = LockedBox<[String: String]>([:])
+        let oauth = GoogleOAuth(
+            client: client, http: StubURLProtocol.http(), scopes: Self.scopes,
+            openBrowser: browser { components in
+                var items: [String: String] = [:]
+                for item in components.queryItems ?? [] { items[item.name] = item.value ?? "" }
+                seen.set(items)
+                return "code=auth-code&state=\(Self.state(components))"
+            }, timeout: 10)
+        let grant = try await oauth.signIn(scopes: "openid email https://www.googleapis.com/auth/contacts", loginHint: "me@gmail.test")
+        XCTAssertEqual(seen.get()["scope"], "openid email https://www.googleapis.com/auth/contacts")
+        XCTAssertEqual(seen.get()["include_granted_scopes"], "true")
+        XCTAssertEqual(seen.get()["login_hint"], "me@gmail.test")
+        XCTAssertTrue(grant.has(scope: "https://www.googleapis.com/auth/contacts"))
+        XCTAssertTrue(grant.has(scope: "https://www.googleapis.com/auth/calendar"), "earlier scopes stay in the grant")
     }
 
     func testAccessTokenCachedUntilExpiry() async throws {
         let clock = LockedBox(Date(timeIntervalSince1970: 1_000_000))
         tokenReply(#"{"access_token":"at-2","expires_in":120}"#)
-        let oauth = GoogleOAuth(client: client, http: StubURLProtocol.http(), openBrowser: { _ in }, timeout: 1, now: { clock.get() })
+        let oauth = GoogleOAuth(
+            client: client, http: StubURLProtocol.http(), scopes: Self.scopes, openBrowser: { _ in }, timeout: 1, now: { clock.get() })
         let grant = GoogleGrant(subject: "1", email: "me@gmail.test", scopes: [], refreshToken: "rt")
         _ = try await oauth.accessToken(for: grant)
         clock.set(clock.get().addingTimeInterval(30))

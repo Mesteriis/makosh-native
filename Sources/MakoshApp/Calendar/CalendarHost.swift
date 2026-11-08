@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import MakoshCalendar
 import MakoshCore
+import MakoshGoogle
 import ServiceManagement
 import SwiftUI
 
@@ -95,7 +96,8 @@ extension EnvironmentValues {
             synthetic == nil
             ? GoogleOAuthClient.embedded.map { client in
                 GoogleOAuth(
-                    client: client, http: http, openBrowser: { url in _Concurrency.Task { @MainActor in NSWorkspace.shared.open(url) } })
+                    client: client, http: http.service, scopes: GoogleOAuth.calendarScopes,
+                    openBrowser: { url in _Concurrency.Task { @MainActor in NSWorkspace.shared.open(url) } })
             } : nil
         let factory: CalendarService.AdapterFactory
         if let synthetic {

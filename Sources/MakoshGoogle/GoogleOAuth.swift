@@ -38,27 +38,44 @@ public struct GoogleAccessToken: Sendable {
     public let expiresAt: Date
 }
 
+/// Why a sign-in or a token refresh did not happen; never the body or the token.
+public enum GoogleOAuthFailure: Error, Equatable, Sendable {
+    case notConfigured
+    /// A Workspace administrator forbids this client, or the user declined consent.
+    case adminBlocked
+    /// No code arrived, the grant was revoked or the reply lacked what a grant needs.
+    case signInRequired
+    case transport(stage: String)
+    case rejected(code: Int, stage: String)
+    /// The loopback listener could not open.
+    case listenerUnavailable
+}
+
 /// OAuth 2.0 for an installed app: system browser, PKCE S256, a loopback
 /// redirect on 127.0.0.1 with a random port that lives only for one sign-in.
 public actor GoogleOAuth {
     static let authorization = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     static let token = URL(string: "https://oauth2.googleapis.com/token")!
-    public static let scopes = "openid email https://www.googleapis.com/auth/calendar"
+    /// Identity scopes every Makosh sign-in asks for; a section adds its own API scope.
+    public static let identityScopes = "openid email"
     static let adminErrors: Set<String> = ["admin_policy_enforced", "org_internal", "access_denied"]
 
     private let client: GoogleOAuthClient
-    private let http: CalendarHTTP
+    private let http: ServiceHTTP
     private let openBrowser: @Sendable (URL) -> Void
     private let timeout: TimeInterval
     private let now: @Sendable () -> Date
+    /// The scopes a plain `signIn(loginHint:)` asks for.
+    public nonisolated let scopes: String
     private var cache: [String: GoogleAccessToken] = [:]
 
     public init(
-        client: GoogleOAuthClient, http: CalendarHTTP, openBrowser: @escaping @Sendable (URL) -> Void, timeout: TimeInterval = 300,
-        now: @escaping @Sendable () -> Date = Date.init
+        client: GoogleOAuthClient, http: ServiceHTTP, scopes: String, openBrowser: @escaping @Sendable (URL) -> Void,
+        timeout: TimeInterval = 300, now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.client = client
         self.http = http
+        self.scopes = scopes
         self.openBrowser = openBrowser
         self.timeout = timeout
         self.now = now
@@ -67,6 +84,12 @@ public actor GoogleOAuth {
     public nonisolated var clientID: String { client.clientID }
 
     public func signIn(loginHint: String?) async throws -> GoogleGrant {
+        try await signIn(scopes: scopes, loginHint: loginHint)
+    }
+
+    /// One consent for `scopes`; `include_granted_scopes` keeps what an earlier grant already had,
+    /// so a section can widen a grant another section obtained.
+    public func signIn(scopes: String, loginHint: String?) async throws -> GoogleGrant {
         let verifier = Self.random(), state = Self.random()
         let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
         let listener = try LoopbackListener()
@@ -77,7 +100,7 @@ public actor GoogleOAuth {
         components.queryItems =
             [
                 .init(name: "client_id", value: client.clientID), .init(name: "redirect_uri", value: redirect),
-                .init(name: "response_type", value: "code"), .init(name: "scope", value: Self.scopes),
+                .init(name: "response_type", value: "code"), .init(name: "scope", value: scopes),
                 .init(name: "code_challenge", value: challenge), .init(name: "code_challenge_method", value: "S256"),
                 .init(name: "state", value: state), .init(name: "access_type", value: "offline"), .init(name: "prompt", value: "consent"),
                 .init(name: "include_granted_scopes", value: "true"),
@@ -95,17 +118,17 @@ public actor GoogleOAuth {
             group.cancelAll()
             return first
         }
-        guard let query else { throw CalendarFailure.signInRequired }
+        guard let query else { throw GoogleOAuthFailure.signInRequired }
         if let error = query["error"] {
-            throw Self.adminErrors.contains(error) ? CalendarFailure.adminBlocked : CalendarFailure.signInRequired
+            throw Self.adminErrors.contains(error) ? GoogleOAuthFailure.adminBlocked : GoogleOAuthFailure.signInRequired
         }
-        guard let code = query["code"], !code.isEmpty else { throw CalendarFailure.signInRequired }
+        guard let code = query["code"], !code.isEmpty else { throw GoogleOAuthFailure.signInRequired }
         let reply = try await tokenRequest([
             "code": code, "client_id": client.clientID, "client_secret": client.clientSecret, "code_verifier": verifier,
             "grant_type": "authorization_code", "redirect_uri": redirect,
         ])
         guard let refresh = reply.refreshToken, let identity = reply.idToken.flatMap(Self.identity) else {
-            throw CalendarFailure.signInRequired
+            throw GoogleOAuthFailure.signInRequired
         }
         let grant = GoogleGrant(
             subject: identity.sub, email: identity.email ?? "", scopes: Set((reply.scope ?? "").split(separator: " ").map(String.init)),
@@ -122,7 +145,7 @@ public actor GoogleOAuth {
             "client_id": client.clientID, "client_secret": client.clientSecret, "refresh_token": grant.refreshToken,
             "grant_type": "refresh_token",
         ])
-        guard let access = reply.accessToken else { throw CalendarFailure.signInRequired }
+        guard let access = reply.accessToken else { throw GoogleOAuthFailure.signInRequired }
         let token = GoogleAccessToken(value: access, expiresAt: now().addingTimeInterval(TimeInterval(reply.expiresIn ?? 0)))
         cache[grant.subject] = token
         return token
@@ -151,15 +174,18 @@ public actor GoogleOAuth {
         request.httpBody = Data(
             form.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")" }
                 .joined(separator: "&").utf8)
-        let (data, response) = try await http.raw(request, stage: "token")
+        let data: Data, response: HTTPURLResponse
+        do { (data, response) = try await http.raw(request, stage: "token") } catch {
+            throw GoogleOAuthFailure.transport(stage: "token")
+        }
         let reply = try? JSONDecoder().decode(TokenReply.self, from: data)
         guard (200..<300).contains(response.statusCode), let reply, reply.error == nil else {
             switch reply?.error {
-            case "invalid_grant"?: throw CalendarFailure.signInRequired
-            case let code? where Self.adminErrors.contains(code): throw CalendarFailure.adminBlocked
+            case "invalid_grant"?: throw GoogleOAuthFailure.signInRequired
+            case let code? where Self.adminErrors.contains(code): throw GoogleOAuthFailure.adminBlocked
             default:
-                if response.statusCode >= 500 { throw CalendarFailure.unknownOutcome(stage: "token") }
-                throw CalendarFailure.rejected(code: response.statusCode, stage: "token")
+                if response.statusCode >= 500 { throw GoogleOAuthFailure.transport(stage: "token") }
+                throw GoogleOAuthFailure.rejected(code: response.statusCode, stage: "token")
             }
         }
         return reply
@@ -191,7 +217,7 @@ public actor GoogleOAuth {
 
 /// A one-shot HTTP listener on 127.0.0.1 for the OAuth redirect.
 final class LoopbackListener: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "org.makosh.calendar.oauth-loopback")
+    private let queue = DispatchQueue(label: "org.makosh.google.oauth-loopback")
     private let listener: NWListener
     private let lock = NSLock()
     private var waiting: [(state: String, continuation: CheckedContinuation<[String: String]?, Never>)] = []
@@ -201,7 +227,7 @@ final class LoopbackListener: @unchecked Sendable {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         parameters.acceptLocalOnly = true
-        do { listener = try NWListener(using: parameters) } catch { throw CalendarFailure.unreachable }
+        do { listener = try NWListener(using: parameters) } catch { throw GoogleOAuthFailure.listenerUnavailable }
     }
 
     func start() async throws -> UInt16 {
@@ -212,7 +238,7 @@ final class LoopbackListener: @unchecked Sendable {
                 case .ready:
                     if once.claim() { continuation.resume(returning: listener.port?.rawValue ?? 0) }
                 case .failed, .cancelled:
-                    if once.claim() { continuation.resume(throwing: CalendarFailure.unreachable) }
+                    if once.claim() { continuation.resume(throwing: GoogleOAuthFailure.listenerUnavailable) }
                 default: break
                 }
             }

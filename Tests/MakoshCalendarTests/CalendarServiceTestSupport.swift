@@ -48,3 +48,12 @@ extension XCTestCase {
                 end: CalendarServiceHarness.start.addingTimeInterval(to * 3600), timeZone: nil))
     }
 }
+
+/// A tiny lock-protected box for values crossing test closures.
+final class LockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+    init(_ value: Value) { self.value = value }
+    func get() -> Value { lock.withLock { value } }
+    func set(_ value: Value) { lock.withLock { self.value = value } }
+}

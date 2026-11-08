@@ -1,81 +1,32 @@
 import Foundation
 import MakoshCore
+import MakoshGoogle
 import Security
 
-/// How credentials reach the Keychain: the shared Makosh item by default, memory for tests and QA.
-public struct CalendarKeychainAccess: Sendable {
-    public let read: @Sendable (String, String) -> (OSStatus, Data?)
-    public let write: @Sendable (String, String, Data) -> OSStatus
-    public let remove: @Sendable (String, String) -> OSStatus
+public typealias CalendarKeychainAccess = KeychainAccess
 
-    public init(
-        read: @escaping @Sendable (String, String) -> (OSStatus, Data?), write: @escaping @Sendable (String, String, Data) -> OSStatus,
-        remove: @escaping @Sendable (String, String) -> OSStatus
-    ) {
-        self.read = read
-        self.write = write
-        self.remove = remove
-    }
-
-    public static var system: Self {
-        @Sendable func query(_ service: String, _ account: String) -> [String: Any] {
-            [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
-        }
-        return Self(
-            read: { service, account in MakoshSecretStore.shared.copyData(query(service, account)) },
-            write: { service, account, data in
-                let attributes: [String: Any] = [kSecValueData as String: data]
-                let status = MakoshSecretStore.shared.updateItem(query(service, account), attributes)
-                if status != errSecItemNotFound { return status }
-                return MakoshSecretStore.shared.addItem(query(service, account).merging(attributes) { _, new in new })
-            }, remove: { service, account in MakoshSecretStore.shared.deleteItem(query(service, account)) })
-    }
-
-    public static func memory() -> Self {
-        final class Box: @unchecked Sendable {
-            let lock = NSLock()
-            var items: [String: Data] = [:]
-        }
-        let box = Box()
-        return Self(
-            read: { s, a in box.lock.withLock { box.items[s + "/" + a].map { (errSecSuccess, $0) } ?? (errSecItemNotFound, nil) } },
-            write: { s, a, data in
-                box.lock.withLock { box.items[s + "/" + a] = data }
-                return errSecSuccess
-            },
-            remove: { s, a in box.lock.withLock { box.items.removeValue(forKey: s + "/" + a) == nil ? errSecItemNotFound : errSecSuccess } }
-        )
-    }
-}
-
-/// Google grants are shared with the future Gmail sign-in; CalDAV passwords belong to calendar accounts.
+/// CalDAV passwords belong to calendar accounts; Google grants live in the shared `GoogleGrantVault`.
 public actor CalendarCredentialVault {
-    static let grantService = "org.makosh.google.grants.v1"
     static let passwordService = "org.makosh.calendar.caldav.v1"
     private static let limit = 16 * 1024
-    private let access: CalendarKeychainAccess
+    private let access: KeychainAccess
+    private let grants: GoogleGrantVault
 
-    public init(access: CalendarKeychainAccess = .system) { self.access = access }
-
-    public func saveGrant(_ grant: GoogleGrant) throws {
-        let data = try JSONEncoder().encode(grant)
-        guard data.count <= Self.limit, access.write(Self.grantService, grant.subject, data) == errSecSuccess else {
-            throw CalendarFailure.keyUnavailable
-        }
+    public init(access: KeychainAccess = .system) {
+        self.access = access
+        grants = GoogleGrantVault(access: access)
     }
 
-    public func grant(subject: String) throws -> GoogleGrant? {
-        let (status, data) = access.read(Self.grantService, subject)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data, data.count <= Self.limit,
-            let grant = try? JSONDecoder().decode(GoogleGrant.self, from: data)
-        else { throw CalendarFailure.keyUnavailable }
-        return grant
+    public func saveGrant(_ grant: GoogleGrant) async throws {
+        do { try await grants.saveGrant(grant) } catch { throw CalendarFailure.keyUnavailable }
     }
 
-    public func removeGrant(subject: String) throws {
-        let status = access.remove(Self.grantService, subject)
-        guard status == errSecSuccess || status == errSecItemNotFound else { throw CalendarFailure.keyUnavailable }
+    public func grant(subject: String) async throws -> GoogleGrant? {
+        do { return try await grants.grant(subject: subject) } catch { throw CalendarFailure.keyUnavailable }
+    }
+
+    public func removeGrant(subject: String) async throws {
+        do { try await grants.removeGrant(subject: subject) } catch { throw CalendarFailure.keyUnavailable }
     }
 
     public func savePassword(_ password: String, accountID: UUID) throws {

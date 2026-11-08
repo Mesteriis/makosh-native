@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import MakoshGoogle
 @testable import MakoshCalendar
 
 final class CalendarCredentialVaultTests: XCTestCase {

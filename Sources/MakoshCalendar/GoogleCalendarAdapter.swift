@@ -1,4 +1,5 @@
 import Foundation
+import MakoshGoogle
 
 /// Google Calendar API v3 through the user's OAuth grant. Google sends invitations
 /// itself (`sendUpdates`), keeps busy-copy marks in private extended properties
@@ -32,7 +33,8 @@ public struct GoogleCalendarAdapter: CalendarAdapter {
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!)
         request.httpMethod = method
-        request.setValue("Bearer " + (try await oauth.accessToken(for: grant)).value, forHTTPHeaderField: "Authorization")
+        let token = try await CalendarFailure.mapGoogle { try await oauth.accessToken(for: grant) }
+        request.setValue("Bearer " + token.value, forHTTPHeaderField: "Authorization")
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

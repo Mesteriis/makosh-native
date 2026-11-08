@@ -1,4 +1,5 @@
 import Foundation
+import MakoshGoogle
 
 /// The calendar section's service: accounts, polling, busy copies and user
 /// commands. Protocol, SQL and Keychain work run here, never on the main actor.
@@ -141,7 +142,7 @@ public actor CalendarService {
 
     public func addGoogleAccount(loginHint: String?) async throws -> CalendarAccount {
         guard let google else { throw CalendarFailure.invalidInput("google not configured") }
-        let grant = try await google.signIn(loginHint: loginHint)
+        let grant = try await CalendarFailure.mapGoogle { try await google.signIn(loginHint: loginHint) }
         try await vault.saveGrant(grant)
         var account =
             try await store.accounts().first { $0.kind == .google && $0.googleGrantID == grant.subject }
@@ -159,7 +160,7 @@ public actor CalendarService {
     public func reauthorize(accountID: UUID) async throws {
         var account = try await account(accountID)
         guard account.kind == .google, let google else { throw CalendarFailure.invalidInput("not a google account") }
-        let grant = try await google.signIn(loginHint: account.name)
+        let grant = try await CalendarFailure.mapGoogle { try await google.signIn(loginHint: account.name) }
         guard grant.subject == account.googleGrantID else { throw CalendarFailure.invalidInput("other account") }
         try await vault.saveGrant(grant)
         account.state = .connected

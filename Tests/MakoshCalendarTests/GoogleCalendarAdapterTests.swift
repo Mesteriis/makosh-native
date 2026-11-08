@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import MakoshGoogle
 @testable import MakoshCalendar
 
 final class GoogleCalendarAdapterTests: XCTestCase {
@@ -15,7 +16,9 @@ final class GoogleCalendarAdapterTests: XCTestCase {
             return routes(request)
         }
         let http = StubURLProtocol.http()
-        let oauth = GoogleOAuth(client: GoogleOAuthClient(clientID: "c", clientSecret: "s"), http: http, openBrowser: { _ in })
+        let oauth = GoogleOAuth(
+            client: GoogleOAuthClient(clientID: "c", clientSecret: "s"), http: http.service, scopes: GoogleOAuth.calendarScopes,
+            openBrowser: { _ in })
         return GoogleCalendarAdapter(grant: grant, oauth: oauth, http: http)
     }
     private func json(_ text: String, status: Int = 200) -> StubURLProtocol.Reply {

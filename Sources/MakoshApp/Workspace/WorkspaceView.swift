@@ -3,6 +3,7 @@ import AppKit
 import MakoshCore
 import MakoshTelegram
 import MakoshMail
+import MakoshPersons
 import MakoshWhatsApp
 import MakoshTeams
 import MakoshTelemost
@@ -11,13 +12,13 @@ import MakoshFiles
 import MakoshCalendar
 import UniformTypeIdentifiers
 
-private enum Destination: String, CaseIterable, Identifiable {
-    case contacts = "Контакты", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи",
+enum WorkspaceDestination: String, CaseIterable, Identifiable {
+    case persons = "Персоны", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи",
         files = "Файлы", tasks = "Задачи", calendar = "Календарь", ai = "ИИ"
     var id: String { rawValue }
     var symbol: String {
         switch self {
-        case .contacts: "person.2"
+        case .persons: "person.2"
         case .mail: "envelope"
         case .telegram: "paperplane"
         case .whatsapp: "message"
@@ -33,6 +34,7 @@ private enum Destination: String, CaseIterable, Identifiable {
 private struct EditorSelection: Identifiable {
     let id = UUID()
     let contact: Person?
+    var kind: PersonKind = .person
 }
 
 struct WorkspaceView: View {
@@ -41,6 +43,7 @@ struct WorkspaceView: View {
     @EnvironmentObject private var files: FilesHost
     @EnvironmentObject private var tasks: TasksHost
     @EnvironmentObject private var calendarHost: CalendarHost
+    @EnvironmentObject private var personsHost: PersonsHost
     /// Sources for the chat panel's "+" and "@"; made once the window appears.
     @State private var aiContextSearch: AIContextSearch?
     @StateObject private var systemAppearance = TelegramSystemAppearance()
@@ -57,8 +60,8 @@ struct WorkspaceView: View {
     @StateObject private var teams = TeamsWorkspaceModel()
     @StateObject private var telemost = TelemostWorkspaceModel()
     @State private var telemostDossierRequest = UUID()
-    @State private var destination: Destination? = .contacts
-    @State private var sidebarWidths: [Destination: CGFloat] = [:]
+    @State private var destination: WorkspaceDestination? = .persons
+    @State private var sidebarWidths: [WorkspaceDestination: CGFloat] = [:]
     @State private var teamsDossierRequest = UUID()
     private var telegramAppearance: TelegramAppearancePreferences { (try? .decode(appearanceRaw)) ?? .init() }
     private var resolvedTelegramScheme: ColorScheme {
@@ -70,7 +73,6 @@ struct WorkspaceView: View {
         telegramAppearance.effectivePalette(isDark: resolvedTelegramScheme == .dark).map { telegramPaletteColor($0, "accent", $0.accent) }
             ?? TelegramAccent(preference: telegramAccent).color
     }
-    @State private var search = ""
     @State private var editor: EditorSelection?
     @State private var review = false
     init(proxy: TelegramProxyController? = nil, callCoordinator: TelegramCallCoordinator? = nil) {
@@ -153,7 +155,7 @@ struct WorkspaceView: View {
             ToolbarItem(placement: .navigation) {
                 MakoshMenu {
                     MakoshPicker("Раздел", selection: $destination) {
-                        ForEach(Destination.allCases.filter { !isolatedWhatsApp || $0 == .contacts || $0 == .whatsapp }) { item in
+                        ForEach(WorkspaceDestination.allCases.filter { !isolatedWhatsApp || $0 == .persons || $0 == .whatsapp }) { item in
                             Label(item.rawValue, systemImage: item.symbol).tag(Optional(item))
                         }
                     }.pickerStyle(.inline).labelsHidden()
@@ -220,6 +222,7 @@ struct WorkspaceView: View {
                 files.start(
                     configuration: configuration,
                     resolver: FileSourceBridge(telegram: telegram, whatsapp: whatsapp, mail: mail, teams: teams))
+                Task { await personsHost.configure(configuration: configuration, worker: model.dossierWorker) }
                 Task {
                     await tasks.start(configuration: configuration)
                     await calendarHost.start(configuration: configuration, taskFeed: tasks.calendarFeed)
@@ -276,14 +279,15 @@ struct WorkspaceView: View {
             if telegram.isSyntheticPreview { model.configurePendingUploadRecoveryQAIfRequested(telegram) }
             #endif
         }
-        .sheet(item: $editor) { selection in PersonEditor(contact: selection.contact, model: model).makoshAppearance() }
+        .sheet(item: $editor) { selection in PersonEditor(contact: selection.contact, kind: selection.kind, model: model).makoshAppearance()
+        }
         .sheet(item: $files.pendingSend) { request in PaperlessSendSheet(model: files.model, request: request).makoshAppearance() }
         .onChange(of: files.pendingAsk?.id) { _, _ in
             guard let request = files.pendingAsk else { return }
             files.pendingAsk = nil
             askAI(request)
         }
-        .sheet(isPresented: $review) { MergeReviewView(model: model).makoshAppearance() }
+        .sheet(isPresented: $review) { MergeReviewView(model: model, persons: personsHost.model).makoshAppearance() }
         .alert("Макош", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("Понятно", role: .cancel) { model.error = nil }
         } message: {
@@ -325,7 +329,7 @@ struct WorkspaceView: View {
 
     /// Chats and addresses a file can go to: loaded Telegram chats, the open
     /// WhatsApp account's chats, contacts with an email.
-    private func forwardDestinations(_ mode: FileForwardRequest.Mode) -> [FileDestination] {
+    private func forwardWorkspaceDestinations(_ mode: FileForwardRequest.Mode) -> [FileDestination] {
         var result: [FileDestination] = []
         switch mode {
         case .chat:
@@ -448,7 +452,7 @@ struct WorkspaceView: View {
             // The letter itself is not yet selected there.
             destination = .mail
         case .contact(let id, _):
-            Task { if await model.selectPerson(id) { destination = .contacts } }
+            Task { if await model.selectPerson(id) { destination = .persons } }
         }
     }
 
@@ -496,60 +500,15 @@ struct WorkspaceView: View {
     }
     private var sidebarWidth: Binding<CGFloat> {
         Binding(
-            get: { sidebarWidths[destination ?? .contacts] ?? sidebarLayout.ideal },
-            set: { sidebarWidths[destination ?? .contacts] = $0 })
+            get: { sidebarWidths[destination ?? .persons] ?? sidebarLayout.ideal },
+            set: { sidebarWidths[destination ?? .persons] = $0 })
     }
     @ViewBuilder private var sectionSidebar: some View {
-        if destination == .contacts {
-            VStack(spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Контакты").font(.title2.bold())
-                        Text("\(model.persons.count) в вашей картотеке").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        editor = EditorSelection(contact: nil)
-                    } label: {
-                        Image(systemName: "plus")
-                    }.help("Новый контакт").accessibilityIdentifier("contacts.create").disabled(!model.canWrite)
-                }.padding(20)
-                TextField("Поиск по имени, компании, почте", text: $search).textFieldStyle(.roundedBorder).padding(.horizontal, 16).padding(
-                    .bottom, 12
-                ).accessibilityIdentifier("contacts.search")
-                Divider()
-                if model.persons.isEmpty {
-                    ContentUnavailableView(
-                        "Пока нет контактов", systemImage: "person.crop.rectangle.stack",
-                        description: Text("Создайте контакт или импортируйте JSON-файл.")
-                    ).frame(maxWidth: .infinity, maxHeight: .infinity).padding()
-                } else {
-                    List(selection: $model.selectedID) {
-                        ForEach(filteredContacts) { contact in
-                            HStack(spacing: 12) {
-                                Avatar(name: contact.displayName)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(contact.displayName).font(.headline)
-                                    Text(contact.organization.isEmpty ? (contact.emails.first ?? "Личный контакт") : contact.organization)
-                                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }.padding(.vertical, 8).tag(contact.id).accessibilityIdentifier("contact.row.\(contact.id)")
-                        }
-                    }.listStyle(.inset).scrollContentBackground(.hidden)
-                }
-                Divider()
-                VStack(spacing: 10) {
-                    Button(action: chooseImportFile) {
-                        Label("Импортировать JSON", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity)
-                    }.accessibilityIdentifier("contacts.import").disabled(!model.canWrite)
-                    Button {
-                        review = true
-                    } label: {
-                        Label("Объединения · \(model.duplicates.count)", systemImage: "person.2.badge.gearshape").frame(maxWidth: .infinity)
-                    }.accessibilityIdentifier("contacts.duplicates").disabled(!model.canWrite)
-                }.padding(16)
-            }.frame(maxHeight: .infinity, alignment: .top).background { WorkspaceBackdrop(intensity: 0.55) }.frame(
-                minWidth: 280, idealWidth: 320, maxWidth: 390)
+        if destination == .persons {
+            PersonsSidebarView(
+                host: personsHost, workspace: model, newPerson: { kind in editor = EditorSelection(contact: nil, kind: kind) },
+                openImport: chooseImportFile, openReview: { review = true }
+            ).frame(minWidth: 280, idealWidth: 320, maxWidth: 390)
         } else if destination == .mail {
             MailMessageListView(model: mail).frame(minWidth: 320, idealWidth: 400, maxWidth: 420)
         } else if destination == .telegram {
@@ -592,7 +551,7 @@ struct WorkspaceView: View {
         VStack(spacing: 0) {
             TelegramCallCompactView(controller: telegram.calls)
             Group {
-                if destination == .contacts {
+                if destination == .persons {
                     if let contact = model.selected {
                         DossierView(contact: contact, model: model, openMeeting: telemost.openMeeting) {
                             editor = EditorSelection(contact: contact)
@@ -607,14 +566,14 @@ struct WorkspaceView: View {
                         Task {
                             if await model.selectPerson(id) {
                                 mail.showDossier = false
-                                destination = .contacts
+                                destination = .persons
                             }
                         }
                     }
                 } else if destination == .telegram {
                     TelegramDetailView(
                         model: telegram, dossier: model,
-                        openDossier: { id in Task { if await model.selectPerson(id) { destination = .contacts } } },
+                        openDossier: { id in Task { if await model.selectPerson(id) { destination = .persons } } },
                         aiPanel: telegramAIPanel)
                 } else if destination == .whatsapp {
                     WhatsAppDetailView(
@@ -625,7 +584,7 @@ struct WorkspaceView: View {
                                 if let id = await model.linkWhatsAppChat(chat, accountID: account), whatsapp.selectedAccountID == account,
                                     whatsapp.selectedChatID == chat.id, await model.selectPerson(id)
                                 {
-                                    destination = .contacts
+                                    destination = .persons
                                 }
                             }
                         }
@@ -640,7 +599,7 @@ struct WorkspaceView: View {
                                 while: {
                                     teamsDossierRequest == request && destination == .teams && teams.selectedScope == scope
                                 })
-                            if id != nil { destination = .contacts }
+                            if id != nil { destination = .persons }
                         }
                     }.id(teams.selectedScope?.storageKey.base64EncodedString() ?? "teams-empty")
                 } else if destination == .meetings {
@@ -654,7 +613,7 @@ struct WorkspaceView: View {
                                     telemostDossierRequest == request && destination == .meetings && window != nil
                                         && window === NSApp.keyWindow && window?.isVisible == true && window?.isMiniaturized == false
                                 })
-                            if id != nil { destination = .contacts }
+                            if id != nil { destination = .persons }
                         }
                     }
                 } else if destination == .files {
@@ -681,19 +640,11 @@ struct WorkspaceView: View {
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 // The forward chooser sits beside the section's content, like the AI panel beside a chat.
-                .modifier(FileForwardColumn(host: files, destinations: forwardDestinations, perform: forward))
+                .modifier(FileForwardColumn(host: files, destinations: forwardWorkspaceDestinations, perform: forward))
         }
         // Chat themes stay local to the selected service; window chrome stays Makosh.
         .tint(destination == .telegram ? resolvedTelegramAccent : WorkspaceStyle.accent)
         .environment(\.colorScheme, destination == .telegram ? resolvedTelegramScheme : .dark)
-    }
-    private var filteredContacts: [Person] {
-        if search.isEmpty { return model.persons }
-        return model.persons.filter {
-            [$0.displayName, $0.organization, $0.jobTitle, $0.emails.joined(separator: " "), $0.phones.joined(separator: " ")].joined(
-                separator: " "
-            ).localizedCaseInsensitiveContains(search)
-        }
     }
     private func chooseImportFile() {
         guard let window = NSApp.keyWindow else {

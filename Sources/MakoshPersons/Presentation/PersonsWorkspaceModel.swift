@@ -176,7 +176,7 @@ package struct PersonBookRow: Equatable, Sendable {
         await perform { try await service.store.savePreferences(preferences) }
     }
 
-    static func describe(_ error: Error) -> String {
+    package static func describe(_ error: Error) -> String {
         switch error {
         case let failure as PersonsFailure:
             switch failure {

@@ -276,6 +276,11 @@ final class WorkspaceModel: ObservableObject {
     func suggestMembership(personID: UUID, organizationID: UUID, role: String = "") async -> Bool {
         await perform(.suggestMembership(personID: personID, organizationID: organizationID, role: role)) != nil
     }
+    /// A drop on an organization: a manual, confirmed membership, once per pair.
+    func addToOrganization(personID: UUID, organizationID: UUID) async -> Bool {
+        guard !memberships.contains(where: { $0.personID == personID && $0.organizationID == organizationID }) else { return false }
+        return await suggestMembership(personID: personID, organizationID: organizationID)
+    }
     func setMembershipState(_ state: MembershipState, id: UUID) async -> Bool {
         await perform(.setMembershipState(id: id, state: state)) != nil
     }

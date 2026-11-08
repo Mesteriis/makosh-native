@@ -124,7 +124,8 @@ let package = Package(
         .executableTarget(
             name: "MakoshApp",
             dependencies: [
-                "MakoshAI", "MakoshFiles", "MakoshTasks", "MakoshJira", "MakoshCalendar", "MakoshGoogle", "MakoshTelemost", "MakoshTeams",
+                "MakoshAI", "MakoshFiles", "MakoshTasks", "MakoshJira", "MakoshCalendar", "MakoshGoogle", "MakoshPersons", "MakoshTelemost",
+                "MakoshTeams",
                 "MakoshCore",
                 "MakoshTelegram",
                 "MakoshMail", "MakoshWhatsApp",

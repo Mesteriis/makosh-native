@@ -28,6 +28,8 @@ import MakoshFiles
     lazy var ai = AIHost()
     lazy var files = FilesHost()
     lazy var tasks = TasksHost()
+    /// Owned here, not by a window: books keep polling and cards keep flowing with every window closed.
+    lazy var persons = PersonsHost()
     /// Owned here, not by a window: the calendar keeps polling and reminding with every window closed.
     lazy var calendar = CalendarHost(router: { [unowned self] in self.telegramNotificationRouter })
     /// Closing the workspace window hides it: its services keep running and the same window comes back.
@@ -229,6 +231,7 @@ struct MakoshApp: App {
                 .environmentObject(delegate.files).environment(\.filesHost, delegate.files)
                 .environmentObject(delegate.tasks).environment(\.tasksHost, delegate.tasks)
                 .environmentObject(delegate.calendar).environment(\.calendarHost, delegate.calendar)
+                .environmentObject(delegate.persons).environment(\.personsHost, delegate.persons)
         }
         .defaultSize(width: 1200, height: 854)
         .windowResizability(.contentMinSize)
@@ -273,7 +276,7 @@ struct MakoshApp: App {
             }.environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(
                 delegate.telegramNotificationRouter
             ).environmentObject(delegate.ai).environmentObject(delegate.files).environmentObject(delegate.tasks)
-                .environmentObject(delegate.calendar)
+                .environmentObject(delegate.calendar).environmentObject(delegate.persons)
         }
     }
 }

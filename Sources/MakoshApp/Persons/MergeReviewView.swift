@@ -1,8 +1,11 @@
-import SwiftUI
 import MakoshCore
+import MakoshPersons
+import SwiftUI
 
 struct MergeReviewView: View {
     @ObservedObject var model: WorkspaceModel
+    /// When the section is open, merges go through it so book cards follow the persons.
+    var persons: PersonsWorkspaceModel?
     @Environment(\.dismiss) private var dismiss
     @State private var selectedCandidate: DuplicateCandidate?
     @State private var survivor: UUID?
@@ -51,7 +54,16 @@ struct MergeReviewView: View {
                                     submitting = true
                                     Task {
                                         defer { submitting = false }
-                                        _ = await model.undo(record)
+                                        if let persons {
+                                            await persons.undoMerge(id: record.id)
+                                            await model.reload()
+                                            if let message = persons.error {
+                                                error = message
+                                                persons.error = nil
+                                            }
+                                        } else {
+                                            _ = await model.undo(record)
+                                        }
                                         if let message = model.error {
                                             error = message
                                             model.error = nil
@@ -91,7 +103,18 @@ struct MergeReviewView: View {
                             submitting = true
                             Task {
                                 defer { submitting = false }
-                                if await model.merge(candidate, survivor: survivor) {
+                                if let persons {
+                                    let removed = survivor == candidate.firstID ? candidate.secondID : candidate.firstID
+                                    await persons.mergePersons(survivorID: survivor, removedID: removed)
+                                    await model.reload()
+                                    if let message = persons.error {
+                                        error = message
+                                        persons.error = nil
+                                    } else {
+                                        model.selectedID = survivor
+                                        selectedCandidate = nil
+                                    }
+                                } else if await model.merge(candidate, survivor: survivor) {
                                     selectedCandidate = nil
                                 } else {
                                     error = model.error

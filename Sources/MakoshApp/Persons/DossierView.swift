@@ -155,8 +155,10 @@ struct PersonEditor: View {
     @State private var tags: String
     @State private var error: String?
     @State private var submitting = false
-    init(contact: Person?, model: WorkspaceModel) {
+    private let kind: PersonKind
+    init(contact: Person?, kind: PersonKind = .person, model: WorkspaceModel) {
         self.contact = contact
+        self.kind = contact?.kind ?? kind
         self.model = model
         _name = State(initialValue: contact?.displayName ?? "")
         _organization = State(initialValue: contact?.organization ?? "")
@@ -167,7 +169,7 @@ struct PersonEditor: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text(contact == nil ? "Новый контакт" : "Изменить контакт").font(.title2.bold())
+            Text(contact == nil ? (kind == .organization ? "Новая организация" : "Новая персона") : "Изменить персону").font(.title2.bold())
             Form {
                 TextField("Имя", text: $name).accessibilityIdentifier("editor.name")
                 TextField("Компания", text: $organization).accessibilityIdentifier("editor.organization")
@@ -184,7 +186,8 @@ struct PersonEditor: View {
                 Spacer()
                 Button("Сохранить") {
                     let draft = PersonDraft(
-                        displayName: name, organization: organization, jobTitle: job, phones: split(phones), emails: split(emails),
+                        kind: kind, displayName: name, organization: organization, jobTitle: job, phones: split(phones),
+                        emails: split(emails),
                         tags: split(tags))
                     guard model.canWrite, !submitting else { return }
                     submitting = true

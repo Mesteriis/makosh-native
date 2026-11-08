@@ -319,6 +319,94 @@ public final class PersonStore {
         }
     }
 
+    // MARK: Organizations
+
+    public func createOrganization(name: String) throws -> UUID {
+        try createPerson(draft: PersonDraft(kind: .organization, displayName: name))
+    }
+
+    /// Active organizations by name.
+    public func organizations() throws -> [Person] {
+        try persons().filter { $0.kind == .organization }
+    }
+
+    /// An active organization with this name, ignoring case and surrounding spaces.
+    public func organization(named name: String) throws -> Person? {
+        let needle = Rules.trimmed(name)
+        guard !needle.isEmpty else { return nil }
+        return try organizations().first { $0.displayName.caseInsensitiveCompare(needle) == .orderedSame }
+    }
+
+    public func memberships(of personID: UUID, includingRemoved: Bool = false) throws -> [PersonMembership] {
+        try read { try $0.memberships(personID: personID) }.filter { includingRemoved || $0.state != .removed }
+    }
+
+    public func members(of organizationID: UUID, includingRemoved: Bool = false) throws -> [PersonMembership] {
+        try read { try $0.memberships(organizationID: organizationID) }.filter { includingRemoved || $0.state != .removed }
+    }
+
+    /// Nil when the pair already has a membership in any state: a removed one is never proposed again.
+    public func suggestMembership(
+        personID: UUID, organizationID: UUID, role: String, origin: MembershipOrigin
+    ) throws
+        -> PersonMembership?
+    {
+        try write { repository in
+            guard var person = try repository.person(id: personID), var organization = try repository.person(id: organizationID) else {
+                throw StoreError.missingPerson
+            }
+            guard person.kind == .person, organization.kind == .organization else {
+                throw StoreError.invalid("В организацию входят только люди, и только в организацию.")
+            }
+            guard !(try repository.memberships(personID: personID)).contains(where: { $0.organizationID == organizationID }) else {
+                return nil
+            }
+            let state: MembershipState = origin == .manual ? .confirmed : .suggested
+            let membership = PersonMembership(
+                organizationID: organizationID, personID: personID, role: Rules.trimmed(role), origin: origin, state: state)
+            try repository.upsert(membership)
+            person.revision += 1
+            person.events.append(
+                PersonEvent(
+                    kind: state == .confirmed ? "membershipConfirmed" : "membershipSuggested",
+                    detail: (state == .confirmed ? "Добавлено в организацию " : "Предложена организация ") + organization.displayName))
+            try repository.update(person)
+            organization.revision += 1
+            organization.events.append(PersonEvent(kind: "memberAdded", detail: "Член организации: " + person.displayName))
+            try repository.update(organization)
+            return membership
+        }
+    }
+
+    public func setMembershipState(id: UUID, state: MembershipState) throws {
+        try write { repository in
+            guard var membership = try repository.membership(id: id) else { throw StoreError.invalid("Членство не найдено.") }
+            guard PersonMembership.allows(membership.state, state) else {
+                throw StoreError.invalid("Недопустимый переход состояния членства.")
+            }
+            membership.state = state
+            membership.updatedAt = Date()
+            try repository.upsert(membership)
+            guard var person = try repository.person(id: membership.personID) else { return }
+            let organization = try repository.person(id: membership.organizationID)?.displayName ?? "организация"
+            person.revision += 1
+            person.events.append(
+                PersonEvent(
+                    kind: state == .removed ? "membershipRemoved" : "membershipConfirmed",
+                    detail: (state == .removed ? "Убрано из организации " : "Подтверждена организация ") + organization))
+            try repository.update(person)
+        }
+    }
+
+    public func setMembershipRole(id: UUID, role: String) throws {
+        try write { repository in
+            guard var membership = try repository.membership(id: id) else { throw StoreError.invalid("Членство не найдено.") }
+            membership.role = Rules.trimmed(role)
+            membership.updatedAt = Date()
+            try repository.upsert(membership)
+        }
+    }
+
     public func duplicateCandidates() throws -> [DuplicateCandidate] {
         let all = try persons()
         var result: [DuplicateCandidate] = []

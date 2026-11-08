@@ -172,6 +172,31 @@ final class PersonRecordRepository {
             [identity.id, String(date.timeIntervalSinceReferenceDate)])
     }
 
+    // MARK: Memberships
+
+    func memberships(personID: UUID) throws -> [PersonMembership] {
+        try connection.query("SELECT payload::text FROM \(memberships) WHERE person_id=$1::uuid ORDER BY id", [personID.uuidString])
+            .map { try decode(PersonMembership.self, $0[0]) }
+    }
+
+    func memberships(organizationID: UUID) throws -> [PersonMembership] {
+        try connection.query(
+            "SELECT payload::text FROM \(memberships) WHERE organization_id=$1::uuid ORDER BY id", [organizationID.uuidString]
+        ).map { try decode(PersonMembership.self, $0[0]) }
+    }
+
+    func membership(id: UUID) throws -> PersonMembership? {
+        try connection.query("SELECT payload::text FROM \(memberships) WHERE id=$1::uuid", [id.uuidString]).first
+            .map { try decode(PersonMembership.self, $0[0]) }
+    }
+
+    func upsert(_ membership: PersonMembership) throws {
+        try connection.execute(
+            "INSERT INTO \(memberships) (id, organization_id, person_id, payload) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb) "
+                + "ON CONFLICT (id) DO UPDATE SET organization_id=EXCLUDED.organization_id, person_id=EXCLUDED.person_id, payload=EXCLUDED.payload",
+            [membership.id.uuidString, membership.organizationID.uuidString, membership.personID.uuidString, try encode(membership)])
+    }
+
     // MARK: Merges
 
     func allMerges() throws -> [MergeRecord] {

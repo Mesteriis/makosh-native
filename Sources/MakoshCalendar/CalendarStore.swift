@@ -212,6 +212,4 @@ public actor CalendarStore {
         return formatter(fractional: true).date(from: value) ?? formatter(fractional: false).date(from: value)
     }
 
-    /// Placeholder until the attempt journal (task 8) settles `sent` attempts on open.
-    func settleInterruptedAttempts() throws {}
 }

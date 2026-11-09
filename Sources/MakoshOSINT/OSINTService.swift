@@ -43,6 +43,10 @@ public actor OSINTService {
     var connection: Connection?
     var installing = false
     var lastFailure: OSINTFailure?
+    /// Inputs of queued runs: in memory only, never in a row.
+    var pendingInputs: [UUID: [OSINTInput]] = [:]
+    var runner: _Concurrency.Task<Void, Never>?
+    var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(
         persons: PersonStore, store: OSINTStore, vault: OSINTCredentialVault, sessionFactory: @escaping SessionFactory,

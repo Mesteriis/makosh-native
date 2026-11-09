@@ -67,6 +67,10 @@ public actor FlowsintSynthetic: FlowsintAPI {
     /// The task never completes: every status read says running.
     public func hangScan(id: String) { hung.insert(id) }
 
+    /// The next launched task hangs from the start.
+    public func hangNextLaunch() { hangNext = true }
+    private var hangNext = false
+
     public var users: [String] { accounts.keys.sorted() }
 
     // MARK: FlowsintAPI
@@ -144,6 +148,10 @@ public actor FlowsintSynthetic: FlowsintAPI {
             guard graphs[sketchID] != nil else { throw OSINTFailure.apiRejected(code: 404, stage: "launch") }
             let id = nextID("task")
             tasks[id] = Task(sketchID: sketchID, enricher: enricher, nodeIDs: nodeIDs, status: .pending)
+            if hangNext {
+                hung.insert(id)
+                hangNext = false
+            }
             recordedLaunches.append(LaunchRecord(enricher: enricher, sketchID: sketchID, nodeIDs: nodeIDs))
             return id
         }
@@ -199,7 +207,13 @@ public actor FlowsintSynthetic: FlowsintAPI {
     private func merge(_ node: FlowsintNode, into sketchID: String) -> String {
         var graph = graphs[sketchID] ?? FlowsintGraph()
         let key = Self.key(node)
-        if let existing = graph.nodes.first(where: { Self.key($0) == key }) { return existing.id }
+        if let index = graph.nodes.firstIndex(where: { Self.key($0) == key }) {
+            // Like Neo4j MERGE: the node is one, new properties land on it.
+            graph.nodes[index].properties.merge(node.properties) { _, new in new }
+            graph.nodes[index].metadata.merge(node.metadata) { _, new in new }
+            graphs[sketchID] = graph
+            return graph.nodes[index].id
+        }
         var stored = node
         stored.id = nextID("n")
         graph.nodes.append(stored)

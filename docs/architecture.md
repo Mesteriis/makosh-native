@@ -393,3 +393,34 @@ the only external deletion. `PersonsService` is an actor with one sequential
 write runner (50 cards per book per pass); `PersonsWorkspaceModel` on the main
 actor only coordinates; `PersonsHost` belongs to the application delegate.
 Details: [persons.md](persons.md).
+
+## ADR-021: Persons OSINT — external flowsint server over one SSH tunnel with proposed observations — 2026-11-09
+
+Spec: `docs/superpowers/specs/2026-11-09-persons-osint-design.md`. OSINT
+enrichment is not rewritten into Swift: the graph tool flowsint (Apache-2.0,
+Python/FastAPI, Celery, PostgreSQL, Neo4j) runs on a server the user owns
+(first: LXC 164 on PVE Spain) and Makosh installs, updates and drives it from
+its own settings over one password SSH session (`swift-nio-ssh`, host key
+pinned by `SHA256:` fingerprint the user trusts once) and one `direct-tcpip`
+tunnel bound to loopback. No flowsint code is linked; the release is pinned in
+`Dependencies/Flowsint.lock.json` and the images are built on the server from
+that commit because GHCR stops at 1.2.9. The new `MakoshOSINT` module sits
+above `MakoshCore` and `MakoshGoogle`, imports neither channels nor
+`MakoshPersons`, and the application wires it into `PersonsHost`.
+
+Findings enter the dossier only as `proposed` observations with the sketch's
+identity (`osint/<serverID>/<sketch>`, enricher suffixed on the external ID);
+nothing becomes a value until the user accepts it, an exact phone or e-mail
+match with another person yields `duplicateOf` instead of a merge, rejection
+is a closed proposal (`rejected`) that no source reopens, and the `osint`
+identity cannot be detached. Consent is explicit: a manual run from the card
+names the values and third parties that leave the Mac; automatic runs cover
+only people from books flagged «Обогащать автоматически», within an hourly
+budget and once a day per person. Every server write (sketch, node, launch,
+key) is one journaled attempt whose values appear only as a keyed HMAC;
+`unknown` is settled by reading or dismissed, never resent; the launch attempt
+stays `sent` until the task ends. Secrets (SSH and service passwords, `.env`
+values, API keys, the HMAC key) live in Keychain `org.makosh.osint.v1`. The
+installer is idempotent and never overwrites an existing `.env`. Synthetic QA
+runs a scripted loopback SSH server and an in-memory flowsint; the live server
+is touched only on the user's command. Details: [persons.md](persons.md).

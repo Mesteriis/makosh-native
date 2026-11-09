@@ -538,5 +538,11 @@ is [flowsint](https://github.com/reconurge/flowsint) (Apache-2.0 since
 2026-01-25; earlier history AGPL-3.0, relicensed with contributor consent per
 its NOTICE). No flowsint source, model or asset is copied or linked into
 Makosh: Makosh installs the pinned release named in
-`Dependencies/Flowsint.lock.json` on a separate server over SSH and talks to
-its REST API. Combined app license and existing dependencies are unchanged.
+`Dependencies/Flowsint.lock.json` (tag `v1.2.13`, commit
+`4c05849bc6ca5055ad187d056ef26e61b3bc2fea`) on a separate server over SSH and
+talks to its REST API. Because GHCR publishes ready images only up to 1.2.9,
+the installer builds the API and web images on that server from the pinned
+commit with the upstream Dockerfiles' base images (`python:3.12-slim`,
+`node:24-alpine`, `nginx:1.29-alpine`), so the server, not the Makosh binary,
+holds the flowsint code and its Python/JavaScript dependencies under their own
+licenses. Combined app license and existing dependencies are unchanged.

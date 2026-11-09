@@ -146,7 +146,7 @@ struct AIConversationView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .help("Добавить в контекст чат, письмо или контакт").accessibilityIdentifier("ai.context.add")
+                    .help("Добавить в контекст чат, письмо или персону").accessibilityIdentifier("ai.context.add")
                     .popover(isPresented: $adding) {
                         AIContextAddPopover(search: contextSearch) { suggestion in
                             adding = false
@@ -202,7 +202,7 @@ struct AIConversationView: View {
                     isOn: Binding(get: { model.searchMyData }, set: { value in Task { await model.setSearchMyData(value) } })
                 )
                 .toggleStyle(.switch).controlSize(.mini).font(.caption)
-                .help("Подмешивать в вопрос фрагменты чатов, ящиков и контактов, открытых для ИИ")
+                .help("Подмешивать в вопрос фрагменты чатов, ящиков и персон, открытых для ИИ")
                 .disabled(model.roles[.embeddings] == nil)
                 .accessibilityIdentifier("ai.searchMyData")
             }

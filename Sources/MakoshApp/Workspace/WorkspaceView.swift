@@ -214,7 +214,9 @@ struct WorkspaceView: View {
         .onReceive(mail.$notificationActivation.dropFirst()) { _ in destination = .mail }
         .onReceive(teams.$notificationActivation.dropFirst()) { _ in destination = .teams }
         .modifier(
-            CalendarWorkspaceLinks(host: calendarHost, contacts: model.persons, mailAccounts: mail.accounts) { destination = .calendar }
+            CalendarWorkspaceLinks(host: calendarHost, contacts: model.persons.filter(\.isActive), mailAccounts: mail.accounts) {
+                destination = .calendar
+            }
         )
         .modifier(
             PersonsWorkspaceLinks(
@@ -657,7 +659,7 @@ struct WorkspaceView: View {
             return
         }
         let panel = NSOpenPanel()
-        panel.title = "Импорт контактов из JSON"
+        panel.title = "Импорт персон из JSON"
         panel.prompt = "Импортировать"
         panel.allowedContentTypes = [.json]
         // macOS 27 derives these flags when types change; set them afterwards.

@@ -1,10 +1,13 @@
 import SwiftUI
 import AppKit
+import MakoshCore
 import MakoshMail
 
 struct MailComposeSheet: View {
     @ObservedObject var model: MailWorkspaceModel
     @State var draft: MailDraft
+    /// Active persons for the addressee suggestions under «Кому».
+    let persons: [Person]
     @StateObject private var editor: MailRichTextController
     private let originalEditor: NSAttributedString
     @State private var attachments: [URL] = []
@@ -14,8 +17,9 @@ struct MailComposeSheet: View {
     @State private var applyingTemplate: MailReplyTemplate?
     @State private var pickingFromFiles = false
     @Environment(\.dismiss) private var dismiss
-    init(model: MailWorkspaceModel, draft: MailDraft) {
+    init(model: MailWorkspaceModel, draft: MailDraft, persons: [Person] = []) {
         self.model = model
+        self.persons = persons
         _draft = State(initialValue: draft)
         // Read only: a view may be built more than once; compose() resets the list.
         _attachments = State(initialValue: model.composerAttachments)
@@ -74,6 +78,12 @@ struct MailComposeSheet: View {
     private var submissionBlocked: Bool {
         model.submissions.contains { $0.draftID == draft.id && $0.state != .rejected && $0.state != .userConfirmedNotSent }
     }
+    private var toSuggestions: [(address: String, name: String)] {
+        PersonAddressSuggestions.suggestions(
+            typed: PersonAddressSuggestions.fragment(of: draft.to), persons: persons.map(\.summary),
+            emails: Dictionary(persons.map { ($0.id, $0.emails) }, uniquingKeysWith: { first, _ in first }))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -92,6 +102,24 @@ struct MailComposeSheet: View {
                 GridRow {
                     Text("Кому").foregroundStyle(.secondary)
                     TextField("Адреса через запятую", text: $draft.to).textFieldStyle(.plain).accessibilityIdentifier("mail.compose.to")
+                }
+                if !toSuggestions.isEmpty {
+                    GridRow {
+                        Color.clear.frame(width: 1, height: 1)
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(toSuggestions, id: \.address) { suggestion in
+                                Button {
+                                    draft.to = PersonAddressSuggestions.insert(
+                                        address: suggestion.address, name: suggestion.name, into: draft.to)
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        if !suggestion.name.isEmpty { Text(suggestion.name).lineLimit(1) }
+                                        Text(suggestion.address).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                }.buttonStyle(.plain).accessibilityIdentifier("mail.compose.suggestion")
+                            }
+                        }.accessibilityIdentifier("mail.compose.suggestions")
+                    }
                 }
                 if showCopies {
                     GridRow {

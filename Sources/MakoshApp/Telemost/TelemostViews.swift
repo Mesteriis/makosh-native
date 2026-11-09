@@ -162,8 +162,8 @@ struct TelemostDetailView: View {
                     }
                     GroupBox("Связать с досье") {
                         HStack {
-                            MakoshPicker("Контакт", selection: $contactID) {
-                                Text("Выберите контакт").tag(UUID?.none)
+                            MakoshPicker("Персона", selection: $contactID) {
+                                Text("Выберите персону").tag(UUID?.none)
                                 ForEach(contacts) { Text($0.displayName).tag(Optional($0.id)) }
                             }
                             Button("Добавить ссылку и открыть") { if let contactID { dossier(contactID) } }.disabled(

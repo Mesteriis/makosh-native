@@ -116,7 +116,7 @@ private struct AIContextCardChip: View {
                 parts = ["файл"]
             }
         }
-        if material.hiddenForbidden > 0 { parts.append("скрыто \(material.hiddenForbidden) запрещённого контакта") }
+        if material.hiddenForbidden > 0 { parts.append("скрыто \(material.hiddenForbidden) от закрытых для ИИ персон") }
         if material.hiddenProtected > 0 { parts.append("скрыто \(material.hiddenProtected) защищённых") }
         return parts.joined(separator: " · ")
     }
@@ -260,7 +260,7 @@ struct AIContextAddPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Чат, письмо или контакт", text: $query).textFieldStyle(.roundedBorder)
+            TextField("Чат, письмо или персона", text: $query).textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("ai.context.addQuery")
             AIContextSuggestionsList(search: search, choose: choose)
         }

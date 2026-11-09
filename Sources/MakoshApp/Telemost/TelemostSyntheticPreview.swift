@@ -46,7 +46,7 @@ struct TelemostSyntheticPreview: View {
                 guard dossier.ready else { throw TelemostFailure.storage }
                 if dossier.persons.isEmpty {
                     _ = try await dossier.dossierWorker.apply(
-                        .save(draft: .init(displayName: "Тестовый контакт Телемоста", organization: "Синтетическая команда"), id: nil))
+                        .save(draft: .init(displayName: "Тестовая персона Телемоста", organization: "Синтетическая команда"), id: nil))
                     _ = await dossier.reload()
                 }
                 let service = try await TelemostWorker.synthetic(

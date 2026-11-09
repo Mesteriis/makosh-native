@@ -274,11 +274,11 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
     }
 
     private func contactMaterial(_ card: AIContextCard, id: UUID, snapshot: AIAccessSnapshot) async throws -> AIContextMaterial {
-        guard let contacts, let contact = try await contacts.snapshot().persons.first(where: { $0.id == id }) else {
-            throw AIFailure.contextUnavailable("Контакт не найден.")
+        guard let contacts, let contact = try await contacts.person(id: id) else {
+            throw AIFailure.contextUnavailable("Персона не найдена.")
         }
         guard contact.aiAccess != .forbidden else {
-            throw AIFailure.contextUnavailable("Контакт закрыт для ИИ в досье — его нельзя прикрепить.")
+            throw AIFailure.contextUnavailable("Персона закрыта для ИИ в досье — её нельзя прикрепить.")
         }
         for identity in contact.identities { try AIContextAccess.requireOpen(identity, snapshot: snapshot, what: "досье") }
         var text = [contact.displayName, contact.organization, contact.jobTitle].filter { !$0.isEmpty }.joined(separator: ", ")

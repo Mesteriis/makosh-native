@@ -178,7 +178,7 @@ struct MailReadingView: View {
         }
         .sheet(isPresented: $model.outboxSheet) { MailOutboxView(model: model).makoshAppearance() }
         .sheet(isPresented: $model.accountSheet) { MailAccountSheet(model: model, account: model.editingAccount).makoshAppearance() }
-        .sheet(item: $model.composer) { draft in MailComposeSheet(model: model, draft: draft).makoshAppearance() }
+        .sheet(item: $model.composer) { draft in MailComposeSheet(model: model, draft: draft, persons: dossier.persons).makoshAppearance() }
         .sheet(item: $model.notificationSettingsScope) { scope in
             MailNotificationSettingsView(model: model, scope: scope).makoshAppearance()
         }
@@ -404,6 +404,10 @@ private struct MailDossierInspector: View {
     let letter: MailLetter
     @ObservedObject var dossier: WorkspaceModel
     let showContact: (UUID) -> Void
+    @State private var owner: Person?
+    private var senderIdentity: ServiceIdentity {
+        ServiceIdentity(service: "mail", accountID: letter.key.accountID, externalID: letter.sender.lowercased())
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Label("Досье отправителя", systemImage: "person.text.rectangle").font(.headline)
@@ -412,9 +416,7 @@ private struct MailDossierInspector: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text(letter.senderName.isEmpty ? letter.sender : letter.senderName).font(.title3.bold())
                 Text(letter.sender).font(.caption).textSelection(.enabled)
-                if let contact = dossier.persons.first(where: {
-                    $0.identities.contains(.init(service: "mail", accountID: letter.key.accountID, externalID: letter.sender.lowercased()))
-                }) {
+                if let contact = owner {
                     Text(contact.organization).foregroundStyle(.secondary)
                     ForEach(contact.notes.prefix(4)) { note in Text(note.text).font(.callout) }
                     Button("Открыть досье") { showContact(contact.id) }.disabled(!dossier.ready || dossier.busy)
@@ -426,6 +428,9 @@ private struct MailDossierInspector: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             }.padding(20)
+        }
+        .task(id: PersonOwnerLookupKey(identity: senderIdentity, persons: dossier.persons)) {
+            owner = await dossier.personsOwning(senderIdentity).first
         }
     }
 }

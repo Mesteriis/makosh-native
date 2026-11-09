@@ -1,4 +1,5 @@
 import SwiftUI
+import MakoshCore
 import MakoshTelegram
 
 struct TelegramWorkspaceDossier: View {
@@ -6,6 +7,11 @@ struct TelegramWorkspaceDossier: View {
     @ObservedObject var workspace: WorkspaceModel
     let close: () -> Void
     let open: (UUID) -> Void
+    @State private var owners: [Person] = []
+    private var ownerKey: PersonOwnerLookupKey? {
+        guard case .ready(let profile) = model.contactProfileState else { return nil }
+        return PersonOwnerLookupKey(identity: profile.dossierIdentity, persons: workspace.persons)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -37,7 +43,6 @@ struct TelegramWorkspaceDossier: View {
                             } else if let about = profile.about, !about.isEmpty {
                                 Text(about).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                             }
-                            let owners = workspace.persons.filter { $0.identities.contains(profile.dossierIdentity) }
                             if owners.count == 1, let contact = owners.first {
                                 if !contact.organization.isEmpty { Text(contact.organization).foregroundStyle(.secondary) }
                                 Divider()
@@ -55,5 +60,6 @@ struct TelegramWorkspaceDossier: View {
             }
         }.frame(width: 264).background { WorkspaceBackdrop(intensity: 0.4) }
             .accessibilityIdentifier("telegram.dossier")
+            .task(id: ownerKey) { owners = if let ownerKey { await workspace.personsOwning(ownerKey.identity) } else { [] } }
     }
 }

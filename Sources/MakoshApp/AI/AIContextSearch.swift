@@ -69,7 +69,7 @@ import MakoshWhatsApp
             }
         }
         for contact in contacts() where contact.aiAccess != .forbidden {
-            result.append(.init(card: .contact(id: contact.id, title: contact.displayName), subtitle: "Контакт"))
+            result.append(.init(card: .contact(id: contact.id, title: contact.displayName), subtitle: "Персона"))
         }
         for pick in files?.results ?? [] {
             switch pick.kind {

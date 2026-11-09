@@ -49,6 +49,8 @@ final class WorkspaceModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
     var dossierWorker: PersonWorkspaceWorker { worker }
+    /// Who owns an external identity, from the worker's index rather than a scan of `persons`.
+    func personsOwning(_ identity: ServiceIdentity) async -> [Person] { (try? await worker.persons(owning: identity)) ?? [] }
     var mailConfiguration: PersonWorkspaceConfiguration? { archiveConfiguration }
     var selected: Person? { persons.first { $0.id == selectedID } }
     var canWrite: Bool { ready && !busy && !writesBlocked }

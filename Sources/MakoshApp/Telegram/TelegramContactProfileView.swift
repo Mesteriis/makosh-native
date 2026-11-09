@@ -327,14 +327,14 @@ struct TelegramDossierLinkView: View {
         } else {
             MakoshPicker("Связать с", selection: $existing) {
                 Text("Новым досье").tag(false)
-                Text("Существующим контактом").tag(true)
+                Text("Существующей персоной").tag(true)
             }.accessibilityIdentifier("telegram.profile.linkMode")
                 .onChange(of: existing) { _, _ in targetID = nil }
             if existing {
-                TextField("Поиск контакта", text: $query).accessibilityIdentifier("telegram.profile.contactSearch")
+                TextField("Поиск персоны", text: $query).accessibilityIdentifier("telegram.profile.contactSearch")
                     .onChange(of: query) { _, _ in targetID = nil }
-                MakoshPicker("Контакт", selection: $targetID) {
-                    Text("Выберите контакт").tag(nil as UUID?)
+                MakoshPicker("Персона", selection: $targetID) {
+                    Text("Выберите персону").tag(nil as UUID?)
                     ForEach(candidates) { contact in
                         Text(contact.organization.isEmpty ? contact.displayName : "\(contact.displayName) · \(contact.organization)")
                             .tag(Optional(contact.id))
@@ -343,7 +343,7 @@ struct TelegramDossierLinkView: View {
             }
             Text("Имя и доступный телефон сохранятся с источником Telegram. Ручные правки останутся в досье.")
                 .font(.caption).foregroundStyle(.secondary)
-            Button(existing ? "Связать с контактом" : "Создать досье") { link(to: existing ? targetID : nil) }
+            Button(existing ? "Связать с персоной" : "Создать досье") { link(to: existing ? targetID : nil) }
                 .disabled(!canLink).accessibilityIdentifier("telegram.profile.link")
         }
         if let error = workspace.error {

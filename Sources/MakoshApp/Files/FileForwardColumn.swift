@@ -51,17 +51,17 @@ struct FileForwardPanel: View {
                 }.buttonStyle(.plain).help("Закрыть").disabled(busy).accessibilityIdentifier("files.forward.close")
             }
             Label(request.handoff.name, systemImage: "paperclip").font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            TextField(request.mode == .chat ? "Чат Telegram или WhatsApp" : "Контакт или адрес", text: $query).textFieldStyle(
+            TextField(request.mode == .chat ? "Чат Telegram или WhatsApp" : "Персона или адрес", text: $query).textFieldStyle(
                 .roundedBorder
             )
             .accessibilityIdentifier("files.forward.search")
             if destinations.isEmpty {
                 ContentUnavailableView(
-                    request.mode == .chat ? "Нет открытых чатов" : "Нет контактов с адресом",
+                    request.mode == .chat ? "Нет открытых чатов" : "Нет персон с адресом",
                     systemImage: request.mode == .chat ? "bubble.left" : "envelope",
                     description: Text(
                         request.mode == .chat
-                            ? "Подключите Telegram или WhatsApp и откройте список чатов." : "Добавьте адрес в досье контакта.")
+                            ? "Подключите Telegram или WhatsApp и откройте список чатов." : "Добавьте адрес в досье персоны.")
                 ).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(shown) { destination in

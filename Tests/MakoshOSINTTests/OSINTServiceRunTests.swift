@@ -37,7 +37,7 @@ final class OSINTServiceRunTests: XCTestCase {
     }
 
     private func harness(scanTimeout: Duration = .seconds(10)) async throws -> OSINTServiceHarness {
-        let harness = try await OSINTServiceHarness(testCase: self, findings: Self.findings(), scanTimeout: scanTimeout)
+        let harness = try await OSINTServiceHarness(database: try osintDatabase(), findings: Self.findings(), scanTimeout: scanTimeout)
         harnesses.append(harness)
         try await harness.installed()
         return harness
@@ -70,7 +70,7 @@ final class OSINTServiceRunTests: XCTestCase {
     }
 
     func testEnrichBeforeInstallIsNotInstalled() async throws {
-        let harness = try await OSINTServiceHarness(testCase: self)
+        let harness = try await OSINTServiceHarness(database: try osintDatabase())
         harnesses.append(harness)
         try await harness.configure()
         try await harness.trust()
@@ -238,7 +238,7 @@ final class OSINTServiceRunTests: XCTestCase {
                     enricher: .individualToUsernameCandidates, inputType: .individual, inputValue: "Анна Каренина", outputType: .username,
                     outputValue: "anna_\(index)"))
         }
-        let h = try await OSINTServiceHarness(testCase: self, findings: findings)
+        let h = try await OSINTServiceHarness(database: try osintDatabase(), findings: findings)
         harnesses.append(h)
         try await h.installed()
         let id = try anna(h)

@@ -14,7 +14,7 @@ final class OSINTServiceKeysTests: XCTestCase {
     }
 
     private func harness() async throws -> OSINTServiceHarness {
-        let harness = try await OSINTServiceHarness(testCase: self, findings: OSINTServiceRunTests.findings())
+        let harness = try await OSINTServiceHarness(database: try osintDatabase(), findings: OSINTServiceRunTests.findings())
         harnesses.append(harness)
         try await harness.installed()
         return harness

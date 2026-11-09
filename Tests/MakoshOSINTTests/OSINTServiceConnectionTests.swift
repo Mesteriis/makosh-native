@@ -15,7 +15,7 @@ final class OSINTServiceConnectionTests: XCTestCase {
     private func harness(
         state: OSINTScriptedServerState = OSINTScriptedServerState(), installed: Bool = false
     ) async throws -> OSINTServiceHarness {
-        let harness = try await OSINTServiceHarness(testCase: self, state: state, installed: installed)
+        let harness = try await OSINTServiceHarness(database: try osintDatabase(), state: state, installed: installed)
         harnesses.append(harness)
         return harness
     }

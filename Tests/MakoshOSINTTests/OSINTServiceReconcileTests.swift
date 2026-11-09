@@ -17,7 +17,7 @@ final class OSINTServiceReconcileTests: XCTestCase {
     private func harness(scanTimeout: Duration = .seconds(10), clock: Box<Date>? = nil) async throws -> OSINTServiceHarness {
         let now: @Sendable () -> Date = clock.map { box in { @Sendable in box.value } } ?? { @Sendable in Date() }
         let harness = try await OSINTServiceHarness(
-            testCase: self, findings: OSINTServiceRunTests.findings(), scanTimeout: scanTimeout, now: now)
+            database: try osintDatabase(), findings: OSINTServiceRunTests.findings(), scanTimeout: scanTimeout, now: now)
         harnesses.append(harness)
         try await harness.installed()
         return harness

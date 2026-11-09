@@ -7,7 +7,7 @@ import XCTest
 
 /// Everything an `OSINTService` test needs: a dossier store and the module store on one generated
 /// schema, a Keychain in memory, a scripted SSH server standing in for LXC 164 and a synthetic flowsint.
-final class OSINTServiceHarness {
+final class OSINTServiceHarness: @unchecked Sendable {
     let db: OSINTTestDatabase
     let persons: PersonStore
     let store: OSINTStore
@@ -20,10 +20,11 @@ final class OSINTServiceHarness {
     static let password = "pw-1"
 
     init(
-        testCase: XCTestCase, state: OSINTScriptedServerState = OSINTScriptedServerState(), findings: [FlowsintSynthetic.Finding] = [],
+        database: OSINTTestDatabase, state: OSINTScriptedServerState = OSINTScriptedServerState(),
+        findings: [FlowsintSynthetic.Finding] = [],
         installed: Bool = false, scanTimeout: Duration = .seconds(10), now: @escaping @Sendable () -> Date = Date.init
     ) async throws {
-        db = try testCase.osintDatabase()
+        db = database
         persons = try db.persons()
         store = OSINTStore(connectionString: db.connectionString, schema: db.schema, now: now)
         vault = OSINTCredentialVault(access: .memory())

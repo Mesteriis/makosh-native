@@ -17,6 +17,8 @@ public enum OSINTFailure: Error, Codable, Equatable, Sendable {
     case unknownOutcome(stage: String)
     case invalidResponse(stage: String)
     case tooLarge
+    /// The server's flowsint does not offer this enricher (name).
+    case enricherUnavailable(String)
     case storage(String?)
     case invalidInput(String)
 
@@ -37,6 +39,7 @@ public enum OSINTFailure: Error, Codable, Equatable, Sendable {
         case .unknownOutcome: "unknownOutcome"
         case .invalidResponse: "invalidResponse"
         case .tooLarge: "tooLarge"
+        case .enricherUnavailable: "enricherUnavailable"
         case .storage: "storage"
         case .invalidInput: "invalidInput"
         }

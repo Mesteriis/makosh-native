@@ -10,6 +10,7 @@ extension OSINTService {
         let link = try await ensureConnected(requireInstalled: false)
         let names = Set(try await link.api.keys().map(\.name))
         serverKeyNames = names
+        if let offered = try? await link.api.enrichers() { serverEnricherNames = Set(offered) }
         return names
     }
 
@@ -90,7 +91,8 @@ extension OSINTService {
         let sketches = Dictionary(try await store.sketches().map { ($0.personID, $0) }, uniquingKeysWith: { first, _ in first })
         return OSINTSnapshot(
             settings: settings, connected: await isConnected, openAttempts: try await store.attempts(open: true), lastRuns: lastRuns,
-            sketches: sketches, serverKeyNames: serverKeyNames, lastInstall: try await store.installs().last, installing: installing,
+            sketches: sketches, serverKeyNames: serverKeyNames, serverEnricherNames: serverEnricherNames,
+            lastInstall: try await store.installs().last, installing: installing,
             lastFailure: lastFailure)
     }
 

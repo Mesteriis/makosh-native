@@ -295,4 +295,24 @@ final class OSINTServiceRunTests: XCTestCase {
         XCTAssertFalse(person.observations.contains { $0.field == "avatar" }, "a node nobody linked to Anna's inputs is not hers")
         XCTAssertTrue(person.observations.contains { $0.field == "social.github" })
     }
+
+    func testRunSkipsEnrichersTheServerLacks() async throws {
+        let h = try await harness()
+        await h.api.setOfferedEnrichers(Set(OSINTEnricher.allCases.map(\.rawValue)).subtracting(["phone_to_infos"]))
+        let id = try anna(h)
+        let inputs = [OSINTInput(type: .email, value: Self.anna), OSINTInput(type: .phone, value: "+79990000000")]
+        let runID = try await h.service.enrich(personID: id, enrichers: [.emailToGravatar, .phoneToInfos], inputs: inputs)
+        await h.service.settled()
+        let run = try await h.store.run(id: runID)
+        XCTAssertEqual(run?.state, .completed, "\(run?.failure?.code ?? "")")
+        let launched = try await h.store.attempts(runID: runID).filter { $0.kind == .launch }.compactMap { $0.payload.enricher }
+        XCTAssertEqual(launched, [.emailToGravatar], "no launch for a source the server does not offer")
+        let onlyMissing = try await h.service.enrich(personID: id, enrichers: [.phoneToInfos], inputs: inputs)
+        await h.service.settled()
+        let failed = try await h.store.run(id: onlyMissing)
+        XCTAssertEqual(failed?.state, .failed)
+        XCTAssertEqual(failed?.failure, .enricherUnavailable("phone_to_infos"))
+        let snapshot = try await h.service.snapshot()
+        XCTAssertEqual(snapshot.serverEnricherNames?.contains("phone_to_infos"), false)
+    }
 }

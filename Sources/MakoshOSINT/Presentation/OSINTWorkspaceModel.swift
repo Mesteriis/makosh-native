@@ -209,6 +209,8 @@ import MakoshCore
         case .unknownOutcome(let stage): "Нет ответа сервера на шаге «\(stage)»: исход неизвестен, проверьте позже."
         case .invalidResponse(let stage): "Сервер ответил непонятно на шаге «\(stage)»."
         case .tooLarge: "Ответ сервера слишком велик."
+        case .enricherUnavailable(let name):
+            "Источника «\(OSINTEnricher(rawValue: name)?.title ?? name)» нет на сервере этой версии flowsint."
         case .storage: "Ошибка хранилища OSINT-модуля."
         case .invalidInput(let what): "Некорректные данные: \(what)."
         }

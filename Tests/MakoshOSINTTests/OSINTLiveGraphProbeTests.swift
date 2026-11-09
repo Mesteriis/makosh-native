@@ -30,7 +30,8 @@ final class OSINTLiveGraphProbeTests: XCTestCase {
         tokenRequest.httpBody = Data("username=\(form(email))&password=\(form(service))".utf8)
         let (tokenData, _) = try await URLSession.shared.data(for: tokenRequest)
         let token = try XCTUnwrap((try JSONSerialization.jsonObject(with: tokenData) as? [String: Any])?["access_token"] as? String)
-        var graph = URLRequest(url: tunnel.baseURL.appendingPathComponent("/api/sketches/\(sketch)/graph"))
+        let path = e["MAKOSH_OSINT_LIVE_PROBE_PATH"] ?? "/api/sketches/\(sketch)/graph"
+        var graph = URLRequest(url: tunnel.baseURL.appendingPathComponent(path))
         graph.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: graph)
         print("PROBE status: \((response as? HTTPURLResponse)?.statusCode ?? 0) bytes: \(data.count)")

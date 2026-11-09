@@ -49,6 +49,8 @@ public actor OSINTService {
     var pendingInputs: [UUID: [OSINTInput]] = [:]
     /// Names of the keys the server holds, as last read; values never leave the server.
     var serverKeyNames: Set<String> = []
+    /// Enricher names the server offers, as last read; nil until the first read.
+    var serverEnricherNames: Set<String>?
     var runner: _Concurrency.Task<Void, Never>?
     var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -149,6 +151,7 @@ public actor OSINTService {
                 settings.envBackupAvailable = true
                 settings.serverID = UUID()
                 serverKeyNames = []
+                serverEnricherNames = nil
                 try await store.removeAllSketches()
             }
             await disconnect()

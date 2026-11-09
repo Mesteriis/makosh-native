@@ -138,4 +138,12 @@ final class OSINTServiceKeysTests: XCTestCase {
         XCTAssertEqual(open.map(\.kind), [.deleteKey])
         XCTAssertEqual(open.first?.state, .unknown)
     }
+
+    func testRefreshKeysAlsoReadsServerEnrichers() async throws {
+        let h = try await harness()
+        await h.api.setOfferedEnrichers(["email_to_gravatar"])
+        try await h.service.refreshKeys()
+        let snapshot = try await h.service.snapshot()
+        XCTAssertEqual(snapshot.serverEnricherNames, ["email_to_gravatar"])
+    }
 }

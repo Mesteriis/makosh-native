@@ -15,10 +15,13 @@ public enum OSINTDialogRules {
     /// The selected enrichers that match at least one input type, in declaration order;
     /// one that needs a key the server lacks is shown but cannot be chosen.
     public static func availableEnrichers(
-        selected: Set<OSINTEnricher>, inputs: [OSINTInput], serverKeyNames: Set<String>
+        selected: Set<OSINTEnricher>, inputs: [OSINTInput], serverKeyNames: Set<String>, serverEnricherNames: Set<String>? = nil
     ) -> [(enricher: OSINTEnricher, enabled: Bool, note: String?)] {
         let types = Set(inputs.map(\.type))
-        return OSINTEnricher.allCases.filter { selected.contains($0) && types.contains($0.inputType) }.map { enricher in
+        // A server list, once read, is authoritative: an enricher this flowsint does not offer is not shown.
+        return OSINTEnricher.allCases.filter {
+            selected.contains($0) && types.contains($0.inputType) && (serverEnricherNames?.contains($0.rawValue) ?? true)
+        }.map { enricher in
             if let key = enricher.requiredKey, !serverKeyNames.contains(key) {
                 return (enricher, false, "нужен ключ \(key)")
             }

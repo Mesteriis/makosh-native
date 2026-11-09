@@ -266,8 +266,9 @@ struct OSINTSettingsSection: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption).foregroundStyle(.secondary)
             ForEach(OSINTEnricher.allCases, id: \.self) { enricher in
+                let offered = osint.snapshot?.serverEnricherNames?.contains(enricher.rawValue) ?? true
                 Toggle(
-                    enricher.title + (enricher.requiredKey.map { " (\($0))" } ?? ""),
+                    enricher.title + (enricher.requiredKey.map { " (\($0))" } ?? "") + (offered ? "" : " — нет на сервере"),
                     isOn: Binding(
                         get: { selected.contains(enricher) },
                         set: { on in
@@ -275,7 +276,7 @@ struct OSINTSettingsSection: View {
                             if on { set.insert(enricher) } else { set.remove(enricher) }
                             save(set)
                         })
-                ).toggleStyle(.checkbox).font(.callout)
+                ).toggleStyle(.checkbox).font(.callout).disabled(!offered)
             }
         }
     }

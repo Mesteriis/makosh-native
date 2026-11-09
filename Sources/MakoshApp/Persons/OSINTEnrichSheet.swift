@@ -16,7 +16,8 @@ struct OSINTEnrichSheet: View {
     private var settings: OSINTSettings? { osint.snapshot?.settings }
     private var rows: [(enricher: OSINTEnricher, enabled: Bool, note: String?)] {
         OSINTDialogRules.availableEnrichers(
-            selected: settings?.manualEnrichers ?? [], inputs: Array(chosenInputs), serverKeyNames: osint.snapshot?.serverKeyNames ?? [])
+            selected: settings?.manualEnrichers ?? [], inputs: Array(chosenInputs), serverKeyNames: osint.snapshot?.serverKeyNames ?? [],
+            serverEnricherNames: osint.snapshot?.serverEnricherNames)
     }
 
     var body: some View {

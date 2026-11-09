@@ -8,13 +8,16 @@ public struct OSINTSnapshot: Equatable, Sendable {
     public var lastRuns: [UUID: OSINTRun]
     public var sketches: [UUID: OSINTSketchLink]
     public var serverKeyNames: Set<String>
+    /// What the server's `/api/enrichers` offers, as last read; nil until read.
+    public var serverEnricherNames: Set<String>?
     public var lastInstall: OSINTInstall?
     public var installing: Bool
     public var lastFailure: OSINTFailure?
 
     public init(
         settings: OSINTSettings, connected: Bool, openAttempts: [OSINTAttempt] = [], lastRuns: [UUID: OSINTRun] = [:],
-        sketches: [UUID: OSINTSketchLink] = [:], serverKeyNames: Set<String> = [], lastInstall: OSINTInstall? = nil,
+        sketches: [UUID: OSINTSketchLink] = [:], serverKeyNames: Set<String> = [], serverEnricherNames: Set<String>? = nil,
+        lastInstall: OSINTInstall? = nil,
         installing: Bool = false,
         lastFailure: OSINTFailure? = nil
     ) {
@@ -24,6 +27,7 @@ public struct OSINTSnapshot: Equatable, Sendable {
         self.lastRuns = lastRuns
         self.sketches = sketches
         self.serverKeyNames = serverKeyNames
+        self.serverEnricherNames = serverEnricherNames
         self.lastInstall = lastInstall
         self.installing = installing
         self.lastFailure = lastFailure

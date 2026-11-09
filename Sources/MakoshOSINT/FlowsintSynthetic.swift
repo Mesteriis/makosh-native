@@ -147,7 +147,13 @@ public actor FlowsintSynthetic: FlowsintAPI {
         }
     }
 
-    public func enrichers() async throws -> [String] { try arm("enrichers") { OSINTEnricher.allCases.map(\.rawValue) } }
+    private var offeredEnrichers: Set<String>?
+    /// What `/api/enrichers` lists; nil offers every enricher Makosh knows.
+    public func setOfferedEnrichers(_ names: Set<String>?) { offeredEnrichers = names }
+
+    public func enrichers() async throws -> [String] {
+        try arm("enrichers") { OSINTEnricher.allCases.map(\.rawValue).filter { offeredEnrichers?.contains($0) ?? true } }
+    }
 
     public func launch(enricher: OSINTEnricher, sketchID: String, nodeIDs: [String]) async throws -> String {
         try arm("launch") {

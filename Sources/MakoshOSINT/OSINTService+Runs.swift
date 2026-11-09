@@ -217,13 +217,22 @@ extension OSINTService {
             if let id { nodeIDs[input.normalized] = id }
         }
 
-        // 4. One launch per (node, compatible enricher); keyed enrichers only when the server has the key.
+        // 4. One launch per (node, compatible enricher); keyed enrichers only when the server has the key,
+        //    and only enrichers this server's flowsint offers.
         let keyNames = Set(((try? await link.api.keys()) ?? []).map(\.name))
+        if let offered = try? await link.api.enrichers() { serverEnricherNames = Set(offered) }
+        let offered = serverEnricherNames
+        let missing = run.enrichers.filter { offered?.contains($0.rawValue) == false }.map(\.rawValue).sorted()
+        if !missing.isEmpty, missing.count == run.enrichers.count {
+            await finish(run, state: .failed, failure: .enricherUnavailable(missing.joined(separator: ", ")))
+            return
+        }
         var scans: [(attemptID: UUID, scanID: String)] = []
         for input in inputs {
             guard let nodeID = nodeIDs[input.normalized] else { continue }
             for enricher in run.enrichers.sorted(by: { $0.rawValue < $1.rawValue }) where enricher.inputType == input.type {
                 if let key = enricher.requiredKey, !keyNames.contains(key) { continue }
+                if offered?.contains(enricher.rawValue) == false { continue }
                 // A launch stays `sent` until its task ends: the poll below confirms, rejects or leaves it unknown.
                 var record = OSINTAttempt(
                     runID: run.id, personID: run.personID, kind: .launch,

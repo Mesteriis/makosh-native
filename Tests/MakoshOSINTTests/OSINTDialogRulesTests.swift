@@ -85,4 +85,15 @@ final class OSINTDialogRulesTests: XCTestCase {
         XCTAssertTrue(text.contains("Ответственность"), text)
         XCTAssertTrue(OSINTDialogRules.responsibility.contains("условий"), OSINTDialogRules.responsibility)
     }
+
+    func testEnrichersMissingOnServerAreHidden() {
+        let inputs = [OSINTInput(type: .email, value: "anna@example.test"), OSINTInput(type: .phone, value: "+79990000000")]
+        let offered: Set<String> = ["email_to_gravatar", "phone_to_carrier"]
+        let rows = OSINTDialogRules.availableEnrichers(
+            selected: [.emailToGravatar, .phoneToInfos, .phoneToCarrier], inputs: inputs, serverKeyNames: [], serverEnricherNames: offered)
+        XCTAssertEqual(Set(rows.map(\.enricher)), [.emailToGravatar, .phoneToCarrier], "phone_to_infos is not on this server")
+        let unknown = OSINTDialogRules.availableEnrichers(
+            selected: [.emailToGravatar, .phoneToInfos], inputs: inputs, serverKeyNames: [], serverEnricherNames: nil)
+        XCTAssertTrue(unknown.contains { $0.enricher == .phoneToInfos }, "an unknown server list hides nothing")
+    }
 }

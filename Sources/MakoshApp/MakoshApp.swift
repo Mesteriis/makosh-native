@@ -19,7 +19,8 @@ import MakoshFiles
             || CommandLine.arguments.contains("--teams-synthetic-preview")
             || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"
             || CommandLine.arguments.contains(AIQAIsolation.flag) || CommandLine.arguments.contains(FilesQAIsolation.flag)
-            || CommandLine.arguments.contains(TasksHost.qaFlag) || CommandLine.arguments.contains(CalendarHost.qaFlag)))
+            || CommandLine.arguments.contains(TasksHost.qaFlag) || CommandLine.arguments.contains(CalendarHost.qaFlag)
+            || CommandLine.arguments.contains(PersonsHost.qaFlag)))
     lazy var telegramProxy = TelegramProxyController()
     let telegramCallCoordinator = TelegramCallCoordinator()
     let telegramCallWindows = TelegramCallWindows()
@@ -75,7 +76,7 @@ struct MakoshApp: App {
             && TelemostSyntheticLaunchPolicy.permitsNormalLaunch(marker: marker, arguments: arguments)
             && !arguments.contains("--teams-synthetic-preview") && !arguments.contains(AIQAIsolation.flag)
             && !arguments.contains(FilesQAIsolation.flag) && !arguments.contains(TasksHost.qaFlag)
-            && !arguments.contains(CalendarHost.qaFlag) && !requiresSynthetic
+            && !arguments.contains(CalendarHost.qaFlag) && !arguments.contains(PersonsHost.qaFlag) && !requiresSynthetic
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -124,6 +125,13 @@ struct MakoshApp: App {
                         minWidth: 600, minHeight: 240)
                 } else if CommandLine.arguments.contains(CalendarHost.qaFlag) {
                     CalendarSyntheticPreview().frame(minWidth: 1200, minHeight: 760)
+                } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "persons",
+                    !CommandLine.arguments.contains(PersonsHost.qaFlag)
+                {
+                    Text("QA «Персоны» требует --persons-synthetic-preview и отдельную конфигурацию PostgreSQL.").padding(24).frame(
+                        minWidth: 600, minHeight: 240)
+                } else if CommandLine.arguments.contains(PersonsHost.qaFlag) {
+                    PersonsSyntheticPreview().frame(minWidth: 1100, minHeight: 720)
                 } else if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams",
                     !CommandLine.arguments.contains("--teams-synthetic-preview")
                 {
@@ -260,6 +268,8 @@ struct MakoshApp: App {
                     Text("ИИ QA · настройки внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else if CommandLine.arguments.contains(FilesQAIsolation.flag) {
                     Text("QA «Файлы» · подставной Paperless внутри окна проверки; остальные сервисы выключены.").padding(24)
+                } else if CommandLine.arguments.contains(PersonsHost.qaFlag) {
+                    Text("QA «Персоны» · синтетические книги внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else if CommandLine.arguments.contains(TasksHost.qaFlag) {
                     Text("QA «Задачи» · подставная Jira внутри окна проверки; остальные сервисы выключены.").padding(24)
                 } else {

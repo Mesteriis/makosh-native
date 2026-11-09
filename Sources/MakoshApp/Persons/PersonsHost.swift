@@ -21,7 +21,7 @@ extension EnvironmentValues {
 /// polling and cards keep flowing with every window closed. Channels hand their
 /// observations here; the Telegram engine answers through `telegramBridge`.
 @MainActor final class PersonsHost: ObservableObject {
-    nonisolated static let qaFlag = "--persons-synthetic-preview"
+    nonisolated static let qaFlag = PersonsQAIsolation.flag
     @Published private(set) var model: PersonsWorkspaceModel?
     @Published private(set) var failure: String?
     private(set) var service: PersonsService?

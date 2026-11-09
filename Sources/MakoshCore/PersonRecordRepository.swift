@@ -171,6 +171,13 @@ final class PersonRecordRepository {
         }
     }
 
+    /// Active persons holding this normalized value of an indexed field (phones, e-mails).
+    func personIDs(field: String, normalized: String) throws -> [UUID] {
+        try connection.query(
+            "SELECT DISTINCT person_id::text FROM \(values) WHERE field=$1 AND normalized=$2 ORDER BY person_id::text", [field, normalized]
+        ).compactMap { UUID(uuidString: $0[0]) }
+    }
+
     func personIDs(emailDomain domain: String) throws -> [UUID] {
         try connection.query(
             "SELECT DISTINCT person_id::text FROM \(values) WHERE field='emails' AND split_part(normalized, '@', 2)=$1 ORDER BY person_id::text",

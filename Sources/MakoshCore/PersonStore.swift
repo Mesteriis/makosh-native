@@ -141,9 +141,12 @@ public final class PersonStore: @unchecked Sendable {
         }
     }
 
-    /// Confirming a proposed observation makes its value current; proposals never return to observed.
+    /// Confirming a proposed observation makes its value current; rejecting keeps it as a closed proposal.
+    /// Proposals never return to observed.
     public func setObservationStatus(personID: UUID, observationID: UUID, status: ObservationStatus) throws {
-        guard status == .confirmed else { throw StoreError.invalid("Предложенное наблюдение можно только принять или отклонить.") }
+        guard status == .confirmed || status == .rejected else {
+            throw StoreError.invalid("Предложенное наблюдение можно только принять или отклонить.")
+        }
         try write { repository in
             guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
             guard let index = contact.observations.firstIndex(where: { $0.id == observationID }) else {
@@ -151,6 +154,14 @@ public final class PersonStore: @unchecked Sendable {
             }
             guard contact.observations[index].status == .proposed else {
                 throw StoreError.invalid("Наблюдение уже не является предложением.")
+            }
+            if status == .rejected {
+                contact.observations[index].status = .rejected
+                contact.revision += 1
+                contact.events.append(
+                    PersonEvent(kind: "observationRejected", detail: "Отклонено предложение: \(contact.observations[index].value)"))
+                try repository.update(contact)
+                return
             }
             contact.observations[index].status = .confirmed
             let observation = contact.observations[index]
@@ -165,6 +176,107 @@ public final class PersonStore: @unchecked Sendable {
             contact.events.append(PersonEvent(kind: "observationConfirmed", detail: "Принято предложение: \(observation.value)"))
             try repository.update(contact)
         }
+    }
+
+    /// Adds proposals (OSINT) that are not already known: a current value, an applied observation,
+    /// an open proposal or a rejection of the same pair is skipped. The proposal's identity joins the
+    /// person. Nothing becomes a value here. Returns how many were added.
+    @discardableResult
+    public func addProposedObservations(personID: UUID, _ observations: [Observation]) throws -> Int {
+        guard !observations.isEmpty else { return 0 }
+        return try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            var known = Set<String>()
+            for field in PersonListField.allCases {
+                for value in contact.values(field) { known.insert(Self.pairKey(field.rawValue, value)) }
+            }
+            for observation in contact.observations { known.insert(Self.pairKey(observation.field, observation.value)) }
+            var added = 0
+            for var observation in observations where known.insert(Self.pairKey(observation.field, observation.value)).inserted {
+                observation.status = .proposed
+                contact.observations.append(observation)
+                if !contact.identities.contains(observation.source.identity) { contact.identities.append(observation.source.identity) }
+                added += 1
+            }
+            guard added > 0 else { return 0 }
+            contact.revision += 1
+            contact.events.append(PersonEvent(kind: "observationsProposed", detail: "Предложено наблюдений: \(added)"))
+            try repository.update(contact)
+            return added
+        }
+    }
+
+    /// Attaches a source identity without observations; a known identity changes nothing.
+    public func attachIdentity(personID: UUID, _ identity: ServiceIdentity) throws {
+        try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            guard !contact.identities.contains(identity) else { return }
+            contact.identities.append(identity)
+            contact.revision += 1
+            contact.events.append(PersonEvent(kind: "identityLink", detail: "Привязан источник \(identity.service)"))
+            try repository.update(contact)
+        }
+    }
+
+    /// The user takes a proposal: a list value becomes a manual entry (unless exactly the same phone or
+    /// address already belongs to another active person — then nothing changes and the duplicate is
+    /// named), any other field is confirmed in place.
+    public func acceptObservation(personID: UUID, observationID: UUID) throws -> PersonAcceptOutcome {
+        try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            guard let index = contact.observations.firstIndex(where: { $0.id == observationID }) else {
+                throw StoreError.invalid("Наблюдение не найдено.")
+            }
+            guard contact.observations[index].status == .proposed else {
+                throw StoreError.invalid("Наблюдение уже не является предложением.")
+            }
+            let observation = contact.observations[index]
+            if let field = PersonListField(rawValue: observation.field) {
+                if field == .emails || field == .phones {
+                    let normalized = PersonMatching.normalized(field, observation.value)
+                    if let other = try repository.personIDs(field: field.rawValue, normalized: normalized).first(where: { $0 != contact.id }
+                    ) {
+                        return .duplicateOf(other)
+                    }
+                }
+                contact.former.removeAll { $0.field == field.rawValue && $0.value == observation.value }
+                contact.setValues(Rules.union(contact.values(field), [observation.value]), for: field)
+                contact.manualValues.insert(ManualValue(field: field.rawValue, value: observation.value))
+            }
+            contact.observations[index].status = .confirmed
+            contact.revision += 1
+            contact.events.append(PersonEvent(kind: "observationConfirmed", detail: "Принято предложение: \(observation.value)"))
+            try repository.update(contact)
+            return .applied
+        }
+    }
+
+    /// Drops the open and rejected proposals of one service (OSINT) and its identities; confirmed
+    /// observations stay, they are the user's now. Returns how many observations were removed.
+    @discardableResult
+    public func removeObservations(personID: UUID, service: String) throws -> Int {
+        try write { repository in
+            guard var contact = try repository.person(id: personID) else { throw StoreError.missingPerson }
+            let before = contact.observations.count
+            contact.observations.removeAll { $0.source.identity.service == service && !$0.isApplied }
+            let removed = before - contact.observations.count
+            let identitiesBefore = contact.identities.count
+            contact.identities.removeAll { identity in
+                identity.service == service && !contact.observations.contains { $0.source.identity == identity }
+            }
+            guard removed > 0 || contact.identities.count != identitiesBefore else { return 0 }
+            contact.revision += 1
+            contact.events.append(PersonEvent(kind: "observationsRemoved", detail: "Убраны предложения источника \(service): \(removed)"))
+            try repository.update(contact)
+            return removed
+        }
+    }
+
+    static func pairKey(_ field: String, _ value: String) -> String {
+        if let list = PersonListField(rawValue: field), list == .emails || list == .phones {
+            return field + "|" + PersonMatching.normalized(list, value)
+        }
+        return field + "|" + value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     public func rejectProposedObservation(personID: UUID, observationID: UUID) throws {
@@ -556,7 +668,8 @@ public final class PersonStore: @unchecked Sendable {
     /// Moves one source identity, with its observations and notes, into a new person. The
     /// original keeps every manual field and value; the pair is remembered as «не склеивать».
     public func detachIdentity(personID: UUID, identity: ServiceIdentity) throws -> UUID {
-        try write { repository in
+        guard identity.service != "osint" else { throw StoreError.invalid("Источник OSINT не отделяется.") }
+        return try write { repository in
             guard var original = try repository.person(id: personID) else { throw StoreError.missingPerson }
             guard original.identities.contains(identity) else { throw StoreError.invalid("Источник не принадлежит этой персоне.") }
             guard original.identities.count > 1 || !original.manualFields.isEmpty || !original.manualValues.isEmpty else {
@@ -565,7 +678,7 @@ public final class PersonStore: @unchecked Sendable {
             let moved = original.observations.filter { $0.source.identity == identity }
             let movedNotes = original.notes.filter { $0.source.identity == identity }
             func latest(_ field: String) -> String? {
-                moved.filter { $0.field == field && $0.status != .proposed }.max { $0.source.fetchedAt < $1.source.fetchedAt }?.value
+                moved.filter { $0.field == field && $0.isApplied }.max { $0.source.fetchedAt < $1.source.fetchedAt }?.value
             }
             var detached = Person(displayName: latest("displayName") ?? identity.externalID, identities: [identity], observations: moved)
             detached.kind = original.kind
@@ -577,7 +690,7 @@ public final class PersonStore: @unchecked Sendable {
             detached.notes = movedNotes
             for field in PersonListField.allCases {
                 detached.setValues(
-                    Rules.unique(moved.filter { $0.field == field.rawValue && $0.status != .proposed }.map(\.value)), for: field)
+                    Rules.unique(moved.filter { $0.field == field.rawValue && $0.isApplied }.map(\.value)), for: field)
             }
             original.identities.removeAll { $0 == identity }
             original.observations.removeAll { $0.source.identity == identity }
@@ -585,7 +698,7 @@ public final class PersonStore: @unchecked Sendable {
             for field in PersonListField.allCases {
                 let kept = original.values(field).filter { value in
                     original.manualValues.contains(ManualValue(field: field.rawValue, value: value))
-                        || original.observations.contains { $0.field == field.rawValue && $0.value == value && $0.status != .proposed }
+                        || original.observations.contains { $0.field == field.rawValue && $0.value == value && $0.isApplied }
                 }
                 original.setValues(kept, for: field)
             }

@@ -96,7 +96,7 @@ enum PersonReconciliation {
         for (field, value) in scalarFields {
             guard let value else { continue }
             let cleaned = trimmed(value)
-            let latest = contact.observations.filter { $0.field == field && $0.status != .proposed }.map(\.source.fetchedAt).max()
+            let latest = contact.observations.filter { $0.field == field && $0.isApplied }.map(\.source.fetchedAt).max()
             observe(field: field, value: cleaned, source: source, contact: &contact)
             guard !contact.manualFields.contains(field), latest.map({ source.fetchedAt >= $0 }) ?? true else { continue }
             setScalar(field, cleaned, contact: &contact)
@@ -225,7 +225,7 @@ enum PersonReconciliation {
 
     private static func observe(field: String, value: String, source: SourceStamp, contact: inout Person) {
         if let index = contact.observations.firstIndex(where: {
-            $0.field == field && $0.value == value && $0.source.identity == source.identity && $0.status != .proposed
+            $0.field == field && $0.value == value && $0.source.identity == source.identity && $0.isApplied
         }) {
             if source.fetchedAt > contact.observations[index].source.fetchedAt {
                 contact.observations[index].source.fetchedAt = source.fetchedAt

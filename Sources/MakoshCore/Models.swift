@@ -31,8 +31,9 @@ public struct SourceStamp: Codable, Hashable, Sendable {
     }
 }
 
-/// How a value was learnt: seen at a source, proposed by the AI (not yet current), or confirmed by the user.
-public enum ObservationStatus: String, Codable, Sendable { case observed, proposed, confirmed }
+/// How a value was learnt: seen at a source, proposed by the AI or OSINT (not yet current), confirmed by
+/// the user, or rejected by the user (kept so the same pair is never proposed again).
+public enum ObservationStatus: String, Codable, Sendable { case observed, proposed, confirmed, rejected }
 
 public struct Observation: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
@@ -40,6 +41,8 @@ public struct Observation: Codable, Hashable, Identifiable, Sendable {
     public var value: String
     public var source: SourceStamp
     public var status: ObservationStatus
+    /// Observed at a source or confirmed by the user: what counts as a value. Proposals and rejections do not.
+    public var isApplied: Bool { status == .observed || status == .confirmed }
     public init(id: UUID = UUID(), field: String, value: String, source: SourceStamp, status: ObservationStatus = .observed) {
         self.id = id
         self.field = field
@@ -60,6 +63,12 @@ public struct Observation: Codable, Hashable, Identifiable, Sendable {
 }
 
 public enum PersonKind: String, Codable, Sendable { case person, organization }
+
+/// What accepting a proposal did: applied, or refused because another person holds the exact value.
+public enum PersonAcceptOutcome: Equatable, Sendable {
+    case applied
+    case duplicateOf(UUID)
+}
 
 /// Who set the address-book flag: the user, or a book account marked as the user's address book.
 public enum AddressBookOrigin: Codable, Equatable, Sendable {

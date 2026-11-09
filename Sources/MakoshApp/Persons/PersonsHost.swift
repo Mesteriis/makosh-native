@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import MakoshCore
 import MakoshGoogle
+import MakoshOSINT
 import MakoshPersons
 import SwiftUI
 
@@ -25,6 +26,11 @@ extension EnvironmentValues {
     @Published private(set) var model: PersonsWorkspaceModel?
     @Published private(set) var failure: String?
     private(set) var service: PersonsService?
+    /// The OSINT module beside the section: nil until the section is open or when its store failed.
+    private(set) var osint: OSINTService?
+    @Published private(set) var osintModel: OSINTWorkspaceModel?
+    private var reconciling: _Concurrency.Task<Void, Never>?
+    private let syntheticOSINT: FlowsintSynthetic?
     /// Set by the workspace once a Telegram model exists; nil keeps Telegram books unreachable.
     var telegramBridge: (any TelegramContactsBridge)?
     /// Mail accounts the workspace knows, for the CardDAV sheet's server hint.
@@ -38,13 +44,16 @@ extension EnvironmentValues {
     init() {
         keychain = .system
         synthetic = nil
+        syntheticOSINT = nil
     }
 
     #if DEBUG
-    /// Isolated QA: synthetic books by account id, an in-memory Keychain, no Telegram and no macOS Contacts.
-    init(synthetic books: [String: PersonSyntheticBook]) {
+    /// Isolated QA: synthetic books by account id, an in-memory Keychain, no Telegram and no macOS Contacts;
+    /// the OSINT module talks to a synthetic flowsint (the SSH server is the QA's own fixture).
+    init(synthetic books: [String: PersonSyntheticBook], osint: FlowsintSynthetic? = nil) {
         keychain = .memory()
         synthetic = books
+        syntheticOSINT = osint
     }
     #endif
 
@@ -80,11 +89,61 @@ extension EnvironmentValues {
             let model = PersonsWorkspaceModel(service: service, persons: worker)
             self.model = model
             try await service.open()
+            let osintService = makeOSINTService(configuration: configuration, persons: persons)
+            try await osintService.open()
+            osint = osintService
+            let osintModel = OSINTWorkspaceModel(service: osintService)
+            self.osintModel = osintModel
             if let seed { try await seed(service) }
             await model.load()
-            if synthetic == nil { await service.startPolling() }
+            await osintModel.load()
+            if synthetic == nil {
+                await service.startPolling()
+                startReconciling()
+            }
         } catch {
             failure = "Раздел «Персоны» не открыл хранилище."
+        }
+    }
+
+    private func makeOSINTService(configuration: PersonWorkspaceConfiguration, persons: PersonStore) -> OSINTService {
+        let store = OSINTStore(connectionString: configuration.connectionString, schema: configuration.schema)
+        let vault = OSINTCredentialVault(access: keychain)
+        let (session, liveAPI) = OSINTService.liveFactories()
+        let api: OSINTService.APIFactory
+        if let syntheticOSINT {
+            api = { _, _, _ in syntheticOSINT }
+        } else {
+            api = liveAPI
+        }
+        return OSINTService(persons: persons, store: store, vault: vault, sessionFactory: session, apiFactory: api)
+    }
+
+    // MARK: OSINT reconciliation
+
+    /// Sources whose new people the OSINT pass may enrich: books with the flag, while the module can run.
+    func osintAutoSources() async -> [ImportSource] {
+        guard let service, let osint, let books = try? await service.store.books(), let settings = try? await osint.settings() else {
+            return []
+        }
+        return OSINTAutoSources.sources(flaggedBookSources: books.filter(\.enrichAutomatically).map(\.source), settings: settings)
+    }
+
+    /// One OSINT pass: after a collector pass and every ten minutes.
+    func reconcileOSINT() async {
+        guard let osint else { return }
+        await osint.reconcile(autoSources: await osintAutoSources())
+        await osintModel?.load()
+    }
+
+    private func startReconciling() {
+        guard reconciling == nil else { return }
+        reconciling = _Concurrency.Task { [weak self] in
+            while !_Concurrency.Task.isCancelled {
+                try? await _Concurrency.Task.sleep(for: .seconds(600))
+                guard let self else { return }
+                await self.reconcileOSINT()
+            }
         }
     }
 
@@ -126,6 +185,7 @@ extension EnvironmentValues {
         guard let service else { return }
         _ = try? await service.collect(observations, spam: spam)
         await model?.refresh()
+        await reconcileOSINT()
     }
 
     func markLetterCollected(_ id: String) -> Bool { collectedLetterIDs.insert(id).inserted }

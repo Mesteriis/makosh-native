@@ -11,6 +11,11 @@ def verify(root=ROOT, checkouts=True):
     lock = json.loads((root / 'Dependencies/Mail.lock.json').read_text())
     pins = {p['identity']: p for p in json.loads((root / 'Package.resolved').read_text())['pins']}
     expected = {p['identity'] for p in lock['packages']}
+    # Other independent locks (OSINT module) own their own pins; their verifiers check them.
+    for other in ['Dependencies/OSINT.lock.json']:
+        path = root / other
+        if path.exists():
+            expected |= {p['identity'] for p in json.loads(path.read_text())['packages']}
     if set(pins) != expected:
         raise ValueError('Unexpected or missing resolved dependency')
     manifest = (root / 'Package.swift').read_text()

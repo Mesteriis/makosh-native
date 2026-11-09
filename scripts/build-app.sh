@@ -22,6 +22,7 @@ python3 scripts/prepare-telegram-voip.py
 python3 scripts/prepare-whatsapp.py --sources
 swift package resolve
 python3 scripts/verify-mail-dependencies.py
+python3 scripts/verify-osint-dependencies.py
 python3 scripts/verify-teams-dependencies.py
 python3 scripts/verify-telemost-dependencies.py
 python3 scripts/prepare-postgres-client.py

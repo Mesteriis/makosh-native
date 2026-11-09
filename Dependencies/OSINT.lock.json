@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Independent pins of the SwiftPM packages the OSINT module (MakoshOSINT) links for its SSH session: swift-nio-ssh and its transitive swift-crypto and swift-asn1. The flowsint server itself is pinned separately in Dependencies/Flowsint.lock.json and is never linked.",
+  "packages": [
+    {
+      "identity": "swift-nio-ssh",
+      "url": "https://github.com/apple/swift-nio-ssh",
+      "revision": "d1985926494b624e751b379009dc83f3395fd88a",
+      "tag": "0.15.1",
+      "license": "Apache-2.0",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "identity": "swift-crypto",
+      "url": "https://github.com/apple/swift-crypto.git",
+      "revision": "f8fad2f95ad67b45f6340c0960e2396094d67e07",
+      "tag": "5.1.1",
+      "license": "Apache-2.0",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "NOTICE.txt",
+          "sha256": "b3ddc2ae068e76b3beb71be03c0400f90090f9469aa491bf7b1ac42320af37b8"
+        }
+      ]
+    },
+    {
+      "identity": "swift-asn1",
+      "url": "https://github.com/apple/swift-asn1.git",
+      "revision": "917b472dbe53ba699cbb0495f9a95a084bc6364d",
+      "tag": "1.7.4",
+      "license": "Apache-2.0",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+        },
+        {
+          "path": "NOTICE.txt",
+          "sha256": "11dd3b3b783e6ec26098dd38ebc962986ea109b85447e28e62867b83bd0f8c5b"
+        }
+      ]
+    }
+  ],
+  "notes": "Every package is pinned by revision in Package.swift like the other Apple packages; scripts/verify-osint-dependencies.py checks the pins, the manifest, the retained notices and the checkouts. The mail verifier counts these packages as expected resolved dependencies."
+}

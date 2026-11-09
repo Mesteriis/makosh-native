@@ -34,6 +34,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl", revision: "3f337058ccd7243c4cac7911477d8ad4c598d4da"),
         .package(url: "https://github.com/apple/swift-nio-imap", revision: "01de1f9a29df31f77e87c2d9248940de7233ee1e"),
         .package(url: "https://github.com/apple/swift-nio-ssh", revision: "d1985926494b624e751b379009dc83f3395fd88a"),
+        .package(url: "https://github.com/apple/swift-crypto.git", revision: "f8fad2f95ad67b45f6340c0960e2396094d67e07"),
+        .package(url: "https://github.com/apple/swift-asn1.git", revision: "917b472dbe53ba699cbb0495f9a95a084bc6364d"),
         .package(name: "MakoshOpus", path: ".local/voice-codec"),
         .package(name: "MakoshOpusFile", path: ".local/opusfile-codec"),
         .package(name: "MakoshMozjpeg", path: ".local/jpeg-codec"),

@@ -530,7 +530,10 @@ license and existing dependencies are unchanged.
 `d1985926494b624e751b379009dc83f3395fd88a`, tag 0.15.1) and, through it,
 `swift-crypto` (Apache-2.0) for the password SSH session, host-key pinning and
 the loopback tunnel to the OSINT server; both are ordinary SwiftPM dependencies
-pinned in `Package.swift` like the other Apple packages. The OSINT server itself
+pinned in `Package.swift` like the other Apple packages; the independent manifest is
+`Dependencies/OSINT.lock.json` (with `swift-asn1`, a transitive dependency of
+`swift-crypto`), the retained license and notice texts are under `Dependencies/OSINT/`,
+and `scripts/verify-osint-dependencies.py` checks them. The OSINT server itself
 is [flowsint](https://github.com/reconurge/flowsint) (Apache-2.0 since
 2026-01-25; earlier history AGPL-3.0, relicensed with contributor consent per
 its NOTICE). No flowsint source, model or asset is copied or linked into

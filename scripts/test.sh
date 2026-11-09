@@ -28,6 +28,7 @@ python3 scripts/test-whatsapp-opus.py
 python3 scripts/test-whatsapp-qa.py
 swift package resolve
 python3 scripts/verify-mail-dependencies.py
+python3 scripts/verify-osint-dependencies.py
 python3 scripts/verify-teams-dependencies.py
 python3 scripts/verify-telemost-dependencies.py
 python3 scripts/test-telemost-dependencies.py

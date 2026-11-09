@@ -24,7 +24,8 @@ iCloud, Fastmail и др.) и календари по ссылке (ICS/webcal, 
   таблицы `calendar_*` в схеме приложения), журнал попыток (`CalendarAttempt`),
   транспорт (`CalendarHTTP`), адаптеры за протоколом `CalendarAdapter`
   (`GoogleCalendarAdapter`, `CalDAVAdapter`, `SubscriptionAdapter`,
-  `CalendarSyntheticAdapter`), вход Google (`GoogleOAuth`), секреты
+  `CalendarSyntheticAdapter`), вход Google (`GoogleOAuth` из общего модуля
+  `MakoshGoogle`, см. `persons.md`), секреты
   (`CalendarCredentialVault`), сервис-актор (`CalendarService`), напоминания
   (`CalendarReminderPlanner`), QA (`CalendarQAIsolation`,
   `CalendarSyntheticSeed`) и модель раздела в `Presentation/`
@@ -87,7 +88,8 @@ URL и токенов.
   CI `MAKOSH_GOOGLE_OAUTH_CLIENT_ID` / `…_SECRET`; скрипт
   `scripts/prepare-google-oauth-config.py`). Без входа сборка не падает, вход
   Google выключен. Разрешение (refresh-токен) — в общем Keychain-элементе,
-  сервис `org.makosh.google.grants.v1`, общее с будущим Gmail. Отказ
+  сервис `org.makosh.google.grants.v1`, общее с разделом «Персоны» и
+  будущим Gmail. Отказ
   администратора Workspace (`admin_policy_enforced`, `org_internal`,
   `access_denied`) показывается как запрет с идентификатором клиента.
 - **CalDAV**: только https; пароль — `org.makosh.calendar.caldav.v1`.

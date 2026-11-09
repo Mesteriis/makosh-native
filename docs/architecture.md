@@ -8,6 +8,8 @@ Use macOS 26.0 as the declared minimum, Apple Silicon as the supported initial a
 
 ## ADR-002: Own transactional contacts
 
+Superseded for the data model by ADR-020 (2026-11-08): contacts became persons (people and organizations) in store version 3; see [persons.md](persons.md). The storage and identity rules below still hold.
+
 Contacts use one JSONB row per contact (`contact_records`), one per merge record (`contact_merges`), per-identity import watermarks (`contact_source_fetches`) and a version row (`contact_store_meta`, version 2). Every mutation runs in one transaction under a schema-scoped `pg_advisory_xact_lock`, rereads only the rows it needs and writes only the rows it changes, so independent connections still serialize writes against current state while a write no longer rewrites the whole contact book. Identity and note-ownership lookups use JSONB containment over GIN indexes and keep the previous fail-closed checks for duplicate owners. Schema initialization uses a transaction-scoped advisory lock; unsupported schema versions are rejected on open and on every read/write. Duplicate review remains pairwise.
 
 Version 2 (2026-11-03) replaced the earlier single-row `state` aggregate without a data migration, by owner decision: contacts are re-imported from their sources. The old `state` table, if present, is neither read nor modified or deleted. The libpq session rules (fixed connect timeout, suppressed notices, statement/lock timeouts, SQLSTATE-only errors, asynchronous release) live once in `PostgresConnection` and are shared by the contact, archive, mail, Teams, Telemost and WhatsApp stores.
@@ -356,3 +358,38 @@ polling, copies and reminders continue; the Dock or a second launch shows the
 same window. The Tasks planner keeps its slots and a bridge
 mirrors them into calendar events by UID; calendar busy time comes back as
 read-only planner blocks. Details: [calendar.md](calendar.md).
+
+## ADR-020: Persons — one dossier of people and organizations with address-book sync — 2026-11-08
+
+Spec: `docs/superpowers/specs/2026-11-08-persons-design.md`. The dossier record
+becomes a person of two kinds (person, organization) in `MakoshCore`, store
+version 3 upgraded in place: structured name, usernames, per-value manual
+marks, former values with reasons, the address-book flag with its origin,
+soft deletion, spam hiding and memberships of people in organizations with
+their own state history. Exact normalized phone or e-mail matches merge
+automatically inside the collecting transaction (the older record survives,
+role addresses never match, kinds never mix, detached pairs are remembered);
+names only feed the duplicate queue. `MakoshPersons` sits above `MakoshCore`
+and the new `MakoshGoogle` (OAuth, grants, redirect-safe HTTP shared with the
+calendar) and imports no channel module: channels hand observations to
+`PersonsHost` through narrow protocols, and Telegram contact operations cross
+a bridge the application implements over the engine.
+
+The collector applies conversation observations (mail senders and recipients
+outside junk and trash, without lists, robots, role and own addresses; Telegram
+people; WhatsApp personal chats; Teams people) and whole address-book cards
+(CardDAV, Google People, macOS Contacts, Telegram contacts) with the import
+rules; junk letters only count spam evidence. Organizations come from the
+company field or from a domain with two collected addresses outside a stop
+list, and automatic memberships start as suggestions. The address-book engine
+is pure: flagged persons × receiving books → desired flat cards; reconciliation
+adopts a card that sources the same person in that book, else creates, updates
+by fingerprint with `If-Match`/`etag`, and never touches a card without
+Makosh's mark (`X-MAKOSH-PERSON`, Google `clientData`, macOS identifier,
+Telegram peer). Every external write is one journaled attempt per (person,
+book); `unknown` is settled by reading the mark, never by resending; removing
+the flag or deleting a person changes nothing outside, and «Удалить везде» is
+the only external deletion. `PersonsService` is an actor with one sequential
+write runner (50 cards per book per pass); `PersonsWorkspaceModel` on the main
+actor only coordinates; `PersonsHost` belongs to the application delegate.
+Details: [persons.md](persons.md).

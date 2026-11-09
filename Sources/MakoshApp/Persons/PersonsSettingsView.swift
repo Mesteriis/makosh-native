@@ -1,6 +1,7 @@
 import AppKit
 import Contacts
 import Foundation
+import MakoshOSINT
 import MakoshPersons
 import SwiftUI
 
@@ -54,6 +55,7 @@ struct PersonsSettingsForm: View {
             organizationSection
             collectionSection
             attemptsSection
+            if let osint = host.osintModel { OSINTSettingsSection(osint: osint) }
         }
         .formStyle(.grouped)
         .sheet(isPresented: $addingCardDAV) { CardDAVBookSheet(model: model, host: host).makoshAppearance() }
@@ -164,6 +166,13 @@ struct PersonsSettingsForm: View {
                         isOn: Binding(
                             get: { book.acceptsAddressBook },
                             set: { value in _Concurrency.Task { await model.setBookOptions(id: book.id, acceptsAddressBook: value) } }))
+                    Toggle(
+                        "Обогащать автоматически",
+                        isOn: Binding(
+                            get: { book.enrichAutomatically },
+                            set: { value in _Concurrency.Task { await model.setBookOptions(id: book.id, enrichAutomatically: value) } })
+                    ).help("Новые люди из этой книги уходят в OSINT-модуль, только пока он включён и установлен.")
+                        .accessibilityIdentifier("persons.settings.enrich")
                 }
             }.toggleStyle(.checkbox).font(.callout)
         }.padding(.vertical, 2)

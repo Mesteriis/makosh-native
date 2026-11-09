@@ -14,6 +14,8 @@ import MakoshCore
     @Published public private(set) var installing = false
     /// A host key the server offered that the user has not decided about yet.
     @Published public private(set) var pendingFingerprint: String?
+    /// Grows each time a run queued from this model has finished and the snapshot was reloaded.
+    @Published public private(set) var runsSettled = 0
     private var trustDecision: CheckedContinuation<Bool, Never>?
 
     public init(service: OSINTService) { self.service = service }
@@ -126,8 +128,19 @@ import MakoshCore
 
     public func inputs(personID: UUID) async -> [OSINTInput] { (try? await service.inputs(personID: personID)) ?? [] }
 
+    /// Queues the run and, once the runner is idle again, reloads the snapshot: the card moves from
+    /// «Идёт запуск…» to the outcome by itself. `runsSettled` tells views to refresh the dossier too.
     public func enrich(personID: UUID, enrichers: Set<OSINTEnricher>, inputs: [OSINTInput]) async -> Bool {
-        await perform { _ = try await service.enrich(personID: personID, enrichers: enrichers, inputs: inputs) }
+        let queued = await perform { _ = try await service.enrich(personID: personID, enrichers: enrichers, inputs: inputs) }
+        guard queued else { return false }
+        _Concurrency.Task { [weak self] in
+            guard let service = self?.service else { return }
+            await service.settled()
+            guard let self else { return }
+            await self.load()
+            self.runsSettled += 1
+        }
+        return true
     }
 
     public func accept(personID: UUID, observationID: UUID) async -> PersonAcceptOutcome? {

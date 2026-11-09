@@ -77,4 +77,22 @@ final class OSINTWorkspaceModelTests: XCTestCase {
         XCTAssertTrue(OSINTWorkspaceModel.describe(.apiRejected(code: 422, stage: "launch")).contains("422"))
         XCTAssertFalse(OSINTWorkspaceModel.describe(.disabled).isEmpty)
     }
+
+    func testEnrichReloadsSnapshotWhenRunSettles() async throws {
+        let h = try await harness()
+        try await h.installed()
+        let person = try h.persons.createPerson(
+            draft: .init(displayName: "Анна Каренина", emails: [OSINTServiceRunTests.anna], usernames: ["anna_k"]))
+        let model = OSINTWorkspaceModel(service: h.service)
+        await model.load()
+        let settledBefore = model.runsSettled
+        let queued = await model.enrich(
+            personID: person, enrichers: [.emailToGravatar], inputs: [OSINTInput(type: .email, value: OSINTServiceRunTests.anna)])
+        XCTAssertTrue(queued)
+        // The card must not stay on «Идёт запуск…»: the model reloads itself once the runner is done.
+        for _ in 0..<500 where model.runsSettled == settledBefore { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(model.runsSettled, settledBefore + 1)
+        XCTAssertEqual(model.snapshot?.lastRuns[person]?.state, .completed)
+        XCTAssertEqual(model.snapshot?.lastRuns[person]?.found, 1)
+    }
 }

@@ -74,6 +74,7 @@ struct PersonOSINTSection: View {
             Label("OSINT", systemImage: "network")
         }
         .accessibilityIdentifier("person.osint")
+        .onChange(of: osint.runsSettled) { _, _ in _Concurrency.Task { await workspace.reload() } }
         .sheet(isPresented: $enriching) {
             OSINTEnrichSheet(person: person, osint: osint) { _Concurrency.Task { await workspace.reload() } }.makoshAppearance()
         }

@@ -36,6 +36,7 @@ python3 scripts/test-ai-qa.py
 python3 scripts/test-files-qa.py
 python3 scripts/test-calendar-qa.py
 python3 scripts/test-persons-qa.py
+python3 scripts/test-flowsint-pin.py
 python3 scripts/test-teams-dependencies.py
 python3 scripts/test-teams-qa.py
 python3 scripts/test-runtime-bundle.py

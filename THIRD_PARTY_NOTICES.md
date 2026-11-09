@@ -523,3 +523,17 @@ written for Makosh. The file list with source hashes is
 `Dependencies/Jira.lock.json`. `yuriyda/TaskOrchestrator` (MIT) is a
 business-rules reference only: no source is linked or copied. Combined app
 license and existing dependencies are unchanged.
+
+## OSINT module — swift-nio-ssh and the external flowsint server
+
+`MakoshOSINT` links Apple's `swift-nio-ssh` (Apache-2.0, revision
+`d1985926494b624e751b379009dc83f3395fd88a`, tag 0.15.1) and, through it,
+`swift-crypto` (Apache-2.0) for the password SSH session, host-key pinning and
+the loopback tunnel to the OSINT server; both are ordinary SwiftPM dependencies
+pinned in `Package.swift` like the other Apple packages. The OSINT server itself
+is [flowsint](https://github.com/reconurge/flowsint) (Apache-2.0 since
+2026-01-25; earlier history AGPL-3.0, relicensed with contributor consent per
+its NOTICE). No flowsint source, model or asset is copied or linked into
+Makosh: Makosh installs the pinned release named in
+`Dependencies/Flowsint.lock.json` on a separate server over SSH and talks to
+its REST API. Combined app license and existing dependencies are unchanged.

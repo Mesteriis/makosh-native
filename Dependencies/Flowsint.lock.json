@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/reconurge/flowsint",
+  "tag": "v1.2.13",
+  "sha": "4c05849bc6ca5055ad187d056ef26e61b3bc2fea",
+  "license": "Apache-2.0",
+  "baseImages": ["python:3.12-slim", "node:24-alpine", "nginx:1.29-alpine"],
+  "notes": "External OSINT server installed by Makosh over SSH (MakoshOSINT.FlowsintInstaller). No flowsint source is copied or linked. Images are built on the server from this commit because GHCR publishes prebuilt images only up to 1.2.9; the base images stay by tag. Keep in sync with Sources/MakoshOSINT/FlowsintPin.swift (scripts/test-flowsint-pin.py)."
+}

@@ -273,6 +273,33 @@
      ".build/"
     ]
    }
+  },
+  {
+   "name": "flowsint",
+   "url": "https://github.com/reconurge/flowsint",
+   "path": ".references/flowsint",
+   "sha": "4c05849bc6ca5055ad187d056ef26e61b3bc2fea",
+   "license": "Apache-2.0 (since 2026-01-25; earlier history AGPL-3.0, relicensed with contributor consent)",
+   "purpose": "Research reference for the Persons OSINT module: REST API, graph format, enricher names and the production compose layout. The product does not copy or link it; Makosh installs the pinned release on a separate server (Dependencies/Flowsint.lock.json).",
+   "verification": "Studied from the owner's archive ~/Downloads/flowsint-main.zip (fork snapshot of main, ~1.2.12) on 2026-11-09; upstream tag v1.2.13 pinned by git ls-remote; not built or run locally",
+   "xerj": {
+    "prefix": "mk-com-flowsint",
+    "stateName": "flowsint",
+    "status": "Not indexed; optional research clone",
+    "exclusions": [
+     ".git/",
+     "*.db",
+     "*.sqlite*",
+     "build/",
+     "dist/",
+     "target/",
+     "private/",
+     "*.png",
+     "*.jpg",
+     "node_modules/",
+     ".venv/"
+    ]
+   }
   }
  ]
 }

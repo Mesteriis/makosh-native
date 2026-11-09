@@ -200,8 +200,8 @@ public actor FlowsintInstaller {
           api:
             image: flowsint-api:\(pin.sha)
             build:
-              context: ./flowsint-api
-              dockerfile: Dockerfile
+              context: .
+              dockerfile: flowsint-api/Dockerfile
               target: production
           celery:
             image: flowsint-api:\(pin.sha)

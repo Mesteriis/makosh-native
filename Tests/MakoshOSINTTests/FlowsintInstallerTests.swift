@@ -199,6 +199,10 @@ final class FlowsintInstallerTests: XCTestCase {
         let override = try XCTUnwrap(h.state.overrideText)
         XCTAssertTrue(override.contains("!override"), override)
         XCTAssertTrue(override.contains("\"127.0.0.1:5173:8080\""), override)
+        // The API image is a uv workspace build: its context is the repository root, as upstream CI builds it.
+        XCTAssertTrue(override.contains("context: .\n"), override)
+        XCTAssertTrue(override.contains("dockerfile: flowsint-api/Dockerfile"), override)
+        XCTAssertTrue(override.contains("context: ./flowsint-app"), override)
     }
 
     func testUpdateRedeploysNewImages() async throws {

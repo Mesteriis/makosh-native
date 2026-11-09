@@ -184,10 +184,12 @@ public actor PersonsService {
     /// Switches of one account. Dropping «её контакты — моя адресная книга» clears the flags it set;
     /// raising it flags the persons this book already gave.
     public func setBookOptions(
-        id: UUID, readBook: Bool?, isAddressBookSource: Bool?, acceptsAddressBook: Bool?, collectConversations: Bool?
+        id: UUID, readBook: Bool?, isAddressBookSource: Bool?, acceptsAddressBook: Bool?, collectConversations: Bool?,
+        enrichAutomatically: Bool? = nil
     ) async throws {
         guard var book = try await store.book(id: id) else { throw PersonsFailure.notFound }
         if let readBook, book.kind.isBook { book.readBook = readBook }
+        if let enrichAutomatically, book.kind.isBook { book.enrichAutomatically = enrichAutomatically }
         if let acceptsAddressBook, book.kind.isBook { book.acceptsAddressBook = acceptsAddressBook }
         if let collectConversations, book.kind.hasConversations { book.collectConversations = collectConversations }
         if let isAddressBookSource, book.kind.isBook, isAddressBookSource != book.isAddressBookSource {

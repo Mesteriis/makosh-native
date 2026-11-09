@@ -62,12 +62,14 @@ public struct PersonBook: Codable, Equatable, Identifiable, Sendable {
     public var caldavLogin: String?
     public var googleSubject: String?
     public var pausedUntil: Date?
+    /// New people from this book run the automatic OSINT enrichers (books only, off by default).
+    public var enrichAutomatically: Bool
 
     public init(
         id: UUID = UUID(), kind: PersonBookKind, name: String, accountID: String, collectConversations: Bool = true,
         readBook: Bool? = nil, isAddressBookSource: Bool = false, acceptsAddressBook: Bool? = nil, state: PersonBookState = .connected,
         lastError: PersonsFailure? = nil, cursor: Data? = nil, caldavServer: URL? = nil, caldavLogin: String? = nil,
-        googleSubject: String? = nil, pausedUntil: Date? = nil
+        googleSubject: String? = nil, pausedUntil: Date? = nil, enrichAutomatically: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -84,9 +86,37 @@ public struct PersonBook: Codable, Equatable, Identifiable, Sendable {
         self.caldavLogin = caldavLogin
         self.googleSubject = googleSubject
         self.pausedUntil = pausedUntil
+        self.enrichAutomatically = kind.isBook && enrichAutomatically
     }
 
     public var source: ImportSource { ImportSource(service: kind.service, accountID: accountID) }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, name, accountID, collectConversations, readBook, isAddressBookSource, acceptsAddressBook, state, lastError, cursor
+        case caldavServer, caldavLogin, googleSubject, pausedUntil, enrichAutomatically
+    }
+
+    /// Rows written before the flag existed read as off.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        kind = try c.decode(PersonBookKind.self, forKey: .kind)
+        name = try c.decode(String.self, forKey: .name)
+        accountID = try c.decode(String.self, forKey: .accountID)
+        collectConversations = try c.decode(Bool.self, forKey: .collectConversations)
+        readBook = try c.decode(Bool.self, forKey: .readBook)
+        isAddressBookSource = try c.decode(Bool.self, forKey: .isAddressBookSource)
+        acceptsAddressBook = try c.decode(Bool.self, forKey: .acceptsAddressBook)
+        state = try c.decode(PersonBookState.self, forKey: .state)
+        lastError = try c.decodeIfPresent(PersonsFailure.self, forKey: .lastError)
+        cursor = try c.decodeIfPresent(Data.self, forKey: .cursor)
+        caldavServer = try c.decodeIfPresent(URL.self, forKey: .caldavServer)
+        caldavLogin = try c.decodeIfPresent(String.self, forKey: .caldavLogin)
+        googleSubject = try c.decodeIfPresent(String.self, forKey: .googleSubject)
+        pausedUntil = try c.decodeIfPresent(Date.self, forKey: .pausedUntil)
+        let flag = try c.decodeIfPresent(Bool.self, forKey: .enrichAutomatically) ?? false
+        enrichAutomatically = kind.isBook && flag
+    }
 }
 
 public enum PersonBookEntryState: String, Codable, Sendable {

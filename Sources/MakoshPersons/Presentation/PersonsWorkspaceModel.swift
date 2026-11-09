@@ -163,12 +163,12 @@ package struct PersonBookRow: Equatable, Sendable {
 
     package func setBookOptions(
         id: UUID, readBook: Bool? = nil, isAddressBookSource: Bool? = nil, acceptsAddressBook: Bool? = nil,
-        collectConversations: Bool? = nil
+        collectConversations: Bool? = nil, enrichAutomatically: Bool? = nil
     ) async {
         await perform {
             try await service.setBookOptions(
                 id: id, readBook: readBook, isAddressBookSource: isAddressBookSource, acceptsAddressBook: acceptsAddressBook,
-                collectConversations: collectConversations)
+                collectConversations: collectConversations, enrichAutomatically: enrichAutomatically)
         }
     }
 

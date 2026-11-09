@@ -27,6 +27,8 @@ extension EnvironmentValues {
     private(set) var service: PersonsService?
     /// Set by the workspace once a Telegram model exists; nil keeps Telegram books unreachable.
     var telegramBridge: (any TelegramContactsBridge)?
+    /// Mail accounts the workspace knows, for the CardDAV sheet's server hint.
+    @Published var mailAccounts: [(email: String, imapHost: String)] = []
     private var configured = false
     private let keychain: KeychainAccess
     private let synthetic: [String: PersonSyntheticBook]?
@@ -70,7 +72,7 @@ extension EnvironmentValues {
             let persons = try PersonStore(connectionString: configuration.connectionString, schema: configuration.schema)
             let service = PersonsService(
                 persons: persons, store: store, vault: PersonsCredentialVault(access: keychain),
-                adapterFactory: adapterFactory(http: http, google: google, grants: grants), google: google, grants: grants)
+                adapterFactory: adapterFactory(http: http, google: google, grants: grants), google: google, grants: grants, http: http)
             self.service = service
             let model = PersonsWorkspaceModel(service: service, persons: worker)
             self.model = model

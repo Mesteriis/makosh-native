@@ -78,13 +78,19 @@ public actor CardDAVAdapter: PersonBookAdapter {
         guard server.scheme == "https", server.host != nil else { throw PersonsFailure.invalidInput("https required") }
         var principal: URL?
         for candidate in [server.appendingPathComponent(".well-known/carddav"), server] {
-            guard
-                let (data, response) = try? await http.send(
+            let data: Data
+            let response: HTTPURLResponse
+            do {
+                (data, response) = try await http.send(
                     dav(
                         candidate, method: "PROPFIND", depth: "0", body: propfind("<d:current-user-principal/>"), login: login,
                         password: password),
                     stage: "discover")
-            else { continue }
+            } catch PersonsFailure.rejected(code: 401, _) {
+                throw PersonsFailure.signInRequired
+            } catch PersonsFailure.rejected(code: 403, _) {
+                throw PersonsFailure.noAccess
+            } catch { continue }
             let base = response.url ?? candidate
             if let href = try DAVNode.responses(data).compactMap({ $0.props.child("current-user-principal")?.child("href")?.trimmed })
                 .first,

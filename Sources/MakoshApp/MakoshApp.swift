@@ -270,6 +270,7 @@ struct MakoshApp: App {
                         FilesSettingsView().tabItem { Label("Файлы", systemImage: "folder") }.tag(MakoshSettingsTab.files)
                         TasksSettingsView().tabItem { Label("Задачи", systemImage: "checklist") }.tag(MakoshSettingsTab.tasks)
                         CalendarSettingsView().tabItem { Label("Календарь", systemImage: "calendar") }.tag(MakoshSettingsTab.calendar)
+                        PersonsSettingsView().tabItem { Label("Персоны", systemImage: "person.2") }.tag(MakoshSettingsTab.persons)
                         AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }.tag("ai")
                     }
                 }
@@ -287,4 +288,5 @@ enum MakoshSettingsTab {
     static let files = "files"
     static let tasks = "tasks"
     static let calendar = "calendar"
+    static let persons = "persons"
 }

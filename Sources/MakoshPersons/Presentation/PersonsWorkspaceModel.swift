@@ -172,6 +172,22 @@ package struct PersonBookRow: Equatable, Sendable {
         }
     }
 
+    /// Connecting returns whether it worked; the failure is in `error`.
+    package func connectCardDAV(name: String, server: URL, login: String, password: String) async -> Bool {
+        await perform { try await service.connectCardDAV(name: name, server: server, login: login, password: password) }
+        return error == nil
+    }
+
+    package func connectGoogle(loginHint: String?) async -> Bool {
+        await perform { try await service.connectGoogle(loginHint: loginHint) }
+        return error == nil
+    }
+
+    package func connectMacContacts() async -> Bool {
+        await perform { try await service.connectMacContacts() }
+        return error == nil
+    }
+
     package func savePreferences(_ preferences: PersonsPreferences) async {
         await perform { try await service.store.savePreferences(preferences) }
     }

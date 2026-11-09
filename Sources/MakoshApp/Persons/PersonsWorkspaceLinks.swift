@@ -28,6 +28,7 @@ struct PersonsWorkspaceLinks: ViewModifier {
                 Task { await historyPass() }
                 Task { await collectTelegram() }
             }
+            .onChange(of: mail.accounts) { _, accounts in host.mailAccounts = accounts.map { ($0.email, $0.imapHost) } }
             .onChange(of: mail.letters) { _, letters in
                 guard enabled else { return }
                 Task { await collectLetters(letters) }

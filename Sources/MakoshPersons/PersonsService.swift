@@ -24,6 +24,7 @@ public actor PersonsService {
     let adapterFactory: AdapterFactory
     let google: GoogleOAuth?
     let grants: GoogleGrantVault
+    let http: PersonsHTTP
     let now: @Sendable () -> Date
     let collector: PersonCollector
     var adapters: [UUID: any PersonBookAdapter] = [:]
@@ -38,7 +39,7 @@ public actor PersonsService {
 
     public init(
         persons: PersonStore, store: PersonsStore, vault: PersonsCredentialVault, adapterFactory: @escaping AdapterFactory,
-        google: GoogleOAuth?, grants: GoogleGrantVault, now: @escaping @Sendable () -> Date = Date.init
+        google: GoogleOAuth?, grants: GoogleGrantVault, http: PersonsHTTP = PersonsHTTP(), now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.persons = persons
         self.store = store
@@ -46,6 +47,7 @@ public actor PersonsService {
         self.adapterFactory = adapterFactory
         self.google = google
         self.grants = grants
+        self.http = http
         self.now = now
         collector = PersonCollector(persons: persons, store: store, now: now)
     }
@@ -105,6 +107,65 @@ public actor PersonsService {
         let book = PersonBook(kind: kind, name: name, accountID: accountID)
         try await store.saveBook(book)
         return book
+    }
+
+    /// A CardDAV account: the server's first address book is the collection; the password lives
+    /// in the Keychain only, and nothing is saved until discovery succeeds. The same login on the
+    /// same server is one book, so connecting again rotates the password.
+    @discardableResult
+    public func connectCardDAV(name: String, server: URL, login: String, password: String) async throws -> PersonBook {
+        let found = try await CardDAVAdapter.discover(server: server, login: login, password: password, http: http)
+        guard let collection = found.first else { throw PersonsFailure.notFound }
+        let accountID = login + "@" + (server.host ?? server.absoluteString)
+        var book =
+            try await store.books().first { $0.kind == .carddav && $0.accountID == accountID }
+            ?? PersonBook(kind: .carddav, name: name, accountID: accountID)
+        book.name = name.isEmpty ? login : name
+        book.caldavServer = collection.url
+        book.caldavLogin = login
+        book.state = .connected
+        book.lastError = nil
+        book.pausedUntil = nil
+        try await vault.savePassword(bookID: book.id, password)
+        try await store.saveBook(book)
+        adapters[book.id] = nil
+        _ = try await readBook(id: book.id)
+        return try await store.book(id: book.id) ?? book
+    }
+
+    /// A Google account with the contacts scope; the grant goes to the shared Google vault.
+    @discardableResult
+    public func connectGoogle(loginHint: String?) async throws -> PersonBook {
+        guard let google else { throw PersonsFailure.signInRequired }
+        let grant = try await PersonsFailure.mapGoogle { try await google.signIn(scopes: GoogleOAuth.contactsScopes, loginHint: loginHint) }
+        guard grant.has(scope: GoogleOAuth.contactsScope) else { throw PersonsFailure.signInRequired }
+        try await grants.saveGrant(grant)
+        var book =
+            try await store.books().first { $0.kind == .googleContacts && $0.googleSubject == grant.subject }
+            ?? PersonBook(kind: .googleContacts, name: grant.email, accountID: grant.subject, googleSubject: grant.subject)
+        book.state = .connected
+        book.lastError = nil
+        book.pausedUntil = nil
+        try await store.saveBook(book)
+        adapters[book.id] = nil
+        _ = try await readBook(id: book.id)
+        return try await store.book(id: book.id) ?? book
+    }
+
+    /// The macOS address book of this Mac; access is asked by the caller before this runs.
+    @discardableResult
+    public func connectMacContacts() async throws -> PersonBook {
+        guard MacContactsAdapter.authorizationStatus == .authorized else { throw PersonsFailure.noAccess }
+        var book =
+            try await store.books().first { $0.kind == .macContacts }
+            ?? PersonBook(kind: .macContacts, name: "Контакты macOS", accountID: "mac")
+        book.state = .connected
+        book.lastError = nil
+        book.pausedUntil = nil
+        try await store.saveBook(book)
+        adapters[book.id] = nil
+        _ = try await readBook(id: book.id)
+        return try await store.book(id: book.id) ?? book
     }
 
     /// Disconnects a book: its password goes first, its cards stay in the book as not managed.

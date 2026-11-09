@@ -107,6 +107,8 @@ struct PersonsSyntheticPreview: View {
                 await workspace.reload()
                 ready = true
             } catch {
+                // The QA log (stderr) names the refusing check; the window keeps the generic text. These errors carry no secrets.
+                FileHandle.standardError.write(Data("persons QA refused: \(String(describing: error))\n".utf8))
                 self.error = "QA «Персоны» требует --persons-synthetic-preview и отдельную конфигурацию PostgreSQL со схемой qa_persons_."
             }
         }

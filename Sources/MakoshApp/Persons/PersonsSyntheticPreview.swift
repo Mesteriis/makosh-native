@@ -1,5 +1,6 @@
 #if DEBUG
 import MakoshCore
+import MakoshOSINT
 import MakoshPersons
 import SwiftUI
 
@@ -7,9 +8,11 @@ import SwiftUI
 /// the seeded letters, contacts and attempts, all in memory. No other service starts.
 struct PersonsSyntheticPreview: View {
     private static let books = PersonsSyntheticSeed.books()
+    private static let flowsint = FlowsintSynthetic(findings: OSINTSyntheticSeed.findings(), installed: false)
     @StateObject private var workspace = WorkspaceModel(
         requireExplicitDatabaseConfiguration: true, syntheticSchemaPrefix: PersonsQAIsolation.schemaPrefix)
-    @StateObject private var host = PersonsHost(synthetic: PersonsSyntheticPreview.books)
+    @StateObject private var host = PersonsHost(synthetic: PersonsSyntheticPreview.books, osint: PersonsSyntheticPreview.flowsint)
+    @State private var sshFixture: OSINTSyntheticSSHServer?
     @StateObject private var ai = AIHost()
     @State private var ready = false
     @State private var error: String?
@@ -87,7 +90,20 @@ struct PersonsSyntheticPreview: View {
                     try await PersonsSyntheticSeed.seed(service: service, persons: persons, books: Self.books)
                     await service.settled()
                 }
-                guard host.failure == nil else { throw PersonsQAIsolation.Failure.invalidConfiguration }
+                guard host.failure == nil, let osint = host.osint else { throw PersonsQAIsolation.Failure.invalidConfiguration }
+                // The OSINT fixture: a loopback SSH server scripted like LXC 164 and the synthetic flowsint behind it.
+                let (server, _) = OSINTSyntheticSeed.scriptedServer(synthetic: Self.flowsint)
+                let endpoint = try await server.start()
+                sshFixture = server
+                let people = try await BackgroundWork.run { try persons.persons() }
+                let anna = people.first { $0.emails.contains(OSINTSyntheticSeed.annaEmail) }?.id
+                let boris = people.first { $0.emails.contains("boris@sidorov.ru") }?.id
+                guard let anna else { throw PersonsQAIsolation.Failure.invalidConfiguration }
+                try await OSINTSyntheticSeed.seed(
+                    service: osint, synthetic: Self.flowsint, persons: persons, annaID: anna, borisID: boris, host: endpoint.host,
+                    port: endpoint.port)
+                try OSINTQAIsolation.validate(settings: await osint.settings(), synthetic: true)
+                await host.osintModel?.load()
                 await workspace.reload()
                 ready = true
             } catch {

@@ -109,12 +109,17 @@ extension EnvironmentValues {
     private func makeOSINTService(configuration: PersonWorkspaceConfiguration, persons: PersonStore) -> OSINTService {
         let store = OSINTStore(connectionString: configuration.connectionString, schema: configuration.schema)
         let vault = OSINTCredentialVault(access: keychain)
-        let (session, liveAPI) = OSINTService.liveFactories()
-        let api: OSINTService.APIFactory
+        let (liveSession, liveAPI) = OSINTService.liveFactories()
+        var session = liveSession
+        var api = liveAPI
         if let syntheticOSINT {
+            // QA never leaves the Mac: whatever the settings say, the SSH fixture is on loopback and flowsint is in memory.
+            session = { settings, password in
+                OSINTSSHSession(
+                    host: OSINTQAIsolation.loopbackHost, port: settings.port, login: settings.login, password: password,
+                    expectedFingerprint: settings.hostKeyFingerprint)
+            }
             api = { _, _, _ in syntheticOSINT }
-        } else {
-            api = liveAPI
         }
         return OSINTService(persons: persons, store: store, vault: vault, sessionFactory: session, apiFactory: api)
     }

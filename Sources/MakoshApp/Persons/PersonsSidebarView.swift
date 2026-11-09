@@ -166,7 +166,8 @@ private struct PersonsSidebarBody: View {
         Group {
             if case .person(let summary) = node.kind {
                 HStack(spacing: 12) {
-                    PersonsAvatar(name: summary.displayName)
+                    // Only the avatar starts a drag: a draggable row swallows the click that should select it.
+                    PersonsAvatar(name: summary.displayName).draggable(summary.id.uuidString)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(summary.displayName).font(.headline).lineLimit(1)
                         Text(
@@ -183,7 +184,6 @@ private struct PersonsSidebarBody: View {
                     if summary.addressBook { PersonsFlagBadge() }
                 }
                 .padding(.vertical, 6).tag(summary.id).accessibilityIdentifier("person.row.\(summary.id)")
-                .draggable(summary.id.uuidString)
             }
         }
     }

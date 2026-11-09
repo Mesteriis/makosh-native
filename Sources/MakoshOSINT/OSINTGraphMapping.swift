@@ -38,13 +38,13 @@ public enum OSINTGraphMapping {
         var candidates: [(field: String, value: String, enricher: String?)] = []
         // Input phones carry what the phone enrichers wrote onto the node itself.
         for id in inputNodeIDs.sorted() {
-            guard let node = nodes[id], node.type == FlowsintNodeType.phone.rawValue, let number = node.primaryValue else { continue }
+            guard let node = nodes[id], FlowsintNodeType(wireType: node.type) == .phone, let number = node.primaryValue else { continue }
             let parts = ["country", "carrier", "line_type"].compactMap { node.properties[$0]?.stringValue }.filter { !$0.isEmpty }
             guard !parts.isEmpty else { continue }
             candidates.append(("phone.info", "\(displayPhone(number)) — \(parts.joined(separator: ", "))", enricher(node)))
         }
         for id in neighborIDs {
-            guard let node = nodes[id], let type = FlowsintNodeType(rawValue: node.type), let primary = node.primaryValue else { continue }
+            guard let node = nodes[id], let type = FlowsintNodeType(wireType: node.type), let primary = node.primaryValue else { continue }
             let enricherName = enricher(node)
             switch type {
             case .email: candidates.append(("emails", PersonMatching.normalizedEmail(primary), enricherName))

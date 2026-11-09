@@ -200,7 +200,7 @@ extension OSINTService {
         var nodeIDs: [OSINTInput: String] = [:]
         if let graph = try? await link.api.graph(sketchID: sketchID) {
             for node in graph.nodes {
-                guard let type = FlowsintNodeType(rawValue: node.type), let primary = node.primaryValue else { continue }
+                guard let type = FlowsintNodeType(wireType: node.type), let primary = node.primaryValue else { continue }
                 nodeIDs[OSINTInput(type: type, value: Self.normalized(type, primary))] = node.id
             }
         }

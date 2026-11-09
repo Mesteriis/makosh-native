@@ -3,6 +3,12 @@ import MakoshCore
 
 /// Node types of flowsint that the module sends or reads; the raw value is the upstream class name.
 public enum FlowsintNodeType: String, Codable, Sendable, CaseIterable {
+    /// Live flowsint writes enricher output with lowercase labels (`socialaccount`): types match case-insensitively.
+    public init?(wireType: String) {
+        guard let match = Self.allCases.first(where: { $0.rawValue.caseInsensitiveCompare(wireType) == .orderedSame }) else { return nil }
+        self = match
+    }
+
     case email = "Email"
     case phone = "Phone"
     case username = "Username"

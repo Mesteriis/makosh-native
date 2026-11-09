@@ -137,7 +137,8 @@ final class FlowsintClientTests: XCTestCase {
             case ("GET", "/api/sketches/sk-1/graph"):
                 return .init(
                     body: self.json([
-                        "nodes": [
+                        // v1.2.13 names the lists `nds` and `rls`.
+                        "nds": [
                             [
                                 "id": "n1", "nodeType": "Email", "nodeLabel": "anna@example.test",
                                 "nodeProperties": ["email": "anna@example.test"],
@@ -148,7 +149,7 @@ final class FlowsintClientTests: XCTestCase {
                                 "nodeMetadata": ["enricher": "email_to_gravatar"],
                             ],
                         ],
-                        "edges": [["id": "e1", "source": "n1", "target": "n2", "label": "HAS_GRAVATAR"]],
+                        "rls": [["id": "e1", "source": "n1", "target": "n2", "label": "HAS_GRAVATAR"]],
                     ]))
             case ("POST", "/api/investigations/create"): return .init(status: 201, body: self.json(["id": "inv-1", "name": "Makosh"]))
             case ("GET", "/api/investigations"): return .init(body: self.json([["id": "inv-1", "name": "Makosh"]]))

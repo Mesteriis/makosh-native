@@ -278,6 +278,14 @@ public final class FlowsintClient: FlowsintAPI, Sendable {
         struct Graph: Decodable {
             var nodes: [Node]
             var edges: [Edge]
+            enum Keys: String, CodingKey { case nodes, edges, nds, rls }
+            init(from decoder: Decoder) throws {
+                // v1.2.13 answers `{"nds": […], "rls": […]}`; the older shape was `nodes`/`edges`.
+                let container = try decoder.container(keyedBy: Keys.self)
+                nodes = try container.decodeIfPresent([Node].self, forKey: .nds) ?? container.decode([Node].self, forKey: .nodes)
+                edges =
+                    try container.decodeIfPresent([Edge].self, forKey: .rls) ?? container.decodeIfPresent([Edge].self, forKey: .edges) ?? []
+            }
         }
     }
 }

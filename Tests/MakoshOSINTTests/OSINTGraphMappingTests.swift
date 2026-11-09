@@ -163,4 +163,25 @@ final class OSINTGraphMappingTests: XCTestCase {
         XCTAssertEqual(observations[0].source.identity.accountID, server.uuidString)
         XCTAssertEqual(observations[0].source.fetchedAt, now)
     }
+
+    func testEnricherNodesCarryLowercaseTypes() {
+        // Live flowsint writes enricher output with lowercase types ("socialaccount", "username") and GitHub-style platforms.
+        let graph = FlowsintGraph(
+            nodes: [
+                node("n1", .username, "mesteriis"),
+                FlowsintNode(
+                    id: "n2", type: "socialaccount", label: "Alexander (GitHub)",
+                    properties: [
+                        "id": .string("mesteriis@GitHub"), "platform": .string("GitHub"),
+                        "profile_url": .string("https://github.com/mesteriis"),
+                        "username": .object(["value": .string("mesteriis")]),
+                    ]),
+                FlowsintNode(id: "n3", type: "username", label: "mesteriis", properties: ["value": .string("mesteriis")]),
+            ],
+            edges: [edge("n1", "n2", "HAS_ACCOUNT"), edge("n1", "n3", "SAME_AS")])
+        var person = Person(displayName: "avm", tags: [])
+        person.usernames = ["mesteriis"]
+        let result = map(graph, inputs: ["n1"], person: person)
+        XCTAssertEqual(result.observations.map { "\($0.field)=\($0.value)" }, ["social.github=https://github.com/mesteriis"])
+    }
 }

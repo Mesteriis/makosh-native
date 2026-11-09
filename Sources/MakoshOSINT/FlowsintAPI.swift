@@ -86,7 +86,7 @@ public struct FlowsintNode: Codable, Equatable, Sendable {
     }
     /// The value of the type's primary field, when the type is one the module knows.
     public var primaryValue: String? {
-        FlowsintNodeType(rawValue: type).flatMap { properties[$0.primaryField]?.stringValue }
+        FlowsintNodeType(wireType: type).flatMap { properties[$0.primaryField]?.stringValue }
     }
 }
 

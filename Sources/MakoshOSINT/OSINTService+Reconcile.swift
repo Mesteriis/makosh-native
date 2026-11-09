@@ -51,7 +51,7 @@ extension OSINTService {
                 return nil
             }
             let produced = graph.nodes.contains { node in
-                neighbors.contains(node.id) && FlowsintNodeType(rawValue: node.type).map { enricher.outputTypes.contains($0) } == true
+                neighbors.contains(node.id) && FlowsintNodeType(wireType: node.type).map { enricher.outputTypes.contains($0) } == true
             }
             if produced {
                 record.state = .confirmed

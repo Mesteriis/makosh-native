@@ -1,4 +1,5 @@
 import MakoshCore
+import MakoshOSINT
 import MakoshPersons
 import MakoshTelemost
 import SwiftUI
@@ -52,6 +53,9 @@ struct PersonCardView: View {
                     OrganizationMembersSection(organization: contact, workspace: model)
                 } else {
                     PersonOrganizationsSection(person: contact, workspace: model)
+                }
+                if let osint = host.osintModel {
+                    PersonOSINTSection(person: contact, workspace: model, osint: osint) { merging = true }
                 }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 6) {
@@ -123,8 +127,10 @@ struct PersonCardView: View {
                                     Text("ID источника: \(identity.externalID)").font(.caption).textSelection(.enabled)
                                 }
                                 Spacer()
-                                Button("Отделить источник…") { detaching = identity }.font(.caption).disabled(!model.canWrite)
-                                    .accessibilityIdentifier("person.detach.\(identity.id)")
+                                if identity.service != OSINTGraphMapping.service {
+                                    Button("Отделить источник…") { detaching = identity }.font(.caption).disabled(!model.canWrite)
+                                        .accessibilityIdentifier("person.detach.\(identity.id)")
+                                }
                             }
                         }
                         ForEach(contact.observations) { item in

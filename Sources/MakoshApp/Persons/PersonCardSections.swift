@@ -1,4 +1,5 @@
 import MakoshCore
+import MakoshOSINT
 import MakoshPersons
 import SwiftUI
 
@@ -137,7 +138,9 @@ struct PersonContactsSection: View {
                         }
                     }
                 }
-                let proposed = person.observations.filter { $0.status == .proposed }
+                let proposed = person.observations.filter {
+                    $0.status == .proposed && $0.source.identity.service != OSINTGraphMapping.service
+                }
                 ForEach(proposed) { observation in
                     HStack(spacing: 8) {
                         Label("\(observation.value)", systemImage: "sparkles").font(.callout)
@@ -281,6 +284,7 @@ enum PersonCardText {
         case "google-contacts": "Google"
         case "macos-contacts": "Контакты macOS"
         case "ai": "ИИ"
+        case "osint": "OSINT"
         default: service
         }
     }

@@ -215,6 +215,13 @@ struct OSINTSettingsSection: View {
                     Button("Задать…") { keyBeingSet = name }.disabled(osint.busy || settings.installedSHA == nil)
                     if present { Button("Удалить") { _Concurrency.Task { await osint.removeKey(name: name) } }.disabled(osint.busy) }
                 }
+                if let instruction = OSINTKeyInstruction.instruction(for: name) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(instruction.service)\(instruction.paid ? " (платно)" : ""): \(instruction.steps)").font(.caption)
+                            .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Link("Открыть сайт", destination: instruction.url).font(.caption)
+                    }.padding(.leading, 12)
+                }
             }
             Text("Ключи хранятся в Связке ключей и в зашифрованном хранилище flowsint; в журнал и Git они не попадают.").font(.caption)
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

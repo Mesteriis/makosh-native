@@ -50,10 +50,11 @@ public enum OSINTCardGrouping {
         case "emails", "phones", "usernames": .contacts
         case "breach": .breaches
         case "phone.info": .phone
-        case "domain": .domains
+        case "domain", "domain.ip", "domain.whois": .domains
         case "avatar": .avatar
-        case "organization.suggested": .organizations
+        case "organization.suggested", "organization.asn": .organizations
         case _ where field.hasPrefix("social."): .social
+        case _ where field.hasPrefix("leak."): .breaches
         default: nil
         }
     }
@@ -70,8 +71,16 @@ public enum OSINTCardGrouping {
         case "breach": return "утечка"
         case "phone.info": return "оператор"
         case "domain": return "домен"
+        case "domain.ip": return "IP-адрес"
+        case "domain.whois": return "WHOIS"
         case "avatar": return "аватар"
         case "organization.suggested": return "организация"
+        case "organization.asn": return "автономная система"
+        case "leak.device": return "устройство в утечке"
+        case "leak.name": return "имя в утечке"
+        case "leak.birthdate": return "дата рождения в утечке"
+        case "leak.ip": return "IP в утечке"
+        case "leak.social": return "профиль в утечке"
         default: return field
         }
     }

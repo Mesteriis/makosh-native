@@ -90,6 +90,9 @@ struct OSINTEnrichSheet: View {
         case .breach: "Утечка"
         case .device: "Устройство"
         case .domain: "Домен"
+        case .ip: "IP-адрес"
+        case .whois: "WHOIS"
+        case .asn: "Автономная система"
         }
     }
 }

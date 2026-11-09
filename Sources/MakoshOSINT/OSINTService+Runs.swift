@@ -47,6 +47,16 @@ extension OSINTService {
         for phone in person.phones { add(.phone, phone) }
         for username in person.usernames { add(.username, username) }
         add(person.kind == .organization ? .organization : .individual, person.displayName)
+        if person.kind == .organization {
+            // An organization's domains are its own assets: the domains of its addresses and accepted domain findings.
+            for email in person.emails {
+                let normalized = PersonMatching.normalizedEmail(email)
+                if let at = normalized.lastIndex(of: "@") { add(.domain, String(normalized[normalized.index(after: at)...])) }
+            }
+            for observation in person.observations where observation.field == "domain" && observation.status == .confirmed {
+                add(.domain, observation.value.lowercased())
+            }
+        }
         return result
     }
 

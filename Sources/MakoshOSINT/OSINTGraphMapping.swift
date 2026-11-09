@@ -78,7 +78,37 @@ public enum OSINTGraphMapping {
                 candidates.append(("leak.device", parts.joined(separator: ", "), enricherName))
             case .domain: candidates.append(("domain", primary.lowercased(), enricherName))
             case .organization: candidates.append(("organization.suggested", primary, enricherName))
-            case .individual: continue
+            case .ip: candidates.append(("domain.ip", primary, enricherName))
+            case .whois:
+                var parts = [node.properties["registrar"]?.stringValue]
+                if case .object(let organization)? = node.properties["organization"] { parts.append(organization["name"]?.stringValue) }
+                parts += [node.properties["country"]?.stringValue, node.properties["creation_date"]?.stringValue]
+                let details = parts.compactMap { $0 }.filter { !$0.isEmpty }
+                candidates.append(
+                    ("domain.whois", details.isEmpty ? primary : "\(primary): \(details.joined(separator: ", "))", enricherName))
+            case .asn:
+                var label = primary
+                if case .number(let number)? = node.properties["number"] { label = "AS\(Int(number))" }
+                if let name = node.properties["name"]?.stringValue, !name.isEmpty { label += " \(name)" }
+                if let country = node.properties["country"]?.stringValue, !country.isEmpty { label += " (\(country))" }
+                candidates.append(("organization.asn", label, enricherName))
+            case .individual:
+                // A DeHashed record: contacts the leak lists, and what it says about the person. Never passwords.
+                for email in strings(node.properties["email_addresses"]) {
+                    candidates.append(("emails", PersonMatching.normalizedEmail(email), enricherName))
+                }
+                for phone in strings(node.properties["phone_numbers"]) { candidates.append(("phones", displayPhone(phone), enricherName)) }
+                for username in strings(node.properties["usernames"]) { candidates.append(("usernames", username, enricherName)) }
+                if let name = node.properties["full_name"]?.stringValue, !name.isEmpty {
+                    candidates.append(("leak.name", name, enricherName))
+                }
+                if let birth = node.properties["birth_date"]?.stringValue, !birth.isEmpty {
+                    candidates.append(("leak.birthdate", birth, enricherName))
+                }
+                for ip in strings(node.properties["ip_addresses"]) { candidates.append(("leak.ip", ip, enricherName)) }
+                for profile in strings(node.properties["social_media_profiles"]) {
+                    candidates.append(("leak.social", profile, enricherName))
+                }
             }
         }
 
@@ -101,6 +131,15 @@ public enum OSINTGraphMapping {
     }
 
     /// The dossier form of a number: the normalized digits in international notation.
+    /// A list property as strings: an array, or one string.
+    private static func strings(_ value: JSONValue?) -> [String] {
+        switch value {
+        case .array(let items)?: items.compactMap(\.stringValue).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        case .string(let text)?: text.isEmpty ? [] : [text]
+        default: []
+        }
+    }
+
     private static func displayPhone(_ value: String) -> String {
         let digits = PersonMatching.normalizedPhone(value)
         return digits.isEmpty ? value.trimmingCharacters(in: .whitespacesAndNewlines) : "+" + digits

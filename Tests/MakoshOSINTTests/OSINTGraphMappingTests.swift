@@ -39,7 +39,7 @@ final class OSINTGraphMappingTests: XCTestCase {
         let graph = FlowsintGraph(
             nodes: [
                 node("in", .individual, "Анна Каренина"),
-                node("e1", .email, "Anna.K@Example.test", enricher: .individualToUsernameCandidates), node("u1", .username, "anna_k"),
+                node("e1", .email, "Anna.K@Example.test", enricher: .emailToDehashed), node("u1", .username, "anna_k"),
             ],
             edges: [edge("in", "e1", "HAS_EMAIL"), edge("u1", "in", "BELONGS_TO")])
         let result = map(graph, inputs: ["in"])
@@ -48,7 +48,7 @@ final class OSINTGraphMappingTests: XCTestCase {
             result.observations.map { ($0.field, $0.value) }.map { "\($0.0)=\($0.1)" }.sorted(),
             ["emails=anna.k@example.test", "usernames=anna_k"])
         XCTAssertEqual(
-            result.observations.first { $0.field == "emails" }?.source.identity.externalID, "sk-1/individual_to_username_candidates")
+            result.observations.first { $0.field == "emails" }?.source.identity.externalID, "sk-1/email_to_intelligence")
         XCTAssertEqual(result.observations.first { $0.field == "usernames" }?.source.identity.externalID, "sk-1")
     }
 
@@ -183,5 +183,58 @@ final class OSINTGraphMappingTests: XCTestCase {
         person.usernames = ["mesteriis"]
         let result = map(graph, inputs: ["n1"], person: person)
         XCTAssertEqual(result.observations.map { "\($0.field)=\($0.value)" }, ["social.github=https://github.com/mesteriis"])
+    }
+
+    func testDehashedIndividualBecomesLeakFields() {
+        let graph = FlowsintGraph(
+            nodes: [
+                node("e1", .email, "anna@example.test"),
+                FlowsintNode(
+                    id: "d1", type: "individual", label: "Anna K",
+                    properties: [
+                        "full_name": .string("Anna K"), "birth_date": .string("1990-01-02"),
+                        "email_addresses": .array([.string("Other@Example.test")]), "phone_numbers": .array([.string("+7 999 000-00-11")]),
+                        "usernames": .array([.string("anna_old")]), "ip_addresses": .array([.string("10.0.0.1")]),
+                        "social_media_profiles": .array([.string("https://vk.com/anna_old")]),
+                    ], metadata: ["enricher": .string("email_to_intelligence")]),
+            ],
+            edges: [edge("e1", "d1", "LEAKED_AS")])
+        let result = map(graph, inputs: ["e1"])
+        XCTAssertEqual(
+            result.observations.map { "\($0.field)=\($0.value)" }.sorted(),
+            [
+                "emails=other@example.test", "leak.birthdate=1990-01-02", "leak.ip=10.0.0.1", "leak.name=Anna K",
+                "leak.social=https://vk.com/anna_old", "phones=+79990000011", "usernames=anna_old",
+            ])
+    }
+
+    func testDomainNeighborsBecomeIPWhoisAndASN() {
+        var organization = Person(displayName: "Example LLC", emails: ["office@example.test"], tags: [])
+        organization.kind = .organization
+        let graph = FlowsintGraph(
+            nodes: [
+                node("o1", .organization, "Example LLC"), node("d1", .domain, "example.test"),
+                FlowsintNode(id: "i1", type: "ip", label: "93.184.216.34", properties: ["address": .string("93.184.216.34")]),
+                FlowsintNode(
+                    id: "w1", type: "whois", label: "example.test",
+                    properties: [
+                        "domain": .object(["domain": .string("example.test")]), "registrar": .string("GoDaddy"),
+                        "organization": .object(["name": .string("Example LLC")]), "country": .string("US"),
+                        "creation_date": .string("2001-01-01"),
+                    ]),
+                FlowsintNode(
+                    id: "a1", type: "asn", label: "AS15133",
+                    properties: [
+                        "asn_str": .string("AS15133"), "number": .number(15133), "name": .string("EDGECAST"), "country": .string("US"),
+                    ]),
+            ],
+            edges: [edge("d1", "i1", "RESOLVES_TO"), edge("d1", "w1", "HAS_WHOIS"), edge("o1", "a1", "HAS_ASN")])
+        let result = map(graph, inputs: ["o1", "d1"], person: organization)
+        XCTAssertEqual(
+            result.observations.map { "\($0.field)=\($0.value)" }.sorted(),
+            [
+                "domain.ip=93.184.216.34", "domain.whois=example.test: GoDaddy, Example LLC, US, 2001-01-01",
+                "organization.asn=AS15133 EDGECAST (US)",
+            ])
     }
 }

@@ -86,7 +86,11 @@ public struct FlowsintNode: Codable, Equatable, Sendable {
     }
     /// The value of the type's primary field, when the type is one the module knows.
     public var primaryValue: String? {
-        FlowsintNodeType(wireType: type).flatMap { properties[$0.primaryField]?.stringValue }
+        guard let field = FlowsintNodeType(wireType: type)?.primaryField, let value = properties[field] else { return nil }
+        if let text = value.stringValue { return text }
+        // A nested FlowsintType (Whois.domain is a Domain object): take its own primary field.
+        if case .object(let nested) = value { return (nested[field] ?? nested["value"] ?? nested["name"])?.stringValue }
+        return nil
     }
 }
 

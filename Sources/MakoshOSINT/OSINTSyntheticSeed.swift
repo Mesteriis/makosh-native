@@ -12,6 +12,7 @@ public enum OSINTSyntheticSeed {
     public static let annaUsername = "anna"
     public static let annaPhone = "+79161000001"
     public static let hibpKeyName = "HIBP_API_KEY"
+    public static let veriphoneKeyName = "VERIPHONE_API_KEY"
 
     public static func findings() -> [FlowsintSynthetic.Finding] {
         [
@@ -30,7 +31,7 @@ public enum OSINTSyntheticSeed {
                 outputValue: "twitter:anna",
                 properties: ["platform": .string("twitter"), "profile_url": .string("https://twitter.com/anna")], edgeLabel: "HAS_ACCOUNT"),
             .init(
-                enricher: .phoneToInfos, inputType: .phone, inputValue: annaPhone, outputType: .phone, outputValue: annaPhone,
+                enricher: .phoneToCarrier, inputType: .phone, inputValue: annaPhone, outputType: .phone, outputValue: annaPhone,
                 properties: ["carrier": .string("МТС"), "country": .string("RU"), "line_type": .string("mobile")], edgeLabel: "SAME_PHONE"),
         ]
     }
@@ -67,13 +68,14 @@ public enum OSINTSyntheticSeed {
             let install = try await service.install { _ in }
             guard install.state == .completed else { throw OSINTFailure.installFailed(stage: "qa-seed") }
         }
-        if try await !service.refreshKeys().contains(hibpKeyName) {
-            try await service.setKey(name: hibpKeyName, value: "synthetic-hibp-key")
-        }
+        let keys = try await service.refreshKeys()
+        if !keys.contains(hibpKeyName) { try await service.setKey(name: hibpKeyName, value: "synthetic-hibp-key") }
+        if !keys.contains(veriphoneKeyName) { try await service.setKey(name: veriphoneKeyName, value: "synthetic-veriphone-key") }
         let sketched = Set(try await service.snapshot().sketches.keys)
         if !sketched.contains(annaID) {
             let inputs = try await service.inputs(personID: annaID)
-            try await service.enrich(personID: annaID, enrichers: OSINTEnricher.manualDefault.union([.emailToBreaches]), inputs: inputs)
+            try await service.enrich(
+                personID: annaID, enrichers: OSINTEnricher.manualDefault.union([.emailToBreaches, .phoneToCarrier]), inputs: inputs)
             await service.settled()
         }
         if let borisID, !sketched.contains(borisID) {

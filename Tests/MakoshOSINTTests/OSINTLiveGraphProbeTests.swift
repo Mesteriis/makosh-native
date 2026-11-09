@@ -35,7 +35,7 @@ final class OSINTLiveGraphProbeTests: XCTestCase {
         graph.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: graph)
         print("PROBE status: \((response as? HTTPURLResponse)?.statusCode ?? 0) bytes: \(data.count)")
-        print("PROBE: \(String(decoding: data.prefix(6000), as: UTF8.self))")
+        print("PROBE: \(String(decoding: data.prefix(400_000), as: UTF8.self))")
         await session.close()
     }
 }

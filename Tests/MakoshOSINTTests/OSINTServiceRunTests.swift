@@ -31,7 +31,7 @@ final class OSINTServiceRunTests: XCTestCase {
                 properties: ["platform": .string("twitter"), "profile_url": .string("https://x.com/anna_k")],
                 edgeLabel: "HAS_ACCOUNT"),
             .init(
-                enricher: .phoneToInfos, inputType: .phone, inputValue: "+79990000000", outputType: .phone, outputValue: "+79990000000",
+                enricher: .phoneToCarrier, inputType: .phone, inputValue: "+79990000000", outputType: .phone, outputValue: "+79990000000",
                 properties: ["country": .string("RU"), "carrier": .string("МТС"), "line_type": .string("mobile")], edgeLabel: "SAME"),
         ]
     }
@@ -91,19 +91,22 @@ final class OSINTServiceRunTests: XCTestCase {
         let runValue = try await h.store.run(id: runID)
         let run = try XCTUnwrap(runValue)
         XCTAssertEqual(run.state, .completed, "\(run)")
-        XCTAssertEqual(run.found, 4, "avatar, two social accounts and the phone carrier; breaches need a key")
+        XCTAssertEqual(run.found, 3, "avatar and two social accounts; the carrier and the breaches need keys")
         let attempts = try await h.store.attempts(runID: runID)
         XCTAssertEqual(attempts.filter { $0.kind == .createSketch }.count, 1)
         XCTAssertEqual(attempts.filter { $0.kind == .addNode }.count, 4, "email, phone, username, individual")
         let launches = attempts.filter { $0.kind == .launch }
         XCTAssertEqual(
             Set(launches.compactMap(\.payload.enricher)),
-            [.emailToGravatar, .emailToHudsonRock, .phoneToInfos, .usernameToMaigret, .individualToUsernameCandidates],
+            [
+                .emailToGravatar, .emailToHudsonRock, .emailToUsername, .emailToDomain, .phoneToHudsonRock, .usernameToMaigret,
+                .usernameToSherlock, .usernameToHudsonRock,
+            ],
             "every compatible keyless enricher once")
         XCTAssertTrue(attempts.allSatisfy { $0.state == .confirmed }, "\(attempts.map(\.state))")
         let person = try XCTUnwrap(try h.persons.person(id: id))
         let proposed = person.observations.filter { $0.status == .proposed }
-        XCTAssertEqual(Set(proposed.map(\.field)), ["avatar", "social.github", "social.twitter", "phone.info"])
+        XCTAssertEqual(Set(proposed.map(\.field)), ["avatar", "social.github", "social.twitter"])
         let link = try await h.store.sketch(personID: id)
         XCTAssertNotNil(link)
         let serverID = try await h.store.settings().serverID
@@ -121,7 +124,7 @@ final class OSINTServiceRunTests: XCTestCase {
             draft: .init(
                 displayName: "Анна Каренина", phones: ["+79990000000", "+79990000001"], emails: [Self.anna], usernames: ["anna_k"]))
         let second = try await h.service.enrich(
-            personID: id, enrichers: [.emailToGravatar, .phoneToInfos],
+            personID: id, enrichers: [.emailToGravatar, .phoneToHudsonRock],
             inputs: [OSINTInput(type: .email, value: Self.anna), OSINTInput(type: .phone, value: "+79990000001")])
         await h.service.settled()
         let attempts = try await h.store.attempts(runID: second)
@@ -235,7 +238,7 @@ final class OSINTServiceRunTests: XCTestCase {
         for index in 0..<205 {
             findings.append(
                 .init(
-                    enricher: .individualToUsernameCandidates, inputType: .individual, inputValue: "Анна Каренина", outputType: .username,
+                    enricher: .emailToUsername, inputType: .email, inputValue: Self.anna, outputType: .username,
                     outputValue: "anna_\(index)"))
         }
         let h = try await OSINTServiceHarness(database: try osintDatabase(), findings: findings)
@@ -243,7 +246,7 @@ final class OSINTServiceRunTests: XCTestCase {
         try await h.installed()
         let id = try anna(h)
         let runID = try await h.service.enrich(
-            personID: id, enrichers: [.individualToUsernameCandidates], inputs: [OSINTInput(type: .individual, value: "Анна Каренина")])
+            personID: id, enrichers: [.emailToUsername], inputs: [OSINTInput(type: .email, value: Self.anna)])
         await h.service.settled()
         let runValue = try await h.store.run(id: runID)
         let run = try XCTUnwrap(runValue)
@@ -298,21 +301,34 @@ final class OSINTServiceRunTests: XCTestCase {
 
     func testRunSkipsEnrichersTheServerLacks() async throws {
         let h = try await harness()
-        await h.api.setOfferedEnrichers(Set(OSINTEnricher.allCases.map(\.rawValue)).subtracting(["phone_to_infos"]))
+        await h.api.setOfferedEnrichers(Set(OSINTEnricher.allCases.map(\.rawValue)).subtracting(["phone_to_device_hudsonrock"]))
         let id = try anna(h)
         let inputs = [OSINTInput(type: .email, value: Self.anna), OSINTInput(type: .phone, value: "+79990000000")]
-        let runID = try await h.service.enrich(personID: id, enrichers: [.emailToGravatar, .phoneToInfos], inputs: inputs)
+        let runID = try await h.service.enrich(personID: id, enrichers: [.emailToGravatar, .phoneToHudsonRock], inputs: inputs)
         await h.service.settled()
         let run = try await h.store.run(id: runID)
         XCTAssertEqual(run?.state, .completed, "\(run?.failure?.code ?? "")")
         let launched = try await h.store.attempts(runID: runID).filter { $0.kind == .launch }.compactMap { $0.payload.enricher }
         XCTAssertEqual(launched, [.emailToGravatar], "no launch for a source the server does not offer")
-        let onlyMissing = try await h.service.enrich(personID: id, enrichers: [.phoneToInfos], inputs: inputs)
+        let onlyMissing = try await h.service.enrich(personID: id, enrichers: [.phoneToHudsonRock], inputs: inputs)
         await h.service.settled()
         let failed = try await h.store.run(id: onlyMissing)
         XCTAssertEqual(failed?.state, .failed)
-        XCTAssertEqual(failed?.failure, .enricherUnavailable("phone_to_infos"))
+        XCTAssertEqual(failed?.failure, .enricherUnavailable("phone_to_device_hudsonrock"))
         let snapshot = try await h.service.snapshot()
-        XCTAssertEqual(snapshot.serverEnricherNames?.contains("phone_to_infos"), false)
+        XCTAssertEqual(snapshot.serverEnricherNames?.contains("phone_to_device_hudsonrock"), false)
+    }
+
+    func testOrganizationInputsIncludeDomains() async throws {
+        let h = try await harness()
+        let id = try h.persons.createPerson(
+            draft: .init(kind: .organization, displayName: "Example LLC", emails: ["office@example.test", "sales@example.test"]))
+        let inputs = try await h.service.inputs(personID: id)
+        XCTAssertTrue(inputs.contains(OSINTInput(type: .domain, value: "example.test")))
+        XCTAssertEqual(inputs.filter { $0.type == .domain }.count, 1, "one domain per address domain")
+        XCTAssertTrue(inputs.contains(OSINTInput(type: .organization, value: "Example LLC")))
+        let person = try h.persons.createPerson(draft: .init(displayName: "Анна", emails: ["anna@example.test"]))
+        let personInputs = try await h.service.inputs(personID: person)
+        XCTAssertFalse(personInputs.contains { $0.type == .domain }, "a person's mail domain is not their asset")
     }
 }

@@ -32,7 +32,8 @@ final class OSINTStoreTests: XCTestCase {
         XCTAssertTrue(settings.envBackupAvailable)
         XCTAssertFalse(OSINTEnricher.manualDefault.contains(.emailToBreaches), "keyed enrichers are not in the manual default")
         XCTAssertEqual(
-            OSINTEnricher.automaticDefault, [.emailToGravatar, .emailToHudsonRock, .phoneToInfos, .individualToUsernameCandidates])
+            OSINTEnricher.automaticDefault,
+            [.emailToGravatar, .emailToHudsonRock, .emailToUsername, .emailToDomain, .phoneToHudsonRock, .usernameToHudsonRock])
         settings.enabled = true
         settings.host = "10.34.10.64"
         settings.login = "makosh"
@@ -132,7 +133,7 @@ final class OSINTStoreTests: XCTestCase {
         let store = try await osintStore(try osintDatabase(), now: { base })
         let anna = UUID(), boris = UUID()
         let first = OSINTRun(personID: anna, trigger: .manual, enrichers: [.emailToGravatar], createdAt: base.addingTimeInterval(-200))
-        let second = OSINTRun(personID: anna, trigger: .manual, enrichers: [.phoneToInfos], createdAt: base.addingTimeInterval(-100))
+        let second = OSINTRun(personID: anna, trigger: .manual, enrichers: [.phoneToCarrier], createdAt: base.addingTimeInterval(-100))
         try await store.saveRun(first)
         try await store.saveRun(second)
         try await store.saveRun(OSINTRun(personID: boris, trigger: .manual, enrichers: [.emailToGravatar], createdAt: base))

@@ -43,16 +43,23 @@ public enum OSINTDialogRules {
     public static func disclosure(host: String, enrichers: Set<OSINTEnricher>) -> String {
         var services: [String] = []
         for enricher in OSINTEnricher.allCases where enrichers.contains(enricher) {
-            switch enricher {
-            case .emailToGravatar: services.append("Gravatar")
-            case .emailToHudsonRock: services.append("HudsonRock")
-            case .emailToBreaches: services.append("Have I Been Pwned")
-            case .phoneToInfos: services.append("открытые справочники номеров")
-            case .phoneToCarrier: services.append("Veriphone")
-            case .usernameToMaigret: services.append("сайты, которые проверяет Maigret")
-            case .individualToUsernameCandidates: break
-            case .orgToDomains: services.append("Whoxy")
-            }
+            let service: String? =
+                switch enricher {
+                case .emailToGravatar: "Gravatar"
+                case .emailToHudsonRock, .phoneToHudsonRock, .usernameToHudsonRock: "HudsonRock"
+                case .emailToBreaches: "Have I Been Pwned"
+                case .emailToUsername, .emailToDomain: nil
+                case .emailToDehashed, .usernameToDehashed: "DeHashed"
+                case .emailToDomainsWhoxy, .individualToDomains, .orgToDomains: "Whoxy"
+                case .phoneToCarrier: "Veriphone"
+                case .usernameToMaigret: "сайты, которые проверяет Maigret"
+                case .usernameToSherlock: "сайты, которые проверяет Sherlock"
+                case .orgToASN: "ProjectDiscovery"
+                case .domainToDNS: "публичные DNS-серверы"
+                case .domainToWhois: "серверы WHOIS"
+                case .domainToSubdomains: "публичные источники поддоменов"
+                }
+            if let service, !services.contains(service) { services.append(service) }
         }
         var text = "Выбранные значения уйдут на ваш сервер \(host)"
         if services.isEmpty {

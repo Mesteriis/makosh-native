@@ -203,7 +203,7 @@ final class FlowsintClientTests: XCTestCase {
                 ? .init(body: self.json(["access_token": "t", "token_type": "bearer"])) : .init(status: 503)
         }
         do {
-            _ = try await client().launch(enricher: .phoneToInfos, sketchID: "sk", nodeIDs: ["n"])
+            _ = try await client().launch(enricher: .phoneToCarrier, sketchID: "sk", nodeIDs: ["n"])
             XCTFail("503 is an unknown outcome")
         } catch { XCTAssertEqual(error as? OSINTFailure, .unknownOutcome(stage: "launch"), "\(error)") }
         StubURLProtocol.install { request in
@@ -223,7 +223,7 @@ final class FlowsintClientTests: XCTestCase {
                 : .init(status: 422, body: self.json(["detail": "secret-detail-text"]))
         }
         do {
-            _ = try await client().launch(enricher: .phoneToInfos, sketchID: "sk", nodeIDs: ["n"])
+            _ = try await client().launch(enricher: .phoneToCarrier, sketchID: "sk", nodeIDs: ["n"])
             XCTFail("422 is a rejection")
         } catch {
             XCTAssertEqual(error as? OSINTFailure, .apiRejected(code: 422, stage: "launch"), "\(error)")

@@ -60,7 +60,7 @@ final class FlowsintSyntheticTests: XCTestCase {
         XCTAssertEqual(launches[0].nodeIDs, [email])
         // A launch on a node without findings completes with nothing new.
         let phone = try await api.addNode(sketchID: sketch.id, type: .phone, value: "+79990000000")
-        let empty = try await api.launch(enricher: .phoneToInfos, sketchID: sketch.id, nodeIDs: [phone])
+        let empty = try await api.launch(enricher: .phoneToHudsonRock, sketchID: sketch.id, nodeIDs: [phone])
         let status = try await api.scan(id: empty)
         XCTAssertEqual(status, .completed)
         let unchanged = try await api.graph(sketchID: sketch.id)

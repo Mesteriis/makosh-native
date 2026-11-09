@@ -1,5 +1,26 @@
 # Development status — 2026-11-09
 
+## OSINT: каталог источников по серверу flowsint v1.2.13 — 2026-11-09
+
+По команде пользователя после живой проверки. Удалены `phone_to_infos` и
+`individual_to_username_candidates` (на сервере их нет); добавлены все
+обогатители сервера для людей и организаций: `email_to_username`, `email_to_domain`,
+`email_to_intelligence` и `username_to_dehashed` (DeHashed, `DEHASHED_API_KEY`),
+`email_to_domains` и `individual_to_domains` (Whoxy), `phone_to_device_hudsonrock`,
+`username_to_socials_sherlock`, `username_to_device_hudsonrock`, `org_to_asn`
+(`PDCP_API_KEY`), `domain_to_dns`, `domain_to_whois`, `domain_to_subdomains`
+(вход — домены организации: домены её адресов и принятые находки `domain`).
+Новые типы узлов `Ip`, `Whois` (вложенный `domain`), `ASN`; новые поля досье
+`leak.name`, `leak.birthdate`, `leak.ip`, `leak.social`, `domain.ip`, `domain.whois`,
+`organization.asn` с группами и подписями в карточке. Рядом с каждым ключом в
+настройках — где его получить и платный ли сервис (`OSINTKeyInstruction`).
+Синтетический QA: находка оператора идёт через `phone_to_carrier` с синтетическим
+ключом Veriphone. Тесты: каталог равен списку сервера, у каждого ключа есть инструкция,
+автоматический набор — только бесплатные и быстрые; сопоставление DeHashed/IP/WHOIS/ASN;
+входы-домены у организаций; раскрытие называет новые сервисы — `MakoshOSINTTests` 143.
+Живая проверка новых источников не выполнялась (ключи не заданы; без ключей —
+по команде пользователя).
+
 ## OSINT-модуль раздела «Персоны» — план 3 (интерфейс, QA, документация) — 2026-11-09
 
 Ветка `persons-osint` завершает спеку `docs/superpowers/specs/2026-11-09-persons-osint-design.md`

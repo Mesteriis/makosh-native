@@ -54,7 +54,7 @@ final class OSINTDialogRulesTests: XCTestCase {
     func testIncompatibleEnrichersHidden() {
         let inputs = [OSINTInput(type: .email, value: "anna@example.test")]
         let rows = OSINTDialogRules.availableEnrichers(
-            selected: [.emailToGravatar, .phoneToInfos, .usernameToMaigret], inputs: inputs, serverKeyNames: [])
+            selected: [.emailToGravatar, .phoneToHudsonRock, .usernameToMaigret], inputs: inputs, serverKeyNames: [])
         XCTAssertEqual(rows.map(\.enricher), [.emailToGravatar])
     }
 
@@ -62,7 +62,7 @@ final class OSINTDialogRulesTests: XCTestCase {
         let input = OSINTInput(type: .email, value: "anna@example.test")
         XCTAssertFalse(OSINTDialogRules.canLaunch(inputs: [], enrichers: [.emailToGravatar]))
         XCTAssertFalse(OSINTDialogRules.canLaunch(inputs: [input], enrichers: []))
-        XCTAssertFalse(OSINTDialogRules.canLaunch(inputs: [input], enrichers: [.phoneToInfos]))
+        XCTAssertFalse(OSINTDialogRules.canLaunch(inputs: [input], enrichers: [.phoneToHudsonRock]))
         XCTAssertTrue(OSINTDialogRules.canLaunch(inputs: [input], enrichers: [.emailToGravatar]))
     }
 
@@ -90,10 +90,17 @@ final class OSINTDialogRulesTests: XCTestCase {
         let inputs = [OSINTInput(type: .email, value: "anna@example.test"), OSINTInput(type: .phone, value: "+79990000000")]
         let offered: Set<String> = ["email_to_gravatar", "phone_to_carrier"]
         let rows = OSINTDialogRules.availableEnrichers(
-            selected: [.emailToGravatar, .phoneToInfos, .phoneToCarrier], inputs: inputs, serverKeyNames: [], serverEnricherNames: offered)
-        XCTAssertEqual(Set(rows.map(\.enricher)), [.emailToGravatar, .phoneToCarrier], "phone_to_infos is not on this server")
+            selected: [.emailToGravatar, .phoneToHudsonRock, .phoneToCarrier], inputs: inputs, serverKeyNames: [],
+            serverEnricherNames: offered)
+        XCTAssertEqual(Set(rows.map(\.enricher)), [.emailToGravatar, .phoneToCarrier], "phone_to_device_hudsonrock is not on this server")
         let unknown = OSINTDialogRules.availableEnrichers(
-            selected: [.emailToGravatar, .phoneToInfos], inputs: inputs, serverKeyNames: [], serverEnricherNames: nil)
-        XCTAssertTrue(unknown.contains { $0.enricher == .phoneToInfos }, "an unknown server list hides nothing")
+            selected: [.emailToGravatar, .phoneToHudsonRock], inputs: inputs, serverKeyNames: [], serverEnricherNames: nil)
+        XCTAssertTrue(unknown.contains { $0.enricher == .phoneToHudsonRock }, "an unknown server list hides nothing")
+    }
+
+    func testDisclosureNamesNewServices() {
+        let text = OSINTDialogRules.disclosure(
+            host: "h", enrichers: [.usernameToSherlock, .emailToDehashed, .orgToASN, .domainToWhois, .phoneToHudsonRock])
+        for name in ["Sherlock", "DeHashed", "ProjectDiscovery", "WHOIS", "HudsonRock"] { XCTAssertTrue(text.contains(name), name) }
     }
 }

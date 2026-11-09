@@ -61,4 +61,15 @@ final class OSINTCardGroupingTests: XCTestCase {
         let items = OSINTCardGrouping.items(for: person)
         XCTAssertEqual(items.map(\.formerlyRemoved), [true, false])
     }
+
+    func testLeakAndDomainFieldsHaveGroupsAndTitles() {
+        XCTAssertEqual(OSINTCardGrouping.group(for: "leak.name"), .breaches)
+        XCTAssertEqual(OSINTCardGrouping.group(for: "leak.device"), .breaches)
+        XCTAssertEqual(OSINTCardGrouping.group(for: "domain.ip"), .domains)
+        XCTAssertEqual(OSINTCardGrouping.group(for: "domain.whois"), .domains)
+        XCTAssertEqual(OSINTCardGrouping.group(for: "organization.asn"), .organizations)
+        XCTAssertEqual(OSINTCardGrouping.title(for: "leak.ip"), "IP в утечке")
+        XCTAssertEqual(OSINTCardGrouping.title(for: "domain.whois"), "WHOIS")
+        XCTAssertEqual(OSINTCardGrouping.title(for: "organization.asn"), "автономная система")
+    }
 }

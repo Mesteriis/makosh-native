@@ -70,6 +70,8 @@ public actor OSINTSSHSession {
     }
 
     public var isConnected: Bool { channel?.isActive ?? false }
+    /// The server's fingerprint seen by the last successful connect.
+    public private(set) var fingerprint: String?
 
     /// Connects and authenticates. An unknown host key is offered to `onUnknownHostKey`; a pinned
     /// key that differs refuses before any authentication. Returns the server's fingerprint.
@@ -121,7 +123,9 @@ public actor OSINTSSHSession {
             throw auth.wasRejected ? OSINTFailure.sshAuthFailed : OSINTFailure.sshUnreachable
         }
         self.channel = channel
-        return seen.withLockedValue { $0 } ?? "SHA256:?"
+        let observed = seen.withLockedValue { $0 } ?? "SHA256:?"
+        fingerprint = observed
+        return observed
     }
 
     /// Runs one command; `stdin` is written and closed before the output is read.

@@ -45,6 +45,8 @@ public actor OSINTService {
     var lastFailure: OSINTFailure?
     /// Inputs of queued runs: in memory only, never in a row.
     var pendingInputs: [UUID: [OSINTInput]] = [:]
+    /// Names of the keys the server holds, as last read; values never leave the server.
+    var serverKeyNames: Set<String> = []
     var runner: _Concurrency.Task<Void, Never>?
     var idleWaiters: [CheckedContinuation<Void, Never>] = []
 

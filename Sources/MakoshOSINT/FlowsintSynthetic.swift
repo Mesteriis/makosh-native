@@ -128,8 +128,14 @@ public actor FlowsintSynthetic: FlowsintAPI {
 
     public func graph(sketchID: String) async throws -> FlowsintGraph {
         try arm("graph") {
-            guard let graph = graphs[sketchID] else { throw OSINTFailure.apiRejected(code: 404, stage: "graph") }
-            return graph
+            guard graphs[sketchID] != nil else { throw OSINTFailure.apiRejected(code: 404, stage: "graph") }
+            // The worker keeps going whether or not anyone polls: pending tasks of this sketch are done by now.
+            for (id, var task) in tasks where task.sketchID == sketchID && task.status != .completed && !hung.contains(id) {
+                apply(task)
+                task.status = .completed
+                tasks[id] = task
+            }
+            return graphs[sketchID] ?? FlowsintGraph()
         }
     }
 

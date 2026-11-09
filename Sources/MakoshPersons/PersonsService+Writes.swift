@@ -6,11 +6,7 @@ extension PersonsService {
     /// `limitPerBook` attempts per book; an open attempt for a person in a book blocks a new one.
     public func writePass(limitPerBook: Int? = nil) async -> PersonsPassReport {
         var report = PersonsPassReport()
-        guard let books = try? await writableBooks(), let active = try? persons.persons(),
-            let memberships = try? persons.allMemberships(includingRemoved: false),
-            let entries = try? await store.allEntries(), let openAttempts = try? await store.attempts(open: true),
-            let preferences = try? await store.preferences()
-        else { return report }
+        guard let books = try? await writableBooks(), let preferences = try? await store.preferences() else { return report }
         let limit = limitPerBook ?? preferences.maxWritesPerPass
         var capabilityMap: [UUID: PersonBookCapabilities] = [:]
         var usable: [PersonBook] = []
@@ -22,9 +18,31 @@ extension PersonsService {
                 await mark(book.id, failure: .signInRequired)
             }
         }
+        // Unknown attempts are settled by reading before anything else is written.
+        if let open = try? await store.attempts(open: true) {
+            for book in usable where open.contains(where: { $0.bookID == book.id && $0.state == .unknown }) {
+                try? await settleUnknown(bookID: book.id)
+            }
+        }
+        guard let active = try? persons.persons(), let memberships = try? persons.allMemberships(includingRemoved: false),
+            let entries = try? await store.allEntries(), let openAttempts = try? await store.attempts(open: true)
+        else { return report }
         let identities = Dictionary(uniqueKeysWithValues: active.map { ($0.id, $0.identities) })
         let desired = AddressBookEngine.desired(
             persons: active, memberships: memberships, books: usable, capabilities: capabilityMap, sourceIdentities: identities)
+        // A book this process has not read in full is read before a card may be created or adopted in it:
+        // the person's own source card or a marked card must be found, not duplicated.
+        for book in usable where !authoritativeRemote.contains(book.id) {
+            let needsLook = desired.contains { wanted in
+                wanted.bookID == book.id
+                    && !entries.contains { $0.personID == wanted.personID && $0.bookID == book.id && $0.state == .managed }
+            }
+            guard needsLook, let adapter = try? await adapter(for: book), let changes = try? await adapter.changes(cursor: nil),
+                changes.full
+            else { continue }
+            lastRemote[book.id] = changes.cards
+            authoritativeRemote.insert(book.id)
+        }
         let writes = AddressBookEngine.reconcile(desired: desired, entries: entries, remote: lastRemote, sourceIdentities: identities)
         let blocked = Set(openAttempts.map { $0.personID.uuidString + "|" + $0.bookID.uuidString })
         var perBook: [UUID: [PersonWrite]] = [:]
@@ -32,6 +50,7 @@ extension PersonsService {
             guard let wanted = write.desired, !blocked.contains(wanted.personID.uuidString + "|" + wanted.bookID.uuidString) else {
                 continue
             }
+            if await isRepeatOfRejected(wanted, entries: entries) { continue }
             perBook[wanted.bookID, default: []].append(write)
         }
         for book in usable {
@@ -53,6 +72,26 @@ extension PersonsService {
             }
         }
         return report
+    }
+
+    /// A card the book refused stays unsent until it changes, the user asks again, or the book is reread.
+    func isRepeatOfRejected(_ wanted: DesiredCard, entries: [PersonBookEntry]) async -> Bool {
+        guard let attempts = try? await store.attempts(personID: wanted.personID),
+            let last = attempts.filter({ $0.bookID == wanted.bookID }).max(by: { $0.updatedAt < $1.updatedAt }),
+            last.state == .rejected, last.fingerprint == wanted.card.fingerprint, let failure = last.failure,
+            Self.isPermanentRejection(failure)
+        else { return false }
+        let touched = entries.filter { $0.personID == wanted.personID && $0.bookID == wanted.bookID }.map(\.updatedAt).max()
+        return touched.map { $0 <= last.updatedAt } ?? true
+    }
+
+    /// The book refused this card itself; a lost session, a missing card or a transport doubt are not refusals.
+    static func isPermanentRejection(_ failure: PersonsFailure) -> Bool {
+        switch failure {
+        case .notInTelegram, .noPhoneOrPeer, .invalidInput: true
+        case .rejected(let code, _): (400...499).contains(code) && code != 401 && code != 403 && code != 404 && code != 412
+        default: false
+        }
     }
 
     /// Journals and sends one write; the attempt's final state is the result.
@@ -141,10 +180,29 @@ extension PersonsService {
     /// Settles the book's unknown attempts by looking for the mark, never by sending again.
     public func settleUnknown(bookID: UUID) async throws {
         guard let book = try await store.book(id: bookID) else { throw PersonsFailure.notFound }
+        let unknown = try await store.attempts(open: true).filter { $0.bookID == bookID && $0.state == .unknown }
+        guard !unknown.isEmpty else { return }
         let adapter = try await adapter(for: book)
         let capability = await adapter.capabilities
-        for var attempt in try await store.attempts(open: true) where attempt.bookID == bookID && attempt.state == .unknown {
-            let found = capability.supportsMarker ? try await adapter.find(makoshID: attempt.personID) : nil
+        // A book without a mark (Telegram) answers by its whole list: the peer or the phone is there or not.
+        var remoteCards: [RemoteCard]?
+        if !capability.supportsMarker, let changes = try? await adapter.changes(cursor: nil), changes.full {
+            remoteCards = changes.cards
+            lastRemote[bookID] = changes.cards
+            authoritativeRemote.insert(bookID)
+        }
+        for var attempt in unknown {
+            let found: RemoteCardRef?
+            if capability.supportsMarker {
+                found = try await adapter.find(makoshID: attempt.personID)
+            } else if let remoteCards {
+                var entry: PersonBookEntry?
+                if let entryID = attempt.entryID { entry = try await store.entry(id: entryID) }
+                found = Self.presence(
+                    of: attempt, in: remoteCards, person: try persons.person(id: attempt.personID), book: book, entry: entry)
+            } else {
+                continue
+            }
             switch (attempt.kind, found) {
             case (.delete, nil):
                 attempt.state = .confirmed
@@ -176,13 +234,34 @@ extension PersonsService {
                 try await store.saveEntry(entry)
                 attempt.entryID = entry.id
             case (_, nil):
-                // A marker-capable book that does not hold the mark never applied the write.
-                guard capability.supportsMarker else { continue }
+                // The whole book was looked at and the card is not there: the write never applied.
                 attempt.state = .rejected
                 attempt.failure = .notFound
             }
             try await store.saveAttempt(attempt)
         }
+    }
+
+    /// Where a book carries no mark: the entry's card, the person's peer in this book, or a card with one of the person's phones.
+    static func presence(
+        of attempt: PersonAttempt, in cards: [RemoteCard], person: Person?, book: PersonBook, entry: PersonBookEntry?
+    ) -> RemoteCardRef? {
+        if let entry, let card = cards.first(where: { $0.externalID == entry.externalID }) {
+            return RemoteCardRef(externalID: card.externalID, etag: card.etag)
+        }
+        guard let person else { return nil }
+        if let peer = person.identities.first(where: { $0.service == book.kind.service && $0.accountID == book.accountID }),
+            let card = cards.first(where: { $0.externalID == peer.externalID })
+        {
+            return RemoteCardRef(externalID: card.externalID, etag: card.etag)
+        }
+        let phones = Set(person.phones.map { PersonMatching.normalized(.phones, $0) })
+        guard !phones.isEmpty,
+            let card = cards.first(where: { card in
+                card.imported.phones.contains { phones.contains(PersonMatching.normalized(.phones, $0)) }
+            })
+        else { return nil }
+        return RemoteCardRef(externalID: card.externalID, etag: card.etag)
     }
 
     /// «Отказаться»: the user closes an unknown attempt without checking.

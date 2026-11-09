@@ -33,6 +33,7 @@ extension EnvironmentValues {
     private let keychain: KeychainAccess
     private let synthetic: [String: PersonSyntheticBook]?
     private var collectedLetterIDs = Set<String>()
+    private var collectedPeers = Set<String>()
 
     init() {
         keychain = .system
@@ -69,7 +70,9 @@ extension EnvironmentValues {
         do {
             // The section's own core connection: the collector and the runner serialize with the
             // dossier worker through PostgreSQL's advisory lock.
-            let persons = try PersonStore(connectionString: configuration.connectionString, schema: configuration.schema)
+            let persons = try await BackgroundWork.run {
+                try PersonStore(connectionString: configuration.connectionString, schema: configuration.schema)
+            }
             let service = PersonsService(
                 persons: persons, store: store, vault: PersonsCredentialVault(access: keychain),
                 adapterFactory: adapterFactory(http: http, google: google, grants: grants), google: google, grants: grants, http: http)
@@ -126,6 +129,11 @@ extension EnvironmentValues {
     }
 
     func markLetterCollected(_ id: String) -> Bool { collectedLetterIDs.insert(id).inserted }
+
+    /// Dialog partners not yet profiled in this process; the account's contacts book covers the rest by polling.
+    func newPeers(accountID: String, peerIDs: [Int64]) -> [Int64] {
+        peerIDs.filter { collectedPeers.insert(accountID + ":" + String($0)).inserted }
+    }
 
     /// The row for a channel account's «Собирать собеседников» switch; nil while the section is not open.
     @discardableResult

@@ -31,6 +31,8 @@ public actor PersonsService {
     var capabilities: [UUID: PersonBookCapabilities] = [:]
     /// The last full read of each book: what reconciliation adopts from.
     var lastRemote: [UUID: [RemoteCard]] = [:]
+    /// Books whose whole card list this process has read: only there may a card be created without a second look.
+    var authoritativeRemote = Set<UUID>()
     var writeTask: Task<Void, Never>?
     var writeAgain = false
     var pollTask: Task<Void, Never>?
@@ -224,6 +226,8 @@ public actor PersonsService {
         writeTask = nil
         adapters = [:]
         capabilities = [:]
+        lastRemote = [:]
+        authoritativeRemote = []
         await store.close()
     }
 

@@ -457,18 +457,20 @@ public final class PersonStore: @unchecked Sendable {
 
     /// Another active person of the same kind sharing an exact phone or address that at most two
     /// persons hold, which is not a role address and not a pair the user pulled apart. Several → the oldest.
-    public func autoMergeCandidate(for personID: UUID) throws -> UUID? {
-        try read { repository in try autoMergeMatch(for: personID, repository: repository)?.otherID }
+    public func autoMergeCandidate(for personID: UUID, extraRoleLocalParts: Set<String> = []) throws -> UUID? {
+        try read { repository in
+            try autoMergeMatch(for: personID, extraRoleLocalParts: extraRoleLocalParts, repository: repository)?.otherID
+        }
     }
 
     private func autoMergeMatch(
-        for personID: UUID, repository: PersonRecordRepository
+        for personID: UUID, extraRoleLocalParts: Set<String>, repository: PersonRecordRepository
     ) throws -> (otherID: UUID, field: String, raw: String)? {
         guard let person = try repository.person(id: personID), person.isActive else { return nil }
         let blocked = try repository.noMergePairs()
         var candidates: [(otherID: UUID, field: String, raw: String, created: Date)] = []
         for match in try repository.valueMatches(personID: personID) where match.holders <= 2 {
-            if match.field == "emails", PersonMatching.isRoleAddress(match.raw) { continue }
+            if match.field == "emails", PersonMatching.isRoleAddress(match.raw, extra: extraRoleLocalParts) { continue }
             guard !blocked.contains(NoMergePair(personID, match.otherID)), !candidates.contains(where: { $0.otherID == match.otherID }),
                 let other = try repository.person(id: match.otherID), other.isActive, other.kind == person.kind
             else { continue }
@@ -481,9 +483,9 @@ public final class PersonStore: @unchecked Sendable {
     static func createdAt(_ person: Person) -> Date { person.createdAt }
 
     /// One automatic merge for this person, if an exact match exists: the older person survives.
-    public func autoMerge(personID: UUID) throws -> (survivor: UUID, removed: UUID)? {
+    public func autoMerge(personID: UUID, extraRoleLocalParts: Set<String> = []) throws -> (survivor: UUID, removed: UUID)? {
         try write { repository in
-            guard let match = try autoMergeMatch(for: personID, repository: repository),
+            guard let match = try autoMergeMatch(for: personID, extraRoleLocalParts: extraRoleLocalParts, repository: repository),
                 let person = try repository.person(id: personID), let other = try repository.person(id: match.otherID)
             else { return nil }
             let personFirst = (Self.createdAt(person), person.id.uuidString) <= (Self.createdAt(other), other.id.uuidString)
@@ -500,6 +502,14 @@ public final class PersonStore: @unchecked Sendable {
             try repository.insert(record)
             return (survivor.id, removed.id)
         }
+    }
+
+    /// Active people holding an address in this domain, from the value index.
+    public func persons(emailDomain domain: String) throws -> [Person] {
+        Self.sorted(
+            try read { repository in
+                try repository.personIDs(emailDomain: domain).compactMap { try repository.person(id: $0) }.filter(\.isActive)
+            })
     }
 
     /// How many active persons hold an address in each of these domains.

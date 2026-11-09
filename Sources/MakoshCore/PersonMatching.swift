@@ -21,10 +21,11 @@ public enum PersonMatching {
         "noreply", "no-reply", "donotreply", "postmaster", "mailer-daemon", "notifications", "bounce",
     ]
 
-    public static func isRoleAddress(_ email: String) -> Bool {
+    public static func isRoleAddress(_ email: String, extra: Set<String> = []) -> Bool {
         let normalized = normalizedEmail(email)
         guard let at = normalized.firstIndex(of: "@") else { return false }
-        return roleLocalParts.contains(String(normalized[..<at]))
+        let local = String(normalized[..<at])
+        return roleLocalParts.contains(local) || extra.contains(local)
     }
 
     public static func normalized(_ field: PersonListField, _ value: String) -> String {

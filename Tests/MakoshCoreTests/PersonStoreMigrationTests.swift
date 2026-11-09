@@ -31,6 +31,22 @@ final class PersonStoreMigrationTests: XCTestCase {
         XCTAssertEqual(try database.contactStoreSnapshot(), before)
     }
 
+    func testUpgradeIndexesEveryRowForDuplicates() throws {
+        try database.execute("UPDATE contact_store_meta SET schema_version=2 WHERE id=1")
+        try insertV2(UUID(), manualFields: [], phones: ["+7 916 000-00-01"])
+        try insertV2(UUID(), manualFields: [], phones: ["+7 916 000-00-01"])
+        let store = try database.makeStore()
+        XCTAssertEqual(try store.duplicateCandidates().count, 1, "legacy rows are indexed by the upgrade")
+    }
+
+    func testPersonsByEmailDomainUsesTheIndex() throws {
+        let store = try database.makeStore()
+        let a = try store.createPerson(draft: PersonDraft(displayName: "A", emails: ["a@sidorov.ru"]))
+        _ = try store.createPerson(draft: PersonDraft(displayName: "B", emails: ["b@other.ru"]))
+        XCTAssertEqual(try store.persons(emailDomain: "sidorov.ru").map(\.id), [a])
+        XCTAssertEqual(try store.persons(emailDomain: "SIDOROV.RU").map(\.id), [a])
+    }
+
     func testVersionOneIsRefused() throws {
         try database.execute("UPDATE contact_store_meta SET schema_version=1 WHERE id=1")
         XCTAssertThrowsError(try database.makeStore()) { error in

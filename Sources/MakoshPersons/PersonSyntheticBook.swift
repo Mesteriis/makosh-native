@@ -14,6 +14,7 @@ public actor PersonSyntheticBook: PersonBookAdapter {
     private var revision = 0
     private var counter = 0
     private var pendingFailure: (failure: PersonsFailure, applying: Bool)?
+    private var findFailure: PersonsFailure?
     private let capabilitiesValue: PersonBookCapabilities
     /// Every write in order: "create <externalID>", "update <externalID>", "delete <externalID>".
     public private(set) var writes: [String] = []
@@ -34,6 +35,9 @@ public actor PersonSyntheticBook: PersonBookAdapter {
     public var capabilities: PersonBookCapabilities { capabilitiesValue }
 
     public func failNext(_ failure: PersonsFailure, applying: Bool = true) { pendingFailure = (failure, applying) }
+
+    /// While set, looking a card up by the mark fails (a book that cannot be reached for a check); nil clears it.
+    public func failFind(_ failure: PersonsFailure?) { findFailure = failure }
 
     /// A change made outside Makosh: the ETag moves.
     public func editRemotely(externalID: String, _ change: (inout ImportedPerson) -> Void) {
@@ -115,6 +119,7 @@ public actor PersonSyntheticBook: PersonBookAdapter {
     }
 
     public func find(makoshID: UUID) async throws -> RemoteCardRef? {
+        if let findFailure { throw findFailure }
         guard let stored = cards.values.first(where: { $0.card.makoshID == makoshID }) else { return nil }
         return RemoteCardRef(externalID: stored.card.externalID, etag: stored.card.etag)
     }

@@ -22,7 +22,9 @@ public struct TelegramBookAdapter: PersonBookAdapter {
     }
 
     public var capabilities: PersonBookCapabilities {
-        get async { PersonBookCapabilities(acceptsOrganizations: false, requiresPhoneOrPeer: true, supportsMarker: false) }
+        get async {
+            PersonBookCapabilities(acceptsOrganizations: false, requiresPhoneOrPeer: true, supportsMarker: false, reportsRemovals: false)
+        }
     }
 
     public func changes(cursor: Data?) async throws -> RemoteCardChanges {

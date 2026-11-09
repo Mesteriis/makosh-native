@@ -128,4 +128,28 @@ final class PersonCollectorTests: XCTestCase {
         _ = try await collector.collect([observation])
         XCTAssertTrue(try XCTUnwrap(try persons.person(id: person.id)).addressBook, "a later read without the source flag keeps it")
     }
+
+    func testSpamOnOneAddressDoesNotHideAPersonWithCleanLettersElsewhere() async throws {
+        _ = try await collector.collect([mailObservation("a@x.ru", name: "Анна")])
+        let person = try XCTUnwrap(try persons.persons().first)
+        var second = mailObservation("b@x.ru", name: "Анна")
+        second.personID = person.id
+        _ = try await collector.collect([second])
+        XCTAssertEqual(try persons.persons().count, 1)
+        let result = try await collector.collect([], spam: [MailEvidence(accountID: "m", address: "b@x.ru", spam: true)])
+        XCTAssertTrue(result.hidden.isEmpty, "one spam letter on one address does not outweigh the person's clean letters")
+        XCTAssertEqual(try persons.person(id: person.id)?.hiddenAsSpam, false)
+    }
+
+    func testExtraRoleLocalPartsFromPreferencesAreNeitherCollectedNorMerged() async throws {
+        var preferences = try await store.preferences()
+        preferences.extraRoleLocalParts = ["billing"]
+        try await store.savePreferences(preferences)
+        _ = try await collector.collect([mailObservation("billing@x.ru")])
+        XCTAssertTrue(try persons.persons().isEmpty, "a role address from the settings is not a person")
+        let a = try persons.createPerson(draft: .init(displayName: "A", emails: ["billing@y.ru"]))
+        _ = try persons.createPerson(draft: .init(displayName: "B", emails: ["billing@y.ru"]))
+        XCTAssertNil(try persons.autoMergeCandidate(for: a, extraRoleLocalParts: ["billing"]))
+        XCTAssertNotNil(try persons.autoMergeCandidate(for: a))
+    }
 }

@@ -26,6 +26,13 @@ enum MailPersonSource {
             observedAt: letter.date)
     }
 
+    /// A letter at or below the folder's collection cursor was counted already; one without a cache
+    /// number is judged by the in-memory set alone.
+    static func admits(_ letter: MailLetter, after cursor: Int64?) -> Bool {
+        guard let cursor, let sequence = letter.cacheSequence else { return true }
+        return sequence > cursor
+    }
+
     /// `Name <addr>, addr2` → participants; the cached header keeps addresses only, so names are empty.
     static func participants(_ list: String) -> [MailParticipant] {
         list.split(separator: ",").compactMap { piece in

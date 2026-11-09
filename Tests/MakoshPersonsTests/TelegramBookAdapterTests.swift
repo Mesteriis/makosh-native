@@ -10,6 +10,10 @@ actor FakeTelegramBridge: TelegramContactsBridge {
     var knownPhones: [String: String] = ["79160000000": "4242"]
     private(set) var calls: [String] = []
     private var counter = 100
+    private var failAfterApply: PersonsFailure?
+
+    /// The next add applies and then throws, as a dropped connection would.
+    func setFailAfterApply(_ failure: PersonsFailure?) { failAfterApply = failure }
 
     func contacts(accountID: String) async throws -> [RemoteCard] {
         calls.append("contacts " + accountID)
@@ -32,6 +36,10 @@ actor FakeTelegramBridge: TelegramContactsBridge {
                 externalID: peer, displayName: [givenName, familyName].filter { !$0.isEmpty }.joined(separator: " "),
                 phones: phone.map { [$0] } ?? []),
             kind: .person)
+        if let failure = failAfterApply {
+            failAfterApply = nil
+            throw failure
+        }
         return peer
     }
 

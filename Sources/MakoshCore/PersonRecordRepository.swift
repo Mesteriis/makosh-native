@@ -171,6 +171,13 @@ final class PersonRecordRepository {
         }
     }
 
+    func personIDs(emailDomain domain: String) throws -> [UUID] {
+        try connection.query(
+            "SELECT DISTINCT person_id::text FROM \(values) WHERE field='emails' AND split_part(normalized, '@', 2)=$1 ORDER BY person_id::text",
+            [domain.lowercased()]
+        ).compactMap { UUID(uuidString: $0[0]) }
+    }
+
     func personCount(emailDomain domain: String) throws -> Int {
         let row = try connection.query(
             "SELECT count(DISTINCT person_id)::text FROM \(values) WHERE field='emails' AND split_part(normalized, '@', 2)=$1",
@@ -322,6 +329,7 @@ final class PersonRecordRepository {
         guard let text = try connection.query("SELECT schema_version::text FROM \(meta) WHERE id=1").first?[0], let version = Int(text),
             version == Self.upgradableVersion
         else { return }
+        // Every row is rewritten: the value index behind duplicates, automatic merge and domain counts fills here.
         for var person in try allPersons() {
             for field in PersonListField.allCases where person.manualFields.contains(field.rawValue) {
                 person.manualFields.remove(field.rawValue)

@@ -51,8 +51,10 @@ public enum PersonsSyntheticSeed {
                 id: book.id, readBook: nil, isAddressBookSource: nil, acceptsAddressBook: true, collectConversations: nil)
         }
         _ = try await service.ensureChannelSource(kind: .mail, accountID: mailAccount, name: ownAddress)
-        // The first Google write drops its connection after applying: one attempt stays unknown.
+        // The first Google write drops its connection after applying, and the book cannot be reached for the
+        // check that would settle it: one attempt stays unknown until «Отказаться».
         await books[google]?.failNext(.unknownOutcome(stage: "create"))
+        await books[google]?.failFind(.unreachable)
         _ = try await service.readBook(id: source.id)
 
         var observations: [PersonSourceObservation] = []

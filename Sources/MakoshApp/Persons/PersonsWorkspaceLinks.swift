@@ -49,17 +49,37 @@ struct PersonsWorkspaceLinks: ViewModifier {
 
     // MARK: Mail
 
+    /// The live list's progress per folder, apart from the history pass's own cursor.
+    static func liveScope(_ folder: String) -> String { folder + "\u{1F}live" }
+
     @MainActor private func collectLetters(_ letters: [MailLetter]) async {
-        guard host.model != nil else { return }
+        guard host.model != nil, let service = host.service else { return }
         var observations: [PersonSourceObservation] = []
         var spam: [MailEvidence] = []
         for account in mail.accounts {
             guard await host.collectsConversations(kind: .mail, accountID: account.id) else { continue }
             await host.ensureChannelSource(kind: .mail, accountID: account.id, name: account.email)
-            for letter in letters where letter.key.accountID == account.id && host.markLetterCollected(letter.id) {
-                guard let facts = MailPersonSource.facts(letter, folders: mail.folders, account: account) else { continue }
-                observations += MailCollectionRule.observations(facts)
-                spam += MailCollectionRule.spamEvidence(facts)
+            let source = ImportSource(service: "mail", accountID: account.id)
+            let mine = letters.filter { $0.key.accountID == account.id }
+            for folder in Set(mine.map(\.key.folder)).sorted() {
+                let scope = Self.liveScope(folder)
+                var cursor =
+                    (try? await service.store.cursor(source: source, scope: scope))
+                    ?? PersonCollectionCursor(source: source, scope: scope, value: nil)
+                let after = cursor.value.flatMap { Int64(String(decoding: $0, as: UTF8.self)) }
+                var top = after
+                for letter in mine
+                where letter.key.folder == folder && MailPersonSource.admits(letter, after: after) && host.markLetterCollected(letter.id) {
+                    if let sequence = letter.cacheSequence { top = max(top ?? sequence, sequence) }
+                    guard let facts = MailPersonSource.facts(letter, folders: mail.folders, account: account) else { continue }
+                    observations += MailCollectionRule.observations(facts)
+                    spam += MailCollectionRule.spamEvidence(facts)
+                }
+                if let top, top != after {
+                    cursor.value = Data(String(top).utf8)
+                    cursor.updatedAt = Date()
+                    try? await service.store.saveCursor(cursor)
+                }
             }
         }
         if !observations.isEmpty || !spam.isEmpty { await host.collect(observations, spam: spam) }
@@ -86,7 +106,7 @@ struct PersonsWorkspaceLinks: ViewModifier {
                     var observations: [PersonSourceObservation] = []
                     var spam: [MailEvidence] = []
                     for letter in page {
-                        _ = host.markLetterCollected(letter.id)
+                        guard host.markLetterCollected(letter.id) else { continue }
                         guard let facts = MailPersonSource.facts(letter, folders: mail.folders, account: account) else { continue }
                         observations += MailCollectionRule.observations(facts)
                         spam += MailCollectionRule.spamEvidence(facts)
@@ -110,8 +130,8 @@ struct PersonsWorkspaceLinks: ViewModifier {
         let accountID = String(provider.accountID)
         guard await host.collectsConversations(kind: .telegram, accountID: accountID) else { return }
         await host.ensureChannelSource(kind: .telegram, accountID: accountID, name: "Telegram · " + accountID)
-        let chatIDs = telegram.chats.map(\.id)
-        guard let profiles = try? await provider.profiles(peerIDs: chatIDs) else { return }
+        let chatIDs = host.newPeers(accountID: accountID, peerIDs: telegram.chats.map(\.id))
+        guard !chatIDs.isEmpty, let profiles = try? await provider.profiles(peerIDs: chatIDs) else { return }
         let observations = TelegramPersonSource.observations(profiles: profiles, evidence: .conversation)
         if !observations.isEmpty { await host.collect(observations) }
     }

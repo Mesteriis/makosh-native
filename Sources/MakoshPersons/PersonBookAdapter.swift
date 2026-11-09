@@ -32,10 +32,14 @@ public struct PersonBookCapabilities: Equatable, Sendable {
     public var requiresPhoneOrPeer: Bool
     /// Makosh can mark its cards and find them again by the mark.
     public var supportsMarker: Bool
-    public init(acceptsOrganizations: Bool, requiresPhoneOrPeer: Bool, supportsMarker: Bool) {
+    /// The book holds every phone and address Makosh sends, so a value missing from a card it
+    /// returns was removed by the user there. Telegram keeps one phone and no address: false.
+    public var reportsRemovals: Bool
+    public init(acceptsOrganizations: Bool, requiresPhoneOrPeer: Bool, supportsMarker: Bool, reportsRemovals: Bool = true) {
         self.acceptsOrganizations = acceptsOrganizations
         self.requiresPhoneOrPeer = requiresPhoneOrPeer
         self.supportsMarker = supportsMarker
+        self.reportsRemovals = reportsRemovals
     }
 }
 

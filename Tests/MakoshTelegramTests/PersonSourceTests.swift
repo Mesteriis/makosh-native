@@ -92,4 +92,22 @@ final class PersonSourceTests: XCTestCase {
         XCTAssertFalse(host.markLetterCollected("a"))
         XCTAssertTrue(host.markLetterCollected("b"))
     }
+
+    func testLettersAtOrBelowTheFolderCursorAreNotCollected() {
+        var letter = letter(folder: "INBOX", sender: "a@x.ru")
+        letter.cacheSequence = 5
+        XCTAssertFalse(MailPersonSource.admits(letter, after: 10))
+        XCTAssertFalse(MailPersonSource.admits(letter, after: 5))
+        XCTAssertTrue(MailPersonSource.admits(letter, after: 4))
+        XCTAssertTrue(MailPersonSource.admits(letter, after: nil))
+        letter.cacheSequence = nil
+        XCTAssertTrue(MailPersonSource.admits(letter, after: 10), "a letter without a cache number is judged by the in-memory set")
+    }
+
+    func testAlreadyCollectedTelegramPeersAreNotProfiledAgain() {
+        let host = PersonsHost(synthetic: [:])
+        XCTAssertEqual(host.newPeers(accountID: "100", peerIDs: [1, 2]), [1, 2])
+        XCTAssertEqual(host.newPeers(accountID: "100", peerIDs: [2, 3]), [3])
+        XCTAssertEqual(host.newPeers(accountID: "200", peerIDs: [1]), [1])
+    }
 }

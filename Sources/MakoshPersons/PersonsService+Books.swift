@@ -16,6 +16,7 @@ extension PersonsService {
             await mark(id, failure: failure)
             throw failure
         }
+        let capability = await adapter.capabilities
         let entries = try await store.entries(bookID: id)
         let managed = Dictionary(uniqueKeysWithValues: entries.filter { $0.state == .managed }.map { ($0.externalID, $0) })
         var observations: [PersonSourceObservation] = []
@@ -28,8 +29,9 @@ extension PersonsService {
                     source: book.source, person: imported, observedAt: now(), evidence: .book,
                     personID: managed[card.externalID]?.personID ?? card.makoshID))
             guard var entry = managed[card.externalID] else { continue }
-            // Values Makosh sent that the card no longer carries were removed by the user out there.
-            for (field, sent) in entry.sentValues {
+            // Values Makosh sent that the card no longer carries were removed by the user out there —
+            // only in a book that holds every value Makosh sends.
+            for (field, sent) in entry.sentValues where capability.reportsRemovals {
                 guard let listField = PersonListField(rawValue: field) else { continue }
                 let current = listField == .phones ? imported.phones : imported.emails
                 let normalizedCurrent = Set(current.map { PersonMatching.normalized(listField, $0) })
@@ -52,6 +54,7 @@ extension PersonsService {
         }
         if changes.full {
             lastRemote[id] = changes.cards
+            authoritativeRemote.insert(id)
             // A full read is authoritative: a managed card missing from it is gone.
             let present = Set(changes.cards.map(\.externalID))
             for (externalID, var entry) in managed where !present.contains(externalID) && !changes.removedExternalIDs.contains(externalID) {
@@ -66,6 +69,8 @@ extension PersonsService {
             cache.append(contentsOf: changes.cards)
             lastRemote[id] = cache
         }
+        // Unknown attempts are settled by what was just read, never by sending again.
+        try? await settleUnknown(bookID: id)
         let result = try await collect(observations, addressBookSource: book.isAddressBookSource ? book.source : nil)
         if var current = try await store.book(id: id) {
             current.cursor = changes.cursor

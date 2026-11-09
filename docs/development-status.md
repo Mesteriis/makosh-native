@@ -1,5 +1,40 @@
 # Development status — 2026-11-09
 
+## OSINT-модуль раздела «Персоны» — план 1 (ядро `MakoshOSINT`) — 2026-11-09
+
+Спека `docs/superpowers/specs/2026-11-09-persons-osint-design.md` (утверждена
+пользователем), планы `docs/superpowers/plans/2026-11-09-persons-osint-{1-core,2-service,3-interface}.md`
+(ветка `persons-osint`). Внешний сервер — flowsint (Apache-2.0) на LXC 164 PVE Spain
+(`10.34.10.64`, Docker CE, пользователь `makosh`; сам flowsint в гостя не ставился —
+его разворачивает Makosh из своего интерфейса).
+
+- `MakoshOSINT` (новый target): модели, коды ошибок, пин flowsint `v1.2.13`
+  (`Dependencies/Flowsint.lock.json`, проверка `scripts/test-flowsint-pin.py`),
+  хранилище `persons_osint_*` в схеме приложения, Keychain `org.makosh.osint.v1`
+  с HMAC-ключом журнала, протокол `FlowsintAPI`, REST-клиент через туннель с одним
+  повторным входом, синтетический flowsint в памяти, SSH-сессия на `swift-nio-ssh`
+  (пароль, проверка хост-ключа, exec со stdin, туннель `direct-tcpip` только на
+  loopback), синтетический SSH-сервер со сценарием, идемпотентный установщик (10 шагов,
+  `.env` никогда не перезаписывается, образы собираются из закреплённого коммита,
+  потому что GHCR публикует готовые образы только до 1.2.9), отображение графа
+  скетча в предложенные наблюдения — `MakoshOSINTTests` 55.
+- Зависимости: `swift-nio-ssh` 0.15.1 и транзитивные `swift-crypto` 5.1.1,
+  `swift-asn1` 1.7.4 закреплены ревизиями в `Package.swift` и в независимом
+  `Dependencies/OSINT.lock.json` с удержанными лицензиями (`Dependencies/OSINT/`);
+  `scripts/verify-osint-dependencies.py` в `test.sh` и `build-app.sh`; верификатор
+  почты учитывает пакеты этого lock. `THIRD_PARTY_NOTICES.md` дополнен.
+- Находки по ходу: проверка «порт слушает только loopback» через `lsof` блокировала
+  тесты на минуты (заменена на TCP-пробы); делегат пароля NIOSSH при отказе сервера
+  должен проваливать промис, иначе соединение висит; glue-обработчик туннеля
+  обязан сбросить буфер партнёра перед закрытием. Диагностика
+  `MAKOSH_OSINT_SSH_TRACE=<файл>` (без секретов), выключена по умолчанию.
+- Проверки: `scripts/test.sh --filter MakoshOSINTTests` — exit 0 (55 тестов, 0 падений;
+  Rust 59; Python); `scripts/test.sh --filter MakoshPersonsTests` — exit 0 (112);
+  `scripts/build-app.sh` — exit 0. Сервер, сеть и живые обогатители не использовались.
+- Дальше: план 2 (ядро досье: статус `rejected`, принятие без автослияния; флажок
+  книги; `OSINTService` с раннером, сверкой и ключами; модель раздела), план 3
+  (интерфейс, QA, документация). Живой LXC 164 — только по команде пользователя.
+
 ## Персоны: досье людей и организаций, адресная книга и синхронизация — 2026-11-09
 
 Спека `docs/superpowers/specs/2026-11-08-persons-design.md` (утверждена

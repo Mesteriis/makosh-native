@@ -19,8 +19,9 @@ struct OSINTSettingsSection: View {
 
     private var settings: OSINTSettings? { osint.snapshot?.settings }
     private var serviceAuthFailed: Bool {
-        if case .serviceAuthFailed = osint.snapshot?.lastFailure { return true }
-        return false
+        guard let settings else { return false }
+        return OSINTSettingsRules.needsServiceUser(
+            settings: settings, lastFailure: osint.snapshot?.lastFailure, lastInstall: osint.snapshot?.lastInstall)
     }
 
     var body: some View {
@@ -155,6 +156,8 @@ struct OSINTSettingsSection: View {
             }
             Text("Служебный пользователь flowsint: \(settings.serviceEmail). Веб-интерфейс открывается через SSH-туннель.").font(.caption)
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(OSINTDialogRules.responsibility).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("persons.osint.responsibility")
         }
     }
 

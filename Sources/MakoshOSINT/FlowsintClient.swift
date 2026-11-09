@@ -19,10 +19,17 @@ public final class FlowsintClient: FlowsintAPI, Sendable {
 
     // MARK: FlowsintAPI
 
+    /// nginx answers `/health` itself (plain text) and proxies only `/api/…`: the API is up when a request
+    /// under `/api/` gets any application reply (2xx or a 4xx such as 401), not a gateway error.
     public func health() async throws -> Bool {
-        let (data, response) = try await perform(.get, "/health", stage: "health", authorized: false)
-        guard response.statusCode == 200 else { return false }
-        return (try? Self.decode([String: JSONValue].self, data, stage: "health"))?["status"]?.stringValue == "ok"
+        let (_, nginx) = try await perform(.get, "/health", stage: "health", authorized: false)
+        guard nginx.statusCode == 200 else { return false }
+        do {
+            _ = try await perform(.get, "/api/types", stage: "health", authorized: false, accepting: [400, 401, 403, 404, 405])
+            return true
+        } catch {
+            return false
+        }
     }
 
     public func register(email: String, password: String) async throws -> Bool {

@@ -277,4 +277,39 @@ final class OSINTServiceReconcileTests: XCTestCase {
         let remote = try await h.api.sketch(id: link!.sketchID)
         XCTAssertNil(remote)
     }
+
+    func testDeletedOSINTDataIsNotReenrichedAutomatically() async throws {
+        let clock = Box<Date>(Date(timeIntervalSince1970: 1_800_000_000))
+        let h = try await harness(clock: clock)
+        let person = try bookPerson(h, "Иван", email: "ivan@example.test")
+        await h.service.reconcile(autoSources: [book])
+        await h.service.settled()
+        let runs = try await h.store.runs(open: false)
+        XCTAssertEqual(runs.count, 1)
+        try await h.service.deleteOSINTData(personID: person)
+        clock.value = clock.value.addingTimeInterval(2 * 86400)
+        await h.service.reconcile(autoSources: [book])
+        await h.service.settled()
+        let after = try await h.store.runs(open: false)
+        XCTAssertEqual(after.count, 1, "the user's deletion is not undone by the next pass")
+    }
+
+    func testStoreErrorDoesNotDeleteSketch() async throws {
+        let h = try await harness()
+        let person = try bookPerson(h, "Иван", email: "ivan@example.test")
+        await h.service.reconcile(autoSources: [book])
+        await h.service.settled()
+        let sketchLink = try await h.store.sketch(personID: person)
+        let sketch = try XCTUnwrap(sketchLink)
+        try h.db.execute("ALTER TABLE contact_records RENAME TO contact_records_hidden")
+        await h.service.reconcile(autoSources: [book])
+        await h.service.settled()
+        try h.db.execute("ALTER TABLE contact_records_hidden RENAME TO contact_records")
+        let kept = try await h.store.sketch(personID: person)
+        XCTAssertNil(kept?.deletedAt, "a database error is not a missing person")
+        let remote = try await h.api.sketch(id: sketch.sketchID)
+        XCTAssertNotNil(remote)
+        let deletions = try await h.store.attempts(open: false).filter { $0.kind == .deleteSketch }
+        XCTAssertTrue(deletions.isEmpty)
+    }
 }

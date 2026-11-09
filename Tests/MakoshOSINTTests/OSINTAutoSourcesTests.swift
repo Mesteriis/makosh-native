@@ -24,8 +24,17 @@ final class OSINTAutoSourcesTests: XCTestCase {
             OSINTAutoSources.sources(flaggedBookSources: flagged, settings: settings(enabled: true, trusted: true, installed: false)), [])
         XCTAssertEqual(
             OSINTAutoSources.sources(flaggedBookSources: flagged, settings: settings(enabled: true, trusted: true, installed: true)),
-            flagged)
+            [flagged[0]])
         XCTAssertEqual(
             OSINTAutoSources.sources(flaggedBookSources: [], settings: settings(enabled: true, trusted: true, installed: true)), [])
+    }
+
+    func testTelegramBooksNeverEnrichAutomatically() {
+        // A Telegram account is a book and a conversation source at once; chat partners share its identity.
+        let telegram = [ImportSource(service: "telegram", accountID: "123")]
+        XCTAssertEqual(
+            OSINTAutoSources.sources(flaggedBookSources: telegram, settings: settings(enabled: true, trusted: true, installed: true)), [])
+        XCTAssertFalse(OSINTAutoSources.allowsAutomaticEnrichment(service: "telegram"))
+        XCTAssertTrue(OSINTAutoSources.allowsAutomaticEnrichment(service: "carddav"))
     }
 }

@@ -32,6 +32,10 @@ public enum OSINTDialogRules {
         return !inputs.isEmpty && enrichers.contains { types.contains($0.inputType) }
     }
 
+    /// Shown with every launch and in the settings: the third parties act on the user's request, under their terms.
+    public static let responsibility =
+        "Ответственность за законность запросов к сторонним сервисам и соблюдение их условий лежит на вас."
+
     /// What leaves the Mac: the values go to the user's server, and from there to the named third parties.
     public static func disclosure(host: String, enrichers: Set<OSINTEnricher>) -> String {
         var services: [String] = []
@@ -53,6 +57,6 @@ public enum OSINTDialogRules {
         } else {
             text += ", а с него — в сторонние сервисы: " + services.joined(separator: ", ") + "."
         }
-        return text + " Находки появятся в карточке как предложения, пока вы их не примете."
+        return text + " Находки появятся в карточке как предложения, пока вы их не примете. " + responsibility
     }
 }

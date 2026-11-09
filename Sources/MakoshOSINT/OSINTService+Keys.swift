@@ -16,18 +16,21 @@ extension OSINTService {
     /// Stores the key in the Keychain and in the server's vault, replacing an older key of the same name.
     public func setKey(name: String, value: String) async throws {
         guard OSINTEnricher.knownKeys.contains(name) else { throw OSINTFailure.invalidInput("key name") }
-        try await vault.saveKey(name: name, value)
         let link = try await ensureConnected(requireInstalled: false)
         for existing in try await link.api.keys() where existing.name == name {
-            await keyAttempt(
+            // The old key must be gone for certain before a new one appears: two keys of one name is an anti-goal.
+            let outcome = await keyAttempt(
                 kind: .deleteKey, name: name,
                 {
                     try await link.api.deleteKey(id: existing.id)
                     return existing.id
                 })
+            guard outcome.state == .confirmed else { throw outcome.failure ?? OSINTFailure.unknownOutcome(stage: "deleteKey") }
         }
-        await keyAttempt(kind: .createKey, name: name, { try await link.api.createKey(name: name, value: value).id })
+        try await vault.saveKey(name: name, value)
+        let created = await keyAttempt(kind: .createKey, name: name, { try await link.api.createKey(name: name, value: value).id })
         serverKeyNames = Set(try await link.api.keys().map(\.name))
+        if created.state != .confirmed { throw created.failure ?? OSINTFailure.unknownOutcome(stage: "createKey") }
     }
 
     public func removeKey(name: String) async throws {
@@ -44,7 +47,10 @@ extension OSINTService {
         serverKeyNames = Set(try await link.api.keys().map(\.name))
     }
 
-    private func keyAttempt(kind: OSINTAttemptKind, name: String, _ call: () async throws -> String) async {
+    @discardableResult
+    private func keyAttempt(
+        kind: OSINTAttemptKind, name: String, _ call: () async throws -> String
+    ) async -> (state: OSINTAttemptState, failure: OSINTFailure?) {
         var attempt = OSINTAttempt(kind: kind, payload: OSINTAttemptPayload(keyName: name), createdAt: now())
         try? await store.saveAttempt(attempt)
         attempt.state = .sent
@@ -59,6 +65,7 @@ extension OSINTService {
             attempt.failure = failure
         }
         try? await store.saveAttempt(attempt)
+        return (attempt.state, attempt.failure)
     }
 
     // MARK: Proposals

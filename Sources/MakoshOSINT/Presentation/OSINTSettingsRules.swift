@@ -26,6 +26,14 @@ public enum OSINTSettingsRules {
         return sha == pin.sha ? "Переустановить \(pin.tag)" : "Обновить до \(pin.tag)"
     }
 
+    /// The service-user controls: after the server refused the service password, or when the last install
+    /// of a not yet installed server stopped at `register` for that reason.
+    public static func needsServiceUser(settings: OSINTSettings, lastFailure: OSINTFailure?, lastInstall: OSINTInstall?) -> Bool {
+        if lastFailure == .serviceAuthFailed { return true }
+        guard settings.installedSHA == nil, let install = lastInstall else { return false }
+        return install.steps.contains { $0.kind == .register && $0.failure == .serviceAuthFailed }
+    }
+
     public static func keyState(name: String, serverKeyNames: Set<String>) -> String {
         serverKeyNames.contains(name) ? "задан" : "не задан"
     }

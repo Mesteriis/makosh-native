@@ -123,4 +123,19 @@ final class OSINTServiceKeysTests: XCTestCase {
         let root = try await h.service.webRootURL()
         XCTAssertEqual(root?.host, "127.0.0.1")
     }
+
+    func testSetKeyStopsWhenDeleteIsUnknown() async throws {
+        let h = try await harness()
+        try await h.service.setKey(name: "WHOXY_API_KEY", value: "first")
+        await h.api.failNext(.unknownOutcome(stage: "deleteKey"), stage: "deleteKey")
+        do {
+            try await h.service.setKey(name: "WHOXY_API_KEY", value: "second")
+            XCTFail("an unknown delete must stop the replacement")
+        } catch { XCTAssertEqual(error as? OSINTFailure, .unknownOutcome(stage: "deleteKey"), "\(error)") }
+        let attempts = try await h.store.attempts(open: false)
+        XCTAssertEqual(attempts.filter { $0.kind == .createKey }.count, 1, "no second key while the delete is unsettled")
+        let open = try await h.store.attempts(open: true)
+        XCTAssertEqual(open.map(\.kind), [.deleteKey])
+        XCTAssertEqual(open.first?.state, .unknown)
+    }
 }

@@ -191,4 +191,38 @@ final class FlowsintInstallerTests: XCTestCase {
         let settings = try await h.store.settings()
         XCTAssertNil(settings.installedSHA, "record did not run")
     }
+
+    func testOverrideBindsAppToLoopback() async throws {
+        let h = try await harness()
+        let install = await h.run()
+        XCTAssertEqual(install.state, .completed, "\(install.steps)")
+        let override = try XCTUnwrap(h.state.overrideText)
+        XCTAssertTrue(override.contains("!override"), override)
+        XCTAssertTrue(override.contains("\"127.0.0.1:5173:8080\""), override)
+    }
+
+    func testUpdateRedeploysNewImages() async throws {
+        let h = try await harness()
+        let first = await h.run()
+        XCTAssertEqual(first.state, .completed)
+        let pin = FlowsintPin.current
+        let next = FlowsintPin(
+            repository: pin.repository, tag: "v9.9.9", sha: String(repeating: "1", count: 40), baseImages: pin.baseImages)
+        h.state.cloneSHA = next.sha
+        h.state.commands = []
+        let update = await FlowsintInstaller(
+            session: h.session, api: h.api, vault: h.vault, store: h.store, pin: next, healthTimeout: .seconds(10),
+            healthPoll: .milliseconds(50)
+        ).run { _ in }
+        XCTAssertEqual(update.state, .completed, "\(update.steps)")
+        let states = states(update)
+        XCTAssertEqual(states[.checkout], .done)
+        XCTAssertEqual(states[.build], .done)
+        XCTAssertEqual(states[.up], .done, "new images must be started, not left built")
+        XCTAssertTrue(h.state.commands.contains { $0.contains(" up -d") })
+        XCTAssertEqual(h.state.runningSHA, next.sha)
+        let settings = try await h.store.settings()
+        XCTAssertEqual(settings.installedSHA, next.sha)
+        XCTAssertEqual(h.state.envWrites, 1)
+    }
 }

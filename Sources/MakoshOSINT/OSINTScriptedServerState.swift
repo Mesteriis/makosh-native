@@ -17,6 +17,8 @@ public final class OSINTScriptedServerState: @unchecked Sendable {
     public var lastEnv: String?
     public var overrideText: String?
     public var builtSHA: String?
+    /// The images the running containers were started from (`compose up -d`).
+    public var runningSHA: String?
     public var up = false
     public var commands: [String] = []
     /// Runs after `compose up`: the QA flips its synthetic flowsint to installed here.
@@ -73,8 +75,20 @@ public final class OSINTScriptedServerState: @unchecked Sendable {
                 if command.contains(" pull ") { return ok("pulled\n") }
                 if command.contains(" up -d") {
                     up = true
+                    runningSHA = builtSHA
                     onUp?()
                     return ok("started\n")
+                }
+                if command.hasSuffix(" ps --format json") {
+                    guard up, let sha = runningSHA else { return ok("") }
+                    let images = [
+                        "postgres": "postgres:15-alpine", "redis": "redis:7-alpine", "neo4j": "neo4j:5", "api": "flowsint-api:\(sha)",
+                        "celery": "flowsint-api:\(sha)", "app": "flowsint-app:\(sha)",
+                    ]
+                    let rows = FlowsintInstaller.services.map { name in
+                        "{\"Service\":\"\(name)\",\"State\":\"running\",\"Health\":\"\(name == "app" ? "" : "healthy")\",\"Image\":\"\(images[name]!)\"}"
+                    }
+                    return ok(rows.joined(separator: "\n") + "\n")
                 }
             }
             return fail(127, "unknown command\n")

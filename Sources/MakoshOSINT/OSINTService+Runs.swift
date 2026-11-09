@@ -165,9 +165,16 @@ extension OSINTService {
             return
         }
 
-        // 1. The person's sketch.
+        // 1. The person's sketch. A storage error is not a missing sketch: a second sketch would be an anti-goal.
         let sketchID: String
-        if let existing = try? await store.sketch(personID: run.personID), existing.deletedAt == nil {
+        let existingLink: OSINTSketchLink?
+        do {
+            existingLink = try await store.sketch(personID: run.personID)
+        } catch {
+            await finish(run, state: .failed, failure: .storage("sketch"))
+            return
+        }
+        if let existing = existingLink, existing.deletedAt == nil {
             sketchID = existing.sketchID
         } else {
             guard let investigation = settings.investigationID else {
@@ -262,13 +269,13 @@ extension OSINTService {
         }
         for item in pending { await settle(attemptID: item.attemptID, state: .unknown, failure: .unknownOutcome(stage: "scan")) }
 
-        // 6. What the graph now holds, as proposals.
+        // 6. What the graph now holds, as proposals: only what hangs off this run's own input nodes.
         do {
             let graph = try await link.api.graph(sketchID: sketchID)
             if let person = try? persons.person(id: run.personID), person.isActive {
                 let mapped = OSINTGraphMapping.observations(
-                    graph: graph, inputNodeIDs: Set(nodeIDs.values), sketchID: sketchID, serverID: settings.serverID, person: person,
-                    now: now())
+                    graph: graph, inputNodeIDs: Set(inputs.compactMap { nodeIDs[$0.normalized] }), sketchID: sketchID,
+                    serverID: settings.serverID, person: person, now: now())
                 run.found = (try? persons.addProposedObservations(personID: run.personID, mapped.observations)) ?? 0
                 run.truncated = mapped.truncated
             }

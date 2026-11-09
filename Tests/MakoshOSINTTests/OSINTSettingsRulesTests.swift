@@ -60,4 +60,17 @@ final class OSINTSettingsRulesTests: XCTestCase {
         XCTAssertEqual(OSINTSettingsRules.keyState(name: "HIBP_API_KEY", serverKeyNames: ["HIBP_API_KEY"]), "задан")
         XCTAssertEqual(OSINTSettingsRules.keyState(name: "WHOXY_API_KEY", serverKeyNames: ["HIBP_API_KEY"]), "не задан")
     }
+
+    func testNeedsServiceUserAfterFailedRegister() {
+        var settings = configured()
+        XCTAssertFalse(OSINTSettingsRules.needsServiceUser(settings: settings, lastFailure: nil, lastInstall: nil))
+        XCTAssertTrue(OSINTSettingsRules.needsServiceUser(settings: settings, lastFailure: .serviceAuthFailed, lastInstall: nil))
+        var install = OSINTInstall(state: .failed, targetTag: "v1.2.13", targetSHA: FlowsintPin.current.sha)
+        install.steps = [OSINTInstallStep(kind: .register, state: .failed, message: nil, failure: .serviceAuthFailed)]
+        XCTAssertTrue(OSINTSettingsRules.needsServiceUser(settings: settings, lastFailure: nil, lastInstall: install))
+        settings.installedSHA = FlowsintPin.current.sha
+        XCTAssertFalse(
+            OSINTSettingsRules.needsServiceUser(settings: settings, lastFailure: nil, lastInstall: install),
+            "an old failed install does not matter once installed")
+    }
 }

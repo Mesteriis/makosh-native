@@ -9,7 +9,11 @@ extension OSINTService {
         guard settings.hostKeyFingerprint != nil else { throw OSINTFailure.hostKeyMismatch }
         if requireInstalled, settings.installedSHA == nil { throw OSINTFailure.notInstalled }
         if let connection, await connection.session.isConnected { return connection }
-        return try await connect(settings) { _ in false }
+        if let connecting { return try await connecting.value }
+        let task = _Concurrency.Task { try await self.connect(settings) { _ in false } }
+        connecting = task
+        defer { connecting = nil }
+        return try await task.value
     }
 
     private func connect(_ settings: OSINTSettings, onUnknownHostKey: @escaping @Sendable (String) async -> Bool) async throws -> Connection
@@ -28,7 +32,13 @@ extension OSINTService {
     public func testConnection(onUnknownHostKey: @escaping @Sendable (String) async -> Bool) async throws -> OSINTConnectionReport {
         var settings = try await store.settings()
         guard !settings.host.isEmpty, !settings.login.isEmpty else { throw OSINTFailure.invalidInput("connection") }
-        let link = try await connect(settings, onUnknownHostKey: onUnknownHostKey)
+        // A live session to the trusted key is the check: tearing it down would turn running work into unknowns.
+        let link: Connection
+        if settings.hostKeyFingerprint != nil, let current = connection, await current.session.isConnected {
+            link = current
+        } else {
+            link = try await connect(settings, onUnknownHostKey: onUnknownHostKey)
+        }
         let fingerprint = await link.session.fingerprint ?? settings.hostKeyFingerprint ?? ""
         if settings.hostKeyFingerprint == nil {
             settings.hostKeyFingerprint = fingerprint

@@ -164,11 +164,12 @@ public actor FlowsintInstaller {
             }
             return .skipped(".env уже есть")
         }
+        let masterKey = try Self.randomBase64(32)
         let values = [
-            "AUTH_SECRET": Self.randomHex(32),
-            "MASTER_VAULT_KEY_V1": "base64:" + Self.randomBase64(32),
-            "NEO4J_PASSWORD": Self.randomAlphanumeric(24),
-            "POSTGRES_PASSWORD": Self.randomAlphanumeric(24),
+            "AUTH_SECRET": try Self.randomHex(32),
+            "MASTER_VAULT_KEY_V1": "base64:" + masterKey,
+            "NEO4J_PASSWORD": try Self.randomAlphanumeric(24),
+            "POSTGRES_PASSWORD": try Self.randomAlphanumeric(24),
         ]
         for name in Self.envNames { try await vault.saveEnvSecret(name: name, values[name]!) }
         let text = """
@@ -209,6 +210,7 @@ public actor FlowsintInstaller {
             build:
               context: ./flowsint-app
               dockerfile: Dockerfile
+            ports: !override ["127.0.0.1:5173:8080"]
 
         """
     }
@@ -239,16 +241,64 @@ public actor FlowsintInstaller {
         return .done("собраны")
     }
 
+    /// One row of `docker compose ps --format json`.
+    struct ComposeService: Decodable {
+        var Service: String
+        var State: String
+        var Health: String?
+        var Image: String?
+    }
+
+    static let services = ["postgres", "redis", "neo4j", "api", "celery", "app"]
+
+    /// What compose runs now; nil when the command fails or prints nothing parseable.
+    private func composeServices() async throws -> [ComposeService]? {
+        let result = try await session.exec("\(Self.compose) ps --format json")
+        guard result.status == 0 else { return nil }
+        let text = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return [] }
+        if let array = try? JSONDecoder().decode([ComposeService].self, from: Data(text.utf8)) { return array }
+        var rows: [ComposeService] = []
+        for line in text.split(separator: "\n") {
+            guard let row = try? JSONDecoder().decode(ComposeService.self, from: Data(line.utf8)) else { return nil }
+            rows.append(row)
+        }
+        return rows
+    }
+
+    /// Every service running and healthy, and the application services on the pinned images.
+    private func stackRunsPinnedImages() async -> Bool {
+        guard let services = try? await composeServices(), !services.isEmpty else { return false }
+        for name in Self.services {
+            guard let row = services.first(where: { $0.Service == name }), row.State == "running",
+                (row.Health ?? "").isEmpty || row.Health == "healthy"
+            else { return false }
+            let expected: String? =
+                switch name {
+                case "api", "celery": "flowsint-api:\(pin.sha)"
+                case "app": "flowsint-app:\(pin.sha)"
+                default: nil
+                }
+            if let expected, row.Image != expected { return false }
+        }
+        return true
+    }
+
+    private func healthy() async -> Bool {
+        guard await stackRunsPinnedImages() else { return false }
+        return (try? await api.health()) == true
+    }
+
     private func up() async throws -> Outcome {
-        if (try? await api.health()) == true { return .skipped("уже работает") }
+        if await healthy() { return .skipped("уже работает") }
         let result = try await session.exec("\(Self.compose) up -d --remove-orphans", timeout: .seconds(600))
         guard result.status == 0 else { throw StepFailure(failure: .installFailed(stage: "up"), message: "compose up не удался") }
         let deadline = ContinuousClock.now + healthTimeout
         while ContinuousClock.now < deadline {
-            if (try? await api.health()) == true { return .done("работает") }
+            if await healthy() { return .done("работает") }
             try? await Task.sleep(for: healthPoll)
         }
-        throw StepFailure(failure: .healthTimeout, message: "api не ответил вовремя")
+        throw StepFailure(failure: .healthTimeout, message: "службы не ответили вовремя")
     }
 
     private func register() async throws -> Outcome {
@@ -261,7 +311,7 @@ public actor FlowsintInstaller {
                 throw StepFailure(failure: .serviceAuthFailed, message: "пароль служебного пользователя не подходит")
             }
         }
-        let password = Self.randomAlphanumeric(32)
+        let password = try Self.randomAlphanumeric(32)
         try await vault.saveServicePassword(password)
         if try await api.register(email: settings.serviceEmail, password: password) { return .done("зарегистрирован") }
         do {
@@ -304,15 +354,22 @@ public actor FlowsintInstaller {
 
     // MARK: Random values
 
-    private static func randomBytes(_ count: Int) -> [UInt8] {
+    private static func randomBytes(_ count: Int) throws -> [UInt8] {
         var bytes = [UInt8](repeating: 0, count: count)
-        _ = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
+        guard SecRandomCopyBytes(kSecRandomDefault, count, &bytes) == errSecSuccess else {
+            throw StepFailure(failure: .installFailed(stage: "env"), message: "нет случайных байт")
+        }
         return bytes
     }
-    static func randomHex(_ count: Int) -> String { randomBytes(count).map { String(format: "%02x", $0) }.joined() }
-    static func randomBase64(_ count: Int) -> String { Data(randomBytes(count)).base64EncodedString() }
-    static func randomAlphanumeric(_ length: Int) -> String {
+    static func randomHex(_ count: Int) throws -> String { try randomBytes(count).map { String(format: "%02x", $0) }.joined() }
+    static func randomBase64(_ count: Int) throws -> String { try Data(randomBytes(count)).base64EncodedString() }
+    static func randomAlphanumeric(_ length: Int) throws -> String {
         let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
-        return String(randomBytes(length).map { alphabet[Int($0) % alphabet.count] })
+        // Rejection sampling keeps every character equally likely.
+        var result = ""
+        while result.count < length {
+            for byte in try randomBytes(length) where byte < 248 && result.count < length { result.append(alphabet[Int(byte) % 62]) }
+        }
+        return result
     }
 }

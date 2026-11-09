@@ -41,6 +41,8 @@ public actor OSINTService {
         var api: any FlowsintAPI
     }
     var connection: Connection?
+    /// The connect in flight, shared by concurrent callers so one drop opens one session.
+    var connecting: _Concurrency.Task<Connection, Error>?
     var installing = false
     var lastFailure: OSINTFailure?
     /// Inputs of queued runs: in memory only, never in a row.
@@ -88,6 +90,13 @@ public actor OSINTService {
     public func open() async throws {
         try await store.open()
         try await store.markSentAsUnknownOnOpen()
+        // A queued run's inputs lived only in memory: after a restart it cannot start.
+        for var run in try await store.runs(open: true) where run.state == .queued && pendingInputs[run.id] == nil {
+            run.state = .failed
+            run.failure = .unknownOutcome(stage: "restart")
+            run.finishedAt = now()
+            try await store.saveRun(run)
+        }
         var settings = try await store.settings()
         do {
             try await vault.ensureHMACKey()
@@ -128,7 +137,20 @@ public actor OSINTService {
         let cleanLogin = login.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanHost.isEmpty, !cleanLogin.isEmpty, (1...65535).contains(port) else { throw OSINTFailure.invalidInput("connection") }
         if cleanHost != settings.host || cleanLogin != settings.login || port != settings.port {
-            if cleanHost != settings.host || cleanLogin != settings.login { settings.hostKeyFingerprint = nil }
+            if cleanHost != settings.host || cleanLogin != settings.login {
+                // Another server: its key is unknown, nothing is installed there yet, and the sketches of the old
+                // server mean nothing to it. The attempt journal stays.
+                settings.hostKeyFingerprint = nil
+                settings.installedSHA = nil
+                settings.installedTag = nil
+                settings.installedAt = nil
+                settings.imageIDs = [:]
+                settings.investigationID = nil
+                settings.envBackupAvailable = true
+                settings.serverID = UUID()
+                serverKeyNames = []
+                try await store.removeAllSketches()
+            }
             await disconnect()
         }
         settings.host = cleanHost
@@ -159,8 +181,8 @@ public actor OSINTService {
         let parts = settings.serviceEmail.split(separator: "@", maxSplits: 1).map(String.init)
         let local = (parts.first ?? "makosh-osint").split(separator: "+").first.map(String.init) ?? "makosh-osint"
         let domain = parts.count > 1 ? parts[1] : "sh-inc.dev"
-        let email = "\(local)+\(FlowsintInstaller.randomHex(3))@\(domain)"
-        let password = FlowsintInstaller.randomAlphanumeric(32)
+        let email = "\(local)+\(try FlowsintInstaller.randomHex(3))@\(domain)"
+        let password = try FlowsintInstaller.randomAlphanumeric(32)
         guard try await link.api.register(email: email, password: password) else {
             throw OSINTFailure.apiRejected(code: 409, stage: "register")
         }

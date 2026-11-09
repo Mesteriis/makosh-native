@@ -79,4 +79,10 @@ final class OSINTDialogRulesTests: XCTestCase {
         XCTAssertTrue(phones.contains("Whoxy"))
         XCTAssertTrue(phones.contains("HudsonRock"))
     }
+
+    func testDisclosureCarriesResponsibilityLine() {
+        let text = OSINTDialogRules.disclosure(host: "10.34.10.64", enrichers: [.emailToGravatar])
+        XCTAssertTrue(text.contains("Ответственность"), text)
+        XCTAssertTrue(OSINTDialogRules.responsibility.contains("условий"), OSINTDialogRules.responsibility)
+    }
 }

@@ -267,4 +267,32 @@ final class OSINTServiceRunTests: XCTestCase {
             XCTAssertFalse(text.contains("Каренина"), table)
         }
     }
+
+    func testForeignNodesInSketchAreNotInputs() async throws {
+        let stranger = FlowsintSynthetic.Finding(
+            enricher: .emailToGravatar, inputType: .email, inputValue: "stranger@example.test", outputType: .gravatar,
+            outputValue: "hash-stranger",
+            properties: ["src": .string("https://www.gravatar.com/avatar/hash-stranger"), "exists": .bool(true)],
+            edgeLabel: "HAS_GRAVATAR")
+        let h = try await OSINTServiceHarness(
+            database: try osintDatabase(), findings: Self.findings() + [stranger], scanTimeout: .seconds(10))
+        harnesses.append(h)
+        try await h.installed()
+        let id = try anna(h)
+        _ = try await h.service.enrich(
+            personID: id, enrichers: [.usernameToMaigret], inputs: [OSINTInput(type: .username, value: "anna_k")])
+        await h.service.settled()
+        let sketchLink = try await h.store.sketch(personID: id)
+        let sketch = try XCTUnwrap(sketchLink)
+        // The user grows the sketch in flowsint's own interface: a stranger's address and its avatar.
+        let node = try await h.api.addNode(sketchID: sketch.sketchID, type: .email, value: "stranger@example.test")
+        _ = try await h.api.launch(enricher: .emailToGravatar, sketchID: sketch.sketchID, nodeIDs: [node])
+        _ = try await h.api.graph(sketchID: sketch.sketchID)
+        _ = try await h.service.enrich(
+            personID: id, enrichers: [.usernameToMaigret], inputs: [OSINTInput(type: .username, value: "anna_k")])
+        await h.service.settled()
+        let person = try XCTUnwrap(h.persons.person(id: id))
+        XCTAssertFalse(person.observations.contains { $0.field == "avatar" }, "a node nobody linked to Anna's inputs is not hers")
+        XCTAssertTrue(person.observations.contains { $0.field == "social.github" })
+    }
 }

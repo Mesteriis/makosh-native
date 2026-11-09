@@ -248,4 +248,26 @@ final class FlowsintClientTests: XCTestCase {
         } catch { XCTAssertEqual(error as? OSINTFailure, .serviceAuthFailed, "\(error)") }
         XCTAssertTrue(StubURLProtocol.requests.isEmpty)
     }
+
+    func testHealthNeedsNginxAndAPIBehindIt() async throws {
+        // nginx answers /health itself with plain text; only a reply from /api/… proves the API behind it.
+        StubURLProtocol.install { request in
+            switch request.url!.path {
+            case "/health": return .init(body: Data("healthy\n".utf8))
+            case "/api/types": return .init(status: 401)
+            default: return .init(status: 404)
+            }
+        }
+        let up = try await client().health()
+        XCTAssertTrue(up)
+        XCTAssertEqual(StubURLProtocol.requests.map(\.url!.path), ["/health", "/api/types"])
+        StubURLProtocol.install { request in
+            request.url!.path == "/health" ? .init(body: Data("healthy\n".utf8)) : .init(status: 502)
+        }
+        let apiDown = try await client().health()
+        XCTAssertFalse(apiDown, "502 from nginx means the API is not up")
+        StubURLProtocol.install { _ in .init(error: URLError(.cannotConnectToHost)) }
+        let nginxDown = (try? await client().health()) ?? false
+        XCTAssertFalse(nginxDown)
+    }
 }

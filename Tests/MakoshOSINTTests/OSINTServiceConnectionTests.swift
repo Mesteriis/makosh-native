@@ -161,4 +161,57 @@ final class OSINTServiceConnectionTests: XCTestCase {
         let password = try await h.vault.servicePassword()
         XCTAssertEqual(password?.count, 32)
     }
+
+    func testChangedHostForgetsInstallation() async throws {
+        let h = try await harness()
+        try await h.installed()
+        let before = try await h.service.settings()
+        try await h.store.saveSketch(OSINTSketchLink(personID: UUID(), sketchID: "sk-old", createdAt: Date()))
+        try await h.service.saveConnection(host: "10.0.0.9", port: h.endpoint.port, login: "makosh", password: nil)
+        let after = try await h.service.settings()
+        XCTAssertNil(after.hostKeyFingerprint)
+        XCTAssertNil(after.installedSHA)
+        XCTAssertNil(after.installedTag)
+        XCTAssertNil(after.investigationID)
+        XCTAssertTrue(after.imageIDs.isEmpty)
+        XCTAssertNotEqual(after.serverID, before.serverID, "another server gets another identity")
+        let sketches = try await h.store.sketches()
+        XCTAssertTrue(sketches.isEmpty, "sketch links of the old server mean nothing to the new one; the journal stays")
+        let installs = try await h.store.installs()
+        XCTAssertFalse(installs.isEmpty, "the history of the old server stays")
+    }
+
+    func testTestConnectionKeepsLiveSession() async throws {
+        let h = try await harness()
+        try await h.installed()
+        let before = await h.service.connection?.session
+        XCTAssertNotNil(before)
+        try await h.trust()
+        let after = await h.service.connection?.session
+        XCTAssertTrue(before === after, "checking the connection does not tear down a live session")
+    }
+
+    func testConcurrentEnsureConnectedSharesOneSession() async throws {
+        let h = try await harness()
+        try await h.installed()
+        await h.service.disconnect()
+        let attempts = await h.server.authenticationAttempts
+        async let first = h.service.ensureConnected()
+        async let second = h.service.ensureConnected()
+        let (a, b) = try await (first, second)
+        XCTAssertTrue(a.session === b.session)
+        let after = await h.server.authenticationAttempts
+        XCTAssertEqual(after, attempts + 1, "one connect, not two")
+    }
+
+    func testOpenFailsQueuedRunsWithoutInputs() async throws {
+        let h = try await harness()
+        try await h.installed()
+        let run = OSINTRun(personID: UUID(), trigger: .manual, enrichers: [.emailToGravatar])
+        try await h.store.saveRun(run)
+        try await h.service.open()
+        let after = try await h.store.run(id: run.id)
+        XCTAssertEqual(after?.state, .failed)
+        XCTAssertEqual(after?.failure, .unknownOutcome(stage: "restart"))
+    }
 }

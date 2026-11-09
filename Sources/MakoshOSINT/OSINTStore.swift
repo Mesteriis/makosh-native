@@ -76,6 +76,11 @@ public actor OSINTStore {
         }
     }
 
+    /// Forgets every sketch link (a server change): the attempts journal is untouched.
+    public func removeAllSketches() throws {
+        _ = try execute("DELETE FROM \(t("persons_osint_sketches"))")
+    }
+
     public func sketches() throws -> [OSINTSketchLink] {
         try query("SELECT data FROM \(t("persons_osint_sketches")) ORDER BY data->>'createdAt', person_id").map {
             try decode(OSINTSketchLink.self, $0[0])

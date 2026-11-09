@@ -103,7 +103,10 @@ extension OSINTService {
             let person = try? persons.person(id: run.personID), person.isActive,
             let graph = try? await link.api.graph(sketchID: sketch.sketchID)
         {
-            let inputs = Set(attempts.filter { $0.kind == .addNode && $0.state == .confirmed }.compactMap { $0.response?.nodeID })
+            // The run's inputs: the nodes it launched from, and the nodes it added.
+            let launched = attempts.filter { $0.kind == .launch }.compactMap { $0.payload.inputNodeID }
+            let added = attempts.filter { $0.kind == .addNode && $0.state == .confirmed }.compactMap { $0.response?.nodeID }
+            let inputs = Set(launched + added)
             let mapped = OSINTGraphMapping.observations(
                 graph: graph, inputNodeIDs: inputs, sketchID: sketch.sketchID, serverID: settings.serverID, person: person, now: now())
             run.found = (try? persons.addProposedObservations(personID: run.personID, mapped.observations)) ?? 0
@@ -171,7 +174,9 @@ extension OSINTService {
         guard let links = try? await store.sketches() else { return }
         let open = (try? await store.attempts(open: true)) ?? []
         for sketch in links where sketch.deletedAt == nil {
-            let person = try? persons.person(id: sketch.personID)
+            // A storage error is not a missing person: the sketch stays until the dossier answers.
+            let person: Person?
+            do { person = try persons.person(id: sketch.personID) } catch { continue }
             guard person == nil || person?.deletedAt != nil else { continue }
             guard !open.contains(where: { $0.kind == .deleteSketch && $0.personID == sketch.personID }) else { continue }
             await deleteSketch(sketch, link: link)
@@ -209,7 +214,11 @@ extension OSINTService {
             guard used < settings.automaticRunsPerHour else { break }
             guard person.kind == .person, person.isActive else { continue }
             guard let identity = person.identities.first(where: { allowed.contains($0.service + "/" + $0.accountID) }) else { continue }
-            if let sketch = try? await store.sketch(personID: person.id), sketch.deletedAt == nil { continue }
+            // Any sketch row, deleted too, means the person was enriched once or the user removed the data:
+            // automatic enrichment never repeats it. A storage error skips the person.
+            do {
+                if try await store.sketch(personID: person.id) != nil { continue }
+            } catch { continue }
             if let last = try? await store.lastRun(personID: person.id), last.createdAt > dayAgo { continue }
             guard let inputs = try? await inputs(personID: person.id), !inputs.isEmpty else { continue }
             let source = ImportSource(service: identity.service, accountID: identity.accountID)

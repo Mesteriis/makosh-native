@@ -76,7 +76,16 @@ final class FlowsintClientTests: XCTestCase {
         StubURLProtocol.install { request in
             switch request.url!.path {
             case "/api/auth/token": return .init(body: self.json(["access_token": "t", "token_type": "bearer"]))
-            case "/api/sketches/sk-1/nodes/add": return .init(body: self.json(["status": "node added", "id": "4:abc:17"]))
+            case "/api/sketches/sk-1/nodes/add":
+                // flowsint v1.2.13 answers `{"status": "node added", "node": {…GraphNode with its new id…}}`.
+                return .init(
+                    body: self.json([
+                        "status": "node added",
+                        "node": [
+                            "id": "4:abc:17", "nodeLabel": "anna@example.test", "nodeType": "Email", "nodeMetadata": [:],
+                            "nodeProperties": [:],
+                        ],
+                    ]))
             default: return .init(status: 404)
             }
         }

@@ -93,7 +93,10 @@ public final class FlowsintClient: FlowsintAPI, Sendable {
         ]
         let (data, _) = try await perform(.post, "/api/sketches/\(sketchID)/nodes/add", json: node, stage: "addNode")
         let reply = try Self.decode([String: JSONValue].self, data, stage: "addNode")
-        guard let id = (reply["id"] ?? reply["node_id"] ?? reply["elementId"])?.stringValue, !id.isEmpty else {
+        // v1.2.13 returns `{"status": "node added", "node": {GraphNode}}`; older servers returned the id at the top.
+        var nested: JSONValue?
+        if case .object(let node)? = reply["node"] { nested = node["id"] }
+        guard let id = (nested ?? reply["id"] ?? reply["node_id"] ?? reply["elementId"])?.stringValue, !id.isEmpty else {
             throw OSINTFailure.invalidResponse(stage: "addNode")
         }
         return id

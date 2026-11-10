@@ -67,7 +67,13 @@ struct TeamsSyntheticPreview: View {
                     }
                     return value
                 }
-                configuration = value
+                // Seed the isolated worker before navigation can switch away from Teams.
+                await model.load(configuration: value)
+                if let failure = model.error, model.accounts.isEmpty {
+                    self.error = failure
+                } else {
+                    configuration = value
+                }
             } catch {
                 self.error =
                     "Teams QA требует явный --database-config и отдельные схемы qa_teams_ для приложения и архива. Другие сервисы не запускаются."

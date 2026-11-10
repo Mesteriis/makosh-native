@@ -772,5 +772,16 @@ import MakoshCore
                     date: now.addingTimeInterval(-Double(index + 1) * 3600), seen: index > 1, flagged: index == 2, text: row.3))
         }
         try await repository.saveLetters(letters)
+        try await repository.setSignature(accountID: account.id, text: "С уважением,\nАлексей · синтетическая почта")
+        try await repository.saveTemplate(
+            .init(
+                name: "Подтверждение получения", body: "Добрый день! Материалы получил, вернусь с ответом после просмотра."))
+        try await repository.saveTemplate(
+            .init(
+                name: "Перенос встречи и согласование нового времени",
+                body: "Добрый день! Предлагаю перенести встречу на завтра. Подскажите, какое время вам удобно."))
+        try await repository.saveIncomingRule(
+            .init(
+                accountID: account.id, field: .subject, value: "Сводка проекта", action: .label, label: "Синтетическая метка"))
     }
 }

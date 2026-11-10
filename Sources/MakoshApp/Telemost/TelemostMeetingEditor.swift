@@ -13,7 +13,7 @@ struct TelemostAddLinkView: View {
             Text("Ссылка сохраняется в выбранном каталоге. Добавление не открывает встречу и не проверяет доступ.").foregroundStyle(
                 .secondary)
             HStack {
-                Button("Отмена") { dismiss() }
+                Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Сохранить ссылку") {
                     Task {
@@ -21,8 +21,11 @@ struct TelemostAddLinkView: View {
                         if model.error == nil { dismiss() }
                     }
                 }.disabled(model.busy || (try? TelemostMeetingURL(text)) == nil)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
             }
         }.padding(24).frame(width: 540)
+            .buttonStyle(WorkspaceButtonStyle())
+            .background { WorkspaceBackdrop(intensity: 0.4) }
     }
 }
 struct TelemostCreateView: View {

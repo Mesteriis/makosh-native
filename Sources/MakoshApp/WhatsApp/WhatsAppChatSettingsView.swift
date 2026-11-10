@@ -23,8 +23,8 @@ struct WhatsAppChatSettingsView: View {
                     revision: avatarRevision, epoch: avatarEpoch, worker: worker, cache: avatarCache)
                 Text(chat.name).font(.title2.bold())
                 Spacer()
-                Button("Закрыть") { dismiss() }
-            }
+                Button("Закрыть") { dismiss() }.keyboardShortcut(.cancelAction)
+            }.padding(.horizontal, WorkspaceStyle.sectionGap)
             Form {
                 Section("Файлы") {
                     Toggle("Сохранять файлы в S3", isOn: $model.saving)
@@ -44,15 +44,6 @@ struct WhatsAppChatSettingsView: View {
                     Toggle("При открытом окне", isOn: $model.rule.foreground)
                 }
                 .disabled(model.busy || !model.settingsLoaded)
-                Section {
-                    Button("Сохранить настройки") {
-                        Task {
-                            if model.contextMatches(account: accountID, chat: chat.id) {
-                                await model.saveSettings()
-                            }
-                        }
-                    }.disabled(model.busy || !model.settingsLoaded).accessibilityIdentifier("whatsapp.settings.save")
-                }
                 Section(chat.group ? "Группа" : "Собеседник") {
                     Text(chat.id).font(.caption).textSelection(.enabled)
                     Button("Обновить информацию") {
@@ -119,11 +110,28 @@ struct WhatsAppChatSettingsView: View {
                         .foregroundStyle(.secondary)
                 }.disabled(model.busy)
             }.formStyle(WorkspaceFormStyle())
-            if let error = model.error { Text(error).foregroundStyle(.red) }
-            if let text = model.notice { Text(text).foregroundStyle(.secondary) }
-        }.padding(20).frame(minWidth: 520, minHeight: 600).task {
-            if model.contextMatches(account: accountID, chat: chat.id) { await model.loadSettings() }
-        }
+            HStack {
+                VStack(alignment: .leading) {
+                    if let error = model.error { Text(error).foregroundStyle(.red) }
+                    if let text = model.notice { Text(text).foregroundStyle(.secondary) }
+                }.font(.caption)
+                Spacer(minLength: 8)
+                Button("Сохранить настройки") {
+                    Task {
+                        if model.contextMatches(account: accountID, chat: chat.id) {
+                            await model.saveSettings()
+                        }
+                    }
+                }.disabled(model.busy || !model.settingsLoaded)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
+                    .accessibilityIdentifier("whatsapp.settings.save")
+            }.padding(.horizontal, WorkspaceStyle.sectionGap)
+        }.padding(.vertical, WorkspaceStyle.sectionGap).frame(minWidth: 520, minHeight: 600)
+            .buttonStyle(WorkspaceButtonStyle())
+            .background { WorkspaceBackdrop(intensity: 0.4) }
+            .task {
+                if model.contextMatches(account: accountID, chat: chat.id) { await model.loadSettings() }
+            }
     }
     private func command(_ action: WhatsAppAction) {
         Task { await model.perform(action, expectedAccount: accountID, expectedChat: chat.id) }

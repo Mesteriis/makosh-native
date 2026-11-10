@@ -75,10 +75,17 @@ struct FileStorageEditor: View {
 
     var body: some View {
         Form {
-            TextField("Название", text: $name).accessibilityIdentifier("files.storage.editor.name")
-            TextField("Адрес", text: $url, prompt: Text("https://doc.example.org")).accessibilityIdentifier("files.storage.editor.url")
-            SecureField(original == nil ? "Токен API" : "Новый токен (пусто — без изменений)", text: $token)
-                .accessibilityIdentifier("files.storage.editor.token")
+            Text(original == nil ? "Подключить Paperless" : "Настройки Paperless").font(.title3.bold())
+            field("Название") {
+                TextField("Название", text: $name).accessibilityIdentifier("files.storage.editor.name")
+            }
+            field("Адрес сервера") {
+                TextField("Адрес", text: $url, prompt: Text("https://doc.example.org")).accessibilityIdentifier("files.storage.editor.url")
+            }
+            field("Токен API") {
+                SecureField(original == nil ? "Токен API" : "Новый токен (пусто — без изменений)", text: $token)
+                    .accessibilityIdentifier("files.storage.editor.token")
+            }
             if let lists {
                 Section("По умолчанию при отправке") {
                     MakoshPicker("Тип документа", selection: $documentType) {
@@ -101,18 +108,27 @@ struct FileStorageEditor: View {
                     Button("Загрузить справочники") { Task { lists = await model.lists(for: original.id) } }
                 }
                 Spacer()
-                Button("Отмена") { dismiss() }
+                Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Сохранить", action: save).keyboardShortcut(.defaultAction).disabled(saving)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
                     .accessibilityIdentifier("files.storage.editor.save")
             }
         }
         .formStyle(WorkspaceFormStyle()).frame(width: 480)
+        .background { WorkspaceBackdrop(intensity: 0.4) }
         .onAppear {
             name = original?.name ?? "Paperless"
             url = original?.baseURL.absoluteString ?? ""
             documentType = original?.defaultDocumentType
             tags = Set(original?.defaultTags ?? [])
             if let original { lists = model.lists[original.id] }
+        }
+    }
+
+    private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            content().labelsHidden()
         }
     }
 

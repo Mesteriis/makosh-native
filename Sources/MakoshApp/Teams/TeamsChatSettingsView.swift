@@ -19,8 +19,8 @@ struct TeamsChatSettingsView: View {
             HStack {
                 Text(model.title).font(.title2.bold())
                 Spacer()
-                Button("Закрыть") { dismiss() }
-            }
+                Button("Закрыть") { dismiss() }.keyboardShortcut(.cancelAction)
+            }.padding(.horizontal, WorkspaceStyle.sectionGap)
             Form {
                 Section("Уведомления этой беседы") {
                     TeamsNotificationRuleFields(rule: $preferences.rule).disabled(!preferences.canSave)
@@ -52,15 +52,22 @@ struct TeamsChatSettingsView: View {
                         Text("В сохранённой переписке пока нет подтверждённого профиля человека.").foregroundStyle(.secondary)
                     }
                 }
-                Button("Сохранить настройки") { Task { await preferences.save(expectedScope: scope) } }.disabled(!preferences.canSave)
-                    .accessibilityIdentifier("teams.settings.save")
+            }.formStyle(WorkspaceFormStyle())
+            HStack {
                 if let notice = preferences.notice { Text(notice).font(.caption) }
                 if preferences.busy { ProgressView() }
-            }.formStyle(WorkspaceFormStyle())
-        }.padding(20).frame(width: 590, height: 580).task(id: scope) {
-            preferences.reset(scope)
-            await preferences.load(expectedScope: scope)
-        }
+                Spacer(minLength: 8)
+                Button("Сохранить настройки") { Task { await preferences.save(expectedScope: scope) } }.disabled(!preferences.canSave)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
+                    .accessibilityIdentifier("teams.settings.save")
+            }.padding(.horizontal, WorkspaceStyle.sectionGap)
+        }.padding(.vertical, WorkspaceStyle.sectionGap).frame(width: 590, height: 580)
+            .buttonStyle(WorkspaceButtonStyle())
+            .background { WorkspaceBackdrop(intensity: 0.4) }
+            .task(id: scope) {
+                preferences.reset(scope)
+                await preferences.load(expectedScope: scope)
+            }
     }
     private var people: [TeamsPerson] {
         var seen = Set<String>()

@@ -57,7 +57,7 @@ struct MailAutomationSettingsView: View {
                         if model.automation.templates.isEmpty {
                             Text("Шаблонов пока нет. Создайте первый ниже.").font(.callout).foregroundStyle(.secondary)
                         } else {
-                            List(model.automation.templates) { template in
+                            savedRows(model.automation.templates) { template in
                                 HStack {
                                     Button(template.name) {
                                         templateID = template.id
@@ -67,7 +67,7 @@ struct MailAutomationSettingsView: View {
                                     Spacer()
                                     Button("Удалить", role: .destructive) { Task { await model.deleteTemplate(template.id) } }
                                 }
-                            }.listStyle(.plain).scrollContentBackground(.hidden).frame(height: 120)
+                            }
                         }
                         Text("Название").font(.caption).foregroundStyle(.secondary)
                         TextField("Название шаблона", text: $templateName).accessibilityIdentifier("mail.template.name")
@@ -93,8 +93,9 @@ struct MailAutomationSettingsView: View {
                         Text(
                             "Для новых входящих после начальной синхронизации. Корзина имеет приоритет над архивом. Сохранённая копия остаётся."
                         ).font(.caption).foregroundStyle(.secondary)
-                        if model.automation.rules.contains(where: { $0.accountID == accountID }) {
-                            List(model.automation.rules.filter { $0.accountID == accountID }) { rule in
+                        let rules = model.automation.rules.filter { $0.accountID == accountID }
+                        if !rules.isEmpty {
+                            savedRows(rules) { rule in
                                 HStack {
                                     Toggle(
                                         isOn: Binding(
@@ -112,7 +113,6 @@ struct MailAutomationSettingsView: View {
                                     Button("Удалить", role: .destructive) { Task { await model.deleteIncomingRule(rule.id) } }
                                 }
                             }
-                            .listStyle(.plain).scrollContentBackground(.hidden).frame(height: 160)
                         } else {
                             Text("Правил для этого аккаунта пока нет.").font(.callout).foregroundStyle(.secondary)
                         }
@@ -154,6 +154,16 @@ struct MailAutomationSettingsView: View {
             loadSignature()
         }
         .onChange(of: accountID) { loadSignature() }
+    }
+    @ViewBuilder private func savedRows<Item: Identifiable, Row: View>(
+        _ items: [Item], @ViewBuilder row: @escaping (Item) -> Row
+    ) -> some View {
+        let rows = LazyVStack(alignment: .leading, spacing: 8) { ForEach(items, content: row) }
+        if items.count > 4 {
+            ScrollView { rows }.frame(height: 160)
+        } else {
+            rows
+        }
     }
     private func loadSignature() { signature = model.automation.signatures[accountID] ?? "" }
     private func actionTitle(_ value: MailIncomingRule.Action) -> String {

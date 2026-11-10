@@ -42,8 +42,9 @@ struct MailMessageListView: View {
                 } description: {
                     Text("Добавьте IMAP/SMTP-аккаунт. Пароли хранятся в Связке ключей.")
                 } actions: {
-                    Button("Добавить аккаунт") { model.accountSheet = true }.buttonStyle(.borderedProminent).accessibilityIdentifier(
-                        "mail.connect.empty")
+                    Button("Добавить аккаунт") { model.accountSheet = true }.buttonStyle(WorkspaceButtonStyle(prominent: true))
+                        .accessibilityIdentifier(
+                            "mail.connect.empty")
                 }.frame(maxHeight: .infinity)
             } else if model.displayed.isEmpty {
                 ContentUnavailableView(

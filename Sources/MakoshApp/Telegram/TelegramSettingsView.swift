@@ -120,7 +120,7 @@ struct TelegramSettingsView: View {
                             if privacy != nil { settingsRow(.privacy, symbol: "hand.raised", id: "privacy") }
                         }
                     }
-                }.formStyle(.grouped)
+                }.formStyle(WorkspaceFormStyle())
             }
         }.frame(minWidth: 560, maxWidth: embedded ? .infinity : 560, minHeight: 500, maxHeight: embedded ? .infinity : 630)
             .onAppear { if embedded, page == nil { page = .general } }
@@ -183,7 +183,7 @@ private struct TelegramGeneralSettingsView: View {
                     .help("Увеличенный размер применяется к новым подготовкам фотографий.")
                     .accessibilityIdentifier("telegram.settings.sendLargePhotos")
             }
-        }.formStyle(.grouped)
+        }.formStyle(WorkspaceFormStyle())
     }
     private func preference(_ key: WritableKeyPath<TelegramAppearancePreferences, Bool>) -> Binding<Bool> {
         .init(

@@ -5,6 +5,9 @@ import MakoshMail
 struct MailAutomationSettingsView: View {
     @ObservedObject var model: MailWorkspaceModel
     var embedded = false
+    var page: Int?
+    private let ruleLabelWidth: CGFloat = 80
+    private var activeSection: Int { page ?? section }
     @Environment(\.dismiss) private var dismiss
     @State private var accountID = ""
     @State private var section = 0
@@ -18,83 +21,116 @@ struct MailAutomationSettingsView: View {
     @State private var label = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Настройки почты").font(.title2.bold())
-                Spacer()
-                if !embedded { Button("Закрыть") { dismiss() } }
+            if !embedded {
+                HStack {
+                    Text("Настройки почты").font(.title2.bold())
+                    Spacer()
+                    Button("Закрыть") { dismiss() }
+                }
             }
             MakoshPicker("Аккаунт", selection: $accountID) { ForEach(model.accounts) { Text($0.email).tag($0.id) } }
-            Picker("Раздел", selection: $section) {
-                Text("Подпись").tag(0)
-                Text("Шаблоны").tag(1)
-                Text("Правила").tag(2)
-            }.pickerStyle(.segmented).accessibilityIdentifier("mail.automation.section")
-            Group {
-                if section == 0 {
-                    Form {
-                        Text("Подпись добавляется один раз при создании нового письма или ответа.").foregroundStyle(.secondary)
-                        TextEditor(text: $signature).frame(minHeight: 180).accessibilityIdentifier("mail.signature")
-                        Button("Сохранить подпись") { Task { await model.setSignature(accountID: accountID, text: signature) } }.disabled(
-                            accountID.isEmpty || model.busy)
-                    }.padding()
-                } else if section == 1 {
+                .fixedSize(horizontal: true, vertical: false)
+            if page == nil {
+                WorkspaceSegmentedPicker("Раздел", selection: $section) {
+                    Text("Подпись").tag(0)
+                    Text("Шаблоны").tag(1)
+                    Text("Правила").tag(2)
+                }.accessibilityIdentifier("mail.automation.section")
+            }
+            ScrollView {
+                if activeSection == 0 {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Подпись добавляется к новым письмам и ответам.").font(.callout).foregroundStyle(.secondary)
+                        TextEditor(text: $signature).workspaceEditorSurface().frame(height: 150).accessibilityIdentifier(
+                            "mail.signature")
+                        HStack {
+                            Spacer()
+                            Button("Сохранить подпись") { Task { await model.setSignature(accountID: accountID, text: signature) } }
+                                .buttonStyle(WorkspaceButtonStyle(prominent: true))
+                                .disabled(accountID.isEmpty || model.busy)
+                        }
+                    }
+                    .padding(WorkspaceStyle.cardInset)
+                    .background { WorkspaceSurface(radius: WorkspaceStyle.cardRadius) }
+                } else if activeSection == 1 {
                     VStack(alignment: .leading) {
-                        List(model.automation.templates) { template in
-                            HStack {
-                                Button(template.name) {
-                                    templateID = template.id
-                                    templateName = template.name
-                                    templateBody = template.body
-                                }.buttonStyle(.plain)
-                                Spacer()
-                                Button("Удалить", role: .destructive) { Task { await model.deleteTemplate(template.id) } }
-                            }
-                        }.frame(minHeight: 100)
+                        if model.automation.templates.isEmpty {
+                            Text("Шаблонов пока нет. Создайте первый ниже.").font(.callout).foregroundStyle(.secondary)
+                        } else {
+                            List(model.automation.templates) { template in
+                                HStack {
+                                    Button(template.name) {
+                                        templateID = template.id
+                                        templateName = template.name
+                                        templateBody = template.body
+                                    }.buttonStyle(.plain)
+                                    Spacer()
+                                    Button("Удалить", role: .destructive) { Task { await model.deleteTemplate(template.id) } }
+                                }
+                            }.listStyle(.plain).scrollContentBackground(.hidden).frame(height: 120)
+                        }
+                        Text("Название").font(.caption).foregroundStyle(.secondary)
                         TextField("Название шаблона", text: $templateName).accessibilityIdentifier("mail.template.name")
-                        TextEditor(text: $templateBody).frame(minHeight: 100).accessibilityIdentifier("mail.template.body")
+                        Text("Текст шаблона").font(.caption).foregroundStyle(.secondary)
+                        TextEditor(text: $templateBody).workspaceEditorSurface().frame(height: 150).accessibilityIdentifier(
+                            "mail.template.body")
                         HStack {
                             Button("Новый") {
                                 templateID = UUID()
                                 templateName = ""
                                 templateBody = ""
                             }
+                            Spacer()
                             Button("Сохранить шаблон") {
                                 Task { await model.saveTemplate(.init(id: templateID, name: templateName, body: templateBody)) }
-                            }.disabled(templateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+                            }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(
+                                templateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
                         }
-                    }.padding()
+                    }.padding(WorkspaceStyle.cardInset)
+                        .background { WorkspaceSurface(radius: WorkspaceStyle.cardRadius) }
                 } else {
                     VStack(alignment: .leading, spacing: 12) {
                         Text(
                             "Для новых входящих после начальной синхронизации. Корзина имеет приоритет над архивом. Сохранённая копия остаётся."
                         ).font(.caption).foregroundStyle(.secondary)
-                        List(model.automation.rules.filter { $0.accountID == accountID }) { rule in
-                            HStack {
-                                Toggle(
-                                    isOn: Binding(
-                                        get: { rule.enabled },
-                                        set: { on in
-                                            var changed = rule
-                                            changed.enabled = on
-                                            Task { await model.saveIncomingRule(changed) }
-                                        })
-                                ) {
-                                    Text(
-                                        "\(rule.field == .from ? "Отправитель" : "Тема") содержит «\(rule.value)» → \(actionTitle(rule.action))\(rule.label.map { ": " + $0 } ?? "")"
-                                    )
+                        if model.automation.rules.contains(where: { $0.accountID == accountID }) {
+                            List(model.automation.rules.filter { $0.accountID == accountID }) { rule in
+                                HStack {
+                                    Toggle(
+                                        isOn: Binding(
+                                            get: { rule.enabled },
+                                            set: { on in
+                                                var changed = rule
+                                                changed.enabled = on
+                                                Task { await model.saveIncomingRule(changed) }
+                                            })
+                                    ) {
+                                        Text(
+                                            "\(rule.field == .from ? "Отправитель" : "Тема") содержит «\(rule.value)» → \(actionTitle(rule.action))\(rule.label.map { ": " + $0 } ?? "")"
+                                        )
+                                    }
+                                    Button("Удалить", role: .destructive) { Task { await model.deleteIncomingRule(rule.id) } }
                                 }
-                                Button("Удалить", role: .destructive) { Task { await model.deleteIncomingRule(rule.id) } }
                             }
+                            .listStyle(.plain).scrollContentBackground(.hidden).frame(height: 160)
+                        } else {
+                            Text("Правил для этого аккаунта пока нет.").font(.callout).foregroundStyle(.secondary)
                         }
                         HStack {
+                            Text("Условие").frame(width: ruleLabelWidth, alignment: .leading)
                             MakoshPicker("Поле", selection: $field) {
                                 Text("Отправитель").tag(MailIncomingRule.Field.from)
                                 Text("Тема").tag(MailIncomingRule.Field.subject)
                             }
+                            .labelsHidden().fixedSize(horizontal: true, vertical: false)
                             TextField("Содержит", text: $match)
                         }
-                        MakoshPicker("Действие", selection: $action) {
-                            ForEach(MailIncomingRule.Action.allCases, id: \.self) { Text(actionTitle($0)).tag($0) }
+                        HStack {
+                            Text("Действие").frame(width: ruleLabelWidth, alignment: .leading)
+                            MakoshPicker("Действие", selection: $action) {
+                                ForEach(MailIncomingRule.Action.allCases, id: \.self) { Text(actionTitle($0)).tag($0) }
+                            }.labelsHidden().fixedSize(horizontal: true, vertical: false)
+                            Spacer(minLength: 0)
                         }
                         if action == .label { TextField("Локальная метка", text: $label) }
                         Button("Добавить правило") {
@@ -105,16 +141,19 @@ struct MailAutomationSettingsView: View {
                                         label: action == .label ? label : nil))
                             }
                         }.disabled(accountID.isEmpty || match.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
-                    }.padding()
+                    }.padding(WorkspaceStyle.cardInset)
+                        .background { WorkspaceSurface(radius: WorkspaceStyle.cardRadius) }
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             if let error = model.error { Text(error).font(.caption).foregroundStyle(.red) }
-        }.padding(24).frame(minWidth: 600, maxWidth: embedded ? .infinity : 680, minHeight: 500, maxHeight: embedded ? .infinity : 560)
-            .onAppear {
-                accountID = model.selectedFolder?.accountID ?? model.accounts.first?.id ?? ""
-                loadSignature()
-            }
-            .onChange(of: accountID) { loadSignature() }
+        }.padding(.horizontal, 24).padding(.bottom, 24).padding(.top, embedded ? 4 : 24).frame(
+            minWidth: 600, maxWidth: embedded ? 760 : 680, minHeight: 500, maxHeight: embedded ? .infinity : 560, alignment: .topLeading
+        )
+        .onAppear {
+            accountID = model.selectedFolder?.accountID ?? model.accounts.first?.id ?? ""
+            loadSignature()
+        }
+        .onChange(of: accountID) { loadSignature() }
     }
     private func loadSignature() { signature = model.automation.signatures[accountID] ?? "" }
     private func actionTitle(_ value: MailIncomingRule.Action) -> String {

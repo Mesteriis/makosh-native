@@ -37,7 +37,9 @@ struct TelegramSearchMediaTabs: View {
         ScrollView(.horizontal) {
             HStack(spacing: 12) {
                 ForEach(filters) { filter in
-                    Button { selection = filter } label: {
+                    Button {
+                        selection = filter
+                    } label: {
                         Text(filter.title).font(.callout.weight(selection == filter ? .semibold : .regular))
                             .foregroundStyle(selection == filter ? Color.accentColor : Color.secondary)
                             .padding(.vertical, 6)
@@ -62,7 +64,11 @@ struct TelegramMessageSearchHeader: View {
     var focusRequest: UUID
     var close: () -> Void
     init(search: TelegramSearchModel, initialDate: Date, focusRequest: UUID, close: @escaping () -> Void) {
-        self.search = search; self.senders = search.senders; self.initialDate = initialDate; self.focusRequest = focusRequest; self.close = close
+        self.search = search
+        self.senders = search.senders
+        self.initialDate = initialDate
+        self.focusRequest = focusRequest
+        self.close = close
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -74,10 +80,12 @@ struct TelegramMessageSearchHeader: View {
                     .disabled(!search.canSelectNewer).help("Следующее совпадение — новее")
                     .accessibilityLabel("Следующее совпадение").accessibilityIdentifier("telegram.messageSearch.newer")
                 TextField("Поиск сообщений в диалоге", text: $search.messageQuery)
-                    .textFieldStyle(.roundedBorder).frame(height: 30).focused($focused)
+                    .textFieldStyle(WorkspaceTextFieldStyle()).frame(height: 30).focused($focused)
                     .accessibilityIdentifier("telegram.messageSearch").onExitCommand(perform: close)
                 if search.hasMessageQuery {
-                    Button { search.showsResults.toggle() } label: {
+                    Button {
+                        search.showsResults.toggle()
+                    } label: {
                         Text(search.selectedResultIndex.map { "\($0 + 1) / \(search.totalMessages)" } ?? "\(search.totalMessages)")
                             .font(.caption.monospacedDigit())
                     }.help("Показать список результатов").accessibilityLabel("Список результатов")
@@ -85,24 +93,36 @@ struct TelegramMessageSearchHeader: View {
                 }
                 if senders.available {
                     Button {
-                        senderPresented = true; senders.retry()
+                        senderPresented = true
+                        senders.retry()
                     } label: {
-                        Text(search.senderID.flatMap { id in senders.candidates.first(where: { $0.id == id })?.title }.map { "От: \($0)" } ?? "От")
-                            .lineLimit(1).frame(maxWidth: 130)
+                        Text(
+                            search.senderID.flatMap { id in senders.candidates.first(where: { $0.id == id })?.title }.map { "От: \($0)" }
+                                ?? "От"
+                        )
+                        .lineLimit(1).frame(maxWidth: 130)
                     }.accessibilityIdentifier("telegram.messageSearch.sender")
                         .popover(isPresented: $senderPresented) { senderPicker }
                 }
-                Button { date = initialDate; calendarPresented = true } label: { Image(systemName: "calendar") }
-                    .help("Перейти к дате").accessibilityLabel("Перейти к дате")
-                    .accessibilityIdentifier("telegram.messageSearch.calendar")
-                    .popover(isPresented: $calendarPresented) {
-                        VStack(spacing: 12) {
-                            DatePicker("Дата", selection: $date, displayedComponents: .date).datePickerStyle(.graphical)
-                                .accessibilityIdentifier("telegram.messageSearch.date")
-                            Button("Перейти") { search.jumpToDate(date); calendarPresented = false }
-                                .accessibilityIdentifier("telegram.messageSearch.date.go")
-                        }.padding(16).frame(width: 300)
-                    }
+                Button {
+                    date = initialDate
+                    calendarPresented = true
+                } label: {
+                    Image(systemName: "calendar")
+                }
+                .help("Перейти к дате").accessibilityLabel("Перейти к дате")
+                .accessibilityIdentifier("telegram.messageSearch.calendar")
+                .popover(isPresented: $calendarPresented) {
+                    VStack(spacing: 12) {
+                        DatePicker("Дата", selection: $date, displayedComponents: .date).datePickerStyle(.graphical)
+                            .accessibilityIdentifier("telegram.messageSearch.date")
+                        Button("Перейти") {
+                            search.jumpToDate(date)
+                            calendarPresented = false
+                        }
+                        .accessibilityIdentifier("telegram.messageSearch.date.go")
+                    }.padding(16).frame(width: 300)
+                }
                 Button("Отмена", action: close).accessibilityIdentifier("telegram.messageSearch.close")
             }.buttonStyle(.plain).padding(.horizontal, 10).frame(height: 44)
             if search.dateStatus == .loading {
@@ -116,17 +136,23 @@ struct TelegramMessageSearchHeader: View {
 
     private var senderPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("Имя участника", text: $senders.query).textFieldStyle(.roundedBorder)
+            TextField("Имя участника", text: $senders.query).textFieldStyle(WorkspaceTextFieldStyle())
                 .accessibilityIdentifier("telegram.messageSearch.sender.query")
             if search.senderID != nil {
-                Button("Любой автор") { search.senderID = nil; senderPresented = false }
-                    .accessibilityIdentifier("telegram.messageSearch.sender.clear")
+                Button("Любой автор") {
+                    search.senderID = nil
+                    senderPresented = false
+                }
+                .accessibilityIdentifier("telegram.messageSearch.sender.clear")
             }
             TelegramSearchStatusView(status: senders.status, retry: senders.retry)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
                     ForEach(senders.candidates) { sender in
-                        Button { search.senderID = sender.id; senderPresented = false } label: {
+                        Button {
+                            search.senderID = sender.id
+                            senderPresented = false
+                        } label: {
                             Text(sender.title).frame(maxWidth: .infinity, minHeight: 32, alignment: .leading).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("telegram.messageSearch.sender.\(sender.id)")
                     }

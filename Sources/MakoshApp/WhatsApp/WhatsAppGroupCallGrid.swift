@@ -70,7 +70,7 @@ struct WhatsAppGroupCallGrid: View {
                 }
             }
             HStack {
-                TextField("JID нового участника", text: $invite).textFieldStyle(.roundedBorder)
+                TextField("JID нового участника", text: $invite).textFieldStyle(WorkspaceTextFieldStyle())
                 Button("Пригласить") {
                     let value = invite
                     Task { await model.invite(jid: value, ringOnly: false) }

@@ -268,7 +268,7 @@ struct TelegramDetailView: View {
             Text("Неофициальный клиент на основе TelegramCore").font(.title3)
             Text("Макош создаёт отдельный локальный сеанс Telegram. Подключение начнётся после нажатия кнопки.").foregroundStyle(.secondary)
             Button("Подключить Telegram", action: model.connect)
-                .buttonStyle(.borderedProminent).disabled(model.isBusy || !model.hasEmbeddedAPIConfiguration)
+                .buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(model.isBusy || !model.hasEmbeddedAPIConfiguration)
                 .accessibilityIdentifier("telegram.connect")
             if !model.hasEmbeddedAPIConfiguration {
                 Text("Telegram не настроен в этой сборке.").foregroundStyle(.secondary)
@@ -284,8 +284,8 @@ struct TelegramDetailView: View {
             TelegramQRLoginView(controller: qrLogin)
         } else {
             authForm(title: "Ваш номер телефона", detail: "Введите номер с кодом страны. Код входа отправит Telegram.") {
-                TextField("+34 …", text: $phone).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.phone")
-                Button("Запросить код") { model.submitPhone(phone) }.buttonStyle(.borderedProminent).disabled(
+                TextField("+34 …", text: $phone).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("telegram.phone")
+                Button("Запросить код") { model.submitPhone(phone) }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(
                     model.isBusy || phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ).accessibilityIdentifier("telegram.phone.submit")
                 Button("Войти по QR-коду") { model.beginQRLogin() }.disabled(model.isBusy).accessibilityIdentifier("telegram.qr.begin")
@@ -294,21 +294,23 @@ struct TelegramDetailView: View {
     }
     private var codeForm: some View {
         authForm(title: "Код входа", detail: model.codeExplanation) {
-            SecureField("Код", text: $code).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.code")
+            SecureField("Код", text: $code).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("telegram.code")
             Button("Продолжить") {
                 model.submitCode(code)
                 code = ""
-            }.buttonStyle(.borderedProminent).disabled(model.isBusy || code.isEmpty).accessibilityIdentifier("telegram.code.submit")
+            }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(model.isBusy || code.isEmpty).accessibilityIdentifier(
+                "telegram.code.submit")
         }
     }
     private func passwordForm(hint: String) -> some View {
         authForm(title: "Двухэтапная проверка", detail: hint.isEmpty ? "Введите облачный пароль Telegram." : "Подсказка Telegram: \(hint)")
         {
-            SecureField("Пароль", text: $password).textFieldStyle(.roundedBorder).accessibilityIdentifier("telegram.password")
+            SecureField("Пароль", text: $password).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("telegram.password")
             Button("Войти") {
                 model.submitPassword(password)
                 password = ""
-            }.buttonStyle(.borderedProminent).disabled(model.isBusy || password.isEmpty).accessibilityIdentifier("telegram.password.submit")
+            }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(model.isBusy || password.isEmpty).accessibilityIdentifier(
+                "telegram.password.submit")
         }
     }
     private func authForm<Content: View>(title: String, detail: String, @ViewBuilder content: () -> Content) -> some View {
@@ -618,7 +620,7 @@ struct TelegramDetailView: View {
                                 }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
                                 let context = search.resultContextID
                                 Button("В истории") { model.openSearchMessage(id: item.id, contextID: context) }
-                                    .buttonStyle(.bordered).controlSize(.small)
+                                    .buttonStyle(WorkspaceButtonStyle()).controlSize(.small)
                                     .accessibilityIdentifier("telegram.searchResult.\(item.id)")
                             }.accessibilityElement(children: .contain)
                                 .contextMenu { messageActionItems(item) }

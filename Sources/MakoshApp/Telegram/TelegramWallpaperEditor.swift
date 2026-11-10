@@ -10,43 +10,52 @@ struct TelegramWallpaperBackground: View {
     let fallback: Color
     var preparedPattern: Data? = nil
     @State private var image: CGImage?
-    private var renderID: String { (try? String(data:JSONEncoder().encode(wallpaper),encoding:.utf8)) ?? "" }
+    private var renderID: String { (try? String(data: JSONEncoder().encode(wallpaper), encoding: .utf8)) ?? "" }
     var body: some View {
         GeometryReader { geometry in
             Group {
-                if let image { Image(decorative:image,scale:1).resizable().scaledToFill().frame(width:geometry.size.width,height:geometry.size.height).clipped() }
-                else { fallback }
-            }.task(id:renderID) {
+                if let image {
+                    Image(decorative: image, scale: 1).resizable().scaledToFill().frame(
+                        width: geometry.size.width, height: geometry.size.height
+                    ).clipped()
+                } else {
+                    fallback
+                }
+            }.task(id: renderID) {
                 image = nil
                 let wallpaper = wallpaper, mask = preparedPattern
                 let loaded = try? await BackgroundWork.run { () -> CGImage? in
                     switch wallpaper {
                     case .automatic: return nil
-                    case let .solid(color): return try? TelegramWallpaperRenderer.render(colors:.init(colors:[color]))
-                    case let .gradient(a,b): return try? TelegramWallpaperRenderer.render(colors:.init(colors:[a,b],rotation:45))
-                    case let .colors(value): return try? TelegramWallpaperRenderer.render(colors:value)
+                    case let .solid(color): return try? TelegramWallpaperRenderer.render(colors: .init(colors: [color]))
+                    case let .gradient(a, b): return try? TelegramWallpaperRenderer.render(colors: .init(colors: [a, b], rotation: 45))
+                    case let .colors(value): return try? TelegramWallpaperRenderer.render(colors: value)
                     case let .pattern(value):
                         guard let bytes = mask ?? (try? TelegramWallpaperFiles.loadPattern(value.name)) else { return nil }
-                        return try? TelegramWallpaperRenderer.render(colors:value.colors,pattern:bytes,intensity:value.intensity)
+                        return try? TelegramWallpaperRenderer.render(colors: value.colors, pattern: bytes, intensity: value.intensity)
                     case let .image(name):
                         guard let data = try? TelegramWallpaperFiles.load(name),
-                              let source = CGImageSourceCreateWithData(data as CFData,nil),
-                              let properties = CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [CFString:Any],
-                              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-                              let height = properties[kCGImagePropertyPixelHeight] as? Int,
-                              (1...2560).contains(width),(1...2560).contains(height) else { return nil }
-                        return CGImageSourceCreateImageAtIndex(source,0,nil)
+                            let source = CGImageSourceCreateWithData(data as CFData, nil),
+                            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+                            let height = properties[kCGImagePropertyPixelHeight] as? Int,
+                            (1...2560).contains(width), (1...2560).contains(height)
+                        else { return nil }
+                        return CGImageSourceCreateImageAtIndex(source, 0, nil)
                     }
                 }
-                guard !Task.isCancelled else { return }; image = loaded
+                guard !Task.isCancelled else { return }
+                image = loaded
             }
         }.accessibilityHidden(true)
     }
 }
 func telegramRGBColor(_ rgb: UInt32) -> Color {
-    .init(red:Double((rgb >> 16) & 255)/255,green:Double((rgb >> 8) & 255)/255,blue:Double(rgb & 255)/255)
+    .init(red: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255, blue: Double(rgb & 255) / 255)
 }
-func telegramPaletteColor(_ palette:TelegramCloudPalette,_ field:String,_ rgb:UInt32) -> Color { Color(cgColor:palette.color(field,rgb:rgb)) }
+func telegramPaletteColor(_ palette: TelegramCloudPalette, _ field: String, _ rgb: UInt32) -> Color {
+    Color(cgColor: palette.color(field, rgb: rgb))
+}
 
 struct TelegramWallpaperEditor: View {
     let expectedRaw: String
@@ -55,8 +64,8 @@ struct TelegramWallpaperEditor: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var mode = "automatic"
-    @State private var colors = TelegramWallpaperColors(colors:[0xdce8df,0xc6d5ed])
-    @State private var colorDrafts: [Int:String] = [:]
+    @State private var colors = TelegramWallpaperColors(colors: [0xdce8df, 0xc6d5ed])
+    @State private var colorDrafts: [Int: String] = [:]
     @State private var originalName: String?
     @State private var patternName: String?
     @State private var selectedData: Data?
@@ -67,130 +76,236 @@ struct TelegramWallpaperEditor: View {
     @State private var preparationID = UUID()
     @State private var saveTask: Task<Void, Never>?
     var body: some View {
-        VStack(spacing:0) {
-            HStack { Button("Отмена") { dismiss() }; Spacer(); Text("Фон чата").font(.headline); Spacer()
-                Button("Сохранить",action:save).disabled(busy || invalidColors || appearanceRaw != expectedRaw || (mode == "image" && selectedData == nil && originalName == nil)).accessibilityIdentifier("telegram.wallpaper.save")
+        VStack(spacing: 0) {
+            HStack {
+                Button("Отмена") { dismiss() }
+                Spacer()
+                Text("Фон чата").font(.headline)
+                Spacer()
+                Button("Сохранить", action: save).disabled(
+                    busy || invalidColors || appearanceRaw != expectedRaw || (mode == "image" && selectedData == nil && originalName == nil)
+                ).accessibilityIdentifier("telegram.wallpaper.save")
             }.padding()
             Form {
                 Section {
-                    MakoshPicker("Фон",selection:$mode) {
-                        Text("По умолчанию").tag("automatic"); Text("Цвета и узор").tag("colors"); Text("Изображение").tag("image")
+                    MakoshPicker("Фон", selection: $mode) {
+                        Text("По умолчанию").tag("automatic")
+                        Text("Цвета и узор").tag("colors")
+                        Text("Изображение").tag("image")
                     }.accessibilityIdentifier("telegram.wallpaper.mode")
                     if mode == "colors" {
-                        ForEach(colors.colors.indices,id:\.self) { index in
+                        ForEach(colors.colors.indices, id: \.self) { index in
                             HStack {
-                                ColorPicker("Цвет \(index+1)",selection:color(index),supportsOpacity:false).accessibilityIdentifier("telegram.wallpaper.color.\(index)")
-                                TextField("HEX",text:hex(index)).textFieldStyle(.roundedBorder).font(.system(.body,design:.monospaced)).frame(width:88)
+                                ColorPicker("Цвет \(index+1)", selection: color(index), supportsOpacity: false).accessibilityIdentifier(
+                                    "telegram.wallpaper.color.\(index)")
+                                TextField("HEX", text: hex(index)).textFieldStyle(WorkspaceTextFieldStyle()).font(
+                                    .system(.body, design: .monospaced)
+                                ).frame(width: 88)
                                     .accessibilityLabel("HEX цвета \(index+1)").accessibilityIdentifier("telegram.wallpaper.hex.\(index)")
-                                if colors.colors.count > 1 { Button { removeColor(index) } label:{ Image(systemName:"minus.circle") }.accessibilityLabel("Удалить цвет \(index+1)") }
+                                if colors.colors.count > 1 {
+                                    Button {
+                                        removeColor(index)
+                                    } label: {
+                                        Image(systemName: "minus.circle")
+                                    }.accessibilityLabel("Удалить цвет \(index+1)")
+                                }
                             }
                         }
-                        if colors.colors.count < 4 { Button("Добавить цвет") { colors.colors.append(0xc6d5ed); resetGeometry() }.accessibilityIdentifier("telegram.wallpaper.addColor") }
-                        if invalidColors { Text("Введите шесть HEX-символов цвета, например #12ABEF.").font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.wallpaper.hex.invalid") }
+                        if colors.colors.count < 4 {
+                            Button("Добавить цвет") {
+                                colors.colors.append(0xc6d5ed)
+                                resetGeometry()
+                            }.accessibilityIdentifier("telegram.wallpaper.addColor")
+                        }
+                        if invalidColors {
+                            Text("Введите шесть HEX-символов цвета, например #12ABEF.").font(.caption).foregroundStyle(.red)
+                                .accessibilityIdentifier("telegram.wallpaper.hex.invalid")
+                        }
                         if colors.colors.count == 2 {
-                            Button("Повернуть на45°") { colors.rotation = (colors.rotation+45)%360 }.accessibilityIdentifier("telegram.wallpaper.rotate")
+                            Button("Повернуть на45°") { colors.rotation = (colors.rotation + 45) % 360 }.accessibilityIdentifier(
+                                "telegram.wallpaper.rotate")
                         } else if colors.colors.count > 2 {
-                            Button("Изменить расположение цветов") { withAnimation(reduceMotion ? nil : .easeInOut(duration:0.3)) { colors.phase = (colors.phase+1)%colors.colors.count } }.accessibilityIdentifier("telegram.wallpaper.advance")
+                            Button("Изменить расположение цветов") {
+                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
+                                    colors.phase = (colors.phase + 1) % colors.colors.count
+                                }
+                            }.accessibilityIdentifier("telegram.wallpaper.advance")
                         }
                         HStack {
-                            Button("Выбрать узор…") { pick(pattern:true) }.disabled(busy).accessibilityIdentifier("telegram.wallpaper.pattern.pick")
-                            if patternName != nil { Button("Без узора") { patternName = nil; selectedPattern = nil }.accessibilityIdentifier("telegram.wallpaper.pattern.none") }
+                            Button("Выбрать узор…") { pick(pattern: true) }.disabled(busy).accessibilityIdentifier(
+                                "telegram.wallpaper.pattern.pick")
+                            if patternName != nil {
+                                Button("Без узора") {
+                                    patternName = nil
+                                    selectedPattern = nil
+                                }.accessibilityIdentifier("telegram.wallpaper.pattern.none")
+                            }
                         }
                         if patternName != nil {
-                            Slider(value:$intensity,in:0...100,step:1) { Text("Интенсивность узора") }.accessibilityIdentifier("telegram.wallpaper.pattern.intensity")
+                            Slider(value: $intensity, in: 0...100, step: 1) { Text("Интенсивность узора") }.accessibilityIdentifier(
+                                "telegram.wallpaper.pattern.intensity")
                             Text("Интенсивность: \(Int(intensity))%").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     if mode == "image" {
-                        Button("Выбрать изображение…") { pick(pattern:false) }.disabled(busy).accessibilityIdentifier("telegram.wallpaper.pick")
-                        Text("Статичное изображение до32МБ. Фон сохраняется локально без исходных метаданных.").font(.caption).foregroundStyle(.secondary)
+                        Button("Выбрать изображение…") { pick(pattern: false) }.disabled(busy).accessibilityIdentifier(
+                            "telegram.wallpaper.pick")
+                        Text("Статичное изображение до32МБ. Фон сохраняется локально без исходных метаданных.").font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     if busy { ProgressView("Подготовка…") }
                 }
                 Section("Предпросмотр") {
-                    VStack(alignment:.leading,spacing:12) {
-                        Text("Привет! Как дела?").padding(10).background(telegramDefaultBubbleColor(outgoing:false,scheme:colorScheme),in:RoundedRectangle(cornerRadius:12))
-                        HStack { Spacer(); Text("Всё хорошо!").padding(10).background(telegramDefaultBubbleColor(outgoing:true,scheme:colorScheme),in:RoundedRectangle(cornerRadius:12)) }
-                    }.padding().frame(height:190).background {
-                        if mode == "image",let selectedData,let image = NSImage(data:selectedData) { Image(nsImage:image).resizable().scaledToFill().clipped() }
-                        else { TelegramWallpaperBackground(wallpaper:draft,fallback:Color(nsColor:.windowBackgroundColor),preparedPattern:selectedPattern) }
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Привет! Как дела?").padding(10).background(
+                            telegramDefaultBubbleColor(outgoing: false, scheme: colorScheme), in: RoundedRectangle(cornerRadius: 12))
+                        HStack {
+                            Spacer()
+                            Text("Всё хорошо!").padding(10).background(
+                                telegramDefaultBubbleColor(outgoing: true, scheme: colorScheme), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }.padding().frame(height: 190).background {
+                        if mode == "image", let selectedData, let image = NSImage(data: selectedData) {
+                            Image(nsImage: image).resizable().scaledToFill().clipped()
+                        } else {
+                            TelegramWallpaperBackground(
+                                wallpaper: draft, fallback: Color(nsColor: .windowBackgroundColor), preparedPattern: selectedPattern)
+                        }
                     }.clipped().accessibilityIdentifier("telegram.wallpaper.preview")
                 }
-                if appearanceRaw != expectedRaw { Text("Оформление изменено в другом окне. Закройте редактор и откройте его заново.").foregroundStyle(.red) }
+                if appearanceRaw != expectedRaw {
+                    Text("Оформление изменено в другом окне. Закройте редактор и откройте его заново.").foregroundStyle(.red)
+                }
                 if let error { Text(error).foregroundStyle(.red) }
-            }.formStyle(.grouped).disabled(busy)
-        }.frame(width:520,height:680)
+            }.formStyle(WorkspaceFormStyle()).disabled(busy)
+        }.frame(width: 520, height: 680)
             .onAppear {
-                guard let preferences = try? TelegramAppearancePreferences.decode(expectedRaw) else { error = "Настройки оформления повреждены."; return }
+                guard let preferences = try? TelegramAppearancePreferences.decode(expectedRaw) else {
+                    error = "Настройки оформления повреждены."
+                    return
+                }
                 switch preferences.wallpaper {
                 case .automatic: mode = "automatic"
-                case let .solid(value): mode = "colors"; colors = .init(colors:[value])
-                case let .gradient(a,b): mode = "colors"; colors = .init(colors:[a,b],rotation:45)
-                case let .colors(value): mode = "colors"; colors = value
-                case let .pattern(value): mode = "colors"; colors = value.colors; patternName = value.name; intensity = Double(abs(value.intensity))
-                case let .image(name): mode = "image"; originalName = name
+                case let .solid(value):
+                    mode = "colors"
+                    colors = .init(colors: [value])
+                case let .gradient(a, b):
+                    mode = "colors"
+                    colors = .init(colors: [a, b], rotation: 45)
+                case let .colors(value):
+                    mode = "colors"
+                    colors = value
+                case let .pattern(value):
+                    mode = "colors"
+                    colors = value.colors
+                    patternName = value.name
+                    intensity = Double(abs(value.intensity))
+                case let .image(name):
+                    mode = "image"
+                    originalName = name
                 }
-            }.onDisappear { preparationID = UUID(); saveTask?.cancel() }
+            }.onDisappear {
+                preparationID = UUID()
+                saveTask?.cancel()
+            }
     }
     private var draft: TelegramLocalWallpaper {
         switch mode {
-        case "colors": if let patternName { return .pattern(.init(name:patternName,colors:colors,intensity:Int(intensity))) }; return .colors(colors)
+        case "colors":
+            if let patternName { return .pattern(.init(name: patternName, colors: colors, intensity: Int(intensity))) }
+            return .colors(colors)
         case "image": return originalName.map(TelegramLocalWallpaper.image) ?? .automatic
         default: return .automatic
         }
     }
-    private func resetGeometry() { colors.rotation = 0; colors.phase = 0 }
-    private var invalidColors: Bool { mode == "colors" && colorDrafts.contains { colors.colors.indices.contains($0.key) && TelegramWallpaperColors.parseHex($0.value) == nil } }
-    private func hex(_ index:Int) -> Binding<String> {
-        .init(get:{ colorDrafts[index] ?? String(format:"%06X",colors.colors.indices.contains(index) ? colors.colors[index] : 0) },set:{ value in
-            guard colors.colors.indices.contains(index) else { return }
-            colorDrafts[index] = String(value.prefix(32))
-            if let parsed = TelegramWallpaperColors.parseHex(value) { colors.colors[index] = parsed }
-        })
+    private func resetGeometry() {
+        colors.rotation = 0
+        colors.phase = 0
     }
-    private func removeColor(_ index:Int) {
-        guard colors.colors.indices.contains(index),colors.colors.count > 1 else { return }
-        colors.colors.remove(at:index)
-        colorDrafts = Dictionary(uniqueKeysWithValues:colorDrafts.compactMap { key,value in key == index ? nil : (key > index ? key-1 : key,value) })
+    private var invalidColors: Bool {
+        mode == "colors"
+            && colorDrafts.contains { colors.colors.indices.contains($0.key) && TelegramWallpaperColors.parseHex($0.value) == nil }
+    }
+    private func hex(_ index: Int) -> Binding<String> {
+        .init(
+            get: { colorDrafts[index] ?? String(format: "%06X", colors.colors.indices.contains(index) ? colors.colors[index] : 0) },
+            set: { value in
+                guard colors.colors.indices.contains(index) else { return }
+                colorDrafts[index] = String(value.prefix(32))
+                if let parsed = TelegramWallpaperColors.parseHex(value) { colors.colors[index] = parsed }
+            })
+    }
+    private func removeColor(_ index: Int) {
+        guard colors.colors.indices.contains(index), colors.colors.count > 1 else { return }
+        colors.colors.remove(at: index)
+        colorDrafts = Dictionary(
+            uniqueKeysWithValues: colorDrafts.compactMap { key, value in key == index ? nil : (key > index ? key - 1 : key, value) })
         resetGeometry()
     }
-    private func color(_ index:Int) -> Binding<Color> {
-        .init(get:{ telegramRGBColor(colors.colors.indices.contains(index) ? colors.colors[index] : 0) },set:{ color in
-            guard colors.colors.indices.contains(index),let value = NSColor(color).usingColorSpace(.deviceRGB) else { return }
-            let components = [value.redComponent,value.greenComponent,value.blueComponent]
-            guard components.allSatisfy(\.isFinite) else { return }
-            let bytes = components.map { UInt32((min(1,max(0,$0)) * 255).rounded()) }
-            colors.colors[index] = bytes[0]<<16 | bytes[1]<<8 | bytes[2]
-            colorDrafts[index] = nil
-        })
+    private func color(_ index: Int) -> Binding<Color> {
+        .init(
+            get: { telegramRGBColor(colors.colors.indices.contains(index) ? colors.colors[index] : 0) },
+            set: { color in
+                guard colors.colors.indices.contains(index), let value = NSColor(color).usingColorSpace(.deviceRGB) else { return }
+                let components = [value.redComponent, value.greenComponent, value.blueComponent]
+                guard components.allSatisfy(\.isFinite) else { return }
+                let bytes = components.map { UInt32((min(1, max(0, $0)) * 255).rounded()) }
+                colors.colors[index] = bytes[0] << 16 | bytes[1] << 8 | bytes[2]
+                colorDrafts[index] = nil
+            })
     }
-    private func pick(pattern:Bool) {
-        let panel = NSOpenPanel(); panel.allowedContentTypes = pattern ? [.png,.webP,.svg,.gzip] : [.image]; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+    private func pick(pattern: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = pattern ? [.png, .webP, .svg, .gzip] : [.image]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
         panel.begin { response in
-            guard response == .OK,let url = panel.url else { return }
-            let id = UUID(); preparationID = id; busy = true; error = nil
+            guard response == .OK, let url = panel.url else { return }
+            let id = UUID()
+            preparationID = id
+            busy = true
+            error = nil
             let scoped = url.startAccessingSecurityScopedResource()
             Task { @MainActor in
-                let result = await Task.detached(priority:.utility) { () -> Result<Data,Error> in
+                let result = await Task.detached(priority: .utility) { () -> Result<Data, Error> in
                     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                    return Result { let bytes = try TelegramWallpaperFiles.readSelection(url); return try pattern ? TelegramWallpaperPattern.prepare(bytes) : TelegramWallpaperImage.prepare(bytes) }
+                    return Result {
+                        let bytes = try TelegramWallpaperFiles.readSelection(url)
+                        return try pattern ? TelegramWallpaperPattern.prepare(bytes) : TelegramWallpaperImage.prepare(bytes)
+                    }
                 }.value
-                guard preparationID == id else { return }; busy = false
+                guard preparationID == id else { return }
+                busy = false
                 switch result {
                 case let .success(data):
-                    if pattern { selectedPattern = data; patternName = UUID().uuidString.lowercased()+".png" } else { selectedData = data }
-                case .failure: error = pattern ? "Не удалось подготовить узор. Поддерживаются статичные PNG/WebP и простые SVG, в том числе gzip, до2МБ." : "Не удалось подготовить изображение. Выберите статичный файл до32МБ."
+                    if pattern {
+                        selectedPattern = data
+                        patternName = UUID().uuidString.lowercased() + ".png"
+                    } else {
+                        selectedData = data
+                    }
+                case .failure:
+                    error =
+                        pattern
+                        ? "Не удалось подготовить узор. Поддерживаются статичные PNG/WebP и простые SVG, в том числе gzip, до2МБ."
+                        : "Не удалось подготовить изображение. Выберите статичный файл до32МБ."
                 }
             }
         }
     }
     private func save() {
-        guard appearanceRaw == expectedRaw,!busy,!invalidColors else { error = "Проверьте HEX цветов и текущее оформление."; return }
+        guard appearanceRaw == expectedRaw, !busy, !invalidColors else {
+            error = "Проверьте HEX цветов и текущее оформление."
+            return
+        }
         let bytes = mode == "image" ? selectedData : mode == "colors" && patternName != nil ? selectedPattern : nil
         let pattern = mode == "colors", colors = colors, strength = Int(intensity), fallback = draft
         busy = true
         saveTask = Task { @MainActor in
-            defer { busy = false; saveTask = nil }
+            defer {
+                busy = false
+                saveTask = nil
+            }
             var installed: String?
             do {
                 var preferences = try TelegramAppearancePreferences.decode(expectedRaw)
@@ -198,14 +313,20 @@ struct TelegramWallpaperEditor: View {
                     let name = try await TelegramWallpaperFiles.installInBackground(bytes, pattern: pattern)
                     installed = name
                     preferences.wallpaper = pattern ? .pattern(.init(name: name, colors: colors, intensity: strength)) : .image(name)
-                } else { preferences.wallpaper = fallback }
-                guard !Task.isCancelled, appearanceRaw == expectedRaw else {
-                    if let installed { try? await TelegramWallpaperFiles.discardInstalled(installed) }; return
+                } else {
+                    preferences.wallpaper = fallback
                 }
-                appearanceRaw = try preferences.encoded(); dismiss()
+                guard !Task.isCancelled, appearanceRaw == expectedRaw else {
+                    if let installed { try? await TelegramWallpaperFiles.discardInstalled(installed) }
+                    return
+                }
+                appearanceRaw = try preferences.encoded()
+                dismiss()
             } catch {
                 if let installed { try? await TelegramWallpaperFiles.discardInstalled(installed) }
-                if !Task.isCancelled { self.error = "Не удалось сохранить фон. Проверьте выбранное изображение и локальную папку приложения." }
+                if !Task.isCancelled {
+                    self.error = "Не удалось сохранить фон. Проверьте выбранное изображение и локальную папку приложения."
+                }
             }
         }
     }

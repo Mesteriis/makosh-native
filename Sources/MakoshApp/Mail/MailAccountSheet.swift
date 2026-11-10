@@ -70,7 +70,7 @@ struct MailAccountSheet: View {
                     "Пароли сохраняются в Связке ключей. TLS проверяет сертификат и имя сервера. При смене адреса, сервера или пользователя будет создан отдельный аккаунт; прежняя переписка и операции сохранят свою идентичность."
                 ).font(.caption).foregroundStyle(.secondary)
                 if let error = model.error { Text(error).foregroundStyle(.red).font(.callout) }
-            }.formStyle(.grouped).disabled(model.busy || model.synthetic)
+            }.formStyle(WorkspaceFormStyle()).disabled(model.busy || model.synthetic)
             Divider()
             HStack {
                 if model.busy {
@@ -79,7 +79,7 @@ struct MailAccountSheet: View {
                 }
                 Spacer()
                 Button("Отмена") { dismiss() }.disabled(model.busy)
-                Button("Подключить") { connect() }.buttonStyle(.borderedProminent).disabled(
+                Button("Подключить") { connect() }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(
                     model.busy || model.synthetic || email.isEmpty || (account == nil && imapPassword.isEmpty)
                 ).accessibilityIdentifier("mail.account.connect")
             }.padding(20)

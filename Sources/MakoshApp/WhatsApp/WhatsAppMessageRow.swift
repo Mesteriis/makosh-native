@@ -41,7 +41,7 @@ struct WhatsAppMessageRow: View {
                             Label(
                                 message.details?.name ?? mediaName(message.kind),
                                 systemImage: message.kind == "audio" ? "play.circle" : "paperclip")
-                        }.buttonStyle(.bordered)
+                        }.buttonStyle(WorkspaceButtonStyle())
                     }
                     if message.kind == "location", let lat = message.details?.latitude,
                         let lon = message.details?.longitude,
@@ -63,7 +63,7 @@ struct WhatsAppMessageRow: View {
                         ForEach(presentation?.pollOptions ?? []) { option in
                             Button(
                                 "\(option.label) · \(message.details?.pollVotes?.filter{$0.options.contains(option.label)}.count ?? 0)"
-                            ) { vote(option.label) }.buttonStyle(.bordered)
+                            ) { vote(option.label) }.buttonStyle(WorkspaceButtonStyle())
                         }
                     }
                     if let reactions = message.details?.reactions, !reactions.isEmpty {

@@ -56,7 +56,7 @@ struct TeamsChatSettingsView: View {
                     .accessibilityIdentifier("teams.settings.save")
                 if let notice = preferences.notice { Text(notice).font(.caption) }
                 if preferences.busy { ProgressView() }
-            }.formStyle(.grouped)
+            }.formStyle(WorkspaceFormStyle())
         }.padding(20).frame(width: 590, height: 580).task(id: scope) {
             preferences.reset(scope)
             await preferences.load(expectedScope: scope)

@@ -69,7 +69,7 @@ struct MailNotificationSettingsView: View {
                     }
                     if let status = system.status { Text(status).font(.caption).foregroundStyle(.secondary) }
                 }
-            }.formStyle(.grouped).disabled(model.busy)
+            }.formStyle(WorkspaceFormStyle()).disabled(model.busy)
             if let error = model.error { Text(error).foregroundStyle(.red).font(.caption) }
             HStack {
                 Spacer()

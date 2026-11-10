@@ -14,8 +14,12 @@ struct TelegramSecretProfileView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Text("Секретный чат").font(.headline); Spacer(); Button("Закрыть") { dismiss() } }
-                .padding().accessibilityIdentifier("telegram.secret.profile.header")
+            HStack {
+                Text("Секретный чат").font(.headline)
+                Spacer()
+                Button("Закрыть") { dismiss() }
+            }
+            .padding().accessibilityIdentifier("telegram.secret.profile.header")
             Divider()
             if let session {
                 Form {
@@ -36,23 +40,33 @@ struct TelegramSecretProfileView: View {
                         LabeledContent("Текущий таймер", value: session.ttl.map { "\($0) с" } ?? "Выключен")
                     }
                     Section {
-                        Text("Сообщения и наблюдавшиеся версии сохраняются в постоянном архиве Макоша, в том числе после удаления и срабатывания таймера Telegram. Сохранение файлов в S3 определяется флагом этого чата.")
-                            .font(.callout).foregroundStyle(.secondary)
+                        Text(
+                            "Сообщения и наблюдавшиеся версии сохраняются в постоянном архиве Макоша, в том числе после удаления и срабатывания таймера Telegram. Сохранение файлов в S3 определяется флагом этого чата."
+                        )
+                        .font(.callout).foregroundStyle(.secondary)
                     }
-                }.formStyle(.grouped)
+                }.formStyle(WorkspaceFormStyle())
             } else {
-                ContentUnavailableView("Состояние чата недоступно", systemImage: "lock", description: Text("Обновите сведения о текущем секретном сеансе."))
+                ContentUnavailableView(
+                    "Состояние чата недоступно", systemImage: "lock", description: Text("Обновите сведения о текущем секретном сеансе."))
                 Button("Обновить", action: controller.refreshSession).disabled(controller.isSettingTTL).padding()
             }
         }.frame(width: 480, height: 490)
             .sheet(isPresented: $verificationPresented) {
-                if session?.verification != nil, let secret = model.conversationCapabilities?.secret { TelegramSecretVerificationView(secret: secret) }
-                else { Text("Ключ текущего сеанса недоступен").padding(30) }
+                if session?.verification != nil, let secret = model.conversationCapabilities?.secret {
+                    TelegramSecretVerificationView(secret: secret)
+                } else {
+                    Text("Ключ текущего сеанса недоступен").padding(30)
+                }
             }
             .sheet(isPresented: $timerPresented) { TelegramSecretTimerView(controller: controller, synthetic: model.isSyntheticPreview) }
             .onChange(of: model.selectedChatID) { _, id in if id != chatID { dismiss() } }
     }
     private func stateName(_ state: TelegramSecretConversation.State) -> String {
-        switch state { case .handshake: "Ожидание подключения"; case .active: "Сквозное шифрование"; case .terminated: "Сеанс завершён" }
+        switch state {
+        case .handshake: "Ожидание подключения"
+        case .active: "Сквозное шифрование"
+        case .terminated: "Сеанс завершён"
+        }
     }
 }

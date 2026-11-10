@@ -24,7 +24,10 @@ struct TelegramUploadPreviewView: View {
         let target: TelegramUploadTarget
     }
     init(model: TelegramModel, contextID: UUID) {
-        self.model = model; upload = model.upload; emojiCatalog = model.customEmojiCatalog; self.contextID = contextID
+        self.model = model
+        upload = model.upload
+        emojiCatalog = model.customEmojiCatalog
+        self.contextID = contextID
     }
     private var canDismiss: Bool { upload.canCancel || upload.phase == .uncertain }
     private var canUseMediaOptions: Bool { upload.canUseMediaOptions && model.composerSupportsExtendedMediaOptions }
@@ -64,14 +67,20 @@ struct TelegramUploadPreviewView: View {
                             placementButton(context: captionContext, revision: captionRevision, above: captionAbove)
                         }
                         photoSizeButton()
-                    } label: { Image(systemName: "ellipsis.circle") }
-                        .makoshMenuStyle(.plain).fixedSize()
-                        .accessibilityLabel(actionsAccessibilityLabel).accessibilityIdentifier("telegram.upload.actions")
-                        .accessibilityValue(upload.presentation == .archive ? "Архив" : upload.presentation == .file ? "Файлы" : "Медиа")
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .makoshMenuStyle(.plain).fixedSize()
+                    .accessibilityLabel(actionsAccessibilityLabel).accessibilityIdentifier("telegram.upload.actions")
+                    .accessibilityValue(upload.presentation == .archive ? "Архив" : upload.presentation == .file ? "Файлы" : "Медиа")
                 }
-                Button { upload.dismissPreparation(contextID: contextID) } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).disabled(!canDismiss).keyboardShortcut(.cancelAction)
-                    .accessibilityLabel("Отменить подготовку").accessibilityIdentifier("telegram.upload.cancel")
+                Button {
+                    upload.dismissPreparation(contextID: contextID)
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain).disabled(!canDismiss).keyboardShortcut(.cancelAction)
+                .accessibilityLabel("Отменить подготовку").accessibilityIdentifier("telegram.upload.cancel")
             }
             .contentShape(Rectangle())
             .accessibilityElement(children: .contain).accessibilityIdentifier("telegram.upload.header")
@@ -88,16 +97,20 @@ struct TelegramUploadPreviewView: View {
             if let target = upload.target {
                 Label("Получатель: \(target.title)", systemImage: "paperplane").font(.callout)
                 if let source = target.replySource {
-                    Label("Ответ на: \(source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(source))", systemImage: "arrowshape.turn.up.left")
-                        .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
+                    Label(
+                        "Ответ на: \(source.text.isEmpty ? "Сообщение с вложением" : telegramSourcePreview(source))",
+                        systemImage: "arrowshape.turn.up.left"
+                    )
+                    .font(.callout).lineLimit(3).accessibilityIdentifier("telegram.upload.replySubject")
                 }
             }
             if upload.items.count > 1 {
                 TelegramUploadBatchPreview(upload: upload, contextID: contextID)
             } else if let file = upload.file {
                 TelegramUploadFilePreview(file: file, mediaSpoiler: mediaSpoiler, upload: upload, contextID: contextID).id(file.id)
+            } else {
+                ProgressView("Подготовка вложения…").frame(maxWidth: .infinity, minHeight: 140)
             }
-            else { ProgressView("Подготовка вложения…").frame(maxWidth: .infinity, minHeight: 140) }
             if upload.file != nil {
                 let usesCaption = upload.usesCaptionPlaceholder
                 captionEditor
@@ -112,7 +125,9 @@ struct TelegramUploadPreviewView: View {
                     .accessibilityIdentifier("telegram.upload.recoveryStatus")
             }
             if let captionError { Text(captionError).font(.caption).foregroundStyle(.red) }
-            if let coverError { Text(coverError).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.videoCoverError") }
+            if let coverError {
+                Text(coverError).font(.caption).foregroundStyle(.red).accessibilityIdentifier("telegram.upload.videoCoverError")
+            }
             Divider()
             HStack {
                 TelegramUploadStatusView(upload: upload, synthetic: model.isSyntheticPreview)
@@ -130,15 +145,17 @@ struct TelegramUploadPreviewView: View {
                             sendAsSpoilerButton(revision: captionRevision)
                         } label: {
                             Text(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить")
-                        } primaryAction: { send() }
+                        } primaryAction: {
+                            send()
+                        }
                         .makoshMenuIndicator(.hidden)
-                        .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
+                        .buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(!upload.canSend || captionError != nil)
                         .accessibilityIdentifier("telegram.upload.send")
                         .contextMenu { sendAsSpoilerButton(revision: captionRevision) }
                     } else {
                         Button(model.isSyntheticPreview ? "Имитировать очередь" : "Отправить", action: send)
-                        .buttonStyle(.borderedProminent).disabled(!upload.canSend || captionError != nil)
-                        .accessibilityIdentifier("telegram.upload.send")
+                            .buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(!upload.canSend || captionError != nil)
+                            .accessibilityIdentifier("telegram.upload.send")
                     }
                 }
             }
@@ -146,10 +163,13 @@ struct TelegramUploadPreviewView: View {
         .padding(20).frame(width: 520)
         .modifier(TelegramUploadAppendDropModifier(model: model))
         .interactiveDismissDisabled(!canDismiss)
-        .sheet(item: $coverEditor, onDismiss: {
-            if let coverChoiceID { upload.cancelVideoCoverEdit(coverChoiceID) }
-            coverChoiceID = nil
-        }) { editor in
+        .sheet(
+            item: $coverEditor,
+            onDismiss: {
+                if let coverChoiceID { upload.cancelVideoCoverEdit(coverChoiceID) }
+                coverChoiceID = nil
+            }
+        ) { editor in
             TelegramVideoCoverEditorView(presentation: editor, upload: upload) { coverEditor = nil }
         }
         .onChange(of: upload.videoCoverEditingID) { _, new in
@@ -160,25 +180,34 @@ struct TelegramUploadPreviewView: View {
             retainPickedDescriptors(for: input)
             guard let snapshot = emojiPicker else { return }
             guard expectedEmojiInput == input, captionSnapshotIsCurrent(snapshot, ignoringInputRevision: true) else {
-                dismissEmojiPicker(); return
+                dismissEmojiPicker()
+                return
             }
             expectedEmojiInput = nil
-            emojiPicker = .init(input: input, revision: upload.captionRevision,
+            emojiPicker = .init(
+                input: input, revision: upload.captionRevision,
                 captionContextID: snapshot.captionContextID, preparationID: snapshot.preparationID,
                 catalogContextID: snapshot.catalogContextID, target: snapshot.target)
         }
         .onChange(of: upload.captionRevision) { _, revision in
             if expectedEmojiInput == nil, let snapshot = emojiPicker, snapshot.revision != revision { dismissEmojiPicker() }
         }
-        .onChange(of: upload.captionContextID) { _, _ in dismissEmojiPicker(); pickedEmojiDescriptors = [:] }
-        .onChange(of: upload.target) { _, _ in dismissEmojiPicker(); pickedEmojiDescriptors = [:] }
+        .onChange(of: upload.captionContextID) { _, _ in
+            dismissEmojiPicker()
+            pickedEmojiDescriptors = [:]
+        }
+        .onChange(of: upload.target) { _, _ in
+            dismissEmojiPicker()
+            pickedEmojiDescriptors = [:]
+        }
         .onChange(of: upload.itemsRevision) { _, _ in dismissEmojiPicker() }
         .onChange(of: upload.phase) { _, phase in if phase != .ready { dismissEmojiPicker() } }
         .onChange(of: emojiCatalog.contextID) { _, _ in dismissEmojiPicker() }
         .onChange(of: upload.isAppendingItems) { _, appending in if appending { dismissEmojiPicker() } }
         .onChange(of: upload.isVideoCoverSaving) { _, saving in if saving { dismissEmojiPicker() } }
         .onDisappear {
-            dismissEmojiPicker(); pickedEmojiDescriptors = [:]
+            dismissEmojiPicker()
+            pickedEmojiDescriptors = [:]
             coverTask?.cancel()
             if let coverChoiceID { upload.cancelVideoCoverEdit(coverChoiceID) }
             coverEditor = nil
@@ -189,47 +218,62 @@ struct TelegramUploadPreviewView: View {
         let captionContext = upload.captionContextID
         let usesCaption = upload.usesCaptionPlaceholder
         return HStack(alignment: .bottom, spacing: 8) {
-            TelegramRichTextEditor(value: Binding(get: { upload.captionInput.formattedText }, set: { _ in }),
+            TelegramRichTextEditor(
+                value: Binding(get: { upload.captionInput.formattedText }, set: { _ in }),
                 error: $captionError, selection: upload.captionInput.selection, accessibilityID: "telegram.upload.caption",
                 placeholder: usesCaption ? "Добавить подпись…" : "Добавить комментарий…",
-                accessibilityLabel: usesCaption ? "Подпись к вложению" : "Комментарий к вложениям", inputChanged: { input in
+                accessibilityLabel: usesCaption ? "Подпись к вложению" : "Комментарий к вложениям",
+                inputChanged: { input in
                     _ = upload.updateCaptionInput(input, contextID: captionContext)
                 }, submit: send, customEmojiDescriptors: captionEmojiDescriptors,
                 customEmojiContext: model.customEmojiPlaybackContext,
                 customEmojiInsertion: upload.captionCustomEmojiInsertion,
                 customEmojiInputContextID: captionContext,
-                consumeCustomEmojiInsertion: { id, input in upload.consumeCaptionCustomEmojiInsertion(id: id, expectedInput: input) })
-                .id(captionContext).disabled(upload.phase != .ready || upload.isAppendingItems || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving)
+                consumeCustomEmojiInsertion: { id, input in upload.consumeCaptionCustomEmojiInsertion(id: id, expectedInput: input) }
+            )
+            .id(captionContext).disabled(
+                upload.phase != .ready || upload.isAppendingItems || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving)
             captionEmojiButton
         }
     }
     private var captionEmojiButton: some View {
         Button {
             guard upload.canInsertCaptionCustomEmoji, let target = upload.target,
-                  let preparationID = upload.preparationContextID,
-                  preparationID == contextID, emojiCatalog.snapshot?.accountID == target.accountID else { return }
+                let preparationID = upload.preparationContextID,
+                preparationID == contextID, emojiCatalog.snapshot?.accountID == target.accountID
+            else { return }
             expectedEmojiInput = nil
-            emojiPicker = .init(input: upload.captionInput, revision: upload.captionRevision,
+            emojiPicker = .init(
+                input: upload.captionInput, revision: upload.captionRevision,
                 captionContextID: upload.captionContextID, preparationID: preparationID,
                 catalogContextID: emojiCatalog.contextID, target: target)
-        } label: { Image(systemName: "face.smiling").font(.system(size: 21)).frame(width: 28, height: 32) }
+        } label: {
+            Image(systemName: "face.smiling").font(.system(size: 21)).frame(width: 28, height: 32)
+        }
         .buttonStyle(.plain).foregroundStyle(.secondary)
         .accessibilityLabel("Эмодзи в подписи").accessibilityIdentifier("telegram.upload.customEmoji.open")
-        .disabled(!upload.canInsertCaptionCustomEmoji || model.customEmojiPlaybackContext == nil || emojiCatalog.snapshot?.accountID != upload.target?.accountID)
+        .disabled(
+            !upload.canInsertCaptionCustomEmoji || model.customEmojiPlaybackContext == nil
+                || emojiCatalog.snapshot?.accountID != upload.target?.accountID
+        )
         .popover(isPresented: Binding(get: { emojiPicker != nil }, set: { if !$0 { dismissEmojiPicker() } }), arrowEdge: .top) {
             if let snapshot = emojiPicker {
-                TelegramCustomEmojiPicker(catalog: emojiCatalog, playbackContext: model.customEmojiPlaybackContext,
-                    chatID: snapshot.target.chatID) { descriptor, catalogContextID in
-                        guard expectedEmojiInput == nil, catalogContextID == snapshot.catalogContextID,
-                              captionSnapshotIsCurrent(snapshot),
-                              let next = try? TelegramCustomEmojiInsertion.applying(descriptor, to: snapshot.input),
-                              upload.requestCaptionCustomEmojiInsertion(descriptor: descriptor, catalog: emojiCatalog,
-                                catalogContextID: catalogContextID, expectedInput: snapshot.input,
-                                contextID: snapshot.captionContextID, revision: snapshot.revision,
-                                preparationID: snapshot.preparationID) else { return }
-                        pickedEmojiDescriptors[descriptor.fileID] = descriptor
-                        expectedEmojiInput = next
-                    }
+                TelegramCustomEmojiPicker(
+                    catalog: emojiCatalog, playbackContext: model.customEmojiPlaybackContext,
+                    chatID: snapshot.target.chatID
+                ) { descriptor, catalogContextID in
+                    guard expectedEmojiInput == nil, catalogContextID == snapshot.catalogContextID,
+                        captionSnapshotIsCurrent(snapshot),
+                        let next = try? TelegramCustomEmojiInsertion.applying(descriptor, to: snapshot.input),
+                        upload.requestCaptionCustomEmojiInsertion(
+                            descriptor: descriptor, catalog: emojiCatalog,
+                            catalogContextID: catalogContextID, expectedInput: snapshot.input,
+                            contextID: snapshot.captionContextID, revision: snapshot.revision,
+                            preparationID: snapshot.preparationID)
+                    else { return }
+                    pickedEmojiDescriptors[descriptor.fileID] = descriptor
+                    expectedEmojiInput = next
+                }
             }
         }
     }
@@ -237,19 +281,23 @@ struct TelegramUploadPreviewView: View {
         model.customEmojiDescriptors.merging(pickedEmojiDescriptors, uniquingKeysWith: { _, picked in picked })
     }
     private func retainPickedDescriptors(for input: TelegramComposerInput) {
-        let ids = Set(input.formattedText.entities.compactMap { entity -> Int64? in
-            if case let .customEmoji(_, fileID) = entity.kind { return fileID }; return nil
-        }.prefix(1024))
+        let ids = Set(
+            input.formattedText.entities.compactMap { entity -> Int64? in
+                if case let .customEmoji(_, fileID) = entity.kind { return fileID }
+                return nil
+            }.prefix(1024))
         pickedEmojiDescriptors = pickedEmojiDescriptors.filter { ids.contains($0.key) }
     }
     private func captionSnapshotIsCurrent(_ snapshot: CaptionEmojiPickerSnapshot, ignoringInputRevision: Bool = false) -> Bool {
-        upload.canInsertCaptionCustomEmoji && contextID == snapshot.preparationID &&
-            upload.preparationContextID == snapshot.preparationID && upload.captionContextID == snapshot.captionContextID &&
-            upload.target == snapshot.target && emojiCatalog.contextID == snapshot.catalogContextID &&
-            emojiCatalog.snapshot?.accountID == snapshot.target.accountID &&
-            (ignoringInputRevision || upload.captionInput == snapshot.input && upload.captionRevision == snapshot.revision)
+        upload.canInsertCaptionCustomEmoji && contextID == snapshot.preparationID && upload.preparationContextID == snapshot.preparationID
+            && upload.captionContextID == snapshot.captionContextID && upload.target == snapshot.target
+            && emojiCatalog.contextID == snapshot.catalogContextID && emojiCatalog.snapshot?.accountID == snapshot.target.accountID
+            && (ignoringInputRevision || upload.captionInput == snapshot.input && upload.captionRevision == snapshot.revision)
     }
-    private func dismissEmojiPicker() { emojiPicker = nil; expectedEmojiInput = nil }
+    private func dismissEmojiPicker() {
+        emojiPicker = nil
+        expectedEmojiInput = nil
+    }
     @ViewBuilder private func photoSizeButton() -> some View {
         if upload.presentation == .media, !upload.isRecordedRoundVideo {
             Divider()
@@ -261,8 +309,10 @@ struct TelegramUploadPreviewView: View {
     }
     @ViewBuilder private func videoCoverButtons(revision: UUID) -> some View {
         if model.composerSupportsExtendedMediaOptions, upload.items.count == 1, upload.file?.mode == .video {
-            MakoshMenuItem(upload.file?.videoCover == nil ? "Добавить обложку" : "Изменить обложку") { chooseVideoCover(revision: revision) }
-                .disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.choose")
+            MakoshMenuItem(upload.file?.videoCover == nil ? "Добавить обложку" : "Изменить обложку") {
+                chooseVideoCover(revision: revision)
+            }
+            .disabled(!upload.canEditVideoCover).accessibilityIdentifier("telegram.upload.videoCover.choose")
             if upload.file?.videoCover != nil {
                 MakoshMenuItem("Удалить обложку") {
                     guard let edit = upload.beginVideoCoverEdit(contextID: contextID, revision: revision) else { return }
@@ -287,8 +337,9 @@ struct TelegramUploadPreviewView: View {
             MakoshMenuItem {
                 upload.updatePresentation(.file, contextID: contextID, revision: revision)
             } label: {
-                Label(upload.items.count > 1 ? "Отправить как файлы" : "Отправить как файл",
-                      systemImage: upload.presentation == .file ? "checkmark" : "doc")
+                Label(
+                    upload.items.count > 1 ? "Отправить как файлы" : "Отправить как файл",
+                    systemImage: upload.presentation == .file ? "checkmark" : "doc")
             }.disabled(!upload.canEditPresentation).accessibilityIdentifier("telegram.upload.asFile")
         }
         if upload.canUseArchivePresentation {
@@ -304,25 +355,35 @@ struct TelegramUploadPreviewView: View {
         if upload.items.count > 1 {
             MakoshMenuItem(upload.isGrouped ? "Отправить отдельно" : "Сгруппировать") {
                 upload.updateGrouping(!upload.isGrouped, contextID: contextID, revision: revision)
-            }.disabled(!upload.canEditItems || (!upload.isGrouped && !upload.canGroupItems)).accessibilityIdentifier("telegram.upload.grouping")
+            }.disabled(!upload.canEditItems || (!upload.isGrouped && !upload.canGroupItems)).accessibilityIdentifier(
+                "telegram.upload.grouping")
             Divider()
         }
     }
     private func chooseVideoCover(revision: UUID) {
         guard let video = upload.file?.video,
-              let edit = upload.beginVideoCoverEdit(contextID: contextID, revision: revision) else { return }
-        coverChoiceID = edit; coverError = nil
+            let edit = upload.beginVideoCoverEdit(contextID: contextID, revision: revision)
+        else { return }
+        coverChoiceID = edit
+        coverError = nil
         coverTask = Task { @MainActor in
             defer { coverTask = nil }
             guard let source = await TelegramVideoCoverPanel.choose(), !Task.isCancelled,
-                  upload.videoCoverEditingID == edit else { upload.cancelVideoCoverEdit(edit); return }
+                upload.videoCoverEditingID == edit
+            else {
+                upload.cancelVideoCoverEdit(edit)
+                return
+            }
             do {
                 let selection = try await TelegramUploadVideoCoverIO.openSelection(source)
                 guard !Task.isCancelled, upload.videoCoverEditingID == edit else {
-                    try? TelegramUploadVideoCoverIO.discardSelection(selection); return
+                    try? TelegramUploadVideoCoverIO.discardSelection(selection)
+                    return
                 }
-                do { coverEditor = try TelegramVideoCoverEditorPresentation(id: edit, selection: selection, video: video) }
-                catch { try? TelegramUploadVideoCoverIO.discardSelection(selection); throw error }
+                do { coverEditor = try TelegramVideoCoverEditorPresentation(id: edit, selection: selection, video: video) } catch {
+                    try? TelegramUploadVideoCoverIO.discardSelection(selection)
+                    throw error
+                }
             } catch {
                 guard !Task.isCancelled, upload.videoCoverEditingID == edit else { return }
                 upload.cancelVideoCoverEdit(edit)
@@ -334,14 +395,20 @@ struct TelegramUploadPreviewView: View {
         MakoshMenuItem(above ? "Переместить подпись вниз" : "Переместить подпись вверх") {
             upload.updateCaptionPlacement(!above, contextID: context, revision: revision)
         }
-        .disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving || upload.preparationContextID != contextID)
+        .disabled(
+            upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving
+                || upload.preparationContextID != contextID
+        )
         .accessibilityIdentifier("telegram.upload.captionPlacement")
     }
     private func spoilerButton(context: UUID, revision: UUID, spoiler: Bool) -> some View {
         MakoshMenuItem(spoiler ? "Отключить спойлер" : "Скрыть под спойлером") {
             upload.updateMediaSpoiler(!spoiler, contextID: context, revision: revision)
         }
-        .disabled(upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving || upload.preparationContextID != contextID)
+        .disabled(
+            upload.phase != .ready || upload.videoCoverEditingID != nil || upload.isVideoCoverSaving
+                || upload.preparationContextID != contextID
+        )
         .accessibilityIdentifier("telegram.upload.spoiler")
     }
     private func send() {
@@ -367,18 +434,28 @@ private struct TelegramUploadFilePreview: View {
     @State private var failed = false
     private var isVideo: Bool { file.mode == .video }
     private var previewKey: String { file.id.uuidString + ":" + (file.videoCover?.id.uuidString ?? "frame") }
-    private var playsVideo: Bool { isVideo && file.videoCover == nil && !mediaSpoiler && upload.phase == .ready && upload.videoCoverEditingID == nil && !upload.isVideoCoverSaving }
+    private var playsVideo: Bool {
+        isVideo && file.videoCover == nil && !mediaSpoiler && upload.phase == .ready && upload.videoCoverEditingID == nil
+            && !upload.isVideoCoverSaving
+    }
     var body: some View {
         VStack(spacing: 10) {
             if file.mode == .photo || isVideo {
                 TelegramUploadSingleMediaLayout(file: file) {
                     if let preview {
                         ZStack {
-                            Image(preview.image, scale: 1, label: Text(file.videoCover != nil ? "Обложка видео" : (isVideo ? "Первый кадр видео" : "Предпросмотр фото"))).resizable().scaledToFit()
+                            Image(
+                                preview.image, scale: 1,
+                                label: Text(
+                                    file.videoCover != nil ? "Обложка видео" : (isVideo ? "Первый кадр видео" : "Предпросмотр фото"))
+                            ).resizable().scaledToFit()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .blur(radius: mediaSpoiler ? 18 : 0)
                                 .accessibilityHidden(mediaSpoiler)
-                                .accessibilityIdentifier(file.videoCover != nil ? "telegram.upload.videoCoverPreview" : (isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview"))
+                                .accessibilityIdentifier(
+                                    file.videoCover != nil
+                                        ? "telegram.upload.videoCoverPreview"
+                                        : (isVideo ? "telegram.upload.videoPreview" : "telegram.upload.photoPreview"))
                             if playsVideo { TelegramUploadVideoPlayerView(playback: upload.videoPlayback) }
                             if mediaSpoiler {
                                 Label(isVideo ? "Видео под спойлером" : "Фото под спойлером", systemImage: "eye.slash")
@@ -387,16 +464,22 @@ private struct TelegramUploadFilePreview: View {
                             }
                         }
                     } else if failed {
-                        Label(isVideo ? "Не удалось показать первый кадр видео" : "Не удалось показать фото", systemImage: "photo.badge.exclamationmark")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                        Label(
+                            isVideo ? "Не удалось показать первый кадр видео" : "Не удалось показать фото",
+                            systemImage: "photo.badge.exclamationmark"
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }.clipped()
             } else {
-                TelegramUploadDocumentPreview(file: file, isActive: upload.phase == .ready && upload.videoCoverEditingID == nil && !upload.isVideoCoverSaving)
+                TelegramUploadDocumentPreview(
+                    file: file, isActive: upload.phase == .ready && upload.videoCoverEditingID == nil && !upload.isVideoCoverSaving)
             }
             if file.mode != .file {
                 Text("\(file.name) • \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
-                .font(.callout).lineLimit(2).accessibilityIdentifier("telegram.upload.file")
+                    .font(.callout).lineLimit(2).accessibilityIdentifier("telegram.upload.file")
             }
             if file.mode == .photo {
                 Text("JPEG без исходных метаданных").font(.caption).foregroundStyle(.secondary)
@@ -406,7 +489,8 @@ private struct TelegramUploadFilePreview: View {
         .background { if file.mode != .file { RoundedRectangle(cornerRadius: 8).fill(.quaternary) } }
         .task(id: previewKey) {
             guard file.mode == .photo || file.mode == .video else { return }
-            preview = nil; failed = false
+            preview = nil
+            failed = false
             do {
                 let result = try await TelegramUploadFileIO.preview(file)
                 guard !Task.isCancelled else { return }
@@ -417,8 +501,7 @@ private struct TelegramUploadFilePreview: View {
             }
         }
         .task(id: playsVideo) {
-            if playsVideo { await upload.openVideoPreview(contextID: contextID) }
-            else { upload.stopVideoPreview(contextID: contextID) }
+            if playsVideo { await upload.openVideoPreview(contextID: contextID) } else { upload.stopVideoPreview(contextID: contextID) }
         }
         .onDisappear { upload.stopVideoPreview(contextID: contextID) }
     }

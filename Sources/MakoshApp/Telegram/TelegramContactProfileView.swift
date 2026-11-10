@@ -261,7 +261,7 @@ struct TelegramContactProfileView: View {
                             Text("Карточка обновляется при получении сведений от Telegram.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                    }.formStyle(.grouped)
+                    }.formStyle(WorkspaceFormStyle())
                 }
             }
         }.frame(width: page == .media || page == .members ? 620 : 480, height: 680)

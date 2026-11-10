@@ -118,7 +118,7 @@ struct WhatsAppChatSettingsView: View {
                     Text("Удаление и исчезновение в WhatsApp не удаляют архив Макоша.").font(.caption)
                         .foregroundStyle(.secondary)
                 }.disabled(model.busy)
-            }.formStyle(.grouped)
+            }.formStyle(WorkspaceFormStyle())
             if let error = model.error { Text(error).foregroundStyle(.red) }
             if let text = model.notice { Text(text).foregroundStyle(.secondary) }
         }.padding(20).frame(minWidth: 520, minHeight: 600).task {

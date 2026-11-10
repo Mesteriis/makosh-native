@@ -237,10 +237,12 @@ struct MailComposeSheet: View {
                         }.disabled(model.busy || submissionBlocked)
                     }.padding(20)
                 }
-                Button(action: sendDraft) { Label("Отправить", systemImage: "paperplane.fill") }.buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.return, modifiers: .command).disabled(
-                        model.busy || model.synthetic || submissionBlocked || draft.to.isEmpty
-                    ).accessibilityIdentifier("mail.compose.send")
+                Button(action: sendDraft) { Label("Отправить", systemImage: "paperplane.fill") }.buttonStyle(
+                    WorkspaceButtonStyle(prominent: true)
+                )
+                .keyboardShortcut(.return, modifiers: .command).disabled(
+                    model.busy || model.synthetic || submissionBlocked || draft.to.isEmpty
+                ).accessibilityIdentifier("mail.compose.send")
             }.padding(20)
         }.frame(width: 740, height: 660).interactiveDismissDisabled(model.busy)
             .onChange(of: draft.accountID) {

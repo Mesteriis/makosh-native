@@ -47,7 +47,7 @@ struct MailNavigationBar: View {
             } label: {
                 Label("Написать", systemImage: "square.and.pencil")
             }
-            .buttonStyle(.borderedProminent).controlSize(.regular)
+            .buttonStyle(WorkspaceButtonStyle(prominent: true)).controlSize(.regular)
             .disabled(model.busy || model.accounts.isEmpty)
             .accessibilityIdentifier("mail.compose")
         }

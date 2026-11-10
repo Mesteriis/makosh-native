@@ -309,7 +309,7 @@ struct WhatsAppDetailView: View {
                         Text("Архив Макоша сохранит сообщение и все его версии.")
                     } else {
                         TextField(actionKind == "forward" ? "JID получателя" : "Текст", text: $actionText)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(WorkspaceTextFieldStyle())
                     }
                     HStack {
                         Button("Отмена") { actionMessage = nil }

@@ -241,7 +241,7 @@ private struct WhatsAppOutboxView: View {
                                     Button("Точно не отправлено") { Task { await model.resolve(value, sent: false) } }
                                 }
                             }
-                        }.buttonStyle(.bordered).padding(.vertical, 5).fixedSize(horizontal: false, vertical: true)
+                        }.buttonStyle(WorkspaceButtonStyle()).padding(.vertical, 5).fixedSize(horizontal: false, vertical: true)
                             .accessibilityElement(children: .contain)
                         Divider()
                     }

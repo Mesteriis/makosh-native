@@ -10,15 +10,20 @@ struct TelegramSecretCreationView: View {
             if let basis = controller.creationBasis {
                 Text("Создать секретный чат с \(basis.title)?").font(.headline)
                     .accessibilityIdentifier("telegram.secret.create.destination")
-                Text("Этот чат будет доступен на устройствах, где создан его сеанс. Дождитесь подключения собеседника и сравните ключ шифрования.")
-                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Этот чат будет доступен на устройствах, где создан его сеанс. Дождитесь подключения собеседника и сравните ключ шифрования."
+                )
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if basis.existingSecretID != nil {
                     Text("С этим собеседником уже есть секретный чат. Продолжение создаст отдельный новый сеанс.").font(.callout)
                 }
                 if basis.premiumRequired { Text("Для начала чата с этим собеседником требуется Telegram Premium.") }
                 Button("Начать") { _ = controller.create(basis: basis, contextID: controller.creationContextID) }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(controller.creationStatus != .ready || !basis.canCreate || controller.isCreating || controller.creationPhase == .uncertain)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
+                    .disabled(
+                        controller.creationStatus != .ready || !basis.canCreate || controller.isCreating
+                            || controller.creationPhase == .uncertain
+                    )
                     .accessibilityIdentifier("telegram.secret.create.confirm")
             }
             if controller.creationStatus == .loading || controller.isCreating { ProgressView("Подготовка секретного чата…") }
@@ -43,7 +48,9 @@ struct TelegramSecretCreationView: View {
         case .limitExceeded: return "Telegram временно ограничил создание секретных чатов."
         case .premiumRequired: return "Telegram требует Premium для этого собеседника."
         case .created: return "Секретный чат создан. Ожидание подключения собеседника."
-        default: return controller.creationStatus == .failed || controller.creationStatus == .timedOut ? "Сведения о собеседнике недоступны. Повторите обновление." : nil
+        default:
+            return controller.creationStatus == .failed || controller.creationStatus == .timedOut
+                ? "Сведения о собеседнике недоступны. Повторите обновление." : nil
         }
     }
 }
@@ -64,7 +71,8 @@ struct TelegramSecretTimerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Таймер секретного чата").font(.headline); Spacer()
+                Text("Таймер секретного чата").font(.headline)
+                Spacer()
                 Button("Закрыть") { dismiss() }.keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("telegram.secret.timer.close")
             }
@@ -83,11 +91,13 @@ struct TelegramSecretTimerView: View {
                     TextField("Секунды", text: $custom).accessibilityIdentifier("telegram.secret.timer.custom")
                         .disabled(controller.isSettingTTL)
                 }
-                Text("Telegram удаляет сообщения по этому таймеру. Уже наблюдавшиеся сообщения и версии сохраняются в архиве Макоша; копирование файлов в S3 зависит от флага чата.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Telegram удаляет сообщения по этому таймеру. Уже наблюдавшиеся сообщения и версии сохраняются в архиве Макоша; копирование файлов в S3 зависит от флага чата."
+                )
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Изменить таймер") {
                     confirmation = .init(basis: session, context: controller.sessionContextID, timeout: timeout)
-                }.buttonStyle(.borderedProminent).disabled(!validChoice || !controller.canSetTTL(timeout))
+                }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(!validChoice || !controller.canSetTTL(timeout))
                     .accessibilityIdentifier("telegram.secret.timer.apply")
             }
             if controller.isSettingTTL || controller.sessionStatus == .loading { ProgressView("Проверка состояния…") }
@@ -99,17 +109,31 @@ struct TelegramSecretTimerView: View {
             }
             Button("Обновить", action: controller.refreshSession).disabled(controller.isSettingTTL)
                 .accessibilityIdentifier("telegram.secret.timer.refresh")
-            if synthetic { Text("Синтетическая проверка. Сообщение в Telegram не отправляется.").font(.caption).foregroundStyle(.secondary) }
+            if synthetic {
+                Text("Синтетическая проверка. Сообщение в Telegram не отправляется.").font(.caption).foregroundStyle(.secondary)
+            }
         }.padding(24).frame(width: 470)
             .onAppear {
                 let current = controller.session?.ttl ?? 0
-                if [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 30, 60, 3600, 86400, 604800].contains(current) { selected = current }
-                else { selected = -1; custom = String(current) }
+                if [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 30, 60, 3600, 86400, 604800].contains(current) {
+                    selected = current
+                } else {
+                    selected = -1
+                    custom = String(current)
+                }
             }
-            .confirmationDialog("Изменить таймер?", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), presenting: confirmation) { value in
-                Button("Подтвердить") { _ = controller.setTTL(value.timeout, basis: value.basis, contextID: value.context); confirmation = nil }
+            .confirmationDialog(
+                "Изменить таймер?", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }),
+                presenting: confirmation
+            ) { value in
+                Button("Подтвердить") {
+                    _ = controller.setTTL(value.timeout, basis: value.basis, contextID: value.context)
+                    confirmation = nil
+                }
                 Button("Отмена", role: .cancel) { confirmation = nil }
-            } message: { value in Text("\(value.basis.title): \(timerName(value.basis.ttl)) → \(timerName(value.timeout))") }
+            } message: { value in
+                Text("\(value.basis.title): \(timerName(value.basis.ttl)) → \(timerName(value.timeout))")
+            }
     }
     private var timeout: Int32? { selected == 0 ? nil : selected == -1 ? Int32(custom) : selected }
     private var validChoice: Bool { selected == 0 || (timeout.map { $0 > 0 } ?? false) }
@@ -120,7 +144,9 @@ struct TelegramSecretTimerView: View {
         case .uncertain: return "Результат неизвестен. Обновите состояние; повторная отправка автоматически не выполняется."
         case .changed: return "Состояние чата изменилось. Обновите таймер перед новой попыткой."
         case .failed: return "Изменить таймер не удалось."
-        default: return controller.sessionStatus == .failed || controller.sessionStatus == .timedOut ? "Состояние секретного чата недоступно." : nil
+        default:
+            return controller.sessionStatus == .failed || controller.sessionStatus == .timedOut
+                ? "Состояние секретного чата недоступно." : nil
         }
     }
 }

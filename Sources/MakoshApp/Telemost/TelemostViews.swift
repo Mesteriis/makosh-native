@@ -27,7 +27,7 @@ struct TelemostCatalogueView: View {
                 ForEach(model.accounts) { Text($0.name).tag(Optional($0.id)) }
             }.accessibilityIdentifier("telemost.accounts")
             if model.selectedAccountID != nil { Text(model.connection.title).font(.caption).foregroundStyle(.secondary) }
-            TextField("Поиск встреч и заметок", text: $model.query).textFieldStyle(.roundedBorder).onSubmit {
+            TextField("Поиск встреч и заметок", text: $model.query).textFieldStyle(WorkspaceTextFieldStyle()).onSubmit {
                 Task { await model.reload() }
             }.accessibilityIdentifier("telemost.search")
             HStack {
@@ -113,7 +113,7 @@ struct TelemostDetailView: View {
                         Button("Открыть встречу") {
                             model.openMeeting(meeting.validatedURL.url.absoluteString)
                             timerOffer = tasksHost?.offerTimer(title: meeting.localTitle, notes: meeting.notes)
-                        }.buttonStyle(.borderedProminent).accessibilityIdentifier("telemost.open")
+                        }.buttonStyle(WorkspaceButtonStyle(prominent: true)).accessibilityIdentifier("telemost.open")
                         if let tasksHost {
                             Button("Списать время…") {
                                 tasksHost.logTime(title: meeting.localTitle, notes: meeting.notes, meetingID: meeting.id)

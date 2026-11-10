@@ -145,7 +145,8 @@ struct TeamsDetailView: View {
                     }.help("Информация и настройки беседы").accessibilityIdentifier("teams.chat.settings")
                 }.padding(16)
                 HStack {
-                    TextField("Поиск в сохранённой переписке", text: $model.searchQuery).textFieldStyle(.roundedBorder).onSubmit {
+                    TextField("Поиск в сохранённой переписке", text: $model.searchQuery).textFieldStyle(WorkspaceTextFieldStyle()).onSubmit
+                    {
                         Task { await model.search() }
                     }.accessibilityIdentifier("teams.search")
                     Button("Найти") { Task { await model.search() } }.disabled(model.historyBusy)

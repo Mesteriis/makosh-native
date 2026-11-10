@@ -48,7 +48,7 @@ struct TelegramWorkspaceNavigation: View {
             } label: {
                 Label("Новый чат", systemImage: "square.and.pencil")
             }
-            .buttonStyle(.borderedProminent).controlSize(.regular).accessibilityIdentifier("telegram.workspace.newChat")
+            .buttonStyle(WorkspaceButtonStyle(prominent: true)).controlSize(.regular).accessibilityIdentifier("telegram.workspace.newChat")
         }.padding(.horizontal, 8).frame(height: 44).background { WorkspaceBackdrop(intensity: 0.5) }
             .sheet(isPresented: $downloads) { TelegramDownloadsView(model: model) }
             .sheet(isPresented: $startChat) {
@@ -58,7 +58,7 @@ struct TelegramWorkspaceNavigation: View {
                         Spacer()
                         Button("Закрыть") { startChat = false }
                     }
-                    TextField("Имя или @username", text: $search.chatQuery).textFieldStyle(.roundedBorder)
+                    TextField("Имя или @username", text: $search.chatQuery).textFieldStyle(WorkspaceTextFieldStyle())
                         .onChange(of: search.chatQuery) { _, query in model.globalSearch.messageQuery = query }
                     TelegramGlobalSearchResultsView(model: model) { startChat = false }
                 }.padding(20).frame(width: 540, height: 620).makoshAppearance()

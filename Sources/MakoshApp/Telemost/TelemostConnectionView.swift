@@ -24,8 +24,8 @@ struct TelemostConnectionView: View {
                 Text(
                     "Нужны доступный организации API и собственное OAuth-приложение Яндекса. Client ID — публичный идентификатор, не пароль."
                 ).foregroundStyle(.secondary)
-                TextField("Название в Макоше", text: $name).textFieldStyle(.roundedBorder)
-                TextField("Собственный Client ID · 32 hex", text: $clientID).textFieldStyle(.roundedBorder)
+                TextField("Название в Макоше", text: $name).textFieldStyle(WorkspaceTextFieldStyle())
+                TextField("Собственный Client ID · 32 hex", text: $clientID).textFieldStyle(WorkspaceTextFieldStyle())
                 Text("Callback: org.makosh.desktop.telemost://oauth/callback").font(.caption).textSelection(.enabled)
                 Text("Чтение — обязательно")
                 Toggle("Создание встреч", isOn: $create)
@@ -67,7 +67,7 @@ struct TelemostConnectionView: View {
                     }
                     if let request = model.authorization, request.mode == .manualCode {
                         Button("Открыть Яндекс OAuth") { if !model.isSynthetic { _ = NSWorkspace.shared.open(request.authURL) } }
-                        TextField("Код подтверждения", text: $code).textFieldStyle(.roundedBorder)
+                        TextField("Код подтверждения", text: $code).textFieldStyle(WorkspaceTextFieldStyle())
                         Button("Проверить код") {
                             let value = code
                             code = ""

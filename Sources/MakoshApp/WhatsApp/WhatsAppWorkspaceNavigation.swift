@@ -97,7 +97,7 @@ struct WhatsAppWorkspaceNavigation: View {
                 } label: {
                     Label("Новый чат", systemImage: "square.and.pencil")
                 }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.selectedAccountID == nil)
+                .buttonStyle(WorkspaceButtonStyle(prominent: true)).controlSize(.large).disabled(model.selectedAccountID == nil)
                 .accessibilityIdentifier("whatsapp.workspace.newChat")
             }.padding(.horizontal, 8).frame(height: 44)
             if let error = model.notificationError { Text(error).font(.caption).foregroundStyle(.orange).padding(.horizontal) }
@@ -116,7 +116,7 @@ struct WhatsAppWorkspaceNavigation: View {
             .sheet(isPresented: $adding) {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Добавить WhatsApp").font(.title2.bold())
-                    TextField("Название аккаунта", text: $name).textFieldStyle(.roundedBorder)
+                    TextField("Название аккаунта", text: $name).textFieldStyle(WorkspaceTextFieldStyle())
                     Text("После добавления отсканируйте QR-код в WhatsApp на телефоне.").foregroundStyle(
                         .secondary)
                     HStack {

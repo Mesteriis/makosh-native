@@ -28,21 +28,16 @@ struct TelegramSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             if embedded {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(availablePages, id: \.self) { value in
-                            Button {
-                                page = value
-                            } label: {
-                                Text(value.rawValue).font(.callout).padding(.horizontal, 10).padding(.vertical, 7)
-                                    .foregroundStyle(page == value ? WorkspaceStyle.accent : .primary)
-                                    .background(
-                                        page == value ? WorkspaceStyle.accent.opacity(0.15) : .clear,
-                                        in: RoundedRectangle(cornerRadius: WorkspaceStyle.controlRadius))
-                            }.buttonStyle(.plain).accessibilityValue(page == value ? "Выбрано" : "")
-                        }
-                    }.padding(.horizontal, 20)
-                }.scrollIndicators(.hidden).frame(height: 42)
+                ViewThatFits(in: .horizontal) {
+                    tabRow(availablePages)
+                    VStack(alignment: .leading, spacing: 4) {
+                        tabRow(Array(availablePages.prefix(4)))
+                        tabRow(Array(availablePages.dropFirst(4)))
+                    }
+                    ScrollView(.horizontal) { tabRow(availablePages) }.scrollIndicators(.hidden)
+                }
+                .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                .padding(.horizontal, 20)
             } else {
                 HStack {
                     if page != nil {
@@ -61,7 +56,8 @@ struct TelegramSettingsView: View {
                 Divider()
             }
             if synthetic {
-                Text("Синтетический аккаунт · серверные изменения симулируются").font(.caption).foregroundStyle(.secondary).padding(10)
+                Text("Синтетический аккаунт · серверные изменения симулируются").font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.vertical, 10)
             }
             switch page {
             case .general: TelegramGeneralSettingsView()
@@ -97,16 +93,19 @@ struct TelegramSettingsView: View {
             case .profile, nil:
                 Form {
                     if let avatarEditing, let accountID = avatarEditing.accountID {
-                        Section {
-                            if let avatars {
-                                HStack(spacing: 16) {
+                        Section("Фотография профиля") {
+                            HStack(spacing: 16) {
+                                if let avatars {
                                     TelegramChatAvatar(title: "Мой профиль", peerID: accountID, store: avatars, size: 72)
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
                                     Text("Мой профиль").font(.title3)
-                                }.padding(.vertical, 8).accessibilityIdentifier("telegram.settings.profile")
-                            }
+                                    Text("Основная фотография вашего аккаунта Telegram.").font(.callout).foregroundStyle(.secondary)
+                                }
+                            }.accessibilityIdentifier("telegram.settings.profile")
                             TelegramAvatarEditingButton(
                                 controller: avatarEditing, target: .init(accountID: accountID, peerID: accountID, kind: .main),
-                                title: "Изменить фотографию профиля")
+                                title: "Изменить фотографию…", synthetic: synthetic)
                         }
                     }
                     if !embedded {
@@ -134,6 +133,21 @@ struct TelegramSettingsView: View {
         if sessions != nil { result.append(.devices) }
         if privacy != nil { result.append(.privacy) }
         return result
+    }
+    private func tabRow(_ pages: [Page]) -> some View {
+        HStack(spacing: 8) {
+            ForEach(pages, id: \.self) { value in
+                Button {
+                    page = value
+                } label: {
+                    Text(value.rawValue).font(.callout).fixedSize().padding(.horizontal, 10).padding(.vertical, 7)
+                        .foregroundStyle(page == value ? WorkspaceStyle.accent : .primary)
+                        .background(
+                            page == value ? WorkspaceStyle.accent.opacity(0.15) : .clear,
+                            in: RoundedRectangle(cornerRadius: WorkspaceStyle.controlRadius))
+                }.buttonStyle(.plain).accessibilityValue(page == value ? "Выбрано" : "")
+            }
+        }
     }
     private func settingsRow(_ value: Page, symbol: String, id: String) -> some View {
         Button {

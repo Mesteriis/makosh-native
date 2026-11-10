@@ -50,6 +50,8 @@ extension TelegramModel {
 
     public static func syntheticWorkspaceLayoutPreview() -> TelegramModel {
         let model = syntheticPreview()
+        model.avatarEditing.bind(TelegramSyntheticAvatarEditingProvider(profileTitle: "Алексей · профиль QA"))
+        model.avatars.bind(TelegramSyntheticAvatarProvider())
         model.preview = TelegramSyntheticPages(workspaceLayout: true)
         model.workspaceFolders = [
             .init(id: 1, title: "Работа"), .init(id: 2, title: "Личные"), .init(id: 3, title: "Проекты"), .init(id: 4, title: "Каналы"),

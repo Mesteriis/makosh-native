@@ -92,6 +92,16 @@ struct MakoshApp: App {
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     static let workspaceWindowID = "workspace"
+    private var workspaceDefaultWidth: CGFloat {
+        #if DEBUG
+        if CommandLine.arguments.contains("--telegram-layout-synthetic-preview"),
+            CommandLine.arguments.contains("--qa-narrow-window")
+        {
+            return 1000
+        }
+        #endif
+        return 1200
+    }
     var body: some Scene {
         // One workspace window: a second one would start a second Telegram engine on the
         // same Postbox and second mail workers, so there is no ⌘N «Новое окно» or Dock
@@ -156,6 +166,7 @@ struct MakoshApp: App {
                     WhatsAppOpenQuestionsPreview().frame(minWidth: 1100, minHeight: 720)
                 } else if CommandLine.arguments.contains("--telegram-layout-synthetic-preview") {
                     WorkspaceView(syntheticTelegram: .syntheticWorkspaceLayoutPreview())
+                        .frame(minWidth: 1000, minHeight: 640)
                 } else if CommandLine.arguments.contains("--mail-synthetic-preview") {
                     WorkspaceView(syntheticMail: MailWorkspaceModel(synthetic: true)).frame(minWidth: 1100, minHeight: 720)
                 } else if Bundle.main.object(forInfoDictionaryKey: "MakoshRequiresSyntheticConfiguration") as? Bool == true,
@@ -256,7 +267,7 @@ struct MakoshApp: App {
                 .environmentObject(delegate.calendar).environment(\.calendarHost, delegate.calendar)
                 .environmentObject(delegate.persons).environment(\.personsHost, delegate.persons)
         }
-        .defaultSize(width: 1200, height: 854)
+        .defaultSize(width: workspaceDefaultWidth, height: 854)
         .windowResizability(.contentMinSize)
         // Makosh keeps running without windows, so a launch must always present the workspace.
         .defaultLaunchBehavior(.presented)

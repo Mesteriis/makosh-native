@@ -22,7 +22,8 @@ final class OSINTServiceHarness: @unchecked Sendable {
     init(
         database: OSINTTestDatabase, state: OSINTScriptedServerState = OSINTScriptedServerState(),
         findings: [FlowsintSynthetic.Finding] = [],
-        installed: Bool = false, scanTimeout: Duration = .seconds(10), now: @escaping @Sendable () -> Date = Date.init
+        installed: Bool = false, scanTimeout: Duration = .seconds(10), scanGrace: Duration = .seconds(5),
+        now: @escaping @Sendable () -> Date = Date.init
     ) async throws {
         db = database
         persons = try db.persons()
@@ -41,7 +42,8 @@ final class OSINTServiceHarness: @unchecked Sendable {
                     host: settings.host, port: settings.port, login: settings.login, password: password,
                     expectedFingerprint: settings.hostKeyFingerprint)
             },
-            apiFactory: { _, _, _ in api }, scanTimeout: scanTimeout, pollInterval: .milliseconds(20), healthPoll: .milliseconds(20),
+            apiFactory: { _, _, _ in api }, scanTimeout: scanTimeout, scanGrace: scanGrace, pollInterval: .milliseconds(20),
+            healthPoll: .milliseconds(20),
             now: now)
         try await service.open()
     }

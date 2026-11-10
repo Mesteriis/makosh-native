@@ -331,4 +331,51 @@ final class OSINTServiceRunTests: XCTestCase {
         let personInputs = try await h.service.inputs(personID: person)
         XCTAssertFalse(personInputs.contains { $0.type == .domain }, "a person's mail domain is not their asset")
     }
+
+    func testFindingsOnServerCopiesOfInputsAreProposed() async throws {
+        // Live flowsint links results to its own lowercase copy of the input node, not to the node Makosh added.
+        let h = try await harness()
+        await h.api.setCopiesInputs(true)
+        let id = try anna(h)
+        let runID = try await h.service.enrich(
+            personID: id, enrichers: [.emailToGravatar, .usernameToMaigret],
+            inputs: [OSINTInput(type: .email, value: Self.anna), OSINTInput(type: .username, value: "anna_k")])
+        await h.service.settled()
+        let run = try await h.store.run(id: runID)
+        XCTAssertEqual(run?.state, .completed)
+        XCTAssertEqual(run?.found, 3, "the avatar and two accounts hang on copies of the inputs")
+        let person = try XCTUnwrap(h.persons.person(id: id))
+        XCTAssertEqual(
+            Set(person.observations.filter { $0.status == .proposed }.map(\.field)), ["avatar", "social.github", "social.twitter"])
+    }
+
+    func testScanRowAppearingLateIsNotARejection() async throws {
+        // The server creates the scan row after answering the launch: the first polls may get 404.
+        let h = try await harness()
+        let id = try anna(h)
+        await h.api.missNextScan(polls: 3)
+        let runID = try await h.service.enrich(
+            personID: id, enrichers: [.emailToGravatar], inputs: [OSINTInput(type: .email, value: Self.anna)])
+        await h.service.settled()
+        let run = try await h.store.run(id: runID)
+        XCTAssertEqual(run?.state, .completed, "\(run?.failure?.code ?? "")")
+        XCTAssertEqual(run?.found, 1)
+        let launch = try await h.store.attempts(runID: runID).first { $0.kind == .launch }
+        XCTAssertEqual(launch?.state, .confirmed)
+    }
+
+    func testScanMissingPastTheGraceIsRejected() async throws {
+        let h = try await OSINTServiceHarness(
+            database: try osintDatabase(), findings: Self.findings(), scanTimeout: .seconds(10), scanGrace: .milliseconds(100))
+        harnesses.append(h)
+        try await h.installed()
+        let id = try anna(h)
+        await h.api.missNextScan(polls: 10_000)
+        let runID = try await h.service.enrich(
+            personID: id, enrichers: [.emailToGravatar], inputs: [OSINTInput(type: .email, value: Self.anna)])
+        await h.service.settled()
+        let launch = try await h.store.attempts(runID: runID).first { $0.kind == .launch }
+        XCTAssertEqual(launch?.state, .rejected)
+        XCTAssertEqual(launch?.failure, .apiRejected(code: 404, stage: "scan"))
+    }
 }

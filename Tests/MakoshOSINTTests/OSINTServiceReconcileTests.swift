@@ -312,4 +312,22 @@ final class OSINTServiceReconcileTests: XCTestCase {
         let deletions = try await h.store.attempts(open: false).filter { $0.kind == .deleteSketch }
         XCTAssertTrue(deletions.isEmpty)
     }
+
+    func testUnknownLaunchIsConfirmedByFindingsOnInputCopy() async throws {
+        let h = try await harness()
+        await h.api.setCopiesInputs(true)
+        let id = try anna(h)
+        await h.api.failNext(.unknownOutcome(stage: "launch"), stage: "launch")
+        let runID = try await h.service.enrich(
+            personID: id, enrichers: [.emailToGravatar], inputs: [OSINTInput(type: .email, value: Self.anna)])
+        await h.service.settled()
+        let open = try await openAttempts(h, runID)
+        XCTAssertEqual(open.map(\.state), [.unknown])
+        await h.service.reconcile(autoSources: [])
+        let after = try await h.store.attempts(runID: runID).first { $0.kind == .launch }
+        XCTAssertEqual(after?.state, .confirmed, "the avatar hangs on the server's copy of the address")
+        let run = try await h.store.run(id: runID)
+        XCTAssertEqual(run?.state, .completed)
+        XCTAssertEqual(run?.found, 1)
+    }
 }

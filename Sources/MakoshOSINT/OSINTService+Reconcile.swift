@@ -45,9 +45,11 @@ extension OSINTService {
                 let enricher = attempt.payload.enricher
             else { return }
             let graph = try await link.api.graph(sketchID: sketchID)
+            // The input and the server's own copies of it: results hang on any of them.
+            let inputIDs = Self.inputNodeIDs(in: graph, sameEntityAs: [inputNodeID])
             let neighbors = graph.edges.compactMap { edge -> String? in
-                if edge.source == inputNodeID { return edge.target }
-                if edge.target == inputNodeID { return edge.source }
+                if inputIDs.contains(edge.source) { return edge.target }
+                if inputIDs.contains(edge.target) { return edge.source }
                 return nil
             }
             let produced = graph.nodes.contains { node in
@@ -106,7 +108,7 @@ extension OSINTService {
             // The run's inputs: the nodes it launched from, and the nodes it added.
             let launched = attempts.filter { $0.kind == .launch }.compactMap { $0.payload.inputNodeID }
             let added = attempts.filter { $0.kind == .addNode && $0.state == .confirmed }.compactMap { $0.response?.nodeID }
-            let inputs = Set(launched + added)
+            let inputs = Self.inputNodeIDs(in: graph, sameEntityAs: Set(launched + added))
             let mapped = OSINTGraphMapping.observations(
                 graph: graph, inputNodeIDs: inputs, sketchID: sketch.sketchID, serverID: settings.serverID, person: person, now: now())
             run.found = (try? persons.addProposedObservations(personID: run.personID, mapped.observations)) ?? 0

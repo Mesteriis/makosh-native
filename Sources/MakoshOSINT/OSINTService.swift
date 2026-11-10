@@ -31,6 +31,8 @@ public actor OSINTService {
     let apiFactory: APIFactory
     let pin: FlowsintPin
     let scanTimeout: Duration
+    /// How long a fresh task may answer 404 to its status poll: the server creates the scan row after the launch reply.
+    let scanGrace: Duration
     let pollInterval: Duration
     let healthPoll: Duration
     let now: @Sendable () -> Date
@@ -57,6 +59,7 @@ public actor OSINTService {
     public init(
         persons: PersonStore, store: OSINTStore, vault: OSINTCredentialVault, sessionFactory: @escaping SessionFactory,
         apiFactory: @escaping APIFactory, pin: FlowsintPin = .current, scanTimeout: Duration = .seconds(600),
+        scanGrace: Duration = .seconds(60),
         pollInterval: Duration = .seconds(3), healthPoll: Duration = .seconds(5), now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.persons = persons
@@ -66,6 +69,7 @@ public actor OSINTService {
         self.apiFactory = apiFactory
         self.pin = pin
         self.scanTimeout = scanTimeout
+        self.scanGrace = scanGrace
         self.pollInterval = pollInterval
         self.healthPoll = healthPoll
         self.now = now

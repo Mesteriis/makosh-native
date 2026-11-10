@@ -70,6 +70,16 @@ public actor FlowsintSynthetic: FlowsintAPI {
     /// The next launched task hangs from the start.
     public func hangNextLaunch() { hangNext = true }
     private var hangNext = false
+    private var copiesInputs = false
+    private var scanMisses: [String: Int] = [:]
+    private var scanMissesForNext = 0
+
+    /// Live flowsint hangs findings on its own lowercase-typed copy of the input node, not on the node the
+    /// client added. On: every task works on such a copy.
+    public func setCopiesInputs(_ value: Bool) { copiesInputs = value }
+
+    /// Live flowsint creates the scan row asynchronously: the first polls of a fresh task may answer 404.
+    public func missNextScan(polls: Int) { scanMissesForNext = polls }
 
     public var users: [String] { accounts.keys.sorted() }
 
@@ -160,6 +170,10 @@ public actor FlowsintSynthetic: FlowsintAPI {
             guard graphs[sketchID] != nil else { throw OSINTFailure.apiRejected(code: 404, stage: "launch") }
             let id = nextID("task")
             tasks[id] = Task(sketchID: sketchID, enricher: enricher, nodeIDs: nodeIDs, status: .pending)
+            if scanMissesForNext > 0 {
+                scanMisses[id] = scanMissesForNext
+                scanMissesForNext = 0
+            }
             if hangNext {
                 hung.insert(id)
                 hangNext = false
@@ -172,6 +186,10 @@ public actor FlowsintSynthetic: FlowsintAPI {
     public func scan(id: String) async throws -> FlowsintScanStatus {
         try arm("scan") {
             guard var task = tasks[id] else { throw OSINTFailure.apiRejected(code: 404, stage: "scan") }
+            if let misses = scanMisses[id], misses > 0 {
+                scanMisses[id] = misses - 1
+                throw OSINTFailure.apiRejected(code: 404, stage: "scan")
+            }
             if hung.contains(id) { return .running }
             if task.status != .completed {
                 apply(task)
@@ -238,8 +256,17 @@ public actor FlowsintSynthetic: FlowsintAPI {
         for inputID in task.nodeIDs {
             guard let input = graph.nodes.first(where: { $0.id == inputID }) else { continue }
             let inputValue = (input.primaryValue ?? input.label).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            var sourceID = inputID
+            if copiesInputs {
+                // The enricher's own node for the same entity: lowercase type, a new element id.
+                var copy = input
+                copy.id = nextID("n")
+                copy.type = input.type.lowercased()
+                graph.nodes.append(copy)
+                sourceID = copy.id
+            }
             for finding in findings
-            where finding.enricher == task.enricher && finding.inputType.rawValue == input.type
+            where finding.enricher == task.enricher && finding.inputType.rawValue.caseInsensitiveCompare(input.type) == .orderedSame
                 && finding.inputValue.lowercased() == inputValue
             {
                 var properties = finding.properties
@@ -250,7 +277,7 @@ public actor FlowsintSynthetic: FlowsintAPI {
                 graphs[task.sketchID] = graph
                 let outputID = merge(output, into: task.sketchID)
                 graph = graphs[task.sketchID] ?? graph
-                let edge = FlowsintEdge(source: inputID, target: outputID, label: finding.edgeLabel)
+                let edge = FlowsintEdge(source: sourceID, target: outputID, label: finding.edgeLabel)
                 if !graph.edges.contains(edge) { graph.edges.append(edge) }
             }
         }

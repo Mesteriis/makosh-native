@@ -24,6 +24,27 @@ extension OSINTService {
         }
     }
 
+    /// Every node of the sketch that stands for one of these inputs. flowsint hangs an enricher's results on its
+    /// own lowercase-typed copy of the input node, not on the node the client added: an input is an entity
+    /// (type and value), not one element id.
+    static func inputNodeIDs(in graph: FlowsintGraph, matching inputs: [OSINTInput]) -> Set<String> {
+        let wanted = Set(inputs.map(\.normalized))
+        return Set(
+            graph.nodes.compactMap { node -> String? in
+                guard let type = FlowsintNodeType(wireType: node.type), let primary = node.primaryValue else { return nil }
+                return wanted.contains(OSINTInput(type: type, value: normalized(type, primary))) ? node.id : nil
+            })
+    }
+
+    /// The given nodes and every other node of the sketch that stands for the same entities.
+    static func inputNodeIDs(in graph: FlowsintGraph, sameEntityAs ids: Set<String>) -> Set<String> {
+        let inputs = graph.nodes.filter { ids.contains($0.id) }.compactMap { node -> OSINTInput? in
+            guard let type = FlowsintNodeType(wireType: node.type), let primary = node.primaryValue else { return nil }
+            return OSINTInput(type: type, value: primary)
+        }
+        return inputNodeIDs(in: graph, matching: inputs).union(ids)
+    }
+
     /// What a run may send: the dossier's current addresses, phones, usernames and the name. Never
     /// notes, tags, titles or proposals.
     public func inputs(personID: UUID) async throws -> [OSINTInput] {
@@ -237,7 +258,7 @@ extension OSINTService {
             await finish(run, state: .failed, failure: .enricherUnavailable(missing.joined(separator: ", ")))
             return
         }
-        var scans: [(attemptID: UUID, scanID: String)] = []
+        var scans: [(attemptID: UUID, scanID: String, since: ContinuousClock.Instant)] = []
         for input in inputs {
             guard let nodeID = nodeIDs[input.normalized] else { continue }
             for enricher in run.enrichers.sorted(by: { $0.rawValue < $1.rawValue }) where enricher.inputType == input.type {
@@ -254,7 +275,7 @@ extension OSINTService {
                     let scanID = try await link.api.launch(enricher: enricher, sketchID: sketchID, nodeIDs: [nodeID])
                     record.response = OSINTAttemptResponse(scanID: scanID)
                     try? await store.saveAttempt(record)
-                    scans.append((record.id, scanID))
+                    scans.append((record.id, scanID, ContinuousClock.now))
                 } catch {
                     let failure = Self.failure(error, stage: "launch")
                     await settle(attemptID: record.id, state: Self.isUnknown(failure) ? .unknown : .rejected, failure: failure)
@@ -266,7 +287,7 @@ extension OSINTService {
         let deadline = ContinuousClock.now + scanTimeout
         var pending = scans
         while !pending.isEmpty, ContinuousClock.now < deadline {
-            var still: [(attemptID: UUID, scanID: String)] = []
+            var still: [(attemptID: UUID, scanID: String, since: ContinuousClock.Instant)] = []
             for item in pending {
                 do {
                     switch try await link.api.scan(id: item.scanID) {
@@ -276,7 +297,9 @@ extension OSINTService {
                     }
                 } catch {
                     let failure = Self.failure(error, stage: "scan")
-                    if Self.isUnknown(failure) {
+                    // The server creates the scan row after answering the launch: 404 right after it is «not yet».
+                    let notYet = failure == .apiRejected(code: 404, stage: "scan") && ContinuousClock.now < item.since + scanGrace
+                    if Self.isUnknown(failure) || notYet {
                         still.append(item)
                     } else {
                         await settle(attemptID: item.attemptID, state: .rejected, failure: failure)
@@ -293,8 +316,9 @@ extension OSINTService {
             let graph = try await link.api.graph(sketchID: sketchID)
             if let person = try? persons.person(id: run.personID), person.isActive {
                 let mapped = OSINTGraphMapping.observations(
-                    graph: graph, inputNodeIDs: Set(inputs.compactMap { nodeIDs[$0.normalized] }), sketchID: sketchID,
-                    serverID: settings.serverID, person: person, now: now())
+                    graph: graph,
+                    inputNodeIDs: Self.inputNodeIDs(in: graph, matching: inputs).union(inputs.compactMap { nodeIDs[$0.normalized] }),
+                    sketchID: sketchID, serverID: settings.serverID, person: person, now: now())
                 run.found = (try? persons.addProposedObservations(personID: run.personID, mapped.observations)) ?? 0
                 run.truncated = mapped.truncated
             }

@@ -64,6 +64,14 @@ struct TaskListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Color.clear.frame(width: 14, height: 1)
+                Text("Код / Jira").frame(width: TaskStyle.identifierWidth, alignment: .leading)
+                Text("Задача")
+                Spacer()
+            }.font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 22).padding(.vertical, 6)
+                .accessibilityIdentifier("tasks.list.columns")
             ScrollView {
                 LazyVStack(spacing: condense ? 0 : 2) {
                     if model.overdueCount > 0 {
@@ -85,7 +93,7 @@ struct TaskListView: View {
                                 ForEach(Array(group.tasks.enumerated()), id: \.element.id) { index, task in row(task, index: start + index)
                                 }
                             }
-                            .padding(.leading, 10).padding(.vertical, 4)
+                            .padding(.vertical, 4)
                             .overlay(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 3).fill(TaskStyle.color(model.flowMeta[flow]?.color).opacity(0.5)).frame(
                                     width: 2)
@@ -133,7 +141,7 @@ struct TaskListView: View {
     private func row(_ task: Task, index: Int) -> some View {
         TaskRowView(
             model: model, task: task, isCursor: model.selection.cursor == index, isSelected: model.selection.selected.contains(task.id),
-            isRenaming: renamingID == task.id, hideStatus: model.filters.status != nil, compact: model.showRightPanel,
+            isRenaming: renamingID == task.id, hideStatus: model.filters.status != nil,
             onRename: { title in
                 renamingID = nil
                 _Concurrency.Task { await model.rename(id: task.id, title: title) }
@@ -303,7 +311,6 @@ struct TaskRowView: View {
     let isSelected: Bool
     let isRenaming: Bool
     let hideStatus: Bool
-    let compact: Bool
     let onRename: (String) -> Void
     let onRenameCancel: () -> Void
     let onCheckbox: () -> Void
@@ -314,11 +321,10 @@ struct TaskRowView: View {
     private var closed: Bool { task.status == .done || task.status == .cancelled }
     private var blocked: Bool { !closed && model.isBlocked(task) }
     private var overdue: Bool { model.isOverdue(task) }
-    private var dueToday: Bool { task.due.map { model.calendar.isDate($0, inSameDayAs: Date()) } ?? false }
     private var stripe: Color? { isSelected ? TaskStyle.selection : overdue ? TaskStyle.overdue : nil }
 
     var body: some View {
-        HStack(spacing: model.condense ? 6 : 10) {
+        HStack(alignment: .top, spacing: 10) {
             Button(action: onCheckbox) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 3).stroke(
@@ -329,65 +335,39 @@ struct TaskRowView: View {
                     if task.status == .done { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white) }
                 }
             }
+            .padding(.top, 2)
             .buttonStyle(.plain).help(task.status == .done ? "Отменить завершение" : "Завершить").accessibilityIdentifier(
                 "tasks.row.done.\(task.code)")
-            if model.plannedTaskIDs.contains(task.id) {
-                Image(systemName: "clock").font(.caption2).foregroundStyle(TaskStyle.selection.opacity(0.6)).help("В планере")
-            }
-            if blocked { Image(systemName: "lock").font(.caption).foregroundStyle(.yellow.opacity(0.7)) }
-            ForEach(task.personas, id: \.self) { persona in
-                Label(persona, systemImage: "person").font(.caption2).labelStyle(.titleAndIcon).padding(.horizontal, 5).padding(
-                    .vertical, 1
-                )
-                .background(TaskStyle.persona.opacity(0.12), in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(TaskStyle.persona)
-            }
-            if !hideStatus {
-                TaskStatusBadge(status: task.status) { _Concurrency.Task { await model.bulkCycle(ids: [task.id]) } }
-            }
-            TaskPriorityBadge(priority: task.priority)
-            Text(task.code).font(.caption2.monospaced()).foregroundStyle(.quaternary)
-            if let observation = model.observation(id: task.id) {
-                Text(observation.issue.key).font(.caption.monospaced()).padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Color.accentColor.opacity(0.18), in: Capsule())
-                if task.source?.membership == .mentioned {
-                    Image(systemName: "at").font(.caption).foregroundStyle(.secondary).help("Вас упомянули")
-                }
-                if task.source?.membership == .kept {
-                    Image(systemName: "pin").font(.caption).foregroundStyle(.secondary).help("Оставлена в «Моих»")
+            VStack(alignment: .leading, spacing: 3) {
+                Text(task.code).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+                    .accessibilityLabel("Код задачи: \(task.code)")
+                if let observation = model.observation(id: task.id) {
+                    Text(observation.issue.key).font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(WorkspaceStyle.accent).lineLimit(1).truncationMode(.middle)
+                        .help(observation.issue.key).accessibilityLabel("Jira: \(observation.issue.key)")
                 }
             }
-            title
-            Spacer(minLength: 4)
-            if !compact {
-                ForEach(task.tags, id: \.self) { tag in
-                    Text("#" + tag).font(.caption).padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(TaskStyle.tag.opacity(0.1), in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(
-                            TaskStyle.tag.opacity(0.85))
+            .frame(width: TaskStyle.identifierWidth, alignment: .leading)
+            .accessibilityIdentifier("tasks.row.identity.\(task.code)")
+            VStack(alignment: .leading, spacing: model.condense ? 2 : 5) {
+                title.frame(maxWidth: .infinity, alignment: .leading)
+                ViewThatFits(in: .horizontal) {
+                    metadata.fixedSize(horizontal: true, vertical: false)
+                    compactMetadata
                 }
-                if let due = task.due {
-                    HStack(spacing: 3) {
-                        Image(systemName: "calendar")
-                        if overdue { Image(systemName: "exclamationmark.triangle") }
-                        Text(model.storedPreferences.dateFormat.string(due, calendar: model.calendar))
+                if !model.condense {
+                    let details =
+                        ([task.list].compactMap { $0 } + task.personas.map { "/" + $0 }
+                        + task.tags.map { "#" + $0 } + [task.flowID].compactMap { $0 }).joined(separator: " · ")
+                    if !details.isEmpty {
+                        Text(details).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(details)
                     }
-                    .font(.caption).monospacedDigit()
-                    .foregroundStyle(closed ? Color.secondary : overdue ? TaskStyle.overdue : dueToday ? Color.yellow : TaskStyle.due)
                 }
-                if let flow = task.flowID {
-                    Label(flow, systemImage: "bolt").font(.caption).padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(TaskStyle.color(model.flowMeta[flow]?.color).opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
-                        .foregroundStyle(TaskStyle.color(model.flowMeta[flow]?.color))
-                }
-            }
-            if let recurrence = task.recurrence {
-                Image(systemName: "repeat").font(.caption).foregroundStyle(.teal).help(TaskRecurrence.humanText(recurrence) ?? recurrence)
-            }
-            if !task.notes.isEmpty {
-                Image(systemName: "doc.text").font(.caption).foregroundStyle(.orange.opacity(0.7)).help(String(task.notesText.prefix(500)))
-            }
-            if model.timer?.taskID == task.id { Image(systemName: "timer").foregroundStyle(.green) }
+            }.frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
+
         }
         .padding(.horizontal, 10).padding(.vertical, model.condense ? 3 : 7)
+        .frame(minHeight: model.condense ? 44 : 70, alignment: .top)
         .background {
             RoundedRectangle(cornerRadius: 8).fill(
                 isSelected ? TaskStyle.selection.opacity(0.08) : hovered ? Color.white.opacity(0.04) : Color.clear)
@@ -398,7 +378,7 @@ struct TaskRowView: View {
         .overlay(alignment: .leading) {
             if let stripe { RoundedRectangle(cornerRadius: 2).fill(stripe).frame(width: 3).padding(.vertical, 2) }
         }
-        .opacity(closed ? 0.5 : blocked ? 0.6 : 1)
+        .opacity(closed ? 0.75 : 1)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .onChange(of: isRenaming) { _, renaming in
@@ -420,15 +400,56 @@ struct TaskRowView: View {
                 .onChange(of: renameFocused) { _, focused in if !focused, isRenaming { commitRename() } }
                 .accessibilityIdentifier("tasks.row.rename")
         } else {
-            HStack(spacing: 6) {
-                Text(task.title).strikethrough(task.status == .done).foregroundStyle(closed || blocked ? .secondary : .primary).lineLimit(1)
-                if blocked {
-                    Label("Заблокирована", systemImage: "lock").font(.caption2).foregroundStyle(.yellow.opacity(0.7))
-                        .help("Ждёт: " + model.blockers(task).map(\.title).joined(separator: ", "))
-                } else if !task.dependsOn.isEmpty, task.status != .done {
-                    Label("Зависит от", systemImage: "checkmark").font(.caption2).foregroundStyle(.green.opacity(0.7))
-                }
+            Text(task.title).strikethrough(task.status == .done)
+                .foregroundStyle(closed ? .secondary : .primary).lineLimit(1)
+                .help(task.title).accessibilityIdentifier("tasks.row.title.\(task.code)")
+        }
+    }
+
+    private var metadata: some View {
+        HStack(spacing: 8) {
+            if !hideStatus {
+                TaskStatusBadge(status: task.status) { _Concurrency.Task { await model.bulkCycle(ids: [task.id]) } }
+                    .frame(width: TaskStyle.statusWidth, alignment: .leading)
             }
+            TaskPriorityBadge(priority: task.priority).frame(width: 36, alignment: .leading)
+                .help("Приоритет: " + TaskStyle.priorityTitle(task.priority))
+            if let due = task.due {
+                Label(model.storedPreferences.dateFormat.string(due, calendar: model.calendar), systemImage: "calendar")
+                    .font(.caption).monospacedDigit().lineLimit(1)
+                    .foregroundStyle(closed ? Color.secondary : overdue ? TaskStyle.overdue : TaskStyle.due)
+            }
+            if blocked {
+                Image(systemName: "lock").foregroundStyle(.yellow)
+                    .help("Ждёт: " + model.blockers(task).map(\.title).joined(separator: ", "))
+            } else if !task.dependsOn.isEmpty && !closed {
+                Image(systemName: "checkmark").foregroundStyle(.green).help("Зависимости выполнены")
+            }
+            if model.plannedTaskIDs.contains(task.id) { Image(systemName: "clock").help("В планере") }
+            if let recurrence = task.recurrence {
+                Image(systemName: "repeat").help(TaskRecurrence.humanText(recurrence) ?? recurrence)
+            }
+            if !task.notes.isEmpty { Image(systemName: "doc.text").help(String(task.notesText.prefix(500))) }
+            if task.source?.membership == .mentioned { Image(systemName: "at").help("Вас упомянули") }
+            if task.source?.membership == .kept { Image(systemName: "pin").help("Оставлена в «Моих»") }
+            if model.timer?.taskID == task.id { Image(systemName: "timer").foregroundStyle(.green) }
+            Spacer(minLength: 0)
+        }.font(.caption2).foregroundStyle(.secondary)
+    }
+
+    private var compactMetadata: some View {
+        HStack(spacing: 6) {
+            if !hideStatus {
+                TaskStatusBadge(status: task.status) { _Concurrency.Task { await model.bulkCycle(ids: [task.id]) } }
+                    .labelStyle(.iconOnly).help(TaskStyle.statusTitle(task.status))
+            }
+            TaskPriorityBadge(priority: task.priority).help("Приоритет: " + TaskStyle.priorityTitle(task.priority))
+            if let due = task.due {
+                Text(TaskStyle.day(due)).font(.caption).lineLimit(1)
+                    .foregroundStyle(overdue ? TaskStyle.overdue : TaskStyle.due)
+            }
+            if blocked { Image(systemName: "lock").font(.caption).help("Заблокирована зависимостями") }
+            Spacer(minLength: 0)
         }
     }
 
@@ -529,13 +550,15 @@ struct TaskBulkBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text("\(ids.count) выбрано").font(.callout.bold()).foregroundStyle(TaskStyle.selection)
+            Text("\(ids.count) выбрано").font(.callout.bold()).foregroundStyle(TaskStyle.selection).fixedSize()
             Spacer()
             bulkButton("Выполнить", tint: .green) { await model.bulkToggleDone(ids: ids) }
-            bulkButton("Статус", tint: .gray) { await model.bulkCycle(ids: ids) }
-            bulkButton("Сегодня", tint: TaskStyle.selection) { await model.bulkToday(ids: ids) }
-            bulkButton("+1 день", tint: .purple) { await model.bulkPostpone(ids: ids) }
-            bulkButton("Удалить", tint: .red) { await model.bulkDelete(ids: ids) }
+            Menu("Ещё") {
+                Button("Статус") { _Concurrency.Task { await model.bulkCycle(ids: ids) } }
+                Button("Сегодня") { _Concurrency.Task { await model.bulkToday(ids: ids) } }
+                Button("Отложить на день") { _Concurrency.Task { await model.bulkPostpone(ids: ids) } }
+                Button("Удалить", role: .destructive) { _Concurrency.Task { await model.bulkDelete(ids: ids) } }
+            }.fixedSize().help("Другие действия с выбранными задачами")
             Button {
                 model.selection.clear()
             } label: {
@@ -549,13 +572,15 @@ struct TaskBulkBar: View {
     }
 
     private func bulkButton(_ title: String, tint: Color, action: @escaping @MainActor () async -> Void) -> some View {
-        Button(title) { _Concurrency.Task { await action() } }.buttonStyle(.plain).font(.caption)
+        Button(title) { _Concurrency.Task { await action() } }.buttonStyle(.plain).font(.caption).fixedSize()
             .padding(.horizontal, 10).padding(.vertical, 4).background(tint.opacity(0.2), in: RoundedRectangle(cornerRadius: 5))
             .overlay(RoundedRectangle(cornerRadius: 5).stroke(tint.opacity(0.3))).foregroundStyle(tint)
     }
 }
 
 enum TaskStyle {
+    static let identifierWidth: CGFloat = 84
+    static let statusWidth: CGFloat = 100
     /// The reference's priority colours: #ef4444, #fb923c, #60a5fa, #6b7280.
     static func priority(_ value: Int) -> Color {
         switch value {
@@ -575,7 +600,7 @@ enum TaskStyle {
         case .cancelled: Color(red: 0.99, green: 0.65, blue: 0.65)
         }
     }
-    static let selection = Color(red: 0.055, green: 0.647, blue: 0.914)  // #0ea5e9
+    static let selection = WorkspaceStyle.accent
     static let overdue = Color(red: 0.937, green: 0.267, blue: 0.267)
     static let flow = Color(red: 0.957, green: 0.447, blue: 0.714)  // #f472b6
     static let persona = Color(red: 0.506, green: 0.549, blue: 0.973)  // #818cf8

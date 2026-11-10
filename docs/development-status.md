@@ -58,6 +58,15 @@
   `domain.ip` `77.37.209.52`, `domain_to_subdomains` — 68 доменов `sh-inc.ru` за 55 с.
   `org_to_asn` не проверен (нужен `PDCP_API_KEY`); Sherlock по-прежнему ограничен
   серверным таймаутом 100 с.
+- Полный `scripts/test.sh` после этих правок — exit 1: 13 бандлов XCTest прошли (OSINT
+  151), в `MakoshPersonsTests` упали два теста `PersonsWorkspaceModelTests` с «PostgreSQL
+  connection failed». Причина не в коде: в журнале dev-PostgreSQL в ту же секунду «sorry,
+  too many clients already» — предел 100 соединений выбран запущенным приложением (21–28
+  соединений) вместе с соединениями тестового прогона. С закрытым приложением
+  `MakoshPersonsTests` — 115 из 115. `scripts/build-app.sh` — exit 0. Вывод на будущее:
+  полный прогон тестов запускать при закрытом приложении.
+- Запущенное приложение не завершается по SIGTERM при активной сессии WhatsApp; штатный
+  выход (Apple-событие quit) работает.
 
 ## OSINT-модуль раздела «Персоны» — план 3 (интерфейс, QA, документация) — 2026-11-09
 

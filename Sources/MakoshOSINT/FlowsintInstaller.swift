@@ -194,34 +194,50 @@ public actor FlowsintInstaller {
         return .done("записан")
     }
 
-    private var overrideText: String {
-        """
-        services:
-          api:
-            image: flowsint-api:\(pin.sha)
-            build:
-              context: .
-              dockerfile: flowsint-api/Dockerfile
-              target: production
-          celery:
-            image: flowsint-api:\(pin.sha)
-          app:
-            image: flowsint-app:\(pin.sha)
-            build:
-              context: ./flowsint-app
-              dockerfile: Dockerfile
-            ports: !override ["127.0.0.1:5173:8080"]
+    /// The override changed in this run: `up` must apply it even when the stack looks healthy.
+    private var overrideChanged = false
 
-        """
+    /// Group id of the server's Docker socket, digits only; nil when it cannot be read.
+    private func dockerSocketGroup() async -> String? {
+        guard let result = try? await session.exec("stat -c %g /var/run/docker.sock"), result.status == 0 else { return nil }
+        let gid = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !gid.isEmpty && gid.allSatisfy(\.isNumber) ? gid : nil
+    }
+
+    /// Images built from the pinned commit, the web port on loopback, and — when the socket's group is known —
+    /// that group for the worker: flowsint's tool enrichers (dnsx, subfinder, asnmap) run through the Docker
+    /// socket the upstream compose mounts, and the worker is not root. This is root-equivalent on the server.
+    private func overrideText(socketGroup: String?) -> String {
+        let group = socketGroup.map { "    group_add:\n      - \"\($0)\"\n" } ?? ""
+        return """
+            services:
+              api:
+                image: flowsint-api:\(pin.sha)
+                build:
+                  context: .
+                  dockerfile: flowsint-api/Dockerfile
+                  target: production
+              celery:
+                image: flowsint-api:\(pin.sha)
+            \(group)  app:
+                image: flowsint-app:\(pin.sha)
+                build:
+                  context: ./flowsint-app
+                  dockerfile: Dockerfile
+                ports: !override ["127.0.0.1:5173:8080"]
+
+            """
     }
 
     private func override() async throws -> Outcome {
+        let socketGroup = await dockerSocketGroup()
+        let text = overrideText(socketGroup: socketGroup)
         let current = try await session.exec("cat \(Self.root)/docker-compose.makosh.yml")
-        if current.status == 0, current.stdout == overrideText { return .skipped("override совпадает") }
-        let result = try await session.exec(
-            "install -m 644 /dev/stdin \(Self.root)/docker-compose.makosh.yml", stdin: Data(overrideText.utf8))
+        if current.status == 0, current.stdout == text { return .skipped("override совпадает") }
+        let result = try await session.exec("install -m 644 /dev/stdin \(Self.root)/docker-compose.makosh.yml", stdin: Data(text.utf8))
         guard result.status == 0 else { throw StepFailure(failure: .installFailed(stage: "override"), message: "не записан") }
-        return .done("записан")
+        overrideChanged = true
+        return .done(socketGroup == nil ? "записан; группа Docker-сокета не прочитана, инструменты flowsint не запустятся" : "записан")
     }
 
     private func imagesPresent() async throws -> Bool {
@@ -290,7 +306,7 @@ public actor FlowsintInstaller {
     }
 
     private func up() async throws -> Outcome {
-        if await healthy() { return .skipped("уже работает") }
+        if !overrideChanged, await healthy() { return .skipped("уже работает") }
         let result = try await session.exec("\(Self.compose) up -d --remove-orphans", timeout: .seconds(600))
         guard result.status == 0 else { throw StepFailure(failure: .installFailed(stage: "up"), message: "compose up не удался") }
         let deadline = ContinuousClock.now + healthTimeout

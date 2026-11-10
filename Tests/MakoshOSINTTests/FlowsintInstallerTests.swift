@@ -229,4 +229,45 @@ final class FlowsintInstallerTests: XCTestCase {
         XCTAssertEqual(settings.installedSHA, next.sha)
         XCTAssertEqual(h.state.envWrites, 1)
     }
+
+    func testOverrideGivesTheWorkerTheDockerSocketGroup() async throws {
+        // Tool enrichers (dnsx, subfinder, asnmap) run through the Docker socket; the worker is not root.
+        let h = try await harness()
+        h.state.dockerSocketGID = "991"
+        let install = await h.run()
+        XCTAssertEqual(install.state, .completed, "\(install.steps)")
+        let override = try XCTUnwrap(h.state.overrideText)
+        XCTAssertTrue(
+            override.contains("  celery:\n    image: flowsint-api:\(FlowsintPin.current.sha)\n    group_add:\n      - \"991\"\n"), override)
+        XCTAssertFalse(
+            override.contains("  api:\n    image: flowsint-api:\(FlowsintPin.current.sha)\n    group_add"), "only the worker runs tools")
+        XCTAssertTrue(h.state.commands.contains("stat -c %g /var/run/docker.sock"))
+    }
+
+    func testOverrideWithoutReadableSocketOmitsTheGroup() async throws {
+        let h = try await harness()
+        h.state.dockerSocketGID = nil
+        let install = await h.run()
+        XCTAssertEqual(install.state, .completed, "\(install.steps)")
+        let override = try XCTUnwrap(h.state.overrideText)
+        XCTAssertFalse(override.contains("group_add"), override)
+    }
+
+    func testChangedOverrideRecreatesTheStack() async throws {
+        // An install made before the socket group was added: the next run rewrites the override and must apply it.
+        let h = try await harness()
+        h.state.dockerSocketGID = nil
+        let first = await h.run()
+        XCTAssertEqual(first.state, .completed)
+        h.state.dockerSocketGID = "991"
+        h.state.commands = []
+        let second = await h.run()
+        XCTAssertEqual(second.state, .completed, "\(second.steps)")
+        let states = states(second)
+        XCTAssertEqual(states[.override], .done)
+        XCTAssertEqual(states[.build], .skipped)
+        XCTAssertEqual(states[.up], .done, "a changed override is applied with compose up")
+        XCTAssertTrue(h.state.commands.contains { $0.contains(" up -d") })
+        XCTAssertEqual(h.state.envWrites, 1)
+    }
 }

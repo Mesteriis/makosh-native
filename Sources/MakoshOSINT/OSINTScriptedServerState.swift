@@ -19,6 +19,8 @@ public final class OSINTScriptedServerState: @unchecked Sendable {
     public var builtSHA: String?
     /// The images the running containers were started from (`compose up -d`).
     public var runningSHA: String?
+    /// Group id of `/var/run/docker.sock` on the server; nil when it cannot be read.
+    public var dockerSocketGID: String? = "991"
     public var up = false
     public var commands: [String] = []
     /// Runs after `compose up`: the QA flips its synthetic flowsint to installed here.
@@ -49,6 +51,9 @@ public final class OSINTScriptedServerState: @unchecked Sendable {
             if command.hasPrefix("git clone ") || command.hasPrefix("git -C /opt/flowsint fetch ") {
                 checkoutSHA = cloneSHA
                 return ok(cloneSHA + "\n")
+            }
+            if command == "stat -c %g /var/run/docker.sock" {
+                return dockerSocketGID.map { ok($0 + "\n") } ?? fail(1, "stat: cannot stat\n")
             }
             if command == "test -f /opt/flowsint/.env" { return hasEnv ? ok() : fail(1) }
             if command == "install -m 600 /dev/stdin /opt/flowsint/.env" {

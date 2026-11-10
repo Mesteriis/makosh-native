@@ -19,7 +19,7 @@ struct FilesSyntheticPreview: View {
                         FilesDetailView(model: host.model, host: host)
                     }
                 } settings: {
-                    FilesSettingsForm(model: host.model)
+                    FilesSettingsView().environmentObject(host)
                 }
                 .sheet(item: Binding(get: { host.pendingSend }, set: { host.pendingSend = $0 })) { request in
                     PaperlessSendSheet(model: host.model, request: request)

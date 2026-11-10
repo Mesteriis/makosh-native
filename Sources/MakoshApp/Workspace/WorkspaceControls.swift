@@ -67,6 +67,7 @@ struct WorkspaceTextFieldStyle: TextFieldStyle {
 
 /// Own section cards preserve the layout of each service row without reinterpreting its labels.
 struct WorkspaceFormStyle: FormStyle {
+    @Environment(\.workspaceSettingsContentWidth) private var contentWidth
     func makeBody(configuration: Configuration) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: WorkspaceStyle.sectionGap) {
@@ -93,7 +94,9 @@ struct WorkspaceFormStyle: FormStyle {
                         }
                     }
                 }
-            }.padding(WorkspaceStyle.sectionGap).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(WorkspaceStyle.sectionGap)
+                .frame(maxWidth: contentWidth ?? .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .textFieldStyle(WorkspaceTextFieldStyle())
         .buttonStyle(WorkspaceButtonStyle())

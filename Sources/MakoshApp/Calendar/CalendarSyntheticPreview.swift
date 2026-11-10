@@ -19,7 +19,7 @@ struct CalendarSyntheticPreview: View {
                         CalendarDetailView(host: host)
                     }
                 } settings: {
-                    if let model = host.model { CalendarSettingsForm(model: model, host: host) }
+                    CalendarSettingsView().environmentObject(host)
                 }
                 .environment(\.calendarHost, host)
                 .environmentObject(host)

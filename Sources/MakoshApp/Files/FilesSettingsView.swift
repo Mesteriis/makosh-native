@@ -6,7 +6,7 @@ struct FilesSettingsView: View {
     @EnvironmentObject private var host: FilesHost
 
     var body: some View {
-        FilesSettingsForm(model: host.model).padding(20)
+        FilesSettingsForm(model: host.model)
     }
 }
 

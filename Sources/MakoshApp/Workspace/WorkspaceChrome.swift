@@ -115,7 +115,7 @@ struct WorkspaceSettingsPage<Content: View>: View {
             if let selected = WorkspaceSettingsCategory.resolve(category, allowed: allowed) {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(selected.destination.rawValue).font(.title2.bold()).padding(.horizontal, 24).padding(.top, 20)
-                    content(selected).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    WorkspaceSettingsContent { content(selected) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -168,3 +168,13 @@ struct SyntheticWorkspaceFrame<Content: View, Settings: View>: View {
     }
 }
 #endif
+
+/// Settings stay beside their category, with a readable line length at any window height.
+struct WorkspaceSettingsContent<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        content()
+            .environment(\.workspaceSettingsContentWidth, WorkspaceStyle.settingsContentWidth)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}

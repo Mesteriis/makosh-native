@@ -14,6 +14,7 @@ enum WorkspaceStyle {
     static let disabledOpacity = 0.45
     static let border = Color(red: 0.56, green: 0.52, blue: 0.72).opacity(0.22)
     static let highlight = Color(red: 0.72, green: 0.66, blue: 0.92).opacity(0.055)
+    static let settingsContentWidth: CGFloat = 760
     static let sectionTitleWidth: CGFloat = 110
     static let railWidth: CGFloat = 64
     static let railInset: CGFloat = 8
@@ -45,4 +46,15 @@ private struct MakoshAppearance: ViewModifier {
 
 extension View {
     func makoshAppearance() -> some View { modifier(MakoshAppearance()) }
+}
+
+private struct WorkspaceSettingsContentWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    var workspaceSettingsContentWidth: CGFloat? {
+        get { self[WorkspaceSettingsContentWidthKey.self] }
+        set { self[WorkspaceSettingsContentWidthKey.self] = newValue }
+    }
 }

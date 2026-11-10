@@ -38,7 +38,7 @@ struct MailNotificationSettingsView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Уведомления · \(title)").font(.title2.bold()).lineLimit(2)
+            if !embedded { Text("Уведомления · \(title)").font(.title2.bold()).lineLimit(2) }
             Form {
                 Section("Новые входящие письма") {
                     Toggle("Показывать уведомления", isOn: $rule.enabled).accessibilityIdentifier("mail.notifications.enabled")
@@ -59,6 +59,12 @@ struct MailNotificationSettingsView: View {
                         "Первая загрузка истории не создаёт уведомлений. Настройки отправителя действуют только внутри выбранного почтового аккаунта."
                     )
                     .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Spacer()
+                        Button("Сохранить") { Task { await save(rule) } }.keyboardShortcut(.defaultAction)
+                            .buttonStyle(WorkspaceButtonStyle(prominent: true))
+                            .disabled(model.busy).accessibilityIdentifier("mail.notifications.save")
+                    }
                 }
                 Section("Системные уведомления") {
                     LabeledContent("macOS", value: authorizationTitle)
@@ -71,15 +77,17 @@ struct MailNotificationSettingsView: View {
                 }
             }.formStyle(WorkspaceFormStyle()).disabled(model.busy)
             if let error = model.error { Text(error).foregroundStyle(.red).font(.caption) }
-            HStack {
-                Spacer()
-                if !embedded { Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction) }
-                Button("Сохранить") { Task { await save(rule) } }.keyboardShortcut(.defaultAction)
-                    .disabled(model.busy).accessibilityIdentifier("mail.notifications.save")
+            if !embedded {
+                HStack {
+                    Spacer()
+                    Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
+                }
             }
-        }.padding(24).frame(minWidth: 570, maxWidth: embedded ? .infinity : 570, minHeight: 510, maxHeight: embedded ? .infinity : 570)
-            .background { WorkspaceBackdrop(intensity: 0.4) }
-            .onAppear { system.refreshAuthorization() }
+        }.padding(embedded ? 0 : 24).frame(
+            minWidth: 570, maxWidth: embedded ? .infinity : 570, minHeight: 510, maxHeight: embedded ? .infinity : 570
+        )
+        .background { WorkspaceBackdrop(intensity: 0.4) }
+        .onAppear { system.refreshAuthorization() }
     }
     private func save(_ value: MailNotificationRule?) async {
         await model.setNotificationRule(scope: scope, rule: value, showWhileActive: scope == .global ? showWhileActive : nil)

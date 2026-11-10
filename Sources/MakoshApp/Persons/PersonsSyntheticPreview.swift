@@ -40,7 +40,7 @@ struct PersonsSyntheticPreview: View {
                         }
                     }
                 } settings: {
-                    if let model = host.model { PersonsSettingsForm(model: model, host: host) }
+                    PersonsSettingsView().environmentObject(host)
                 }
                 .sheet(item: $editor) { selection in
                     PersonEditor(contact: selection.contact, kind: selection.kind, model: workspace).makoshAppearance()

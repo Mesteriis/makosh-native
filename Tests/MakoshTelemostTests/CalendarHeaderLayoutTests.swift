@@ -115,3 +115,59 @@ import XCTest
 @MainActor private final class FormBoundsProbe {
     var rows: [Int: CGRect] = [:]
 }
+
+@MainActor final class WorkspaceSettingsPageLayoutTests: XCTestCase {
+    func testSparseSettingsKeepFieldsAndActionsTogetherAtTheTopLeft() async throws {
+        for width in [CGFloat(640), CGFloat(1200)] {
+            for height in [CGFloat(320), CGFloat(960)] {
+                let probe = FormBoundsProbe()
+                let content = WorkspaceSettingsContent {
+                    Form {
+                        Section("Синтетическая настройка") {
+                            TextField("Название", text: .constant("QA"))
+                                .onGeometryChange(for: CGRect.self) {
+                                    $0.frame(in: .named("settingsViewport"))
+                                } action: {
+                                    probe.rows[0] = $0
+                                }
+                            HStack {
+                                Spacer()
+                                Button("Сохранить") {}
+                            }
+                            .onGeometryChange(for: CGRect.self) {
+                                $0.frame(in: .named("settingsViewport"))
+                            } action: {
+                                probe.rows[1] = $0
+                            }
+                        }
+                    }.formStyle(WorkspaceFormStyle())
+                }.frame(width: width, height: height).coordinateSpace(name: "settingsViewport")
+                let window = NSWindow(
+                    contentRect: .init(x: 0, y: 0, width: width, height: height),
+                    styleMask: [.borderless], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                let host = NSHostingView(rootView: content)
+                window.contentView = host
+                window.orderFront(nil)
+                defer {
+                    window.orderOut(nil)
+                    window.contentView = nil
+                    window.close()
+                }
+                for _ in 0..<6 {
+                    host.layoutSubtreeIfNeeded()
+                    window.displayIfNeeded()
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                let field = try XCTUnwrap(probe.rows[0]), action = try XCTUnwrap(probe.rows[1])
+                XCTAssertLessThan(field.minX, 80, "A sparse page must stay beside its category, not at the horizontal center")
+                XCTAssertLessThan(field.minY, 120, "Window height must not move a field into the middle of the page")
+                XCTAssertLessThanOrEqual(field.width, 700, "A wide window must leave spare space outside the form")
+                XCTAssertGreaterThan(field.width, 450, "The editable area must remain usable at the narrower size")
+                XCTAssertLessThan(action.minY - field.maxY, 40, "Save belongs next to the fields, not at the window bottom")
+                XCTAssertEqual(action.minX, field.minX, accuracy: 1)
+                XCTAssertEqual(action.width, field.width, accuracy: 1)
+            }
+        }
+    }
+}

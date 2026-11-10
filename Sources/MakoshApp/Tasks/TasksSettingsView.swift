@@ -8,7 +8,7 @@ struct TasksSettingsView: View {
 
     var body: some View {
         if let model = host.model {
-            TasksSettingsForm(model: model).padding(20)
+            TasksSettingsForm(model: model)
         } else {
             Text("Раздел «Задачи» откроется вместе с рабочим окном.").padding(24)
         }
@@ -199,7 +199,7 @@ struct JiraConnectionEditor: View {
             TextField("Почта аккаунта", text: $email).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
                 "tasks.jira.editor.email")
             SecureField(original == nil ? "API-токен" : "Новый API-токен (пусто — оставить прежний)", text: $token).textFieldStyle(
-                .roundedBorder
+                WorkspaceTextFieldStyle()
             )
             .accessibilityIdentifier("tasks.jira.editor.token")
             WorkspaceStepper("Опрос каждые \(pollMinutes) мин", value: $pollMinutes, in: 1...1440)

@@ -18,7 +18,7 @@ struct TasksSyntheticPreview: View {
                 WorkspaceChrome(destination: $destination, allowed: [.tasks, .settings]) {
                     if destination == .settings {
                         WorkspaceSettingsPage(category: $category, allowed: [.tasks]) { _ in
-                            if let model = host.model { TasksSettingsForm(model: model) }
+                            TasksSettingsView().environmentObject(host)
                         }
                     } else {
                         WorkspaceSplitView(width: .constant(280), minimum: 280, maximum: 390, minimumDetail: 460) {

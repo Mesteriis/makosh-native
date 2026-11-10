@@ -145,7 +145,10 @@ struct PersonsSettingsForm: View {
                 Text(PersonsWorkspaceModel.describe(failure)).font(.caption).foregroundStyle(.orange).fixedSize(
                     horizontal: false, vertical: true)
             }
-            HStack(spacing: 18) {
+            LazyVGrid(
+                columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading,
+                spacing: 10
+            ) {
                 if book.kind.hasConversations {
                     Toggle(
                         "Собирать собеседников",

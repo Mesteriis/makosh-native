@@ -20,7 +20,7 @@ struct WhatsAppWorkspaceNavigation: View {
     @ObservedObject var navigation: WhatsAppWorkspaceNavigationState
     @State private var adding = false
     @State private var statuses = false
-    @State private var accountSettings = false
+    @Environment(\.workspaceNavigation) private var workspaceNavigation
     @State private var newChat = false
     @State private var name = ""
     var body: some View {
@@ -34,7 +34,7 @@ struct WhatsAppWorkspaceNavigation: View {
                     }
                     Divider()
                     MakoshMenuItem("Добавить аккаунт") { adding = true }.disabled(model.isSynthetic)
-                    MakoshMenuItem("Настройки WhatsApp") { accountSettings = true }
+                    MakoshMenuItem("Настройки WhatsApp") { workspaceNavigation?.openSettings(.whatsapp) }
                     if !model.isSynthetic, model.selectedAccountID != nil {
                         if model.status.state != "logged_out" {
                             MakoshMenuItem(model.status.linked ? "Подключено" : "Подключить") { model.connect() }
@@ -99,7 +99,7 @@ struct WhatsAppWorkspaceNavigation: View {
                 }
                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.selectedAccountID == nil)
                 .accessibilityIdentifier("whatsapp.workspace.newChat")
-            }.padding(.horizontal, 20).frame(height: 64)
+            }.padding(.horizontal, 8).frame(height: 44)
             if let error = model.notificationError { Text(error).font(.caption).foregroundStyle(.orange).padding(.horizontal) }
             if let error = model.archiveError { Text(error).font(.caption).foregroundStyle(.orange).padding(.horizontal) }
         }.background { WorkspaceBackdrop(intensity: 0.5) }.tint(WorkspaceStyle.accent)
@@ -107,15 +107,6 @@ struct WhatsAppWorkspaceNavigation: View {
                 if let account = model.selectedAccountID {
                     WhatsAppNewChatView(model: model, accountID: account)
                 }
-            }
-            .sheet(isPresented: $accountSettings) {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button("Закрыть") { accountSettings = false }
-                    }.padding()
-                    WhatsAppSettingsView(model: model)
-                }.frame(width: 700, height: 600)
             }
             .sheet(isPresented: $statuses) {
                 if let account = model.selectedAccountID {

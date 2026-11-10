@@ -5,7 +5,7 @@ import SwiftUI
 /// progress, the hotkeys table; settings below; the Jira connections last.
 struct TasksSidebarView: View {
     @ObservedObject var model: TasksWorkspaceModel
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.workspaceNavigation) private var workspaceNavigation
 
     private static let sectionKeys = ["agenda", "status", "lists", "tags", "personas", "flows"]
     private var allExpanded: Bool { Self.sectionKeys.allSatisfy { !model.collapsedSections.contains($0) } }
@@ -145,7 +145,7 @@ struct TasksSidebarView: View {
             HStack {
                 Spacer()
                 Button {
-                    openSettings()
+                    workspaceNavigation?.openSettings(.tasks)
                 } label: {
                     Image(systemName: "gearshape")
                 }.buttonStyle(.borderless).help("Настройки → Задачи").accessibilityIdentifier("tasks.sidebar.settings")

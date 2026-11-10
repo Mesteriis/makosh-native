@@ -8,7 +8,7 @@ struct TelegramSidebarView: View {
     @ObservedObject private var forumTopics: TelegramForumTopicsController
     private let backupContext: TelegramArchiveBackupContext?
     @State private var connectionPresented = false
-    @State private var settingsPresented = false
+    @Environment(\.workspaceNavigation) private var workspaceNavigation
     @State private var downloadsPresented = false
     @FocusState private var searchFocused: Bool
     init(model: TelegramModel, backupContext: TelegramArchiveBackupContext? = nil) {
@@ -52,7 +52,7 @@ struct TelegramSidebarView: View {
                 TelegramArchiveButton(archive: model.archive, backupContext: backupContext)
                 MakoshMenu {
                     MakoshMenuItem("Загрузки") { downloadsPresented = true }
-                    MakoshMenuItem("Настройки Telegram") { settingsPresented = true }
+                    MakoshMenuItem("Настройки Telegram") { workspaceNavigation?.openSettings(.telegram) }
                     MakoshMenuItem("О подключении") { connectionPresented = true }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -170,20 +170,10 @@ struct TelegramSidebarView: View {
                 .padding(12)
             }
         }.frame(maxHeight: .infinity, alignment: .top)
-            .sheet(isPresented: $settingsPresented) {
-                TelegramSettingsView(
-                    sessions: model.accountSessions, webSessions: model.webSessions, privacy: model.accountPrivacy,
-                    blockedUsers: model.accountBlockedUsers, twoStep: model.accountTwoStep, notifications: model.notifications,
-                    autoDownload: model.autoDownloadSettings, cache: model.cache, cacheMaintenance: model.cacheMaintenance,
-                    proxy: model.proxy, avatarEditing: model.avatarEditing, appearanceCatalog: model.appearanceCatalog,
-                    avatars: model.avatars, chats: model.chats, synthetic: model.isSyntheticPreview
-                ) { settingsPresented = false }
-            }
             .sheet(isPresented: $downloadsPresented) { TelegramDownloadsView(model: model) }
             .onAppear { forumTopics.setVisible(true) }
             .onDisappear { forumTopics.setVisible(false) }
             .onChange(of: model.selectedChatID) { _, _ in model.isForumTopicsListPresented = true }
-            .onReceive(model.notifications.$activationRequest.dropFirst()) { _ in settingsPresented = false }
     }
 
     private func moveSelection(_ offset: Int) {

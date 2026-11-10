@@ -37,6 +37,7 @@ struct PersonsSettingsView: View {
 struct PersonsSettingsForm: View {
     @ObservedObject var model: PersonsWorkspaceModel
     @ObservedObject var host: PersonsHost
+    @State private var page = "Книги"
     @State private var addingCardDAV = false
     @State private var disconnecting: PersonBook?
     @State private var newStopDomain = ""
@@ -49,15 +50,19 @@ struct PersonsSettingsForm: View {
     private var macBook: PersonBook? { books.first { $0.kind == .macContacts } }
 
     var body: some View {
-        Form {
-            booksSection
-            macSection
-            organizationSection
-            collectionSection
-            attemptsSection
-            if let osint = host.osintModel { OSINTSettingsSection(osint: osint) }
+        VStack(spacing: 16) {
+            WorkspaceSettingsTabs(titles: ["Книги", "Организации", "Обход", "OSINT", "Открытые попытки"], selection: $page)
+            Form {
+                if page == "Книги" {
+                    booksSection
+                    macSection
+                }
+                if page == "Организации" { organizationSection }
+                if page == "Обход" { collectionSection }
+                if page == "Открытые попытки" { attemptsSection }
+                if page == "OSINT", let osint = host.osintModel { OSINTSettingsSection(osint: osint) }
+            }.formStyle(.grouped)
         }
-        .formStyle(.grouped)
         .sheet(isPresented: $addingCardDAV) { CardDAVBookSheet(model: model, host: host).makoshAppearance() }
         .alert(
             "Отключить «\(disconnecting?.name ?? "")»?",

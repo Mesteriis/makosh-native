@@ -13,11 +13,13 @@ import MakoshCalendar
 import UniformTypeIdentifiers
 
 enum WorkspaceDestination: String, CaseIterable, Identifiable {
+    case settings = "Настройки"
     case persons = "Персоны", mail = "Почта", telegram = "Telegram", whatsapp = "WhatsApp", teams = "Teams", meetings = "Встречи",
         files = "Файлы", tasks = "Задачи", calendar = "Календарь", ai = "ИИ"
     var id: String { rawValue }
     var symbol: String {
         switch self {
+        case .settings: "gearshape"
         case .persons: "person.2"
         case .mail: "envelope"
         case .telegram: "paperplane"
@@ -38,6 +40,8 @@ private struct EditorSelection: Identifiable {
 }
 
 struct WorkspaceView: View {
+    @EnvironmentObject private var navigation: WorkspaceNavigation
+    @AppStorage(MakoshSettingsTab.key) private var settingsCategory = "telegram"
     @EnvironmentObject private var callWindows: TelegramCallWindows
     @EnvironmentObject private var ai: AIHost
     @EnvironmentObject private var files: FilesHost
@@ -55,6 +59,7 @@ struct WorkspaceView: View {
     @StateObject private var mail: MailWorkspaceModel
     @StateObject private var telegram: TelegramModel
     private var isolatedWhatsApp = false
+    private var syntheticService: WorkspaceSettingsCategory?
     @StateObject private var whatsapp = WhatsAppWorkspaceModel()
     @StateObject private var whatsappNavigation = WhatsAppWorkspaceNavigationState()
     @StateObject private var teams = TeamsWorkspaceModel()
@@ -84,6 +89,7 @@ struct WorkspaceView: View {
     }
     #if DEBUG
     init(syntheticTelemost: TelemostWorkspaceModel, dossier: WorkspaceModel) {
+        syntheticService = .meetings
         _model = StateObject(wrappedValue: dossier)
         _telemost = StateObject(wrappedValue: syntheticTelemost)
         _mail = StateObject(wrappedValue: MailWorkspaceModel(synthetic: true))
@@ -93,6 +99,7 @@ struct WorkspaceView: View {
         _destination = State(initialValue: .meetings)
     }
     init(syntheticTeams: TeamsWorkspaceModel) {
+        syntheticService = .teams
         _model = StateObject(wrappedValue: WorkspaceModel(requireExplicitDatabaseConfiguration: true, syntheticSchemaPrefix: "qa_teams_"))
         _mail = StateObject(wrappedValue: MailWorkspaceModel(synthetic: true))
         _telegram = StateObject(wrappedValue: .syntheticPreview())
@@ -101,6 +108,7 @@ struct WorkspaceView: View {
         _destination = State(initialValue: .teams)
     }
     init(syntheticWhatsApp: WhatsAppWorkspaceModel) {
+        syntheticService = .whatsapp
         isolatedWhatsApp = true
         _model = StateObject(
             wrappedValue: WorkspaceModel(requireExplicitDatabaseConfiguration: true, syntheticSchemaPrefix: "qa_whatsapp_"))
@@ -110,12 +118,14 @@ struct WorkspaceView: View {
         _destination = State(initialValue: .whatsapp)
     }
     init(syntheticMail: MailWorkspaceModel) {
+        syntheticService = .mail
         _model = StateObject(wrappedValue: WorkspaceModel(requireExplicitDatabaseConfiguration: true, syntheticSchemaPrefix: "qa_mail_"))
         _mail = StateObject(wrappedValue: syntheticMail)
         _telegram = StateObject(wrappedValue: .syntheticPreview())
         _destination = State(initialValue: .mail)
     }
     init(syntheticTelegram: TelegramModel) {
+        syntheticService = .telegram
         _mail = StateObject(wrappedValue: MailWorkspaceModel())
         _model = StateObject(wrappedValue: WorkspaceModel(requireExplicitDatabaseConfiguration: true))
         _telegram = StateObject(wrappedValue: syntheticTelegram)
@@ -123,57 +133,49 @@ struct WorkspaceView: View {
     }
     #endif
     var body: some View {
-        VStack(spacing: 0) {
-            if destination == .mail {
-                MailNavigationBar(model: mail)
-                Divider()
-            }
-            if destination == .telegram {
-                TelegramWorkspaceNavigation(model: telegram)
-                Divider()
-            }
-            if destination == .whatsapp {
-                WhatsAppWorkspaceNavigation(model: whatsapp, navigation: whatsappNavigation)
-                Divider()
-            }
-            HStack(spacing: 0) {
-                if destination == .telegram, telegram.phase == .ready { TelegramFolderRail(model: telegram) }
-                WorkspaceSplitView(
-                    width: sidebarWidth, minimum: sidebarLayout.min, maximum: sidebarLayout.max,
-                    minimumDetail: destination == .telegram || destination == .whatsapp || (destination == .mail && mail.showDossier)
-                        ? 640 : 460,
-                    collapsed: Binding(get: { destination == .tasks && tasks.sidebarCollapsed }, set: { _ in })
-                ) {
-                    sectionSidebar.background { WorkspaceBackdrop(intensity: 0.55) }
-                } detail: {
-                    sectionDetail.frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
+        WorkspaceChrome(destination: $destination, allowed: availableDestinations) {
+            if destination == .settings {
+                WorkspaceSettingsPage(category: $settingsCategory, allowed: availableSettings) { category in
+                    settingsContent(category)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    if destination == .telegram, telegram.phase == .ready { TelegramFolderRail(model: telegram) }
+                    WorkspaceSplitView(
+                        width: sidebarWidth, minimum: sidebarLayout.min, maximum: sidebarLayout.max,
+                        minimumDetail: destination == .telegram || destination == .whatsapp || (destination == .mail && mail.showDossier)
+                            ? 640 : 460,
+                        collapsed: Binding(get: { destination == .tasks && tasks.sidebarCollapsed }, set: { _ in })
+                    ) {
+                        sectionSidebar.background(WorkspaceStyle.surface.opacity(0.35))
+                    } detail: {
+                        sectionDetail.frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
         }
-        .toolbar(removing: .title)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                MakoshMenu {
-                    MakoshPicker("Раздел", selection: $destination) {
-                        ForEach(WorkspaceDestination.allCases.filter { !isolatedWhatsApp || $0 == .persons || $0 == .whatsapp }) { item in
-                            Label(item.rawValue, systemImage: item.symbol).tag(Optional(item))
-                        }
-                    }.pickerStyle(.inline).labelsHidden()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: destination?.symbol ?? "square.grid.2x2").foregroundStyle(WorkspaceStyle.accent)
-                        Text(destination?.rawValue ?? "Раздел").foregroundStyle(.primary)
-                    }.font(.system(size: 14, weight: .medium))
-                }
-                .makoshMenuStyle(.plain).makoshMenuIndicator(.visible).makoshMenuWidth(220).fixedSize()
-                .help("Переключить раздел").accessibilityIdentifier("workspace.sectionMenu")
-                .accessibilityLabel("Раздел: \(destination?.rawValue ?? "не выбран")")
+            ToolbarItem(placement: .principal) {
+                Group {
+                    if destination == .mail {
+                        MailNavigationBar(model: mail)
+                    } else if destination == .telegram {
+                        TelegramWorkspaceNavigation(model: telegram)
+                    } else if destination == .whatsapp {
+                        WhatsAppWorkspaceNavigation(model: whatsapp, navigation: whatsappNavigation)
+                    }
+                }.labelStyle(.titleAndIcon)
+                    .accessibilityElement(children: .contain)
+                    .frame(maxWidth: 820)
             }.sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .principal) { Text("Макош").font(.headline) }.sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .primaryAction) {
-                SettingsLink { Image(systemName: "gearshape") }
-                    .help("Настройки Макоша").accessibilityIdentifier("workspace.settings")
-            }.sharedBackgroundVisibility(.hidden)
+        }
+        .onReceive(navigation.$destinationRequest) { selected in
+            if let selected, availableDestinations.contains(selected) { destination = selected }
+        }
+        .onReceive(navigation.$settingsRequest) { request in
+            guard let request else { return }
+            if let category = request.category, availableSettings.contains(category) { settingsCategory = category.rawValue }
+            destination = .settings
         }
         .onAppear {
             if aiContextSearch == nil {
@@ -314,6 +316,29 @@ struct WorkspaceView: View {
         }
         .frame(minWidth: destination == .telegram || destination == .whatsapp ? 1160 : destination == .mail ? 1040 : nil)
     }
+    private var availableDestinations: [WorkspaceDestination] {
+        if let syntheticService { return [syntheticService.destination, .settings] }
+        return WorkspaceDestination.allCases.filter { $0 != .settings } + [.settings]
+    }
+    private var availableSettings: [WorkspaceSettingsCategory] {
+        if let syntheticService { return [syntheticService] }
+        return WorkspaceSettingsCategory.allCases
+    }
+    @ViewBuilder private func settingsContent(_ category: WorkspaceSettingsCategory) -> some View {
+        switch category {
+        case .telegram: TelegramWorkspaceSettings(model: telegram, embedded: true, close: {})
+        case .mail: MailWorkspaceSettings(model: mail)
+        case .whatsapp: WhatsAppCommonSettingsView()
+        case .teams: TeamsSettingsView(model: teams)
+        case .meetings: TelemostConnectionView(model: telemost, configuration: telemost.selectedAccount == nil, embedded: true)
+        case .files: FilesSettingsView()
+        case .tasks: TasksSettingsView()
+        case .calendar: CalendarSettingsView()
+        case .persons: PersonsSettingsView()
+        case .ai: AISettingsView()
+        }
+    }
+
     /// The AI panel beside a Telegram chat, when the AI and the account are ready.
     private var telegramAIPanel: ((Int64, String, @escaping () -> Void) -> AnyView)? {
         guard let search = aiContextSearch, ai.configuration != nil, let account = telegram.aiContextAccountID else { return nil }

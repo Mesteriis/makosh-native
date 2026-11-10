@@ -3,6 +3,7 @@ import MakoshCore
 import SwiftUI
 
 struct AISettingsView: View {
+    @State private var page = "Подключения"
     @EnvironmentObject private var host: AIHost
 
     var body: some View {
@@ -10,9 +11,8 @@ struct AISettingsView: View {
             Text("Откройте рабочее пространство Макоша, чтобы настроить ИИ.").padding(24).frame(minWidth: 520)
         } else {
             VStack(spacing: 0) {
-                AISettingsForm(model: host.settings)
-                // Two scrolling forms share the height; keep the index status visible in a short window.
-                AIIndexSection().frame(minHeight: 230)
+                WorkspaceSettingsTabs(titles: ["Подключения", "Модели по ролям", "Изображения", "Индекс"], selection: $page)
+                if page == "Индекс" { AIIndexSection() } else { AISettingsForm(model: host.settings, page: page) }
             }
         }
     }
@@ -63,42 +63,49 @@ struct AIIndexSection: View {
 
 struct AISettingsForm: View {
     @ObservedObject var model: AISettingsModel
+    var page: String? = nil
     @State private var editing: AIConnection?
     @State private var adding = false
 
     var body: some View {
         Form {
-            Section("Подключения (OpenAI-совместимый API)") {
-                ForEach(model.connections) { connection in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(connection.name)
-                            Text(connection.baseURL.absoluteString).font(.caption).foregroundStyle(.secondary)
-                            if let result = model.testResult[connection.id] {
-                                switch result {
-                                case .success(let count): Text("Доступно моделей: \(count)").font(.caption).foregroundStyle(.green)
-                                case .failure(let failure): Text(failure.message).font(.caption).foregroundStyle(.orange)
+            if page == nil || page == "Подключения" {
+                Section("Подключения (OpenAI-совместимый API)") {
+                    ForEach(model.connections) { connection in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(connection.name)
+                                Text(connection.baseURL.absoluteString).font(.caption).foregroundStyle(.secondary)
+                                if let result = model.testResult[connection.id] {
+                                    switch result {
+                                    case .success(let count): Text("Доступно моделей: \(count)").font(.caption).foregroundStyle(.green)
+                                    case .failure(let failure): Text(failure.message).font(.caption).foregroundStyle(.orange)
+                                    }
                                 }
                             }
-                        }
-                        Spacer()
-                        Button("Проверить") { Task { await model.test(connection.id) } }
-                        Button("Изменить") { editing = connection }
-                        Button("Удалить", role: .destructive) { Task { await model.remove(connection.id) } }
-                    }.accessibilityIdentifier("ai.settings.connection.\(connection.id.uuidString)")
-                }
-                Button("Добавить подключение…") { adding = true }.accessibilityIdentifier("ai.settings.addConnection")
-            }
-            Section("Модели по ролям") {
-                ForEach(AIRole.allCases, id: \.self) { role in
-                    AIRoleRow(role: role, model: model)
+                            Spacer()
+                            Button("Проверить") { Task { await model.test(connection.id) } }
+                            Button("Изменить") { editing = connection }
+                            Button("Удалить", role: .destructive) { Task { await model.remove(connection.id) } }
+                        }.accessibilityIdentifier("ai.settings.connection.\(connection.id.uuidString)")
+                    }
+                    Button("Добавить подключение…") { adding = true }.accessibilityIdentifier("ai.settings.addConnection")
                 }
             }
-            Section("Изображения") {
-                Toggle(
-                    "Сохранять изображения в S3",
-                    isOn: Binding(get: { model.imagesSavedToS3 }, set: { value in Task { await model.setImagesSavedToS3(value) } }))
-                Text("Выключено — изображения хранятся в зашифрованной локальной папке.").font(.caption).foregroundStyle(.secondary)
+            if page == nil || page == "Модели по ролям" {
+                Section("Модели по ролям") {
+                    ForEach(AIRole.allCases, id: \.self) { role in
+                        AIRoleRow(role: role, model: model)
+                    }
+                }
+            }
+            if page == nil || page == "Изображения" {
+                Section("Изображения") {
+                    Toggle(
+                        "Сохранять изображения в S3",
+                        isOn: Binding(get: { model.imagesSavedToS3 }, set: { value in Task { await model.setImagesSavedToS3(value) } }))
+                    Text("Выключено — изображения хранятся в зашифрованной локальной папке.").font(.caption).foregroundStyle(.secondary)
+                }
             }
             if let failure = model.failure { Text(failure.message).foregroundStyle(.orange) }
         }

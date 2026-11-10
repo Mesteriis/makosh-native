@@ -7,11 +7,15 @@ struct MailNotificationSettingsView: View {
     @ObservedObject private var controller: MailNotificationController
     @EnvironmentObject private var system: MailSystemNotifications
     @Environment(\.dismiss) private var dismiss
+    var embedded = false
     let scope: MailNotificationScope
     @State private var rule: MailNotificationRule
     @State private var showWhileActive: Bool
-    init(model: MailWorkspaceModel, scope: MailNotificationScope) {
-        self.model = model; self.scope = scope; controller = model.notifications
+    init(model: MailWorkspaceModel, scope: MailNotificationScope, embedded: Bool = false) {
+        self.embedded = embedded
+        self.model = model
+        self.scope = scope
+        controller = model.notifications
         let preferences = model.notifications.preferences
         _rule = State(initialValue: scope == .global ? preferences.global : preferences.overrides[scope.id] ?? .init())
         _showWhileActive = State(initialValue: preferences.showWhileActive)
@@ -41,14 +45,20 @@ struct MailNotificationSettingsView: View {
                     Toggle("Показывать отправителя и тему", isOn: $rule.previews).accessibilityIdentifier("mail.notifications.previews")
                     Toggle("Звук", isOn: $rule.sound).accessibilityIdentifier("mail.notifications.sound")
                     if scope == .global {
-                        Toggle("Показывать, когда окно Макоша активно", isOn: $showWhileActive).accessibilityIdentifier("mail.notifications.foreground")
+                        Toggle("Показывать, когда окно Макоша активно", isOn: $showWhileActive).accessibilityIdentifier(
+                            "mail.notifications.foreground")
                     } else {
-                        Text("Ограничения всей почты, аккаунта, папки и отправителя действуют вместе. Включение здесь не отменяет запрет на другом уровне.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Button("Сбросить отдельную настройку") { Task { await save(nil) } }.accessibilityIdentifier("mail.notifications.reset")
-                    }
-                    Text("Первая загрузка истории не создаёт уведомлений. Настройки отправителя действуют только внутри выбранного почтового аккаунта.")
+                        Text(
+                            "Ограничения всей почты, аккаунта, папки и отправителя действуют вместе. Включение здесь не отменяет запрет на другом уровне."
+                        )
                         .font(.caption).foregroundStyle(.secondary)
+                        Button("Сбросить отдельную настройку") { Task { await save(nil) } }.accessibilityIdentifier(
+                            "mail.notifications.reset")
+                    }
+                    Text(
+                        "Первая загрузка истории не создаёт уведомлений. Настройки отправителя действуют только внутри выбранного почтового аккаунта."
+                    )
+                    .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Системные уведомления") {
                     LabeledContent("macOS", value: authorizationTitle)
@@ -63,16 +73,16 @@ struct MailNotificationSettingsView: View {
             if let error = model.error { Text(error).foregroundStyle(.red).font(.caption) }
             HStack {
                 Spacer()
-                Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
+                if !embedded { Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction) }
                 Button("Сохранить") { Task { await save(rule) } }.keyboardShortcut(.defaultAction)
                     .disabled(model.busy).accessibilityIdentifier("mail.notifications.save")
             }
-        }.padding(24).frame(width: 570, height: scope == .global ? 510 : 570)
+        }.padding(24).frame(minWidth: 570, maxWidth: embedded ? .infinity : 570, minHeight: 510, maxHeight: embedded ? .infinity : 570)
             .background { WorkspaceBackdrop(intensity: 0.4) }
             .onAppear { system.refreshAuthorization() }
     }
     private func save(_ value: MailNotificationRule?) async {
         await model.setNotificationRule(scope: scope, rule: value, showWhileActive: scope == .global ? showWhileActive : nil)
-        if model.error == nil { dismiss() }
+        if model.error == nil, !embedded { dismiss() }
     }
 }

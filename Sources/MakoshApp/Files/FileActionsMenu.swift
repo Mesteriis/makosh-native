@@ -16,7 +16,7 @@ struct FileActionsMenu: View {
     /// lives in. The file is staged first, so a lease the sheet owns may go.
     var before: (() -> Void)? = nil
     @Environment(\.filesHost) private var files
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.workspaceNavigation) private var workspaceNavigation
 
     var body: some View {
         if let files {
@@ -26,8 +26,7 @@ struct FileActionsMenu: View {
             }
             if !protected, !actions.contains(.sendToPaperless) {
                 Button("Подключить Paperless…") {
-                    UserDefaults.standard.set(MakoshSettingsTab.files, forKey: MakoshSettingsTab.key)
-                    openSettings()
+                    workspaceNavigation?.openSettings(.files)
                 }.accessibilityIdentifier("files.send.connect")
             }
         }

@@ -22,6 +22,7 @@ import MakoshFiles
             || CommandLine.arguments.contains(AIQAIsolation.flag) || CommandLine.arguments.contains(FilesQAIsolation.flag)
             || CommandLine.arguments.contains(TasksHost.qaFlag) || CommandLine.arguments.contains(CalendarHost.qaFlag)
             || CommandLine.arguments.contains(PersonsHost.qaFlag)))
+    let workspaceNavigation = WorkspaceNavigation()
     lazy var telegramProxy = TelegramProxyController()
     let telegramCallCoordinator = TelegramCallCoordinator()
     let telegramCallWindows = TelegramCallWindows()
@@ -91,8 +92,6 @@ struct MakoshApp: App {
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     static let workspaceWindowID = "workspace"
-    /// The settings tab to show; a menu item may set it before opening the window.
-    @AppStorage(MakoshSettingsTab.key) private var settingsTab = "telegram"
     var body: some Scene {
         // One workspace window: a second one would start a second Telegram engine on the
         // same Postbox and second mail workers, so there is no ⌘N «Новое окно» or Dock
@@ -248,7 +247,9 @@ struct MakoshApp: App {
                     ).background(WorkspaceWindowAccessor(keeper: delegate.windowKeeper))
                 }
                 #endif
-            }.makoshAppearance().environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
+            }.makoshAppearance().environmentObject(delegate.workspaceNavigation)
+                .environment(\.workspaceNavigation, delegate.workspaceNavigation)
+                .environmentObject(delegate.telegramNotificationRouter).environmentObject(delegate.telegramCallWindows)
                 .environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(delegate.ai)
                 .environmentObject(delegate.files).environment(\.filesHost, delegate.files)
                 .environmentObject(delegate.tasks).environment(\.tasksHost, delegate.tasks)
@@ -260,49 +261,17 @@ struct MakoshApp: App {
         // Makosh keeps running without windows, so a launch must always present the workspace.
         .defaultLaunchBehavior(.presented)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Настройки…") {
+                    delegate.workspaceNavigation.openSettings()
+                    delegate.windowKeeper.reopen()
+                }.keyboardShortcut(",", modifiers: .command)
+            }
             TelegramSearchCommands()
             TelegramSelectionCommands()
             TaskSelectionCommands()
         }
-        Settings {
-            Group {
-                if CommandLine.arguments.contains("--whatsapp-synthetic-preview")
-                    || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "whatsapp"
-                {
-                    Text("WhatsApp QA · без провайдера, системных уведомлений и устройств.").padding(24)
-                } else if CommandLine.arguments.contains("--telemost-synthetic-preview")
-                    || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "telemost"
-                {
-                    Text("Телемост QA · подставной API и обработчик ссылок; остальные сервисы выключены.").padding(24)
-                } else if CommandLine.arguments.contains("--teams-synthetic-preview")
-                    || Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "teams"
-                {
-                    TeamsCommonSettingsView()
-                } else if CommandLine.arguments.contains(AIQAIsolation.flag) {
-                    Text("ИИ QA · настройки внутри окна проверки; остальные сервисы выключены.").padding(24)
-                } else if CommandLine.arguments.contains(FilesQAIsolation.flag) {
-                    Text("QA «Файлы» · подставной Paperless внутри окна проверки; остальные сервисы выключены.").padding(24)
-                } else if CommandLine.arguments.contains(PersonsHost.qaFlag) {
-                    Text("QA «Персоны» · синтетические книги внутри окна проверки; остальные сервисы выключены.").padding(24)
-                } else if CommandLine.arguments.contains(TasksHost.qaFlag) {
-                    Text("QA «Задачи» · подставная Jira внутри окна проверки; остальные сервисы выключены.").padding(24)
-                } else {
-                    TabView(selection: $settingsTab) {
-                        TelegramSettingsView().tabItem { Label("Telegram", systemImage: "paperplane") }.tag("telegram")
-                        WhatsAppCommonSettingsView().tabItem { Label("WhatsApp", systemImage: "message") }.tag("whatsapp")
-                        TeamsCommonSettingsView().tabItem { Label("Teams", systemImage: "person.3") }.tag("teams")
-                        FilesSettingsView().tabItem { Label("Файлы", systemImage: "folder") }.tag(MakoshSettingsTab.files)
-                        TasksSettingsView().tabItem { Label("Задачи", systemImage: "checklist") }.tag(MakoshSettingsTab.tasks)
-                        CalendarSettingsView().tabItem { Label("Календарь", systemImage: "calendar") }.tag(MakoshSettingsTab.calendar)
-                        PersonsSettingsView().tabItem { Label("Персоны", systemImage: "person.2") }.tag(MakoshSettingsTab.persons)
-                        AISettingsView().tabItem { Label("ИИ", systemImage: "sparkles") }.tag("ai")
-                    }
-                }
-            }.environmentObject(delegate.whatsappSettings).environmentObject(delegate.teamsSettings).environmentObject(
-                delegate.telegramNotificationRouter
-            ).environmentObject(delegate.ai).environmentObject(delegate.files).environmentObject(delegate.tasks)
-                .environmentObject(delegate.calendar).environmentObject(delegate.persons)
-        }
+
     }
 }
 

@@ -11,30 +11,18 @@ struct AISyntheticPreview: View {
     @State private var host: AIHost?
     @State private var files: FilesHost?
     @State private var error: String?
-    @State private var settings = false
 
     var body: some View {
         Group {
             if let host {
-                WorkspaceSplitView(width: .constant(320), minimum: 280, maximum: 390, minimumDetail: 460) {
-                    AIConversationListView(model: host.workspace, synthetic: true).background { WorkspaceBackdrop(intensity: 0.55) }
-                } detail: {
-                    AIConversationView(model: host.workspace)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Настройки ИИ") { settings = true }.accessibilityIdentifier("ai.qa.settings")
+                SyntheticWorkspaceFrame(service: .ai) {
+                    WorkspaceSplitView(width: .constant(320), minimum: 280, maximum: 390, minimumDetail: 460) {
+                        AIConversationListView(model: host.workspace, synthetic: true).background { WorkspaceBackdrop(intensity: 0.55) }
+                    } detail: {
+                        AIConversationView(model: host.workspace)
                     }
-                }
-                .sheet(isPresented: $settings) {
-                    VStack {
-                        AISettingsForm(model: host.settings)
-                        AIIndexSection().environmentObject(host)
-                        Button("Готово") {
-                            settings = false
-                            Task { await host.workspace.reload() }
-                        }.padding()
-                    }
+                } settings: {
+                    AISettingsView().environmentObject(host)
                 }
                 .environment(\.colorScheme, .dark)
                 .environment(\.filesHost, files)

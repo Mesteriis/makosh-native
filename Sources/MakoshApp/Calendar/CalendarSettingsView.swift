@@ -19,6 +19,7 @@ struct CalendarSettingsView: View {
 struct CalendarSettingsForm: View {
     @ObservedObject var model: CalendarWorkspaceModel
     @ObservedObject var host: CalendarHost
+    @State private var page = "Учётные записи"
     @State private var addingCalDAV = false
     @State private var addingLink = false
     @State private var newGroup = ""
@@ -29,40 +30,45 @@ struct CalendarSettingsForm: View {
     @State private var disconnecting: CalendarAccount?
 
     var body: some View {
-        Form {
-            accounts
-            calendars
-            groupSection
-            workingHours
-            Section("Фон") {
-                Text(
-                    "Makosh продолжает обновлять календари, плашки «Занято» и напоминания при закрытом окне. Если приложение завершено, плашки не обновляются."
-                )
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Toggle("Открывать Makosh при входе", isOn: $loginItem)
-                    .onChange(of: loginItem) { _, value in
-                        do { try LoginItemSetting.set(value) } catch {
-                            loginError = "macOS не дал изменить объекты входа."
-                            loginItem = LoginItemSetting.isEnabled
+        VStack(spacing: 16) {
+            WorkspaceSettingsTabs(titles: ["Учётные записи", "Календари", "Группы занятости", "Рабочий день", "Фон"], selection: $page)
+            Form {
+                if page == "Учётные записи" { accounts }
+                if page == "Календари" { calendars }
+                if page == "Группы занятости" { groupSection }
+                if page == "Рабочий день" { workingHours }
+                if page == "Фон" {
+                    Section("Фон") {
+                        Text(
+                            "Makosh продолжает обновлять календари, плашки «Занято» и напоминания при закрытом окне. Если приложение завершено, плашки не обновляются."
+                        )
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Toggle("Открывать Makosh при входе", isOn: $loginItem)
+                            .onChange(of: loginItem) { _, value in
+                                do { try LoginItemSetting.set(value) } catch {
+                                    loginError = "macOS не дал изменить объекты входа."
+                                    loginItem = LoginItemSetting.isEnabled
+                                }
+                            }.accessibilityIdentifier("calendar.settings.loginItem")
+                        if let loginError { Text(loginError).font(.caption).foregroundStyle(.orange) }
+                        Picker(
+                            "Обход календарей",
+                            selection: Binding(
+                                get: { model.snapshot?.preferences.pollSeconds ?? 120 },
+                                set: { value in
+                                    _Concurrency.Task { await model.savePreferences { $0.pollSeconds = value } }
+                                })
+                        ) {
+                            Text("Каждую минуту").tag(60)
+                            Text("Каждые 2 минуты").tag(120)
+                            Text("Каждые 5 минут").tag(300)
                         }
-                    }.accessibilityIdentifier("calendar.settings.loginItem")
-                if let loginError { Text(loginError).font(.caption).foregroundStyle(.orange) }
-                Picker(
-                    "Обход календарей",
-                    selection: Binding(
-                        get: { model.snapshot?.preferences.pollSeconds ?? 120 },
-                        set: { value in
-                            _Concurrency.Task { await model.savePreferences { $0.pollSeconds = value } }
-                        })
-                ) {
-                    Text("Каждую минуту").tag(60)
-                    Text("Каждые 2 минуты").tag(120)
-                    Text("Каждые 5 минут").tag(300)
+                        LabeledContent("Плашки ставятся вперёд на", value: "\(model.snapshot?.preferences.horizonDays ?? 90) дней")
+                    }
                 }
-                LabeledContent("Плашки ставятся вперёд на", value: "\(model.snapshot?.preferences.horizonDays ?? 90) дней")
             }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
         .onAppear(perform: loadGroups)
         .onChange(of: model.snapshot?.collections) { _, _ in loadGroups() }
         .sheet(isPresented: $addingCalDAV) { CalendarAddCalDAVSheet(model: model, host: host).makoshAppearance() }

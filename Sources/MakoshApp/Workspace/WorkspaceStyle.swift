@@ -3,6 +3,12 @@ import SwiftUI
 /// Shared application chrome. Content colors (media, status, explicit chat themes)
 /// remain owned by their views rather than being recolored by the shell.
 enum WorkspaceStyle {
+    static let railWidth: CGFloat = 64
+    static let railInset: CGFloat = 8
+    static let railButtonSize: CGFloat = 44
+    static let railIconSize: CGFloat = 20
+    static let settingsSidebarWidth: CGFloat = 220
+    static let controlRadius: CGFloat = 8
     static let mailPaneHeaderHeight: CGFloat = 54
     static let accent = Color(red: 0.70, green: 0.48, blue: 0.98)
     static let base = Color(red: 0.075, green: 0.078, blue: 0.115)

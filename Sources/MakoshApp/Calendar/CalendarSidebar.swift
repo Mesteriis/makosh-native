@@ -4,7 +4,7 @@ import SwiftUI
 /// Left column: a month, the summary row, accounts with their calendars, groups.
 struct CalendarSidebar: View {
     @ObservedObject var model: CalendarWorkspaceModel
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.workspaceNavigation) private var workspaceNavigation
 
     var body: some View {
         ScrollView {
@@ -18,8 +18,7 @@ struct CalendarSidebar: View {
                     groups(snapshot)
                 }
                 Button {
-                    UserDefaults.standard.set(MakoshSettingsTab.calendar, forKey: MakoshSettingsTab.key)
-                    openSettings()
+                    workspaceNavigation?.openSettings(.calendar)
                 } label: {
                     Label("Учётные записи и группы…", systemImage: "gearshape")
                 }.buttonStyle(.borderless).accessibilityIdentifier("calendar.sidebar.settings")

@@ -17,39 +17,84 @@ struct TelegramSettingsView: View {
     var avatars: TelegramAvatarStore? = nil
     var chats: [TelegramChat] = []
     var synthetic = false
+    var embedded = false
     var close: (() -> Void)? = nil
-    private enum Page: String { case general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность", notifications = "Уведомления и звуки", data = "Данные и память", calls = "Звонки" }
+    private enum Page: String {
+        case profile = "Профиль", general = "Основные", appearance = "Оформление", devices = "Устройства", privacy = "Приватность",
+            notifications =
+            "Уведомления и звуки", data = "Данные и память", calls = "Звонки"
+    }
     @State private var page: Page?
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                if page != nil {
-                    Button { page = nil } label: { Label("Назад", systemImage: "chevron.left") }
+            if embedded {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(availablePages, id: \.self) { value in
+                            Button {
+                                page = value
+                            } label: {
+                                Text(value.rawValue).font(.callout).padding(.horizontal, 10).padding(.vertical, 7)
+                                    .foregroundStyle(page == value ? WorkspaceStyle.accent : .primary)
+                                    .background(
+                                        page == value ? WorkspaceStyle.accent.opacity(0.15) : .clear,
+                                        in: RoundedRectangle(cornerRadius: WorkspaceStyle.controlRadius))
+                            }.buttonStyle(.plain).accessibilityValue(page == value ? "Выбрано" : "")
+                        }
+                    }.padding(.horizontal, 20)
+                }.scrollIndicators(.hidden).frame(height: 42)
+            } else {
+                HStack {
+                    if page != nil {
+                        Button {
+                            page = nil
+                        } label: {
+                            Label("Назад", systemImage: "chevron.left")
+                        }
                         .accessibilityIdentifier("telegram.settings.back")
-                }
-                Spacer()
-                Text(page?.rawValue ?? "Настройки Telegram").font(.headline)
-                Spacer()
-                if let close { Button("Готово", action: close).accessibilityIdentifier("telegram.settings.close") }
-            }.padding().frame(height: 55)
-            Divider()
-            if synthetic { Text("Синтетический аккаунт · серверные изменения симулируются").font(.caption).foregroundStyle(.secondary).padding(10) }
+                    }
+                    Spacer()
+                    Text(page?.rawValue ?? "Настройки Telegram").font(.headline)
+                    Spacer()
+                    if let close { Button("Готово", action: close).accessibilityIdentifier("telegram.settings.close") }
+                }.padding().frame(height: 55)
+                Divider()
+            }
+            if synthetic {
+                Text("Синтетический аккаунт · серверные изменения симулируются").font(.caption).foregroundStyle(.secondary).padding(10)
+            }
             switch page {
             case .general: TelegramGeneralSettingsView()
             case .calls: TelegramCallAudioSettingsView(synthetic: synthetic)
             case .appearance: TelegramAppearanceView(systemScheme: .dark, catalog: appearanceCatalog)
             case .data:
-                if let autoDownload, let cache, let proxy { TelegramDataSettingsView(settings: autoDownload, cache: cache, maintenance:cacheMaintenance, proxy: proxy) }
+                if let autoDownload, let cache, let proxy {
+                    TelegramDataSettingsView(settings: autoDownload, cache: cache, maintenance: cacheMaintenance, proxy: proxy)
+                }
             case .notifications:
-                if let notifications, notifications.accountID != nil { TelegramNotificationSettingsView(controller: notifications, chats: chats, synthetic: synthetic) }
-                else { ContentUnavailableView("Подключите Telegram", systemImage: "bell", description: Text("Уведомления доступны для подключённого аккаунта.")) }
+                if let notifications, notifications.accountID != nil {
+                    TelegramNotificationSettingsView(controller: notifications, chats: chats, synthetic: synthetic)
+                } else {
+                    ContentUnavailableView(
+                        "Подключите Telegram", systemImage: "bell", description: Text("Уведомления доступны для подключённого аккаунта."))
+                }
             case .privacy:
-                if let privacy { TelegramPrivacyView(controller: privacy, blockedUsers: blockedUsers, twoStep: twoStep, avatarEditing: avatarEditing, synthetic: synthetic) }
-                else { ContentUnavailableView("Откройте Telegram", systemImage: "hand.raised") }
+                if let privacy {
+                    TelegramPrivacyView(
+                        controller: privacy, blockedUsers: blockedUsers, twoStep: twoStep, avatarEditing: avatarEditing,
+                        synthetic: synthetic)
+                } else {
+                    ContentUnavailableView("Откройте Telegram", systemImage: "hand.raised")
+                }
             case .devices:
-                if let sessions { TelegramSessionsView(controller: sessions, synthetic: synthetic, webSessions: webSessions) }
-                else { ContentUnavailableView("Откройте Telegram", systemImage: "desktopcomputer", description: Text("Устройства доступны в настройках выбранного аккаунта Telegram.")) }
-            case nil:
+                if let sessions {
+                    TelegramSessionsView(controller: sessions, synthetic: synthetic, webSessions: webSessions)
+                } else {
+                    ContentUnavailableView(
+                        "Откройте Telegram", systemImage: "desktopcomputer",
+                        description: Text("Устройства доступны в настройках выбранного аккаунта Telegram."))
+                }
+            case .profile, nil:
                 Form {
                     if let avatarEditing, let accountID = avatarEditing.accountID {
                         Section {
@@ -59,27 +104,47 @@ struct TelegramSettingsView: View {
                                     Text("Мой профиль").font(.title3)
                                 }.padding(.vertical, 8).accessibilityIdentifier("telegram.settings.profile")
                             }
-                            TelegramAvatarEditingButton(controller: avatarEditing, target: .init(accountID: accountID, peerID: accountID, kind: .main), title: "Изменить фотографию профиля")
+                            TelegramAvatarEditingButton(
+                                controller: avatarEditing, target: .init(accountID: accountID, peerID: accountID, kind: .main),
+                                title: "Изменить фотографию профиля")
                         }
                     }
-                    Section {
-                        settingsRow(.general, symbol: "gearshape", id: "general")
-                        settingsRow(.appearance, symbol: "paintpalette", id: "appearance")
-                        settingsRow(.calls, symbol: "phone", id: "calls")
-                        if notifications != nil { settingsRow(.notifications, symbol: "bell", id: "notifications") }
-                        if proxy != nil { settingsRow(.data, symbol: "externaldrive", id: "data") }
-                        if sessions != nil { settingsRow(.devices, symbol: "desktopcomputer", id: "devices") }
-                        if privacy != nil { settingsRow(.privacy, symbol: "hand.raised", id: "privacy") }
+                    if !embedded {
+                        Section {
+                            settingsRow(.general, symbol: "gearshape", id: "general")
+                            settingsRow(.appearance, symbol: "paintpalette", id: "appearance")
+                            settingsRow(.calls, symbol: "phone", id: "calls")
+                            if notifications != nil { settingsRow(.notifications, symbol: "bell", id: "notifications") }
+                            if proxy != nil { settingsRow(.data, symbol: "externaldrive", id: "data") }
+                            if sessions != nil { settingsRow(.devices, symbol: "desktopcomputer", id: "devices") }
+                            if privacy != nil { settingsRow(.privacy, symbol: "hand.raised", id: "privacy") }
+                        }
                     }
                 }.formStyle(.grouped)
             }
-        }.frame(width: 560, height: 630)
+        }.frame(minWidth: 560, maxWidth: embedded ? .infinity : 560, minHeight: 500, maxHeight: embedded ? .infinity : 630)
+            .onAppear { if embedded, page == nil { page = .general } }
             .makoshAppearance()
     }
+    private var availablePages: [Page] {
+        var result: [Page] = [.general, .appearance, .calls]
+        if avatarEditing?.accountID != nil { result.insert(.profile, at: 0) }
+        if notifications != nil { result.append(.notifications) }
+        if proxy != nil { result.append(.data) }
+        if sessions != nil { result.append(.devices) }
+        if privacy != nil { result.append(.privacy) }
+        return result
+    }
     private func settingsRow(_ value: Page, symbol: String, id: String) -> some View {
-        Button { page = value } label: {
-            HStack { Label(value.rawValue, systemImage: symbol); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) }
-                .frame(height: 38).contentShape(Rectangle())
+        Button {
+            page = value
+        } label: {
+            HStack {
+                Label(value.rawValue, systemImage: symbol)
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+            }
+            .frame(height: 38).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("telegram.settings.\(id)")
     }
 }
@@ -92,15 +157,22 @@ private struct TelegramGeneralSettingsView: View {
     var body: some View {
         Form {
             Section("Эмодзи") {
-                Toggle("Анимированные эмодзи",isOn: preference(\.animationsEnabled)).accessibilityIdentifier("telegram.settings.animations")
-                Toggle("Заменять смайлики на эмодзи",isOn: preference(\.replaceEmoticons)).accessibilityIdentifier("telegram.settings.replaceEmoticons")
-                Text("Замена применяется к обычным смайликам после пробела; вставленный текст и моноширинный код сохраняются.").font(.caption).foregroundStyle(.secondary)
+                Toggle("Анимированные эмодзи", isOn: preference(\.animationsEnabled)).accessibilityIdentifier(
+                    "telegram.settings.animations")
+                Toggle("Заменять смайлики на эмодзи", isOn: preference(\.replaceEmoticons)).accessibilityIdentifier(
+                    "telegram.settings.replaceEmoticons")
+                Text("Замена применяется к обычным смайликам после пробела; вставленный текст и моноширинный код сохраняются.").font(
+                    .caption
+                ).foregroundStyle(.secondary)
             }
             Section("Сообщения") {
-                Picker("Отправка сообщений", selection: Binding(
-                    get: { TelegramSendKey(preferenceValue: sendKeyPreference).rawValue },
-                    set: { sendKeyPreference = $0 }
-                )) {
+                Picker(
+                    "Отправка сообщений",
+                    selection: Binding(
+                        get: { TelegramSendKey(preferenceValue: sendKeyPreference).rawValue },
+                        set: { sendKeyPreference = $0 }
+                    )
+                ) {
                     Text("Отправлять по Enter").tag(TelegramSendKey.enter.rawValue)
                         .accessibilityIdentifier("telegram.settings.sendByEnter")
                     Text("Отправлять по ⌘ + Enter").tag(TelegramSendKey.commandEnter.rawValue)
@@ -113,11 +185,13 @@ private struct TelegramGeneralSettingsView: View {
             }
         }.formStyle(.grouped)
     }
-    private func preference(_ key: WritableKeyPath<TelegramAppearancePreferences,Bool>) -> Binding<Bool> {
-        .init(get:{ appearance[keyPath:key] },set:{ value in
-            guard var preferences = try? TelegramAppearancePreferences.decode(appearanceRaw) else { return }
-            preferences[keyPath:key] = value
-            if let encoded = try? preferences.encoded() { appearanceRaw = encoded }
-        })
+    private func preference(_ key: WritableKeyPath<TelegramAppearancePreferences, Bool>) -> Binding<Bool> {
+        .init(
+            get: { appearance[keyPath: key] },
+            set: { value in
+                guard var preferences = try? TelegramAppearancePreferences.decode(appearanceRaw) else { return }
+                preferences[keyPath: key] = value
+                if let encoded = try? preferences.encoded() { appearanceRaw = encoded }
+            })
     }
 }

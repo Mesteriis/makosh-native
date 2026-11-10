@@ -8,32 +8,30 @@ import SwiftUI
 struct TasksSyntheticPreview: View {
     @State private var host: TasksHost?
     @State private var error: String?
-    @State private var settings = false
+    @State private var destination: WorkspaceDestination? = .tasks
+    @State private var category = "tasks"
+    @EnvironmentObject private var navigation: WorkspaceNavigation
 
     var body: some View {
         Group {
             if let host {
-                WorkspaceSplitView(width: .constant(320), minimum: 280, maximum: 390, minimumDetail: 460) {
-                    if let model = host.model {
-                        TasksSidebarView(model: model).background { WorkspaceBackdrop(intensity: 0.55) }
-                    }
-                } detail: {
-                    TasksDetailView(host: host)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        HStack {
-                            Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2").font(.caption.bold())
-                            Button("Настройки задач") { settings = true }.accessibilityIdentifier("tasks.qa.settings")
+                WorkspaceChrome(destination: $destination, allowed: [.tasks, .settings]) {
+                    if destination == .settings {
+                        WorkspaceSettingsPage(category: $category, allowed: [.tasks]) { _ in
+                            if let model = host.model { TasksSettingsForm(model: model) }
+                        }
+                    } else {
+                        WorkspaceSplitView(width: .constant(280), minimum: 280, maximum: 390, minimumDetail: 460) {
+                            if let model = host.model { TasksSidebarView(model: model) }
+                        } detail: {
+                            TasksDetailView(host: host)
                         }
                     }
                 }
-                .sheet(isPresented: $settings) {
-                    VStack {
-                        if let model = host.model { TasksSettingsForm(model: model) }
-                        Button("Готово") { settings = false }.padding()
-                    }.makoshAppearance()
+                .onReceive(navigation.$settingsRequest) { request in
+                    if request != nil { destination = .settings }
                 }
+                .onReceive(navigation.$destinationRequest) { if $0 == .tasks { destination = .tasks } }
                 .modifier(TasksSheets(host: host))
                 .environment(\.tasksHost, host)
                 .environment(\.colorScheme, .dark)

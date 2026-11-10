@@ -6,6 +6,7 @@ import SwiftUI
 /// Settings → Персоны → «OSINT-модуль (flowsint)»: connection, installation, service user, keys, enricher sets, open attempts.
 struct OSINTSettingsSection: View {
     @ObservedObject var osint: OSINTWorkspaceModel
+    @State private var page = "Соединение"
     @State private var host = ""
     @State private var port = "22"
     @State private var login = ""
@@ -31,12 +32,17 @@ struct OSINTSettingsSection: View {
                     "OSINT-модуль включён",
                     isOn: Binding(get: { settings.enabled }, set: { value in _Concurrency.Task { await osint.setEnabled(value) } })
                 ).accessibilityIdentifier("persons.osint.enabled")
-                connectionFields(settings)
-                installationRows(settings)
-                if serviceAuthFailed { serviceUserRows }
-                keysRows(settings)
-                enricherRows(settings)
-                attemptsRows
+                WorkspaceSettingsTabs(titles: ["Соединение", "Установка", "Источники и ключи", "Запуски"], selection: $page)
+                if page == "Соединение" { connectionFields(settings) }
+                if page == "Установка" {
+                    installationRows(settings)
+                    if serviceAuthFailed { serviceUserRows }
+                }
+                if page == "Источники и ключи" {
+                    keysRows(settings)
+                    enricherRows(settings)
+                }
+                if page == "Запуски" { attemptsRows }
             } else {
                 Text(osint.error ?? "OSINT-модуль откроется вместе с разделом «Персоны».").foregroundStyle(.secondary)
             }
@@ -64,19 +70,35 @@ struct OSINTSettingsSection: View {
 
     private func connectionFields(_ settings: OSINTSettings) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                TextField("Хост", text: $host).textFieldStyle(.roundedBorder).accessibilityIdentifier("persons.osint.host")
-                TextField("Порт", text: $port).textFieldStyle(.roundedBorder).frame(width: 72)
-                TextField("Логин SSH", text: $login).textFieldStyle(.roundedBorder).frame(width: 140)
-                SecureField("Пароль SSH", text: $password).textFieldStyle(.roundedBorder).frame(width: 160)
-                Button("Сохранить") {
-                    let secret = password.isEmpty ? nil : password
-                    _Concurrency.Task {
-                        await osint.saveConnection(host: host, port: Int(port) ?? 22, login: login, password: secret)
-                        password = ""
-                    }
-                }.disabled(osint.busy || host.trimmingCharacters(in: .whitespaces).isEmpty)
+            Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
+                GridRow {
+                    Text("Сервер").frame(width: 140, alignment: .leading)
+                    TextField("osint.example.test", text: $host).textFieldStyle(.roundedBorder).labelsHidden()
+                        .accessibilityLabel("Хост").accessibilityIdentifier("persons.osint.host")
+                }
+                GridRow {
+                    Text("Порт")
+                    TextField("22", text: $port).textFieldStyle(.roundedBorder).labelsHidden().frame(width: 100)
+                        .accessibilityLabel("Порт")
+                }
+                GridRow {
+                    Text("Пользователь SSH")
+                    TextField("", text: $login).textFieldStyle(.roundedBorder).labelsHidden()
+                        .accessibilityLabel("Логин SSH")
+                }
+                GridRow {
+                    Text("Пароль SSH")
+                    SecureField("", text: $password).textFieldStyle(.roundedBorder).labelsHidden()
+                        .accessibilityLabel("Пароль SSH")
+                }
             }
+            Button("Сохранить соединение") {
+                let secret = password.isEmpty ? nil : password
+                _Concurrency.Task {
+                    await osint.saveConnection(host: host, port: Int(port) ?? 22, login: login, password: secret)
+                    password = ""
+                }
+            }.disabled(osint.busy || host.trimmingCharacters(in: .whitespaces).isEmpty)
             HStack {
                 Button("Проверить соединение") { _Concurrency.Task { report = await osint.testConnection() } }
                     .disabled(osint.busy || settings.host.isEmpty).accessibilityIdentifier("persons.osint.test")

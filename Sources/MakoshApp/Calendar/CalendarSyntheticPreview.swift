@@ -8,29 +8,18 @@ import SwiftUI
 struct CalendarSyntheticPreview: View {
     @State private var host: CalendarHost?
     @State private var error: String?
-    @State private var settings = false
 
     var body: some View {
         Group {
             if let host {
-                WorkspaceSplitView(width: .constant(280), minimum: 260, maximum: 360, minimumDetail: 700) {
-                    CalendarSidebarColumn(host: host).background { WorkspaceBackdrop(intensity: 0.55) }
-                } detail: {
-                    CalendarDetailView(host: host)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        HStack {
-                            Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2").font(.caption.bold())
-                            Button("Настройки календаря") { settings = true }.accessibilityIdentifier("calendar.qa.settings")
-                        }
+                SyntheticWorkspaceFrame(service: .calendar) {
+                    WorkspaceSplitView(width: .constant(280), minimum: 260, maximum: 360, minimumDetail: 700) {
+                        CalendarSidebarColumn(host: host).background { WorkspaceBackdrop(intensity: 0.55) }
+                    } detail: {
+                        CalendarDetailView(host: host)
                     }
-                }
-                .sheet(isPresented: $settings) {
-                    VStack {
-                        if let model = host.model { CalendarSettingsForm(model: model, host: host).frame(width: 640, height: 560) }
-                        Button("Готово") { settings = false }.padding()
-                    }.makoshAppearance()
+                } settings: {
+                    if let model = host.model { CalendarSettingsForm(model: model, host: host) }
                 }
                 .environment(\.calendarHost, host)
                 .environmentObject(host)

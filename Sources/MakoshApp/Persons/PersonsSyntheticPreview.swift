@@ -16,41 +16,31 @@ struct PersonsSyntheticPreview: View {
     @StateObject private var ai = AIHost()
     @State private var ready = false
     @State private var error: String?
-    @State private var settings = false
     @State private var editor: PersonsPreviewEditor?
 
     var body: some View {
         Group {
             if ready {
-                WorkspaceSplitView(width: .constant(320), minimum: 280, maximum: 390, minimumDetail: 640) {
-                    PersonsSidebarView(
-                        host: host, workspace: workspace, newPerson: { kind in editor = PersonsPreviewEditor(contact: nil, kind: kind) },
-                        openImport: {}, openReview: {}
-                    ).background { WorkspaceBackdrop(intensity: 0.55) }
-                } detail: {
-                    if let contact = workspace.selected {
-                        PersonCardView(contact: contact, model: workspace, host: host) {
-                            editor = PersonsPreviewEditor(contact: contact, kind: contact.kind)
-                        }
-                    } else {
-                        ContentUnavailableView(
-                            "Всё о человеке — рядом", systemImage: "person.text.rectangle",
-                            description: Text("Выберите персону, чтобы открыть досье, книги, заметки и источники."))
-                    }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        HStack {
-                            Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2").font(.caption.bold())
-                            Button("Настройки персон") { settings = true }.accessibilityIdentifier("persons.qa.settings")
+                SyntheticWorkspaceFrame(service: .persons) {
+                    WorkspaceSplitView(width: .constant(320), minimum: 280, maximum: 390, minimumDetail: 640) {
+                        PersonsSidebarView(
+                            host: host, workspace: workspace,
+                            newPerson: { kind in editor = PersonsPreviewEditor(contact: nil, kind: kind) },
+                            openImport: {}, openReview: {}
+                        ).background { WorkspaceBackdrop(intensity: 0.55) }
+                    } detail: {
+                        if let contact = workspace.selected {
+                            PersonCardView(contact: contact, model: workspace, host: host) {
+                                editor = PersonsPreviewEditor(contact: contact, kind: contact.kind)
+                            }
+                        } else {
+                            ContentUnavailableView(
+                                "Всё о человеке — рядом", systemImage: "person.text.rectangle",
+                                description: Text("Выберите персону, чтобы открыть досье, книги, заметки и источники."))
                         }
                     }
-                }
-                .sheet(isPresented: $settings) {
-                    VStack {
-                        if let model = host.model { PersonsSettingsForm(model: model, host: host).frame(width: 680, height: 600) }
-                        Button("Готово") { settings = false }.padding()
-                    }.makoshAppearance()
+                } settings: {
+                    if let model = host.model { PersonsSettingsForm(model: model, host: host) }
                 }
                 .sheet(item: $editor) { selection in
                     PersonEditor(contact: selection.contact, kind: selection.kind, model: workspace).makoshAppearance()

@@ -8,29 +8,18 @@ import SwiftUI
 struct FilesSyntheticPreview: View {
     @State private var host: FilesHost?
     @State private var error: String?
-    @State private var settings = false
 
     var body: some View {
         Group {
             if let host {
-                WorkspaceSplitView(width: .constant(320), minimum: 280, maximum: 390, minimumDetail: 460) {
-                    FilesSidebarView(model: host.model, host: host).background { WorkspaceBackdrop(intensity: 0.55) }
-                } detail: {
-                    FilesDetailView(model: host.model, host: host)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        HStack {
-                            Label("СИНТЕТИЧЕСКАЯ ПРОВЕРКА", systemImage: "testtube.2").font(.caption.bold())
-                            Button("Настройки файлов") { settings = true }.accessibilityIdentifier("files.qa.settings")
-                        }
+                SyntheticWorkspaceFrame(service: .files) {
+                    WorkspaceSplitView(width: .constant(320), minimum: 280, maximum: 390, minimumDetail: 460) {
+                        FilesSidebarView(model: host.model, host: host).background { WorkspaceBackdrop(intensity: 0.55) }
+                    } detail: {
+                        FilesDetailView(model: host.model, host: host)
                     }
-                }
-                .sheet(isPresented: $settings) {
-                    VStack {
-                        FilesSettingsForm(model: host.model)
-                        Button("Готово") { settings = false }.padding()
-                    }
+                } settings: {
+                    FilesSettingsForm(model: host.model)
                 }
                 .sheet(item: Binding(get: { host.pendingSend }, set: { host.pendingSend = $0 })) { request in
                     PaperlessSendSheet(model: host.model, request: request)

@@ -16,7 +16,9 @@ struct TasksSettingsView: View {
 }
 
 struct TasksSettingsForm: View {
+    @Environment(\.workspaceNavigation) private var workspaceNavigation
     @ObservedObject var model: TasksWorkspaceModel
+    @State private var page = "Отображение"
     @State private var editing: JiraConnection?
     @State private var adding = false
     @State private var presets = ""
@@ -24,100 +26,118 @@ struct TasksSettingsForm: View {
     private var preferences: TaskPreferences { model.storedPreferences }
 
     var body: some View {
-        Form {
-            Section("Отображение") {
-                Picker("Формат даты", selection: binding(\.dateFormat)) {
-                    ForEach(TaskDateFormat.allCases, id: \.self) { Text($0.title).tag($0) }
-                }.accessibilityIdentifier("tasks.settings.dateFormat")
-                Picker("Первый день недели", selection: binding(\.firstWeekday)) {
-                    Text("Понедельник").tag(2)
-                    Text("Воскресенье").tag(1)
-                }
-                Toggle("Компактный режим", isOn: $model.condense)
-                Toggle("Панель массовых действий под списком", isOn: binding(\.showBulkBar))
-                Toggle("Извлекать ссылки из быстрого ввода", isOn: binding(\.extractURLs))
-                Toggle("Новая задача на сегодня — сразу в работе", isOn: binding(\.newTaskActiveToday))
-            }
-            Section("Планер") {
-                Stepper(
-                    "Начало дня: \(preferences.plannerDayStart):00", value: binding(\.plannerDayStart),
-                    in: 0...(preferences.plannerDayEnd - 1))
-                Stepper(
-                    "Конец дня: \(preferences.plannerDayEnd):00", value: binding(\.plannerDayEnd),
-                    in: (preferences.plannerDayStart + 1)...24)
-                Picker("Шаг сетки", selection: binding(\.plannerStep)) {
-                    ForEach([5, 10, 15, 30, 60], id: \.self) { Text("\($0) мин").tag($0) }
-                }
-            }
-            Section("Фокус-панель") {
-                Toggle(
-                    "Показывать фокус-панель",
-                    isOn: Binding(get: { model.focusEnabled }, set: { value in _Concurrency.Task { await model.setFocusEnabled(value) } })
-                )
-                .accessibilityIdentifier("tasks.settings.focus")
-                Picker("Высота", selection: binding(\.focus.compact)) {
-                    Text("Авто").tag(false)
-                    Text("Компактно").tag(true)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Модули").font(.caption).foregroundStyle(.secondary)
-                    ForEach(TaskFocusModule.allCases, id: \.self) { module in
-                        Toggle(
-                            moduleTitle(module),
-                            isOn: Binding(
-                                get: { preferences.focus.modules.contains(module) },
-                                set: { on in
-                                    model.updatePreferences {
-                                        if on { $0.focus.modules.insert(module) } else { $0.focus.modules.remove(module) }
-                                    }
-                                })
-                        ).toggleStyle(.checkbox)
+        VStack(spacing: 16) {
+            WorkspaceSettingsTabs(titles: ["Отображение", "Планер", "Фокус-панель", "Jira"], selection: $page)
+            Form {
+                if page == "Отображение" {
+                    Section("Отображение") {
+                        Picker("Формат даты", selection: binding(\.dateFormat)) {
+                            ForEach(TaskDateFormat.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }.accessibilityIdentifier("tasks.settings.dateFormat")
+                        Picker("Первый день недели", selection: binding(\.firstWeekday)) {
+                            Text("Понедельник").tag(2)
+                            Text("Воскресенье").tag(1)
+                        }
+                        Toggle("Компактный режим", isOn: $model.condense)
+                        Toggle("Панель массовых действий под списком", isOn: binding(\.showBulkBar))
+                        Toggle("Извлекать ссылки из быстрого ввода", isOn: binding(\.extractURLs))
+                        Toggle("Новая задача на сегодня — сразу в работе", isOn: binding(\.newTaskActiveToday))
                     }
                 }
-                HStack {
-                    Text("Пресеты, мин")
-                    TextField("15, 30, 45, 60", text: $presets).textFieldStyle(.roundedBorder).frame(width: 160)
-                        .onSubmit(savePresets)
-                        .onAppear { presets = preferences.focus.presets.map(String.init).joined(separator: ", ") }
+                if page == "Планер" {
+                    Section("Планер") {
+                        Stepper(
+                            "Начало дня: \(preferences.plannerDayStart):00", value: binding(\.plannerDayStart),
+                            in: 0...(preferences.plannerDayEnd - 1))
+                        Stepper(
+                            "Конец дня: \(preferences.plannerDayEnd):00", value: binding(\.plannerDayEnd),
+                            in: (preferences.plannerDayStart + 1)...24)
+                        Picker("Шаг сетки", selection: binding(\.plannerStep)) {
+                            ForEach([5, 10, 15, 30, 60], id: \.self) { Text("\($0) мин").tag($0) }
+                        }
+                    }
                 }
-                Stepper("Перерыв: \(preferences.focus.breakMinutes) мин", value: binding(\.focus.breakMinutes), in: 0...60)
-            }
-            Section("Гид") {
-                Button("Показать гид снова") { model.startGuide() }.accessibilityIdentifier("tasks.settings.guide")
-            }
-            Section("Подключения Jira") {
-                ForEach(model.connections) { connection in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(connection.name)
-                            Text("\(connection.origin.host ?? "") · \(connection.email)").font(.caption).foregroundStyle(.secondary)
-                            if let failure = connection.lastFailure { Text(failure).font(.caption).foregroundStyle(.orange) }
-                            if connection.mentionsUnavailable {
-                                Text("Jira отклонила поиск упоминаний; зеркалятся только назначенные.").font(.caption).foregroundStyle(
-                                    .orange)
+                if page == "Фокус-панель" {
+                    Section("Фокус-панель") {
+                        Toggle(
+                            "Показывать фокус-панель",
+                            isOn: Binding(
+                                get: { model.focusEnabled }, set: { value in _Concurrency.Task { await model.setFocusEnabled(value) } })
+                        )
+                        .accessibilityIdentifier("tasks.settings.focus")
+                        Picker("Высота", selection: binding(\.focus.compact)) {
+                            Text("Авто").tag(false)
+                            Text("Компактно").tag(true)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Модули").font(.caption).foregroundStyle(.secondary)
+                            ForEach(TaskFocusModule.allCases, id: \.self) { module in
+                                Toggle(
+                                    moduleTitle(module),
+                                    isOn: Binding(
+                                        get: { preferences.focus.modules.contains(module) },
+                                        set: { on in
+                                            model.updatePreferences {
+                                                if on { $0.focus.modules.insert(module) } else { $0.focus.modules.remove(module) }
+                                            }
+                                        })
+                                ).toggleStyle(.checkbox)
                             }
                         }
-                        Spacer()
-                        Button("Изменить") { editing = connection }
-                        Button("Удалить", role: .destructive) {
-                            _Concurrency.Task {
-                                do { try await model.service.remove(connectionID: connection.id) } catch {
-                                    model.error = TasksWorkspaceModel.describe(error)
+                        HStack {
+                            Text("Пресеты, мин")
+                            TextField("15, 30, 45, 60", text: $presets).textFieldStyle(.roundedBorder).labelsHidden().frame(width: 160)
+                                .onSubmit(savePresets)
+                                .onAppear { presets = preferences.focus.presets.map(String.init).joined(separator: ", ") }
+                        }
+                        Stepper("Перерыв: \(preferences.focus.breakMinutes) мин", value: binding(\.focus.breakMinutes), in: 0...60)
+                    }
+                }
+                if page == "Отображение" {
+                    Section("Гид") {
+                        Button("Показать гид снова") {
+                            model.startGuide()
+                            workspaceNavigation?.showService(.tasks)
+                        }.accessibilityIdentifier("tasks.settings.guide")
+                    }
+                }
+                if page == "Jira" {
+                    Section("Подключения Jira") {
+                        ForEach(model.connections) { connection in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(connection.name)
+                                    Text("\(connection.origin.host ?? "") · \(connection.email)").font(.caption).foregroundStyle(.secondary)
+                                    if let failure = connection.lastFailure { Text(failure).font(.caption).foregroundStyle(.orange) }
+                                    if connection.mentionsUnavailable {
+                                        Text("Jira отклонила поиск упоминаний; зеркалятся только назначенные.").font(.caption)
+                                            .foregroundStyle(
+                                                .orange)
+                                    }
                                 }
-                                await model.refresh()
-                            }
+                                Spacer()
+                                Button("Изменить") { editing = connection }
+                                Button("Удалить", role: .destructive) {
+                                    _Concurrency.Task {
+                                        do { try await model.service.remove(connectionID: connection.id) } catch {
+                                            model.error = TasksWorkspaceModel.describe(error)
+                                        }
+                                        await model.refresh()
+                                    }
+                                }
+                            }.accessibilityIdentifier("tasks.settings.connection.\(connection.id.uuidString)")
                         }
-                    }.accessibilityIdentifier("tasks.settings.connection.\(connection.id.uuidString)")
+                        Button("Добавить Jira…") { adding = true }.accessibilityIdentifier("tasks.settings.add")
+                        Text(
+                            "Jira Cloud: почта аккаунта и API-токен (id.atlassian.com → Security → API tokens). Токен хранится только в Связке ключей."
+                        )
+                        .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                Button("Добавить Jira…") { adding = true }.accessibilityIdentifier("tasks.settings.add")
-                Text(
-                    "Jira Cloud: почта аккаунта и API-токен (id.atlassian.com → Security → API tokens). Токен хранится только в Связке ключей."
-                )
-                .font(.caption).foregroundStyle(.secondary)
+                if let error = model.error { Text(error).foregroundStyle(.orange) }
             }
-            if let error = model.error { Text(error).foregroundStyle(.orange) }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
         .frame(minWidth: 560, minHeight: 480)
         .sheet(item: $editing) { connection in JiraConnectionEditor(model: model, original: connection).makoshAppearance() }
         .sheet(isPresented: $adding) { JiraConnectionEditor(model: model, original: nil).makoshAppearance() }

@@ -101,6 +101,12 @@ the shared cooperative pool used by the other service actors. The separate Rust
 process owns Tokio, protocol callbacks and encrypted SQLite. QR image generation
 explicitly leaves MainActor. UI publication checks account and selection generation;
 late history or QR completion cannot cross accounts/chats. Teardown is asynchronous.
+PostgreSQL retirement shares that contract: deleting a store schedules libpq close,
+then the server/PgBouncer processes disconnect/reset. The release regression waits
+at most five seconds for a second session to acquire the lease, and separately
+proves a live owner retains it across COMMIT. Explicit close is checked for
+idempotence and rejected use after retirement. Local PgBouncer must use session
+pooling with DISCARD ALL; transaction pooling would invalidate journal leases.
 
 Each worker owns one private 0700 account directory and a 0600 exclusive flock
 lease; unsafe file type/ownership/mode/hardlink cases fail closed. Session keys

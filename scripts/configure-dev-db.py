@@ -24,8 +24,10 @@ def save_private(path, content):
         target.write(content)
 
 save_private(local / "postgres.env", f"MAKOSH_POSTGRES_PASSWORD={password}\n")
-save_private(local / "postgres-app.json", json.dumps({
-    "connectionString": f"host=127.0.0.1 port=55439 dbname=makosh user=makosh password={password} connect_timeout=5",
-    "schema": "makosh",
-}, indent=2) + "\n")
+save_private(local / "pgbouncer-users.txt", f'"makosh" "{password}"\n')
+for name, port in [("postgres-app.json", 55441), ("postgres-direct.json", 55439)]:
+    save_private(local / name, json.dumps({
+        "connectionString": f"host=127.0.0.1 port={port} dbname=makosh user=makosh password={password} connect_timeout=5",
+        "schema": "makosh",
+    }, indent=2) + "\n")
 print("Local PostgreSQL development configuration is ready in ignored .local/ files.")

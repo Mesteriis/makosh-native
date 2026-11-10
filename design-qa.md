@@ -1,3 +1,10 @@
+# Оболочка Makosh — 2026-11-10
+
+Текущий ограниченный срез и фактическая нативная синтетическая проверка:
+[отчёт](docs/design/workspace-2026-11-10/qa.md). Итоги тестов и сборки —
+в `docs/development-status.md`. Ниже сохранены предыдущие отчёты; их результаты
+не являются приёмкой текущей оболочки.
+
 # WhatsApp group workspace native QA — 2026-10-18
 
 Source visual: [third displayed WhatsApp concept](docs/design/whatsapp-group-context.png).

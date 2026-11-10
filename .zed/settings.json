@@ -1,0 +1,12 @@
+// Создано zed-init. Стартовый шаблон: проверьте команды, cwd и аргументы под свой проект.
+// Ничего не устанавливается и не запускается при создании этих файлов.
+{
+  "enable_language_server": true,
+  "ensure_final_newline_on_save": true,
+  "tasks": {
+    "enabled": true
+  },
+  "toolbar": {
+    "breadcrumbs": true
+  }
+}

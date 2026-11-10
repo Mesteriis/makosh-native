@@ -1,0 +1,110 @@
+// Создано zed-init. Стартовый шаблон: проверьте команды, cwd и аргументы под свой проект.
+// Ничего не устанавливается и не запускается при создании этих файлов.
+[
+  {
+    "label": "Project · Git whitespace",
+    "command": "git",
+    "args": [
+      "diff",
+      "--check"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "save": "current",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "Project · Compose validate (no env loading)",
+    "command": "docker",
+    "args": [
+      "compose",
+      "--env-file",
+      "/dev/null",
+      "-f",
+      "compose.yaml",
+      "config",
+      "--no-interpolate",
+      "--no-env-resolution",
+      "--quiet"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "save": "current",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "Project · Dependencies/WhatsApp · Cargo check",
+    "command": "cargo",
+    "args": [
+      "check"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT/Dependencies/WhatsApp",
+    "save": "current",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "Project · Dependencies/WhatsApp · Cargo test",
+    "command": "cargo",
+    "args": [
+      "test"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT/Dependencies/WhatsApp",
+    "save": "current",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "Project · Dependencies/WhatsApp · Cargo run",
+    "command": "cargo",
+    "args": [
+      "run"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT/Dependencies/WhatsApp",
+    "save": "current",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "Makosh · Debug build",
+    "command": "swift",
+    "args": [
+      "build"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "Makosh · Tests",
+    "command": "scripts/test.sh",
+    "args": [],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "Makosh · App bundle",
+    "command": "scripts/build-app.sh",
+    "args": [],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "Makosh · Development services",
+    "command": "scripts/dev-db.sh",
+    "args": [
+      "up"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "allow_concurrent_runs": false
+  }
+]

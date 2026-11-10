@@ -8,7 +8,9 @@ import XCTest
 /// A live check against the user's own server, run only on the user's command through the environment:
 /// `MAKOSH_OSINT_LIVE_HOST`, `_PORT` (22), `_LOGIN`, `_PASSWORD_FILE` (mode 0600, never printed), `_FINGERPRINT`
 /// (the host key verified out of band), `_DATABASE_CONFIG` (`{connectionString, schema}` of the application),
-/// `_NAME`, `_EMAILS` and `_USERNAMES` (comma separated) of the person to enrich. Without the host it is skipped.
+/// `_NAME`, `_EMAILS` and `_USERNAMES` (comma separated) of the person to enrich, `_ENRICHERS` (server names, comma
+/// separated; default Gravatar, HudsonRock, Maigret), `_KIND` (`organization`) and `_DOMAINS` for an organization's
+/// own domains. Without the host it is skipped.
 /// It drives the same `OSINTService` the application uses; the log carries steps, states and codes, and the
 /// findings proposed for the chosen person — the user's own data, printed at their request.
 final class OSINTLiveCheckTests: XCTestCase {
@@ -35,6 +37,13 @@ final class OSINTLiveCheckTests: XCTestCase {
             !$0.isEmpty
         }
         let port = Int(env("PORT") ?? "22") ?? 22
+        let domains = (env("DOMAINS") ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter {
+            !$0.isEmpty
+        }
+        let kind: PersonKind = env("KIND") == "organization" ? .organization : .person
+        let named = (env("ENRICHERS") ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let chosen = Set(named.compactMap(OSINTEnricher.init(rawValue:)))
+        XCTAssertEqual(chosen.count, named.count, "every name in _ENRICHERS is an enricher Makosh knows")
         let attributes = try FileManager.default.attributesOfItem(atPath: passwordFile)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0 & 0o077, 0o600, "the password file is private")
         let password = try String(contentsOfFile: passwordFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -85,19 +94,30 @@ final class OSINTLiveCheckTests: XCTestCase {
         let all = try persons.persons()
         let normalized = Set(emails.map(PersonMatching.normalizedEmail))
         let personID: UUID
-        if let existing = all.first(where: { !Set($0.emails.map(PersonMatching.normalizedEmail)).isDisjoint(with: normalized) }) {
+        let match: (Person) -> Bool = { candidate in
+            guard candidate.kind == kind else { return false }
+            if normalized.isEmpty { return candidate.displayName == name }
+            return !Set(candidate.emails.map(PersonMatching.normalizedEmail)).isDisjoint(with: normalized)
+        }
+        if let existing = all.first(where: match) {
             personID = existing.id
             log("person: existing «\(existing.displayName)»")
         } else {
-            personID = try persons.createPerson(draft: PersonDraft(displayName: name, emails: emails, usernames: usernames))
+            personID = try persons.createPerson(draft: PersonDraft(kind: kind, displayName: name, emails: emails, usernames: usernames))
             log("person: created «\(name)»")
         }
-        let inputs = try await service.inputs(personID: personID).filter { $0.type == .email || $0.type == .username }
+        let enrichers: Set<OSINTEnricher> = chosen.isEmpty ? [.emailToGravatar, .emailToHudsonRock, .usernameToMaigret] : chosen
+        let wanted = Set(enrichers.map(\.inputType))
+        // The dossier's own values of the types the chosen enrichers take, plus the organization's domains named here.
+        var inputs = try await service.inputs(personID: personID).filter { wanted.contains($0.type) }
+        for domain in domains where !inputs.contains(OSINTInput(type: .domain, value: domain)) {
+            inputs.append(OSINTInput(type: .domain, value: domain))
+        }
         log("inputs: \(inputs.map { "\($0.type.rawValue)=\($0.value)" })")
         XCTAssertFalse(inputs.isEmpty)
 
-        // 4. One manual run with the enrichers that need no key.
-        let enrichers: Set<OSINTEnricher> = [.emailToGravatar, .emailToHudsonRock, .usernameToMaigret]
+        // 4. One manual run with the chosen enrichers.
+        log("enrichers: \(enrichers.map(\.rawValue).sorted())")
         let runStarted = ContinuousClock.now
         let runID = try await service.enrich(personID: personID, enrichers: enrichers, inputs: inputs)
         await service.settled()
@@ -113,7 +133,7 @@ final class OSINTLiveCheckTests: XCTestCase {
         }
         let person = try XCTUnwrap(persons.person(id: personID))
         let proposals = person.observations.filter { $0.source.identity.service == OSINTGraphMapping.service && $0.status == .proposed }
-        log("proposals: \(proposals.count)")
+        log("proposals: \(proposals.count), new in this run: \(run?.found ?? 0)")
         for item in proposals { log("  \(item.field): \(item.value)  [\(item.source.identity.externalID)]") }
         if let url = try await service.graphURL(personID: personID) { log("graph: \(url.path)") }
         XCTAssertNotEqual(run?.state, .failed, run?.failure?.code ?? "")

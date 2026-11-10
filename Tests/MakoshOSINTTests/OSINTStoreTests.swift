@@ -165,4 +165,34 @@ final class OSINTStoreTests: XCTestCase {
         let installs = try await store.installs()
         XCTAssertEqual(installs, [install])
     }
+
+    func testRowsNamingRemovedEnrichersStillRead() async throws {
+        // Rows written before the catalogue followed the server keep names Makosh no longer knows.
+        let db = try osintDatabase()
+        let store = try await osintStore(db)
+        var settings = try await store.settings()
+        settings.manualEnrichers = [.emailToGravatar, .emailToUsername]
+        settings.automaticEnrichers = [.emailToGravatar]
+        try await store.saveSettings(settings)
+        let run = OSINTRun(personID: UUID(), trigger: .manual, enrichers: [.emailToGravatar, .emailToUsername])
+        try await store.saveRun(run)
+        let attempt = OSINTAttempt(
+            runID: run.id, personID: run.personID, kind: .launch, payload: OSINTAttemptPayload(sketchID: "sk", enricher: .emailToUsername))
+        try await store.saveAttempt(attempt)
+        for table in ["persons_osint_settings", "persons_osint_runs", "persons_osint_attempts"] {
+            try db.execute(
+                "UPDATE \(table) SET data = replace(data::text, 'email_to_username', 'individual_to_username_candidates')::jsonb")
+        }
+        let readSettings = try await store.settings()
+        XCTAssertEqual(readSettings.manualEnrichers, [.emailToGravatar], "an unknown name is dropped, the rest stays")
+        XCTAssertEqual(readSettings.automaticEnrichers, [.emailToGravatar])
+        XCTAssertEqual(readSettings.serverID, settings.serverID)
+        let readRun = try await store.run(id: run.id)
+        XCTAssertEqual(readRun?.enrichers, [.emailToGravatar])
+        let readAttempt = try await store.attempt(id: attempt.id)
+        XCTAssertNil(readAttempt?.payload.enricher)
+        XCTAssertEqual(readAttempt?.payload.sketchID, "sk")
+        let listed = try await store.runs(open: false)
+        XCTAssertEqual(listed.count, 1)
+    }
 }

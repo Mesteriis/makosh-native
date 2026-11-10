@@ -141,6 +141,9 @@ public enum OSINTEnricher: String, Codable, Sendable, CaseIterable {
         .emailToGravatar, .emailToHudsonRock, .emailToUsername, .emailToDomain, .phoneToHudsonRock, .usernameToHudsonRock,
     ]
     public static let knownKeys = ["HIBP_API_KEY", "VERIPHONE_API_KEY", "WHOXY_API_KEY", "DEHASHED_API_KEY", "PDCP_API_KEY"]
+
+    /// Stored names as a set, without the ones Makosh no longer knows; nil stays nil.
+    static func known(_ names: [String]?) -> Set<OSINTEnricher>? { names.map { Set($0.compactMap(OSINTEnricher.init(rawValue:))) } }
 }
 
 /// Where a third-party key comes from: shown beside the key in the settings.
@@ -197,6 +200,30 @@ public struct OSINTSettings: Codable, Equatable, Sendable {
     public var hmacKeyAvailable = true
 
     public init(serverID: UUID = UUID()) { self.serverID = serverID }
+
+    /// Rows outlive the catalogue: a field added later takes its default, an enricher name Makosh no longer
+    /// knows is dropped from the sets.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        serverID = try c.decode(UUID.self, forKey: .serverID)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        host = try c.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 22
+        login = try c.decodeIfPresent(String.self, forKey: .login) ?? ""
+        hostKeyFingerprint = try c.decodeIfPresent(String.self, forKey: .hostKeyFingerprint)
+        serviceEmail = try c.decodeIfPresent(String.self, forKey: .serviceEmail) ?? "makosh-osint@sh-inc.dev"
+        investigationID = try c.decodeIfPresent(String.self, forKey: .investigationID)
+        installedTag = try c.decodeIfPresent(String.self, forKey: .installedTag)
+        installedSHA = try c.decodeIfPresent(String.self, forKey: .installedSHA)
+        installedAt = try c.decodeIfPresent(Date.self, forKey: .installedAt)
+        imageIDs = try c.decodeIfPresent([String: String].self, forKey: .imageIDs) ?? [:]
+        envBackupAvailable = try c.decodeIfPresent(Bool.self, forKey: .envBackupAvailable) ?? true
+        manualEnrichers = try OSINTEnricher.known(c.decodeIfPresent([String].self, forKey: .manualEnrichers)) ?? OSINTEnricher.manualDefault
+        automaticEnrichers =
+            try OSINTEnricher.known(c.decodeIfPresent([String].self, forKey: .automaticEnrichers)) ?? OSINTEnricher.automaticDefault
+        automaticRunsPerHour = try c.decodeIfPresent(Int.self, forKey: .automaticRunsPerHour) ?? 20
+        hmacKeyAvailable = try c.decodeIfPresent(Bool.self, forKey: .hmacKeyAvailable) ?? true
+    }
 }
 
 public enum OSINTRunTrigger: Codable, Equatable, Sendable {
@@ -251,6 +278,22 @@ public struct OSINTRun: Codable, Equatable, Identifiable, Sendable {
         self.startedAt = startedAt
         self.finishedAt = finishedAt
     }
+
+    /// A run of an earlier catalogue stays readable: names Makosh no longer knows are dropped.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        personID = try c.decode(UUID.self, forKey: .personID)
+        trigger = try c.decode(OSINTRunTrigger.self, forKey: .trigger)
+        enrichers = try OSINTEnricher.known(c.decodeIfPresent([String].self, forKey: .enrichers)) ?? []
+        state = try c.decode(OSINTRunState.self, forKey: .state)
+        failure = try c.decodeIfPresent(OSINTFailure.self, forKey: .failure)
+        found = try c.decodeIfPresent(Int.self, forKey: .found) ?? 0
+        truncated = try c.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
+        finishedAt = try c.decodeIfPresent(Date.self, forKey: .finishedAt)
+    }
 }
 
 public enum OSINTAttemptKind: String, Codable, Sendable { case createSketch, addNode, launch, createKey, deleteKey, deleteSketch }
@@ -279,6 +322,17 @@ public struct OSINTAttemptPayload: Codable, Equatable, Sendable {
         self.enricher = enricher
         self.inputNodeID = inputNodeID
         self.keyName = keyName
+    }
+
+    /// The journal is append-only and outlives the catalogue: an enricher or node type Makosh no longer knows reads as nil.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sketchID = try c.decodeIfPresent(String.self, forKey: .sketchID)
+        nodeType = try c.decodeIfPresent(String.self, forKey: .nodeType).flatMap(FlowsintNodeType.init(rawValue:))
+        valueHMAC = try c.decodeIfPresent(String.self, forKey: .valueHMAC)
+        enricher = try c.decodeIfPresent(String.self, forKey: .enricher).flatMap(OSINTEnricher.init(rawValue:))
+        inputNodeID = try c.decodeIfPresent(String.self, forKey: .inputNodeID)
+        keyName = try c.decodeIfPresent(String.self, forKey: .keyName)
     }
 }
 

@@ -264,7 +264,10 @@ Teams and Telemost tokens) now live in one non-synchronizable generic
 password, `org.makosh.secrets`/`v1`, readable after first unlock on this Mac,
 so a new build asks once. `MakoshSecretStore` (MakoshCore) reads it once per
 process and caches it; each write re-reads the item and changes only its own
-entry. Vaults keep their own fail-closed handling through `SecItem`-shaped
+entry under an exclusive `flock` on
+`~/Library/Application Support/Makosh/secrets.lock`, so the app and a QA bundle
+sharing the item can neither lose each other's entries nor add the same name
+twice. Vaults keep their own fail-closed handling through `SecItem`-shaped
 adapters that return Keychain status codes; a refused prompt is an error, never
 a missing key. Older per-service items stay in place: a secret missing from the
 shared item is read from its old item once and copied; a deletion is recorded
@@ -273,8 +276,13 @@ Tokens that used "when unlocked" now share the item's "after first unlock".
 
 `MakoshInstanceLock` holds an exclusive `flock` on
 `~/Library/Application Support/Makosh/<bundle id>.lock`; a second launch of the
-same bundle activates the first and exits. QA bundles have their own identifiers
-and locks.
+same bundle activates the first and exits. A lock file that cannot be opened or
+locked is reported as a failure, not as another copy: the launch continues
+without the lock and logs the `errno`. QA bundles have their own identifiers
+and locks. The workspace is a single `Window` scene, not a `WindowGroup`: there
+is no ⌘N or Dock "New Window", because a second window would run a second set of
+window-owned services (a second Telegram engine on the same Postbox, second mail
+workers).
 
 ## ADR-016: Files section and Paperless — 2026-11-06
 

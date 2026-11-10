@@ -189,9 +189,15 @@ extension OSINTService {
     func deleteSketch(_ sketch: OSINTSketchLink, link: Connection) async {
         var attempt = OSINTAttempt(
             personID: sketch.personID, kind: .deleteSketch, payload: OSINTAttemptPayload(sketchID: sketch.sketchID), createdAt: now())
-        try? await store.saveAttempt(attempt)
-        attempt.state = .sent
-        try? await store.saveAttempt(attempt)
+        // Without its journal row nothing is sent; the sketch waits for a later pass.
+        do {
+            try await store.saveAttempt(attempt)
+            attempt.state = .sent
+            try await store.saveAttempt(attempt)
+        } catch {
+            lastFailure = Self.journalFailure(error, stage: "deleteSketch")
+            return
+        }
         do {
             try await link.api.deleteSketch(id: sketch.sketchID)
             attempt.state = .confirmed

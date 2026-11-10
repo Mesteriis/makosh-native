@@ -24,6 +24,15 @@ final class PersonsReviewFixTests: XCTestCase {
         try await service.open()
     }
 
+    /// Connections live until the actor is freed; release the core store and the worker here.
+    override func tearDown() async throws {
+        await service?.close()
+        service = nil
+        store = nil
+        persons = nil
+        db = nil
+    }
+
     private func makeService() -> PersonsService {
         let books = books!, bridge = bridge!
         return PersonsService(
@@ -63,6 +72,36 @@ final class PersonsReviewFixTests: XCTestCase {
         XCTAssertTrue(after.former.isEmpty, "a book that holds one phone and no e-mail reports no removals")
         XCTAssertEqual(after.emails, ["ivanov@x.ru"])
         XCTAssertEqual(after.phones.count, 2)
+    }
+
+    func testLocalFailureAfterServerCreateLeavesAttemptUnknownAndAdoptsOnNextPass() async throws {
+        let (book, synthetic) = try await connect("a")
+        // Another person's old card already carries the id the book will hand out next: the card is created
+        // on the server, and only the local entry fails.
+        let stranger = try persons.createPerson(draft: .init(displayName: "Чужой"))
+        try await store.saveEntry(
+            PersonBookEntry(personID: stranger, bookID: book.id, externalID: "syn-1", etag: nil, fingerprint: "x", state: .removed))
+        let person = try persons.createPerson(draft: .init(displayName: "Иванов", phones: ["+7 916 000-00-00"]))
+        try persons.setAddressBook(personID: person, true, origin: .user)
+        let first = await service.writePass()
+        XCTAssertEqual(first.attempted, 1)
+        XCTAssertEqual(first.unknown, 1, "the book answered: not a refusal")
+        let firstStates = try await store.attempts(personID: person).map(\.state)
+        XCTAssertEqual(firstStates, [.unknown])
+        let writes = await synthetic.writes
+        XCTAssertEqual(writes, ["create syn-1"])
+
+        let second = await service.writePass()
+        XCTAssertEqual(second.attempted, 0, "settled by reading the mark, never sent again")
+        let secondStates = try await store.attempts(personID: person).map(\.state)
+        XCTAssertEqual(secondStates, [.confirmed])
+        let entries = try await store.entries(personID: person)
+        XCTAssertEqual(entries.map(\.state), [.managed])
+        XCTAssertEqual(entries.map(\.externalID), ["syn-1"])
+        let writesAfter = await synthetic.writes
+        XCTAssertEqual(writesAfter, ["create syn-1"])
+        let cards = try await synthetic.changes(cursor: nil).cards
+        XCTAssertEqual(cards.count, 1, "one card, not a duplicate")
     }
 
     func testFlagAfterRestartAdoptsSourceCardInsteadOfCreating() async throws {

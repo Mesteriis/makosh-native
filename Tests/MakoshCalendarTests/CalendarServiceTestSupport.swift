@@ -16,6 +16,13 @@ struct CalendarServiceHarness {
 
 extension XCTestCase {
     nonisolated(nonsending) func calendarHarness(_ adapters: [String: CalendarSyntheticAdapter]) async throws -> CalendarServiceHarness {
+        try await calendarHarness(adapters: adapters.mapValues { $0 as any CalendarAdapter }, synthetic: adapters)
+    }
+
+    /// Any adapter per account name; `synthetic` names the ones tests drive directly.
+    nonisolated(nonsending) func calendarHarness(
+        adapters: [String: any CalendarAdapter], synthetic: [String: CalendarSyntheticAdapter] = [:]
+    ) async throws -> CalendarServiceHarness {
         let db = try calendarDatabase()
         let clock = LockedBox(CalendarServiceHarness.start)
         let store = try await calendarStore(db, now: { clock.get() })
@@ -26,7 +33,7 @@ extension XCTestCase {
                 return adapter
             }, google: nil, now: { clock.get() })
         try await service.open()
-        return CalendarServiceHarness(db: db, store: store, service: service, clock: clock, adapters: adapters)
+        return CalendarServiceHarness(db: db, store: store, service: service, clock: clock, adapters: synthetic)
     }
 
     func synthetic(

@@ -40,6 +40,15 @@ final class PersonsServiceWriteTests: XCTestCase {
         try await service.open()
     }
 
+    /// Connections live until the actor is freed; release the core store and the worker here.
+    override func tearDown() async throws {
+        await service?.close()
+        service = nil
+        store = nil
+        persons = nil
+        db = nil
+    }
+
     private func connect(_ accountID: String, accepts: Bool = true) async throws -> (PersonBook, PersonSyntheticBook) {
         let book = PersonBook(kind: .synthetic, name: accountID, accountID: accountID, acceptsAddressBook: accepts)
         try await store.saveBook(book)

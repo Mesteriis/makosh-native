@@ -21,6 +21,14 @@ final class PersonCollectorTests: XCTestCase {
         collector = PersonCollector(persons: persons, store: store)
     }
 
+    override func tearDown() async throws {
+        await store?.close()
+        collector = nil
+        store = nil
+        persons = nil
+        db = nil
+    }
+
     private func mailObservation(_ address: String, name: String? = nil) -> PersonSourceObservation {
         PersonSourceObservation(
             source: mail, person: ImportedPerson(externalID: address, displayName: name ?? address, emails: [address]), observedAt: when,

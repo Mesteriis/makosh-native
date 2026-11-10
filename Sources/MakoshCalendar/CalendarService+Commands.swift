@@ -389,17 +389,11 @@ extension CalendarService {
     ) async throws -> CalendarWriteOutcome {
         let payload = CalendarAttemptPayload(uid: event.uid, title: event.title, time: event.time)
         let attempt = try await begin(kind, eventID: event.id, collectionID: collection.id, payload: payload)
+        let ref: RemoteEventRef
         do {
             let adapter = try await adapter(for: account)
             try await store.markSent(attempt.id)
-            let ref = try await write(adapter)
-            try await store.settle(attempt.id, state: .confirmed, failure: nil)
-            var confirmed = try await store.event(id: event.id) ?? event
-            confirmed.externalID = ref.externalID
-            confirmed.etag = ref.etag
-            let saved = try await store.update(confirmed, expectedRevision: confirmed.revision, actor: .engine)
-            reconcileSoon()
-            return .saved(saved)
+            ref = try await write(adapter)
         } catch {
             let state = try await fail(attempt, error: error, accountID: account.id)
             if state == .unknown {
@@ -415,6 +409,21 @@ extension CalendarService {
                     _ = try await store.update(back, expectedRevision: current.revision, actor: .engine)
                 }
             }
+            throw Self.surface(error)
+        }
+        // The server answered: a local failure from here on is no refusal and undoes nothing; the
+        // attempt stays unknown for the next read (by UID) to settle.
+        do {
+            try await store.settle(attempt.id, state: .confirmed, failure: nil)
+            var confirmed = try await store.event(id: event.id) ?? event
+            confirmed.externalID = ref.externalID
+            confirmed.etag = ref.etag
+            let saved = try await store.update(confirmed, expectedRevision: confirmed.revision, actor: .engine)
+            reconcileSoon()
+            return .saved(saved)
+        } catch {
+            try? await store.settle(attempt.id, state: .unknown, failure: (error as? CalendarFailure) ?? .unknownOutcome(stage: "store"))
+            reconcileSoon()
             throw Self.surface(error)
         }
     }

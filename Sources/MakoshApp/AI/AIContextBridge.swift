@@ -226,14 +226,7 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
             cursor = last.cursor
         }
         let group = chatID.hasSuffix("@g.us")
-        var candidates = read.map { message in
-            AIContextCandidate(
-                author: message.outgoing ? nil : ServiceIdentity(service: "whatsapp", accountID: accountID, externalID: message.sender),
-                line: AIContextLine(
-                    author: message.sender, isOutgoing: message.outgoing,
-                    date: Date(timeIntervalSince1970: TimeInterval(message.timestamp)),
-                    text: message.text.isEmpty ? "[вложение]" : message.text), isProtected: false)
-        }.sorted { $0.line.date < $1.line.date }
+        var candidates = read.map { Self.whatsappCandidate($0, accountID: accountID) }.sorted { $0.line.date < $1.line.date }
         switch range {
         case .latest(let count): candidates = Array(candidates.suffix(count))
         case .lastDays: candidates = candidates.filter { $0.line.date >= start! }
@@ -244,6 +237,17 @@ final class AIContextBridge: AIContextProvider, @unchecked Sendable {
         return AIContextMaterial(
             card: card, lines: result.lines, hiddenForbidden: result.hiddenForbidden, hiddenProtected: result.hiddenProtected,
             available: read.count, requested: Self.requested(range), truncated: !covered)
+    }
+
+    /// One WhatsApp message before the access rules. A protected (view-once)
+    /// message is hidden like Telegram's copy-protected ones; notifications
+    /// and file actions already honour the same flag.
+    static func whatsappCandidate(_ message: WhatsAppMessage, accountID: String) -> AIContextCandidate {
+        AIContextCandidate(
+            author: message.outgoing ? nil : ServiceIdentity(service: "whatsapp", accountID: accountID, externalID: message.sender),
+            line: AIContextLine(
+                author: message.sender, isOutgoing: message.outgoing, date: Date(timeIntervalSince1970: TimeInterval(message.timestamp)),
+                text: message.text.isEmpty ? "[вложение]" : message.text), isProtected: message.details?.protected == true)
     }
 
     private func letterMaterial(_ card: AIContextCard, id: String, snapshot: AIAccessSnapshot) async throws -> AIContextMaterial {

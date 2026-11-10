@@ -136,6 +136,11 @@ extension OSINTService {
         (error as? OSINTFailure) ?? .unknownOutcome(stage: stage)
     }
 
+    /// A journal row that could not be saved: a storage failure, never a doubt about the server.
+    static func journalFailure(_ error: Error, stage: String) -> OSINTFailure {
+        (error as? OSINTFailure) ?? .storage(stage)
+    }
+
     static func isUnknown(_ failure: OSINTFailure) -> Bool {
         switch failure {
         case .unknownOutcome, .sshUnreachable: true
@@ -153,26 +158,33 @@ extension OSINTService {
     }
 
     /// Writes an attempt through `queued → sent`, runs the call, records the outcome and returns its value.
+    /// The rows before the call are the journal: when one cannot be saved, nothing is sent and the
+    /// storage failure is thrown. The row after the call is best effort; its failure is surfaced.
     private func attempt<T: Sendable>(
         _ attempt: OSINTAttempt, stage: String, _ call: () async throws -> T, response: (T) -> OSINTAttemptResponse
-    ) async -> T? {
+    ) async throws -> T? {
         var record = attempt
-        try? await store.saveAttempt(record)
+        try await store.saveAttempt(record)
         record.state = .sent
-        try? await store.saveAttempt(record)
+        try await store.saveAttempt(record)
         do {
             let value = try await call()
             record.state = .confirmed
             record.response = response(value)
-            try? await store.saveAttempt(record)
+            await recordOutcome(record, stage: stage)
             return value
         } catch {
             let failure = Self.failure(error, stage: stage)
             record.state = Self.isUnknown(failure) ? .unknown : .rejected
             record.failure = failure
-            try? await store.saveAttempt(record)
+            await recordOutcome(record, stage: stage)
             return nil
         }
+    }
+
+    /// Saves an outcome; a row that stays `sent` becomes `unknown` on reopen, and the failure is shown.
+    private func recordOutcome(_ attempt: OSINTAttempt, stage: String) async {
+        do { try await store.saveAttempt(attempt) } catch { lastFailure = Self.journalFailure(error, stage: stage) }
     }
 
     private func execute(_ queued: OSINTRun) async {
@@ -213,10 +225,16 @@ extension OSINTService {
                 return
             }
             let personID = run.personID
-            let created = await attempt(
-                OSINTAttempt(runID: run.id, personID: personID, kind: .createSketch, payload: OSINTAttemptPayload(), createdAt: now()),
-                stage: "createSketch", { try await link.api.createSketch(title: personID.uuidString, investigationID: investigation) },
-                response: { OSINTAttemptResponse(sketchID: $0.id) })
+            let created: FlowsintSketch?
+            do {
+                created = try await attempt(
+                    OSINTAttempt(runID: run.id, personID: personID, kind: .createSketch, payload: OSINTAttemptPayload(), createdAt: now()),
+                    stage: "createSketch", { try await link.api.createSketch(title: personID.uuidString, investigationID: investigation) },
+                    response: { OSINTAttemptResponse(sketchID: $0.id) })
+            } catch {
+                await finish(run, state: .failed, failure: Self.journalFailure(error, stage: "createSketch"))
+                return
+            }
             guard let created else {
                 let open = (try? await store.attempts(runID: run.id))?.contains { $0.state == .unknown } ?? false
                 await finish(run, state: open ? .unknown : .failed, failure: .unknownOutcome(stage: "createSketch"))
@@ -239,12 +257,18 @@ extension OSINTService {
         // 3. The run's inputs as nodes.
         for input in inputs where nodeIDs[input.normalized] == nil {
             let digest = try? await vault.hmac(input.value)
-            let id = await attempt(
-                OSINTAttempt(
-                    runID: run.id, personID: run.personID, kind: .addNode,
-                    payload: OSINTAttemptPayload(sketchID: sketchID, nodeType: input.type, valueHMAC: digest), createdAt: now()),
-                stage: "addNode", { try await link.api.addNode(sketchID: sketchID, type: input.type, value: input.value) },
-                response: { OSINTAttemptResponse(nodeID: $0) })
+            let id: String?
+            do {
+                id = try await attempt(
+                    OSINTAttempt(
+                        runID: run.id, personID: run.personID, kind: .addNode,
+                        payload: OSINTAttemptPayload(sketchID: sketchID, nodeType: input.type, valueHMAC: digest), createdAt: now()),
+                    stage: "addNode", { try await link.api.addNode(sketchID: sketchID, type: input.type, value: input.value) },
+                    response: { OSINTAttemptResponse(nodeID: $0) })
+            } catch {
+                await finish(run, state: .failed, failure: Self.journalFailure(error, stage: "addNode"))
+                return
+            }
             if let id { nodeIDs[input.normalized] = id }
         }
 
@@ -259,7 +283,9 @@ extension OSINTService {
             return
         }
         var scans: [(attemptID: UUID, scanID: String, since: ContinuousClock.Instant)] = []
-        for input in inputs {
+        // A launch whose journal row could not be saved is not sent; the launches already sent are still awaited.
+        var journalFailure: OSINTFailure?
+        launches: for input in inputs {
             guard let nodeID = nodeIDs[input.normalized] else { continue }
             for enricher in run.enrichers.sorted(by: { $0.rawValue < $1.rawValue }) where enricher.inputType == input.type {
                 if let key = enricher.requiredKey, !keyNames.contains(key) { continue }
@@ -268,13 +294,18 @@ extension OSINTService {
                 var record = OSINTAttempt(
                     runID: run.id, personID: run.personID, kind: .launch,
                     payload: OSINTAttemptPayload(sketchID: sketchID, enricher: enricher, inputNodeID: nodeID), createdAt: now())
-                try? await store.saveAttempt(record)
-                record.state = .sent
-                try? await store.saveAttempt(record)
+                do {
+                    try await store.saveAttempt(record)
+                    record.state = .sent
+                    try await store.saveAttempt(record)
+                } catch {
+                    journalFailure = Self.journalFailure(error, stage: "launch")
+                    break launches
+                }
                 do {
                     let scanID = try await link.api.launch(enricher: enricher, sketchID: sketchID, nodeIDs: [nodeID])
                     record.response = OSINTAttemptResponse(scanID: scanID)
-                    try? await store.saveAttempt(record)
+                    await recordOutcome(record, stage: "launch")
                     scans.append((record.id, scanID, ContinuousClock.now))
                 } catch {
                     let failure = Self.failure(error, stage: "launch")
@@ -327,7 +358,11 @@ extension OSINTService {
             return
         }
 
-        // 7. Closed when every attempt is closed.
+        // 7. Closed when every attempt is closed; a launch left unjournaled fails the run.
+        if let journalFailure {
+            await finish(run, state: .failed, failure: journalFailure)
+            return
+        }
         let open = ((try? await store.attempts(runID: run.id)) ?? []).contains { $0.state.isOpen }
         await finish(run, state: open ? .unknown : .completed, failure: open ? .unknownOutcome(stage: "run") : nil)
     }

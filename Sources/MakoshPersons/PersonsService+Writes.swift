@@ -118,9 +118,9 @@ extension PersonsService {
             attempt.state = .sent
             try await store.saveAttempt(attempt)
         } catch { return .rejected }
+        let ref: RemoteCardRef
         do {
             let adapter = try await adapter(for: book)
-            let ref: RemoteCardRef
             switch write {
             case .create: ref = try await adapter.create(wanted.card, hint: wanted.bookExternalID)
             case .adopt(_, let externalID, let etag): ref = try await adapter.update(externalID: externalID, etag: etag, card: wanted.card)
@@ -128,6 +128,12 @@ extension PersonsService {
                 ref = try await adapter.update(externalID: existing.externalID, etag: existing.etag, card: wanted.card)
             case .none: return .rejected
             }
+        } catch {
+            return await settle(attempt, error: error, entry: entry, book: book)
+        }
+        // The book answered: a local failure from here on is no refusal. The attempt stays unknown
+        // and the next pass finds the card by its mark instead of sending it again.
+        do {
             var saved =
                 entry
                 ?? PersonBookEntry(
@@ -145,7 +151,10 @@ extension PersonsService {
             try? await store.saveAttempt(attempt)
             return .confirmed
         } catch {
-            return await settle(attempt, error: error, entry: entry, book: book)
+            attempt.state = .unknown
+            attempt.failure = (error as? PersonsFailure) ?? .unknownOutcome(stage: "entry")
+            try? await store.saveAttempt(attempt)
+            return .unknown
         }
     }
 
@@ -300,6 +309,12 @@ extension PersonsService {
             try await store.saveAttempt(attempt)
             let adapter = try await adapter(for: book)
             do { try await adapter.delete(externalID: entry.externalID, etag: entry.etag) } catch PersonsFailure.notFound {}
+        } catch {
+            _ = await settle(attempt, error: error, entry: nil, book: book)
+            return (try? await store.attempt(id: attempt.id)) ?? attempt
+        }
+        // The book answered: a local failure here leaves the attempt unknown, settled by the next read.
+        do {
             var removed = entry
             removed.state = .removed
             removed.updatedAt = now()
@@ -307,8 +322,9 @@ extension PersonsService {
             attempt.state = .confirmed
             try await store.saveAttempt(attempt)
         } catch {
-            _ = await settle(attempt, error: error, entry: nil, book: book)
-            attempt = (try? await store.attempt(id: attempt.id)) ?? attempt
+            attempt.state = .unknown
+            attempt.failure = (error as? PersonsFailure) ?? .unknownOutcome(stage: "entry")
+            try? await store.saveAttempt(attempt)
         }
         return attempt
     }

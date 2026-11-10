@@ -77,6 +77,8 @@ extension XCTestCase {
     {
         let store = PersonsStore(connectionString: db.connectionString, schema: db.schema, now: now)
         try await store.open()
+        // The suite keeps every test case alive until it ends: close now, not when the actor is freed.
+        addTeardownBlock { await store.close() }
         return store
     }
 }

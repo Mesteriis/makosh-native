@@ -20,7 +20,7 @@ extension OSINTService {
         let link = try await ensureConnected(requireInstalled: false)
         for existing in try await link.api.keys() where existing.name == name {
             // The old key must be gone for certain before a new one appears: two keys of one name is an anti-goal.
-            let outcome = await keyAttempt(
+            let outcome = try await keyAttempt(
                 kind: .deleteKey, name: name,
                 {
                     try await link.api.deleteKey(id: existing.id)
@@ -29,7 +29,7 @@ extension OSINTService {
             guard outcome.state == .confirmed else { throw outcome.failure ?? OSINTFailure.unknownOutcome(stage: "deleteKey") }
         }
         try await vault.saveKey(name: name, value)
-        let created = await keyAttempt(kind: .createKey, name: name, { try await link.api.createKey(name: name, value: value).id })
+        let created = try await keyAttempt(kind: .createKey, name: name, { try await link.api.createKey(name: name, value: value).id })
         serverKeyNames = Set(try await link.api.keys().map(\.name))
         if created.state != .confirmed { throw created.failure ?? OSINTFailure.unknownOutcome(stage: "createKey") }
     }
@@ -37,7 +37,7 @@ extension OSINTService {
     public func removeKey(name: String) async throws {
         let link = try await ensureConnected(requireInstalled: false)
         for existing in try await link.api.keys() where existing.name == name {
-            await keyAttempt(
+            try await keyAttempt(
                 kind: .deleteKey, name: name,
                 {
                     try await link.api.deleteKey(id: existing.id)
@@ -48,14 +48,19 @@ extension OSINTService {
         serverKeyNames = Set(try await link.api.keys().map(\.name))
     }
 
+    /// One journaled key write; a journal row that cannot be saved throws before anything is sent.
     @discardableResult
     private func keyAttempt(
         kind: OSINTAttemptKind, name: String, _ call: () async throws -> String
-    ) async -> (state: OSINTAttemptState, failure: OSINTFailure?) {
+    ) async throws -> (state: OSINTAttemptState, failure: OSINTFailure?) {
         var attempt = OSINTAttempt(kind: kind, payload: OSINTAttemptPayload(keyName: name), createdAt: now())
-        try? await store.saveAttempt(attempt)
-        attempt.state = .sent
-        try? await store.saveAttempt(attempt)
+        do {
+            try await store.saveAttempt(attempt)
+            attempt.state = .sent
+            try await store.saveAttempt(attempt)
+        } catch {
+            throw Self.journalFailure(error, stage: kind.rawValue)
+        }
         do {
             let id = try await call()
             attempt.state = .confirmed
@@ -65,7 +70,7 @@ extension OSINTService {
             attempt.state = Self.isUnknown(failure) ? .unknown : .rejected
             attempt.failure = failure
         }
-        try? await store.saveAttempt(attempt)
+        do { try await store.saveAttempt(attempt) } catch { lastFailure = Self.journalFailure(error, stage: kind.rawValue) }
         return (attempt.state, attempt.failure)
     }
 

@@ -6,6 +6,12 @@ public struct BusyPreview: Equatable, Sendable {
     public var remove: [UUID: Int]
 }
 
+/// What settling a copy write by reading needs: the copy on the server and, for a move, the time written.
+struct BusyAttemptPayload: Codable {
+    var externalID: String
+    var time: CalendarEventTime?
+}
+
 extension CalendarService {
     public func previewGroupChange(collections: [CalendarCollection], groups: [CalendarGroup]) async throws -> BusyPreview {
         let desired = try await desiredCopies(collections: collections)
@@ -69,6 +75,7 @@ extension CalendarService {
                         externalID: event.externalID ?? event.id.uuidString, marker: marker, time: event.time, collectionID: collection.id))
             }
         }
+        try await settleCopyAttempts(observed: observed, read: readNow)
         var records = try await store.busyCopies(targetCollectionID: nil)
         // A pending copy whose unknown create left nothing on a calendar just read: rejected, then created anew.
         for record in records where record.state == .pending && readNow.contains(record.targetCollectionID) {
@@ -128,6 +135,44 @@ extension CalendarService {
                 event.attendees.isEmpty
             else { continue }
             try await store.settle(attempt.id, state: .confirmed, failure: nil)
+        }
+    }
+
+    /// An unknown move or removal of a copy on a calendar read in this pass is settled by what the
+    /// calendar shows: the copy at the written time or gone confirms it, anything else rejects it.
+    /// Nothing is sent; a rejected attempt frees the copy for a new one in the same pass.
+    private func settleCopyAttempts(observed: [ObservedBusyCopy], read: Set<UUID>) async throws {
+        for attempt in try await store.openAttempts()
+        where attempt.state == .unknown && (attempt.kind == .moveCopy || attempt.kind == .deleteCopy)
+            && read.contains(attempt.collectionID)
+        {
+            guard let payload = try? JSONDecoder().decode(BusyAttemptPayload.self, from: attempt.payload) else { continue }
+            let onServer = observed.first { $0.collectionID == attempt.collectionID && $0.externalID == payload.externalID }
+            switch attempt.kind {
+            case .moveCopy:
+                guard let onServer, onServer.time == payload.time else {
+                    try await store.settle(
+                        attempt.id, state: .rejected, failure: .rejected(code: onServer == nil ? 404 : 412, stage: "copy"))
+                    continue
+                }
+                if let copyID = attempt.copyID,
+                    var record = try await store.busyCopies(targetCollectionID: attempt.collectionID).first(where: { $0.id == copyID })
+                {
+                    record.time = onServer.time
+                    record.etag = try await store.event(externalID: payload.externalID, collectionID: attempt.collectionID)?.etag
+                    record.state = .placed
+                    try await store.saveBusyCopy(record)
+                }
+                try await store.settle(attempt.id, state: .confirmed, failure: nil)
+            case .deleteCopy:
+                guard onServer == nil else {
+                    try await store.settle(attempt.id, state: .rejected, failure: .rejected(code: 412, stage: "copy"))
+                    continue
+                }
+                if let copyID = attempt.copyID { try await store.removeBusyCopy(id: copyID) }
+                try await store.settle(attempt.id, state: .confirmed, failure: nil)
+            default: continue
+            }
         }
     }
 
@@ -219,8 +264,10 @@ extension CalendarService {
                 record.time = copy.time
                 record.state = .pending
                 try await store.saveBusyCopy(record)
-                try await journaled(.createCopy, copyID: record.id, collection: collection, account: account) {
-                    let ref = try await adapter.createBusyCopy(copy, in: collection)
+                try await journaled(
+                    .createCopy, copyID: record.id, collection: collection, account: account, payload: nil,
+                    send: { try await adapter.createBusyCopy(copy, in: collection) }
+                ) { ref in
                     var placed = record
                     placed.externalID = ref.externalID
                     placed.etag = ref.etag
@@ -233,11 +280,16 @@ extension CalendarService {
             case .move(let record, let time):
                 guard let externalID = record.externalID else { return account.state }
                 let marker = CalendarBusyMarker(sourceEventID: record.sourceEventID, occurrenceStart: record.occurrenceKey)
-                try await journaled(.moveCopy, copyID: record.id, collection: collection, account: account) {
-                    let observedEtag = try await self.store.event(externalID: externalID, collectionID: collection.id)?.etag
-                    let ref = try await adapter.moveBusyCopy(
-                        ref: RemoteEventRef(externalID: externalID, etag: observedEtag ?? record.etag), to: time, marker: marker,
-                        in: collection)
+                try await journaled(
+                    .moveCopy, copyID: record.id, collection: collection, account: account,
+                    payload: BusyAttemptPayload(externalID: externalID, time: time),
+                    send: {
+                        let observedEtag = try await self.store.event(externalID: externalID, collectionID: collection.id)?.etag
+                        return try await adapter.moveBusyCopy(
+                            ref: RemoteEventRef(externalID: externalID, etag: observedEtag ?? record.etag), to: time, marker: marker,
+                            in: collection)
+                    }
+                ) { ref in
                     var moved = record
                     moved.time = time
                     moved.etag = ref.etag
@@ -252,8 +304,13 @@ extension CalendarService {
                     try await store.removeBusyCopy(id: record.id)
                     return account.state
                 }
-                try await journaled(.deleteCopy, copyID: record.id, collection: collection, account: account) {
-                    try await adapter.delete(ref: RemoteEventRef(externalID: externalID, etag: nil), in: collection, notify: false)
+                try await journaled(
+                    .deleteCopy, copyID: record.id, collection: collection, account: account,
+                    payload: BusyAttemptPayload(externalID: externalID, time: nil),
+                    send: {
+                        try await adapter.delete(ref: RemoteEventRef(externalID: externalID, etag: nil), in: collection, notify: false)
+                    }
+                ) { _ in
                     try await self.store.removeBusyCopy(id: record.id)
                     try await self.store.observeRemoval(externalID: externalID, collectionID: collection.id)
                 }
@@ -272,10 +329,14 @@ extension CalendarService {
                     try await store.settle(attempt.id, state: .confirmed, failure: nil)
                 }
             case .deleteStray(let found):
-                try await journaled(.deleteCopy, copyID: nil, collection: collection, account: account) {
-                    try await adapter.delete(ref: RemoteEventRef(externalID: found.externalID, etag: nil), in: collection, notify: false)
-                    try await self.store.observeRemoval(externalID: found.externalID, collectionID: collection.id)
-                }
+                try await journaled(
+                    .deleteCopy, copyID: nil, collection: collection, account: account,
+                    payload: BusyAttemptPayload(externalID: found.externalID, time: nil),
+                    send: {
+                        try await adapter.delete(
+                            ref: RemoteEventRef(externalID: found.externalID, etag: nil), in: collection, notify: false)
+                    }
+                ) { _ in try await self.store.observeRemoval(externalID: found.externalID, collectionID: collection.id) }
             }
             return account.state
         } catch let failure as CalendarFailure {
@@ -285,23 +346,35 @@ extension CalendarService {
         }
     }
 
-    private func journaled(
+    /// One copy write through the journal: `send` is the server call, `then` records its
+    /// answer locally. Only `send` can reject the attempt; a failure after the server answered
+    /// leaves it `unknown`, for the next read of the calendar to settle.
+    private func journaled<Ref: Sendable>(
         _ kind: CalendarAttemptKind, copyID: UUID?, collection: CalendarCollection, account: CalendarAccount,
-        _ body: () async throws -> Void
+        payload: BusyAttemptPayload?, send: () async throws -> Ref, _ then: (Ref) async throws -> Void
     ) async throws {
         let attempt: CalendarAttempt
         do {
-            attempt = try await store.beginAttempt(kind: kind, eventID: nil, copyID: copyID, collectionID: collection.id, payload: Data())
+            attempt = try await store.beginAttempt(
+                kind: kind, eventID: nil, copyID: copyID, collectionID: collection.id,
+                payload: try payload.map { try JSONEncoder().encode($0) } ?? Data())
         } catch CalendarFailure.invalidInput("attempt open") {
             return
         }
+        let ref: Ref
         do {
             try await store.markSent(attempt.id)
-            try await body()
-            try await store.settle(attempt.id, state: .confirmed, failure: nil)
+            ref = try await send()
         } catch {
             let state = try await fail(attempt, error: error, accountID: account.id)
             if state == .rejected, kind == .createCopy, let copyID { try await store.removeBusyCopy(id: copyID) }
+            throw Self.surface(error)
+        }
+        do {
+            try await then(ref)
+            try await store.settle(attempt.id, state: .confirmed, failure: nil)
+        } catch {
+            try? await store.settle(attempt.id, state: .unknown, failure: (error as? CalendarFailure) ?? .unknownOutcome(stage: "store"))
             throw Self.surface(error)
         }
     }

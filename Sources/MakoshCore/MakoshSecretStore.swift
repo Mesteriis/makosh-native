@@ -27,10 +27,12 @@ protocol MakoshSecretKeychain: Sendable {
 /// Items written before this store stay where they are: a secret missing
 /// here is read from its own item once and copied in. A deleted secret is
 /// remembered, so its old item can never bring it back. Every write re-reads
-/// the shared item and changes only its own entry, so a concurrent writer's
-/// entries survive.
+/// the shared item and changes only its own entry under an exclusive lock on
+/// a file, so another process (a QA bundle shares the item) can neither lose
+/// its entries nor add the same name twice.
 public final class MakoshSecretStore: @unchecked Sendable {
-    public static let shared = MakoshSecretStore(keychain: MakoshSystemSecretKeychain())
+    public static let shared = MakoshSecretStore(
+        keychain: MakoshSystemSecretKeychain(), lockURL: MakoshInstanceLock.lockURL(named: "secrets"))
 
     private struct Contents: Codable {
         var version = 1
@@ -38,10 +40,15 @@ public final class MakoshSecretStore: @unchecked Sendable {
         var deleted: Set<String> = []
     }
     private let keychain: any MakoshSecretKeychain
+    /// The file every process locks around its read-change-write of the item.
+    private let lockURL: URL
     private let lock = NSLock()
     private var cache: Contents?
 
-    init(keychain: any MakoshSecretKeychain) { self.keychain = keychain }
+    init(keychain: any MakoshSecretKeychain, lockURL: URL) {
+        self.keychain = keychain
+        self.lockURL = lockURL
+    }
 
     public func read(service: String, account: String) -> (OSStatus, MakoshSecret?) {
         lock.withLock {
@@ -55,7 +62,10 @@ public final class MakoshSecretStore: @unchecked Sendable {
             if contents.deleted.contains(name) { return (errSecItemNotFound, nil) }
             let (status, legacy) = keychain.readLegacy(service: service, account: account)
             guard status == errSecSuccess, let legacy else { return (status, nil) }
-            let saved = change { $0.secrets[name] = legacy }
+            let saved = change { contents in
+                contents.secrets[name] = legacy
+                return true
+            }
             return saved == errSecSuccess ? (errSecSuccess, legacy) : (saved, nil)
         }
     }
@@ -65,7 +75,20 @@ public final class MakoshSecretStore: @unchecked Sendable {
         let (status, _) = read(service: service, account: account)
         if status == errSecSuccess { return errSecDuplicateItem }
         guard status == errSecItemNotFound else { return status }
-        return lock.withLock { change { $0.secrets[Self.name(service, account)] = secret } }
+        let name = Self.name(service, account)
+        return lock.withLock {
+            var duplicate = false
+            let saved = change { contents in
+                // Another process may have added it since the cached read above.
+                if contents.secrets[name] != nil {
+                    duplicate = true
+                    return false
+                }
+                contents.secrets[name] = secret
+                return true
+            }
+            return duplicate ? errSecDuplicateItem : saved
+        }
     }
 
     /// `errSecItemNotFound` when the secret is missing or its generic tag
@@ -81,9 +104,10 @@ public final class MakoshSecretStore: @unchecked Sendable {
                 // Another writer may have replaced it since the read above.
                 if let matchingGeneric, contents.secrets[name]?.generic != matchingGeneric {
                     conflict = true
-                    return
+                    return false
                 }
                 contents.secrets[name] = secret
+                return true
             }
             return conflict ? errSecItemNotFound : saved
         }
@@ -97,6 +121,7 @@ public final class MakoshSecretStore: @unchecked Sendable {
             let saved = change { contents in
                 contents.secrets[name] = nil
                 contents.deleted.insert(name)
+                return true
             }
             guard saved == errSecSuccess else { return saved }
             // Best effort: the tombstone already keeps it gone from Makosh.
@@ -137,14 +162,28 @@ public final class MakoshSecretStore: @unchecked Sendable {
     }
 
     /// Re-reads the shared item, applies one entry's change and writes it
-    /// back. Must be called with the lock held.
-    private func change(_ apply: (inout Contents) -> Void) -> OSStatus {
+    /// back when `apply` returns true; otherwise the fresh contents only
+    /// refresh the cache. Must be called with the lock held. The re-read and
+    /// the write run under an exclusive `flock` on the lock file, so another
+    /// process's change between them cannot be lost; a lock file that cannot
+    /// be taken fails closed, like a refused Keychain prompt.
+    private func change(_ apply: (inout Contents) -> Bool) -> OSStatus {
+        let descriptor = MakoshInstanceLock.openLockFile(at: lockURL)
+        guard descriptor >= 0 else { return errSecIO }
+        defer { close(descriptor) }  // closing the descriptor releases the lock
+        while flock(descriptor, LOCK_EX) != 0 {
+            guard errno == EINTR else { return errSecIO }
+        }
         var contents: Contents
         switch fresh() {
         case .success(let current): contents = current
         case .failure(let error): return error.status
         }
-        apply(&contents)
+        let current = contents
+        guard apply(&contents) else {
+            cache = current
+            return errSecSuccess
+        }
         guard let data = try? JSONEncoder().encode(contents) else { return errSecParam }
         let status = keychain.writeBlob(data)
         if status == errSecSuccess { cache = contents }

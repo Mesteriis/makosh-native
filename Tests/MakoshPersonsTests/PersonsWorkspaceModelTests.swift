@@ -27,6 +27,15 @@ final class PersonsWorkspaceModelTests: XCTestCase {
         _ = try await worker.open()
     }
 
+    override func tearDown() async throws {
+        await service?.close()
+        service = nil
+        worker = nil
+        store = nil
+        persons = nil
+        db = nil
+    }
+
     func testLoadBuildsTreeFromWorkerAndService() async throws {
         let organization = try persons.createOrganization(name: "ИП Сидоров")
         let ivanov = try persons.createPerson(draft: .init(displayName: "Иванов", phones: ["+7 916 000-00-00"]))

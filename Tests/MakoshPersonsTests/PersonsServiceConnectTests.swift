@@ -27,6 +27,13 @@ final class PersonsServiceConnectTests: XCTestCase {
         try await service.open()
     }
 
+    override func tearDown() async throws {
+        await service?.close()
+        service = nil
+        store = nil
+        db = nil
+    }
+
     private func xml(_ body: String) -> StubURLProtocol.Reply {
         .init(status: 207, headers: ["Content-Type": "application/xml"], body: Data(body.utf8))
     }

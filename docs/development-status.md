@@ -1,5 +1,64 @@
 # Development status — 2026-11-10
 
+## Исправления по ревью проекта — 2026-11-10
+
+По команде пользователя закрыты все восемь важных находок ревью (запись ниже); каждое
+исправление — тест, упавший до правки и проходящий после. Два субагента с
+непересекающимися файлами; Git, статус и сборка — корневая сессия.
+
+- `MakoshSecretStore`: `change` берёт блокирующий `flock` на
+  `~/Library/Application Support/Makosh/secrets.lock` (0600, `EINTR` повторяется)
+  вокруг перечитывания и записи общего элемента; `add` видит свежее содержимое и
+  отвечает `errSecDuplicateItem`, если имя уже есть (кэш обновляется); недоступный
+  lock-файл — `errSecIO`, запись не выполняется. Путь lock-файла инжектируется
+  (`init(keychain:lockURL:)`). Тесты: `testConcurrentProcessWritesAreSerializedByTheLockFile`
+  (хук `afterReadBlob` в фейковой Связке запускает чужой `add` между чтением и записью),
+  `testAddRefusesAnEntryAnotherProcessWroteSinceTheCacheWasFilled`,
+  `testUnusableLockFileFailsClosed`. ADR-015 дополнен.
+- `MakoshInstanceLock.acquire` возвращает `Acquisition`: `.acquired`, `.heldByOther`
+  (только `EWOULDBLOCK`) и `.failed(code:)`; `MakoshApp` при `.failed` пишет в
+  `os.Logger` только `errno` и продолжает запуск без lock, выходит только при
+  `.heldByOther`. Тест `testUnwritableLocationFailsInsteadOfLookingHeld`.
+- Сцена рабочего пространства — `Window("Макош", id: "workspace")` вместо
+  `WindowGroup`: нет ⌘N и Dock «New Window», второй набор оконных сервисов создать
+  нельзя; `WorkspaceWindowKeeper` и reopen не менялись
+  (`testReopenShowsTheKeptWindowInsteadOfANewOne`). Отсутствие ⌘N подтверждено только
+  компиляцией и запуском приложения; вручную не нажималось.
+- `AIContextBridge`: сообщения WhatsApp идут в карточку ИИ с
+  `isProtected: message.details?.protected == true`; отображение вынесено в
+  `whatsappCandidate(_:accountID:)`. Тест `WhatsAppAIContextTests.testProtectedMessageIsHiddenFromTheAICard`
+  (в `MakoshWhatsAppTests`, единственном бандле с зависимостью от `MakoshApp`).
+- Календарь: попытки `moveCopy`/`deleteCopy` хранят `BusyAttemptPayload`
+  (externalID, время); `settleCopyAttempts` в начале прохода закрывает их `unknown`
+  по прочитанному календарю — плашка на записанном времени / отсутствует ⇒
+  `confirmed`, иначе `rejected`, и тот же проход пишет новую попытку; ничего не
+  отправляется повторно. Старые строки с пустым payload остаются для «Отказаться».
+  Тесты `CalendarAttemptSettlementTests` (4).
+- Календарь и персоны: сетевой вызов и локальное сохранение после ответа сервера
+  разделены (`push`, `journaled`, `perform`, `deleteCard`): сбой хранилища после
+  успешного ответа оставляет попытку `unknown` без отката и без повторной отправки,
+  следующее чтение закрывает её по UID/метке. Тесты
+  `testStorageFailureAfterServerCreateLeavesAttemptUnknownAndNoDuplicate` (CHECK-ограничение
+  на `calendar_attempts` после удачного `create`) и
+  `testLocalFailureAfterServerCreateLeavesAttemptUnknownAndAdoptsOnNextPass`.
+- OSINT: строки `queued`/`sent` обязательны до вызова API (`attempt` бросает); без них
+  скетч/узел/запуск/ключ не отправляются, запуск завершается `failed` с ошибкой
+  хранилища, `setKey`/`removeKey` возвращают её пользователю, `deleteSketch` ждёт
+  следующего прохода; сохранения после вызова — best effort с `lastFailure`. Тесты
+  `OSINTJournalFailureTests` (3, через `CHECK (false) NOT VALID` на `persons_osint_attempts`).
+- Тесты персон: `tearDown` обнуляет хранилища/сервисы/воркер, хелпер регистрирует
+  `addTeardownBlock { await store.close() }`; пик соединений PostgreSQL бандла при
+  запущенном приложении — 23 вместо 100. Изменений в `MakoshCore` не потребовалось.
+
+Проверки (приложение закрыто на время прогона и сборки, затем перезапущено):
+`scripts/test.sh` — exit 0: Telegram 2355, Core 237, Tasks 217, Calendar 178, AI 170,
+WhatsApp 154, OSINT 154, Persons 116, Mail 111, Teams 110, Files 94, Telemost 80,
+Jira 31, Google 8 — без падений; Rust 59; Python — все наборы OK;
+`scripts/build-app.sh` — exit 0; `scripts/format.sh --check HEAD` — все изменённые
+файлы отформатированы. Живые проверки (реальные книги, календари, flowsint) не
+проводились. Документация: `docs/calendar.md`, `docs/persons.md`, ADR-015 в
+`docs/architecture.md`; остальной дрейф из ревью не правился.
+
 ## Ревью всего проекта после слияния календаря, персон и OSINT — 2026-11-10
 
 Все ветки влиты в `main` (3ec570d), `origin/main` обновлён, локальные ветки

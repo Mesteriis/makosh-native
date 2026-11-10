@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import MakoshCore
+import os
 import MakoshTelegram
 import MakoshWhatsApp
 import UniformTypeIdentifiers
@@ -36,11 +37,20 @@ import MakoshFiles
     /// Closing the workspace window hides it: its services keep running and the same window comes back.
     let windowKeeper = WorkspaceWindowKeeper()
     private var instanceLock: MakoshInstanceLock?
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "org.makosh.desktop", category: "Launch")
     /// One running copy per bundle: a second launch brings the first one forward and quits.
+    /// A lock that cannot be taken at all is not a second copy: Makosh launches without it.
     func applicationWillFinishLaunching(_ notification: Notification) {
         guard let identifier = Bundle.main.bundleIdentifier else { return }
-        instanceLock = MakoshInstanceLock.acquire(at: MakoshInstanceLock.defaultURL(bundleIdentifier: identifier))
-        guard instanceLock == nil else { return }
+        switch MakoshInstanceLock.acquire(at: MakoshInstanceLock.defaultURL(bundleIdentifier: identifier)) {
+        case .acquired(let lock):
+            instanceLock = lock
+            return
+        case .failed(let code):
+            Self.logger.error("Instance lock unavailable (errno \(code, privacy: .public)); launching without it.")
+            return
+        case .heldByOther: break
+        }
         let current = ProcessInfo.processInfo.processIdentifier
         // A reopen (not a bare activate) makes the first copy show its window even when it was closed.
         if let first = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first(where: {
@@ -80,10 +90,14 @@ struct MakoshApp: App {
     }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    static let workspaceWindowID = "workspace"
     /// The settings tab to show; a menu item may set it before opening the window.
     @AppStorage(MakoshSettingsTab.key) private var settingsTab = "telegram"
     var body: some Scene {
-        WindowGroup("Макош") {
+        // One workspace window: a second one would start a second Telegram engine on the
+        // same Postbox and second mail workers, so there is no ⌘N «Новое окно» or Dock
+        // «New Window»; the keeper hides the window on close and a reopen shows it again.
+        Window("Макош", id: Self.workspaceWindowID) {
             Group {
                 #if DEBUG
                 if Bundle.main.object(forInfoDictionaryKey: "MakoshSyntheticService") as? String == "whatsapp",

@@ -3636,5 +3636,10 @@ calendar or new account/authentication flow is introduced.
 `--telegram-layout-synthetic-preview` is a DEBUG-only fixture using an explicit
 `qa_telegram_dossier_` configuration. Its folder names, seven peers and short history
 are synthetic; the ordinary preview fixtures and provider stores remain separate.
+A test own-profile avatar is also available in its settings. The avatar sheet's
+test-photo action produces an in-memory image and opens the normal crop sheet;
+it does not inspect local files. Add `--qa-narrow-window` for a fresh QA window
+with an initial width of 1000 pt instead of 1200 pt. Use a separate QA bundle
+identity if a saved macOS window frame overrides the initial size.
 A metadata-only sample attachment is intentionally unavailable rather than a claim
 of a real download. QA scope and actual build/UI evidence are in development-status.md.

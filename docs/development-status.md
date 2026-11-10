@@ -46,10 +46,18 @@
   `org_to_asn`) запускают инструменты через Docker-сокет, а воркер flowsint (uid 1001)
   не входит в группу сокета (gid 991) — `Permission denied`, результат `[]` со статусом
   «выполнено»; у Sherlock в flowsint жёсткий таймаут 100 с, скан не успевает и тоже
-  возвращает `[]`. flowsint не сообщает об этих сбоях через статус задачи. Доступ
-  воркера к сокету — привилегия уровня root на госте; в установщик не добавлен без
-  решения пользователя.
+  возвращает `[]`. flowsint не сообщает об этих сбоях через статус задачи.
 - После исправлений: `MakoshOSINTTests` 148, `scripts/build-app.sh` — exit 0.
+- По решению пользователя (2026-11-10) установщик даёт воркеру доступ к Docker-сокету:
+  читает группу сокета (`stat -c %g /var/run/docker.sock`) и пишет её в override как
+  `group_add` только для `celery`; изменённый override применяется `compose up` даже при
+  здоровом стеке (`testOverrideGivesTheWorkerTheDockerSocketGroup`,
+  `testOverrideWithoutReadableSocketOmitsTheGroup`, `testChangedOverrideRecreatesTheStack`;
+  `MakoshOSINTTests` 151). Это права уровня root на сервере flowsint. Вживую на LXC 164:
+  override перезаписан, воркер пересоздан за 15 с, стек `healthy`; `domain_to_dns` дал
+  `domain.ip` `77.37.209.52`, `domain_to_subdomains` — 68 доменов `sh-inc.ru` за 55 с.
+  `org_to_asn` не проверен (нужен `PDCP_API_KEY`); Sherlock по-прежнему ограничен
+  серверным таймаутом 100 с.
 
 ## OSINT-модуль раздела «Персоны» — план 3 (интерфейс, QA, документация) — 2026-11-09
 

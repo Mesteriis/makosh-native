@@ -3,6 +3,18 @@ import SwiftUI
 /// Shared application chrome. Content colors (media, status, explicit chat themes)
 /// remain owned by their views rather than being recolored by the shell.
 enum WorkspaceStyle {
+    static let controlHeight: CGFloat = 30
+    static let compactControlHeight: CGFloat = 24
+    static let largeControlHeight: CGFloat = 36
+    static let segmentHeight: CGFloat = 36
+    static let controlInset: CGFloat = 10
+    static let cardInset: CGFloat = 18
+    static let sectionGap: CGFloat = 20
+    static let cardRadius: CGFloat = 14
+    static let disabledOpacity = 0.45
+    static let border = Color(red: 0.56, green: 0.52, blue: 0.72).opacity(0.22)
+    static let highlight = Color(red: 0.72, green: 0.66, blue: 0.92).opacity(0.055)
+    static let sectionTitleWidth: CGFloat = 110
     static let railWidth: CGFloat = 64
     static let railInset: CGFloat = 8
     static let railButtonSize: CGFloat = 44
@@ -21,6 +33,10 @@ private struct MakoshAppearance: ViewModifier {
         content
             .scrollContentBackground(.hidden)
             .background { WorkspaceBackdrop(intensity: 0.6) }
+            .toggleStyle(WorkspaceToggleStyle())
+            .buttonStyle(WorkspaceButtonStyle())
+            .textFieldStyle(WorkspaceTextFieldStyle())
+            .formStyle(WorkspaceFormStyle())
             .tint(WorkspaceStyle.accent)
             .accentColor(WorkspaceStyle.accent)
             .preferredColorScheme(.dark)

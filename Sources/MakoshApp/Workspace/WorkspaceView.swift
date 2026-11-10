@@ -155,19 +155,21 @@ struct WorkspaceView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Group {
-                    if destination == .mail {
-                        MailNavigationBar(model: mail)
-                    } else if destination == .telegram {
-                        TelegramWorkspaceNavigation(model: telegram)
-                    } else if destination == .whatsapp {
-                        WhatsAppWorkspaceNavigation(model: whatsapp, navigation: whatsappNavigation)
-                    }
-                }.labelStyle(.titleAndIcon)
-                    .accessibilityElement(children: .contain)
-                    .frame(maxWidth: 820)
-            }.sharedBackgroundVisibility(.hidden)
+            if destination == .mail || destination == .telegram || destination == .whatsapp {
+                ToolbarItem(placement: .principal) {
+                    Group {
+                        if destination == .mail {
+                            MailNavigationBar(model: mail)
+                        } else if destination == .telegram {
+                            TelegramWorkspaceNavigation(model: telegram)
+                        } else if destination == .whatsapp {
+                            WhatsAppWorkspaceNavigation(model: whatsapp, navigation: whatsappNavigation)
+                        }
+                    }.labelStyle(.titleAndIcon)
+                        .accessibilityElement(children: .contain)
+                        .frame(maxWidth: 820)
+                }.sharedBackgroundVisibility(.hidden)
+            }
         }
         .onReceive(navigation.$destinationRequest) { selected in
             if let selected, availableDestinations.contains(selected) { destination = selected }

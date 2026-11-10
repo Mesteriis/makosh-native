@@ -20,7 +20,7 @@ struct WorkspaceChrome<Content: View>: View {
             }
             .padding(.horizontal, WorkspaceStyle.railInset).padding(.vertical, 8)
             .frame(width: WorkspaceStyle.railWidth)
-            .background(WorkspaceStyle.base)
+            .background { WorkspaceSurface(radius: 0) }
             Divider()
             content().frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -29,6 +29,8 @@ struct WorkspaceChrome<Content: View>: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Text(destination?.rawValue ?? "Макош").font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1).padding(.leading, WorkspaceStyle.controlInset)
+                    .frame(width: WorkspaceStyle.sectionTitleWidth, alignment: .leading)
                     .accessibilityIdentifier("workspace.sectionTitle")
             }.sharedBackgroundVisibility(.hidden)
         }
@@ -65,22 +67,50 @@ struct WorkspaceSettingsPage<Content: View>: View {
     var allowed: [WorkspaceSettingsCategory] = WorkspaceSettingsCategory.allCases
     @ViewBuilder let content: (WorkspaceSettingsCategory) -> Content
 
+    @FocusState private var focusedCategory: WorkspaceSettingsCategory?
+    private var selectedCategory: WorkspaceSettingsCategory? { WorkspaceSettingsCategory.resolve(category, allowed: allowed) }
+    private func moveCategory(from item: WorkspaceSettingsCategory, by offset: Int) {
+        guard let index = allowed.firstIndex(of: item), allowed.indices.contains(index + offset) else { return }
+        let next = allowed[index + offset]
+        category = next.rawValue
+        focusedCategory = next
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            List(
-                selection: Binding(
-                    get: { WorkspaceSettingsCategory.resolve(category, allowed: allowed) },
-                    set: { if let value = $0 { category = value.rawValue } }
-                )
-            ) {
-                ForEach(allowed) { item in
-                    Label(item.destination.rawValue, systemImage: item.destination.symbol)
-                        .symbolRenderingMode(.monochrome).padding(.vertical, 5)
-                        .tag(item).accessibilityIdentifier("settings.category.\(item.rawValue)")
-                }
+            ScrollView {
+                VStack(spacing: 4) {
+                    ForEach(allowed) { item in
+                        Button {
+                            category = item.rawValue
+                            focusedCategory = item
+                        } label: {
+                            Label(item.destination.rawValue, systemImage: item.destination.symbol)
+                                .symbolRenderingMode(.monochrome)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12).padding(.vertical, 12)
+                                .foregroundStyle(selectedCategory == item ? WorkspaceStyle.accent : .primary)
+                                .background(
+                                    selectedCategory == item ? WorkspaceStyle.accent.opacity(0.18) : .clear,
+                                    in: RoundedRectangle(cornerRadius: WorkspaceStyle.controlRadius))
+                        }.buttonStyle(.plain)
+                            .focusable()
+                            .focused($focusedCategory, equals: item)
+                            .accessibilityAddTraits(selectedCategory == item ? .isSelected : [])
+                            .accessibilityIdentifier("settings.category.\(item.rawValue)")
+                            .onKeyPress(.upArrow) {
+                                moveCategory(from: item, by: -1)
+                                return .handled
+                            }
+                            .onKeyPress(.downArrow) {
+                                moveCategory(from: item, by: 1)
+                                return .handled
+                            }
+                    }
+                }.padding(10)
             }
-            .listStyle(.sidebar).scrollContentBackground(.hidden)
             .frame(width: WorkspaceStyle.settingsSidebarWidth)
+            .background { WorkspaceSurface(radius: 0) }
             Divider()
             if let selected = WorkspaceSettingsCategory.resolve(category, allowed: allowed) {
                 VStack(alignment: .leading, spacing: 16) {
@@ -99,10 +129,10 @@ struct WorkspaceSettingsTabs: View {
     let titles: [String]
     @Binding var selection: String
     var body: some View {
-        Picker("Раздел настроек", selection: $selection) {
+        WorkspaceSegmentedPicker("Раздел настроек", selection: $selection) {
             ForEach(titles, id: \.self) { Text($0).tag($0) }
         }
-        .pickerStyle(.segmented).labelsHidden().padding(.horizontal, 20)
+        .labelsHidden().padding(.horizontal, 20)
         .accessibilityIdentifier("settings.tabs")
     }
 }

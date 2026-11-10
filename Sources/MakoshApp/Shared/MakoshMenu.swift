@@ -40,22 +40,35 @@ struct MakoshMenu<Label: View, Content: View>: View {
     @Environment(\.makoshMenuIndicator) private var indicator
 
     init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
-        self.content = content(); self.label = label(); titled = false
+        self.content = content()
+        self.label = label()
+        titled = false
     }
     init(_ title: String, @ViewBuilder content: () -> Content) where Label == Text {
-        self.content = content(); label = Text(title); titled = true
+        self.content = content()
+        label = Text(title)
+        titled = true
     }
 
     init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label, primaryAction: @escaping () -> Void) {
-        self.content = content(); self.label = label(); titled = false; self.primaryAction = primaryAction
+        self.content = content()
+        self.label = label()
+        titled = false
+        self.primaryAction = primaryAction
     }
 
     var body: some View {
         if nested {
             VStack(alignment: .leading, spacing: 2) {
-                Button { expanded.toggle() } label: {
-                    HStack { label; Spacer(minLength: 8); Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption2) }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    expanded.toggle()
+                } label: {
+                    HStack {
+                        label
+                        Spacer(minLength: 8)
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.caption2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(MakoshDropdownActionStyle())
                     .accessibilityValue(expanded ? "Развёрнуто" : "Свёрнуто")
                 if expanded {
@@ -64,27 +77,33 @@ struct MakoshMenu<Label: View, Content: View>: View {
             }
         } else {
             HStack(spacing: 3) {
-                if let primaryAction { Button(action: primaryAction) { label }.buttonStyle(.borderedProminent) }
-                Button { presented.toggle() } label: {
-                HStack(spacing: 7) {
-                    if primaryAction == nil { label }
-                    if primaryAction != nil || indicator == .visible || (indicator == .automatic && (titled || appearance == .bordered)) {
-                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                if let primaryAction { Button(action: primaryAction) { label }.buttonStyle(WorkspaceButtonStyle(prominent: true)) }
+                Button {
+                    presented.toggle()
+                } label: {
+                    HStack(spacing: 7) {
+                        if primaryAction == nil { label }
+                        if primaryAction != nil || indicator == .visible || (indicator == .automatic && (titled || appearance == .bordered))
+                        {
+                            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(.horizontal, appearance == .bordered ? 11 : 3)
+                    .padding(.vertical, appearance == .bordered ? 8 : 5)
+                    .background { if appearance == .bordered { WorkspaceSurface() } }
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, appearance == .bordered ? 11 : 3)
-                .padding(.vertical, appearance == .bordered ? 8 : 5)
-                .background(appearance == .bordered ? Color.white.opacity(0.055) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                .contentShape(Rectangle())
-            }
                 .buttonStyle(.plain).foregroundStyle(enabled ? .primary : .secondary)
                 .focusable(enabled)
-                .onKeyPress(.downArrow) { presented = true; return .handled }
+                .onKeyPress(.downArrow) {
+                    presented = true
+                    return .handled
+                }
             }
             .accessibilityValue(presented ? "Открыто" : "Закрыто")
             .popover(isPresented: $presented, arrowEdge: .bottom) {
                 MakoshDropdownPanel(content: content, width: width) { presented = false }
-                    .presentationBackground(WorkspaceStyle.base)
+                    .presentationBackground(.clear)
             }
         }
     }
@@ -100,13 +119,17 @@ private struct MakoshDropdownPanel<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) { content }
-            .padding(7)
-            .onPreferenceChange(MakoshDropdownRowsKey.self) { navigation.update($0) }
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+                .padding(7)
+                .onPreferenceChange(MakoshDropdownRowsKey.self) { navigation.update($0) }
+                .onGeometryChange(for: CGFloat.self) {
+                    $0.size.height
+                } action: {
+                    height = $0
+                }
         }
         .frame(width: width, height: min(max(height, 36), 440))
         .font(.system(size: 13)).foregroundStyle(.primary).tint(WorkspaceStyle.accent)
-        .background { WorkspaceBackdrop(intensity: 0.25) }
+        .background { WorkspaceSurface(radius: WorkspaceStyle.cardRadius, elevated: true) }
         .buttonStyle(MakoshDropdownActionStyle())
         .environment(\.isInMakoshDropdown, true)
         .environment(\.makoshDropdownNavigation, navigation)
@@ -114,15 +137,20 @@ private struct MakoshDropdownPanel<Content: View>: View {
         .environment(\.dismissMakoshDropdown, close)
         .preferredColorScheme(.dark)
         .defaultFocus($focusedRow, navigation.initialFocusID)
-        .task { await Task.yield(); focusedRow = navigation.initialFocusID }
+        .task {
+            await Task.yield()
+            focusedRow = navigation.initialFocusID
+        }
         .onChange(of: navigation.focusedID) { _, value in focusedRow = value }
         .onChange(of: focusedRow) { _, value in if let value { navigation.focusedID = value } }
         .onMoveCommand { direction in
             guard let id = navigation.focusedID ?? navigation.initialFocusID else { return }
-            if direction == .down { navigation.move(from: id, by: 1) }
-            else if direction == .up { navigation.move(from: id, by: -1) }
+            if direction == .down { navigation.move(from: id, by: 1) } else if direction == .up { navigation.move(from: id, by: -1) }
         }
-        .onKeyPress(.escape) { close(); return .handled }
+        .onKeyPress(.escape) {
+            close()
+            return .handled
+        }
         .accessibilityElement(children: .contain)
     }
 }
@@ -133,8 +161,12 @@ struct MakoshDropdownActionStyle: PrimitiveButtonStyle {
     @Environment(\.makoshDropdownPreferredFocus) private var preferredFocus
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
-        if let navigation, let focus { MakoshDropdownActionRow(configuration: configuration, navigation: navigation, focus: focus, preferredFocus: preferredFocus, enabled: enabled) }
-        else { Button(configuration).buttonStyle(.plain) }
+        if let navigation, let focus {
+            MakoshDropdownActionRow(
+                configuration: configuration, navigation: navigation, focus: focus, preferredFocus: preferredFocus, enabled: enabled)
+        } else {
+            Button(configuration).buttonStyle(.plain)
+        }
     }
 }
 
@@ -148,7 +180,9 @@ private struct MakoshDropdownActionRow: View {
     @State private var hovered = false
     private var focused: Bool { focus.wrappedValue == id }
     var body: some View {
-        Button(role: configuration.role) { activate() } label: {
+        Button(role: configuration.role) {
+            activate()
+        } label: {
             configuration.label
                 .labelStyle(.titleAndIcon)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -160,10 +194,22 @@ private struct MakoshDropdownActionRow: View {
         .buttonStyle(.plain).focusable(enabled).focused(focus, equals: id).focusEffectDisabled()
         .onHover { hovered = $0 && enabled }
         .preference(key: MakoshDropdownRowsKey.self, value: enabled ? [.init(id: id, preferred: preferredFocus)] : [])
-        .onKeyPress(.downArrow) { navigation.move(from: id, by: 1); return .handled }
-        .onKeyPress(.upArrow) { navigation.move(from: id, by: -1); return .handled }
-        .onKeyPress(.return) { activate(); return .handled }
-        .onKeyPress(.space) { activate(); return .handled }
+        .onKeyPress(.downArrow) {
+            navigation.move(from: id, by: 1)
+            return .handled
+        }
+        .onKeyPress(.upArrow) {
+            navigation.move(from: id, by: -1)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            activate()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            activate()
+            return .handled
+        }
     }
     private func activate() {
         guard enabled else { return }

@@ -5,11 +5,13 @@ struct MakoshPicker<Selection: Hashable, Content: View>: View {
     let title: String
     @Binding var selection: Selection
     let content: Content
+    let fillsWidth: Bool
     @Environment(\.labelsVisibility) private var labels
     @Environment(\.isInMakoshDropdown) private var inline
 
-    init(_ title: String, selection: Binding<Selection>, @ViewBuilder content: () -> Content) {
+    init(_ title: String, selection: Binding<Selection>, fillsWidth: Bool = false, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.fillsWidth = fillsWidth
         _selection = selection
         self.content = content()
     }
@@ -28,11 +30,11 @@ struct MakoshPicker<Selection: Hashable, Content: View>: View {
                 } label: {
                     Group(subviews: content) { children in
                         if let selected = children.first(where: { $0.containerValues.hasTag(selection) }) {
-                            selected
+                            selected.lineLimit(1).truncationMode(.middle)
                         } else {
                             Text("Выберите…").foregroundStyle(.secondary)
                         }
-                    }
+                    }.frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
                 }
                 .makoshMenuStyle(.bordered).makoshMenuIndicator(.visible)
                 // VoiceOver hears the title and the selected option, as with a native pop-up button.

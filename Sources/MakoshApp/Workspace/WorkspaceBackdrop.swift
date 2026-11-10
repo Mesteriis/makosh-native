@@ -4,6 +4,11 @@ import SwiftUI
 struct WorkspaceBackdrop: View {
     var intensity: Double = 1.0
     var body: some View {
-        WorkspaceStyle.base.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+        ZStack {
+            WorkspaceStyle.base
+            LinearGradient(
+                colors: [WorkspaceStyle.accent.opacity(0.055 * intensity), .clear, WorkspaceStyle.highlight],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+        }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
     }
 }

@@ -23,7 +23,8 @@ struct PersonAddressBookSection: View {
                                 await host.model?.refresh()
                             }
                         })
-                ).toggleStyle(.switch).disabled(!workspace.canWrite || person.hiddenAsSpam).accessibilityIdentifier("person.addressBook")
+                ).toggleStyle(WorkspaceToggleStyle()).disabled(!workspace.canWrite || person.hiddenAsSpam).accessibilityIdentifier(
+                    "person.addressBook")
                 if person.hiddenAsSpam {
                     Text("Персона скрыта как спам: в адресную книгу не попадает.").font(.caption).foregroundStyle(.orange)
                 } else if let origin = person.addressBookOrigin, case .sourceAccount(let source) = origin {

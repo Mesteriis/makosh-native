@@ -70,7 +70,7 @@ struct CalendarSidebar: View {
                 isOn: Binding(
                     get: { collection.shown },
                     set: { value in _Concurrency.Task { await model.setShown(collectionID: collection.id, value) } })
-            ).toggleStyle(.checkbox).labelsHidden().help("Показывать в сводном виде")
+            ).toggleStyle(WorkspaceToggleStyle(checkbox: true)).labelsHidden().help("Показывать в сводном виде")
             Circle().fill(CalendarStyle.color(collection.color)).frame(width: 9, height: 9)
             Button {
                 model.select(collectionID: collection.id)

@@ -84,7 +84,7 @@ struct PersonEditor: View {
                             model.error = nil
                         }
                     }
-                }.buttonStyle(.borderedProminent).disabled(
+                }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(
                     !model.canWrite || submitting || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ).accessibilityIdentifier("editor.save")
             }
@@ -122,7 +122,8 @@ struct PersonPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(.title2.bold())
-            TextField("Поиск по имени", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier("persons.picker.search")
+            TextField("Поиск по имени", text: $query).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                "persons.picker.search")
             List(candidates) { summary in
                 Button {
                     onPick(summary.id)

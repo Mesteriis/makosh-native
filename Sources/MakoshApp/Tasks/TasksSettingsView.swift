@@ -31,10 +31,10 @@ struct TasksSettingsForm: View {
             Form {
                 if page == "Отображение" {
                     Section("Отображение") {
-                        Picker("Формат даты", selection: binding(\.dateFormat)) {
+                        MakoshPicker("Формат даты", selection: binding(\.dateFormat)) {
                             ForEach(TaskDateFormat.allCases, id: \.self) { Text($0.title).tag($0) }
                         }.accessibilityIdentifier("tasks.settings.dateFormat")
-                        Picker("Первый день недели", selection: binding(\.firstWeekday)) {
+                        MakoshPicker("Первый день недели", selection: binding(\.firstWeekday)) {
                             Text("Понедельник").tag(2)
                             Text("Воскресенье").tag(1)
                         }
@@ -46,13 +46,13 @@ struct TasksSettingsForm: View {
                 }
                 if page == "Планер" {
                     Section("Планер") {
-                        Stepper(
+                        WorkspaceStepper(
                             "Начало дня: \(preferences.plannerDayStart):00", value: binding(\.plannerDayStart),
                             in: 0...(preferences.plannerDayEnd - 1))
-                        Stepper(
+                        WorkspaceStepper(
                             "Конец дня: \(preferences.plannerDayEnd):00", value: binding(\.plannerDayEnd),
                             in: (preferences.plannerDayStart + 1)...24)
-                        Picker("Шаг сетки", selection: binding(\.plannerStep)) {
+                        MakoshPicker("Шаг сетки", selection: binding(\.plannerStep)) {
                             ForEach([5, 10, 15, 30, 60], id: \.self) { Text("\($0) мин").tag($0) }
                         }
                     }
@@ -65,7 +65,7 @@ struct TasksSettingsForm: View {
                                 get: { model.focusEnabled }, set: { value in _Concurrency.Task { await model.setFocusEnabled(value) } })
                         )
                         .accessibilityIdentifier("tasks.settings.focus")
-                        Picker("Высота", selection: binding(\.focus.compact)) {
+                        MakoshPicker("Высота", selection: binding(\.focus.compact)) {
                             Text("Авто").tag(false)
                             Text("Компактно").tag(true)
                         }
@@ -81,16 +81,18 @@ struct TasksSettingsForm: View {
                                                 if on { $0.focus.modules.insert(module) } else { $0.focus.modules.remove(module) }
                                             }
                                         })
-                                ).toggleStyle(.checkbox)
+                                ).toggleStyle(WorkspaceToggleStyle(checkbox: true))
                             }
                         }
                         HStack {
                             Text("Пресеты, мин")
-                            TextField("15, 30, 45, 60", text: $presets).textFieldStyle(.roundedBorder).labelsHidden().frame(width: 160)
-                                .onSubmit(savePresets)
-                                .onAppear { presets = preferences.focus.presets.map(String.init).joined(separator: ", ") }
+                            TextField("15, 30, 45, 60", text: $presets).textFieldStyle(WorkspaceTextFieldStyle()).labelsHidden().frame(
+                                width: 160
+                            )
+                            .onSubmit(savePresets)
+                            .onAppear { presets = preferences.focus.presets.map(String.init).joined(separator: ", ") }
                         }
-                        Stepper("Перерыв: \(preferences.focus.breakMinutes) мин", value: binding(\.focus.breakMinutes), in: 0...60)
+                        WorkspaceStepper("Перерыв: \(preferences.focus.breakMinutes) мин", value: binding(\.focus.breakMinutes), in: 0...60)
                     }
                 }
                 if page == "Отображение" {
@@ -136,7 +138,7 @@ struct TasksSettingsForm: View {
                 }
                 if let error = model.error { Text(error).foregroundStyle(.orange) }
             }
-            .formStyle(.grouped)
+            .formStyle(WorkspaceFormStyle())
         }
         .frame(minWidth: 560, minHeight: 480)
         .sheet(item: $editing) { connection in JiraConnectionEditor(model: model, original: connection).makoshAppearance() }
@@ -190,15 +192,17 @@ struct JiraConnectionEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(original == nil ? "Новое подключение Jira" : "Подключение Jira").font(.headline)
-            TextField("Название", text: $name).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.editor.name")
-            TextField("Адрес сайта, https://компания.atlassian.net", text: $origin).textFieldStyle(.roundedBorder).accessibilityIdentifier(
-                "tasks.jira.editor.origin")
-            TextField("Почта аккаунта", text: $email).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.editor.email")
+            TextField("Название", text: $name).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("tasks.jira.editor.name")
+            TextField("Адрес сайта, https://компания.atlassian.net", text: $origin).textFieldStyle(WorkspaceTextFieldStyle())
+                .accessibilityIdentifier(
+                    "tasks.jira.editor.origin")
+            TextField("Почта аккаунта", text: $email).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                "tasks.jira.editor.email")
             SecureField(original == nil ? "API-токен" : "Новый API-токен (пусто — оставить прежний)", text: $token).textFieldStyle(
                 .roundedBorder
             )
             .accessibilityIdentifier("tasks.jira.editor.token")
-            Stepper("Опрос каждые \(pollMinutes) мин", value: $pollMinutes, in: 1...1440)
+            WorkspaceStepper("Опрос каждые \(pollMinutes) мин", value: $pollMinutes, in: 1...1440)
             Toggle("Искать упоминания в комментариях", isOn: $mentions)
             Toggle("Предлагать worklog при записи времени", isOn: $suggestWorklog)
             if let checked { Text(checked).font(.caption).foregroundStyle(.green) }

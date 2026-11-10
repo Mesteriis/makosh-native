@@ -19,7 +19,7 @@ struct FilePickerSheet: View {
                 Spacer()
                 Button("Закрыть") { dismiss() }.keyboardShortcut(.cancelAction).disabled(busy)
             }
-            TextField("Имя файла или документ Paperless", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+            TextField("Имя файла или документ Paperless", text: $query).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
                 "files.picker.search")
             if let search {
                 FilePickerList(search: search, busy: busy, choose: choose)

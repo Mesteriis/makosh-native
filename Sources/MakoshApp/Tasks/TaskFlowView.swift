@@ -89,7 +89,7 @@ struct TaskFlowView: View {
 
     private var metaEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("Описание", text: $description).textFieldStyle(.roundedBorder)
+            TextField("Описание", text: $description).textFieldStyle(WorkspaceTextFieldStyle())
             TaskDateField(text: $deadline, calendar: model.calendar)
             HStack(spacing: 6) {
                 ForEach(TaskFlow.palette, id: \.self) { option in

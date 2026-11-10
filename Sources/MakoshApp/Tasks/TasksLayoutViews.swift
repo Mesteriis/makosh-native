@@ -20,8 +20,10 @@ struct TasksHeaderBar: View {
             counters
             Spacer()
             if case .jira = model.space {
-                Toggle("Ушедшие", isOn: $model.showLeft).toggleStyle(.checkbox).help("Задачи, которые перестали быть вашими")
-                    .accessibilityIdentifier("tasks.showLeft")
+                Toggle("Ушедшие", isOn: $model.showLeft).toggleStyle(WorkspaceToggleStyle(checkbox: true)).help(
+                    "Задачи, которые перестали быть вашими"
+                )
+                .accessibilityIdentifier("tasks.showLeft")
             } else {
                 headerToggle("clock", on: model.showPlanner, tint: .orange, help: "Планер дня (⌘D)") { model.showPlanner.toggle() }
                     .accessibilityIdentifier("tasks.header.planner")
@@ -149,6 +151,56 @@ struct TasksStatusBar: View {
     private var progress: (done: Int, total: Int) { (doneToday, activeToday + doneToday) }
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            expandedStatus.fixedSize(horizontal: true, vertical: false)
+            compactStatus
+        }
+        .font(.caption).padding(.horizontal, 12).padding(.vertical, 5).lineLimit(1)
+    }
+
+    private var compactStatus: some View {
+        HStack(spacing: 12) {
+            Text("\(model.totalCount) всего")
+            Text("\(doneToday) сделано").foregroundStyle(.green)
+            if overdue > 0 { Text("\(overdue) просрочено").foregroundStyle(.red) }
+            if !model.connections.isEmpty {
+                Button {
+                    _Concurrency.Task { await model.syncNow() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless).disabled(model.syncing)
+                .help(jiraStatus + " · обновить из Jira")
+                .accessibilityLabel("Обновить из Jira. " + jiraStatus)
+                .accessibilityIdentifier("tasks.sync")
+            }
+            Spacer(minLength: 8)
+            if let action = model.lastAction {
+                Text(action).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: 160, alignment: .trailing)
+                    .help(action).accessibilityIdentifier("tasks.status.lastAction")
+            }
+            Button {
+                _Concurrency.Task { await model.undo() }
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .buttonStyle(.plain).keyboardShortcut("z", modifiers: .command).disabled(model.undoCount == 0)
+            .help("Отменить · ⌘Z").accessibilityLabel("Отменить").accessibilityIdentifier("tasks.undo")
+            Button {
+                _Concurrency.Task { await model.setFocusEnabled(!model.focusEnabled) }
+            } label: {
+                Image(systemName: "timer").foregroundStyle(model.focusEnabled ? Color.red : Color.secondary)
+            }.buttonStyle(.borderless).help(model.focusEnabled ? "Скрыть фокус-панель" : "Показать фокус-панель")
+                .accessibilityIdentifier("tasks.status.focus")
+            timer
+            Text("Сегодня \(TaskStyle.duration(model.summary.daySeconds))")
+                .foregroundStyle(.secondary)
+                .help("Сегодня \(TaskStyle.duration(model.summary.daySeconds)) · неделя \(TaskStyle.duration(model.summary.weekSeconds))")
+                .accessibilityIdentifier("tasks.summary")
+        }
+    }
+
+    private var expandedStatus: some View {
         HStack(spacing: 10) {
             Text(model.storedPreferences.dateFormat.string(Date(), calendar: model.calendar)).foregroundStyle(.secondary)
             separator
@@ -198,7 +250,6 @@ struct TasksStatusBar: View {
             Text("Сегодня \(TaskStyle.duration(model.summary.daySeconds)) · неделя \(TaskStyle.duration(model.summary.weekSeconds))")
                 .foregroundStyle(.secondary).accessibilityIdentifier("tasks.summary")
         }
-        .font(.caption).padding(.horizontal, 12).padding(.vertical, 5).lineLimit(1)
     }
 
     private var separator: some View { Text("|").foregroundStyle(.quaternary) }

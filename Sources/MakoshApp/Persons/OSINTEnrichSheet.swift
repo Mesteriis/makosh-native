@@ -35,7 +35,7 @@ struct OSINTEnrichSheet: View {
                         isOn: Binding(
                             get: { chosenInputs.contains(input) },
                             set: { on in if on { chosenInputs.insert(input) } else { chosenInputs.remove(input) } })
-                    ).toggleStyle(.checkbox).accessibilityIdentifier("osint.input.\(input.value)")
+                    ).toggleStyle(WorkspaceToggleStyle(checkbox: true)).accessibilityIdentifier("osint.input.\(input.value)")
                 }
                 Text("Источники").font(.callout.weight(.semibold))
                 if rows.isEmpty { Text("Для выбранных значений нет включённых источников.").font(.caption).foregroundStyle(.secondary) }
@@ -45,7 +45,8 @@ struct OSINTEnrichSheet: View {
                         isOn: Binding(
                             get: { chosenEnrichers.contains(row.enricher) },
                             set: { on in if on { chosenEnrichers.insert(row.enricher) } else { chosenEnrichers.remove(row.enricher) } })
-                    ).toggleStyle(.checkbox).disabled(!row.enabled).accessibilityIdentifier("osint.enricher.\(row.enricher.rawValue)")
+                    ).toggleStyle(WorkspaceToggleStyle(checkbox: true)).disabled(!row.enabled).accessibilityIdentifier(
+                        "osint.enricher.\(row.enricher.rawValue)")
                 }
                 Text(OSINTDialogRules.disclosure(host: settings?.host ?? "", enrichers: chosenEnrichers)).font(.caption)
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

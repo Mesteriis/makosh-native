@@ -73,22 +73,22 @@ struct OSINTSettingsSection: View {
             Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
                 GridRow {
                     Text("Сервер").frame(width: 140, alignment: .leading)
-                    TextField("osint.example.test", text: $host).textFieldStyle(.roundedBorder).labelsHidden()
+                    TextField("osint.example.test", text: $host).textFieldStyle(WorkspaceTextFieldStyle()).labelsHidden()
                         .accessibilityLabel("Хост").accessibilityIdentifier("persons.osint.host")
                 }
                 GridRow {
                     Text("Порт")
-                    TextField("22", text: $port).textFieldStyle(.roundedBorder).labelsHidden().frame(width: 100)
+                    TextField("22", text: $port).textFieldStyle(WorkspaceTextFieldStyle()).labelsHidden().frame(width: 100)
                         .accessibilityLabel("Порт")
                 }
                 GridRow {
                     Text("Пользователь SSH")
-                    TextField("", text: $login).textFieldStyle(.roundedBorder).labelsHidden()
+                    TextField("", text: $login).textFieldStyle(WorkspaceTextFieldStyle()).labelsHidden()
                         .accessibilityLabel("Логин SSH")
                 }
                 GridRow {
                     Text("Пароль SSH")
-                    SecureField("", text: $password).textFieldStyle(.roundedBorder).labelsHidden()
+                    SecureField("", text: $password).textFieldStyle(WorkspaceTextFieldStyle()).labelsHidden()
                         .accessibilityLabel("Пароль SSH")
                 }
             }
@@ -201,7 +201,7 @@ struct OSINTSettingsSection: View {
                 .caption
             )
             .foregroundStyle(.secondary)
-            SecureField("Пароль", text: $servicePasswordDraft).textFieldStyle(.roundedBorder)
+            SecureField("Пароль", text: $servicePasswordDraft).textFieldStyle(WorkspaceTextFieldStyle())
             HStack {
                 Spacer()
                 Button("Отмена") {
@@ -253,7 +253,7 @@ struct OSINTSettingsSection: View {
     private var keySheet: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Ключ \(keyBeingSet ?? "")").font(.headline)
-            SecureField("Значение", text: $keyDraft).textFieldStyle(.roundedBorder)
+            SecureField("Значение", text: $keyDraft).textFieldStyle(WorkspaceTextFieldStyle())
             HStack {
                 Spacer()
                 Button("Отмена") {
@@ -305,7 +305,7 @@ struct OSINTSettingsSection: View {
                             if on { set.insert(enricher) } else { set.remove(enricher) }
                             save(set)
                         })
-                ).toggleStyle(.checkbox).font(.callout).disabled(!offered)
+                ).toggleStyle(WorkspaceToggleStyle(checkbox: true)).font(.callout).disabled(!offered)
             }
         }
     }

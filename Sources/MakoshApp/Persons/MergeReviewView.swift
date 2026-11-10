@@ -91,7 +91,7 @@ struct MergeReviewView: View {
                             reviewCard(candidate.secondID)
                         }
                     }.frame(maxHeight: 240)
-                    Picker("Основная карточка", selection: $survivor) {
+                    MakoshPicker("Основная карточка", selection: $survivor) {
                         Text(model.name(candidate.firstID)).tag(Optional(candidate.firstID))
                         Text(model.name(candidate.secondID)).tag(Optional(candidate.secondID))
                     }.pickerStyle(.radioGroup).accessibilityIdentifier("merge.survivor")
@@ -121,7 +121,7 @@ struct MergeReviewView: View {
                                     model.error = nil
                                 }
                             }
-                        }.buttonStyle(.borderedProminent).disabled(survivor == nil || !model.canWrite || submitting)
+                        }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(survivor == nil || !model.canWrite || submitting)
                             .accessibilityIdentifier("merge.confirm")
                     }
                     if let error { Text(error).foregroundStyle(.red) }

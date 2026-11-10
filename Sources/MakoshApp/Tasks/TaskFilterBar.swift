@@ -54,11 +54,15 @@ struct TaskFilterBar: View {
                     }
                     Spacer()
                     if canShowActualOnly {
-                        Toggle("Только актуальные", isOn: $model.filters.actualOnly).toggleStyle(.checkbox).font(.caption)
-                            .accessibilityIdentifier("tasks.actualOnly")
+                        Toggle("Только актуальные", isOn: $model.filters.actualOnly).toggleStyle(WorkspaceToggleStyle(checkbox: true)).font(
+                            .caption
+                        )
+                        .accessibilityIdentifier("tasks.actualOnly")
                     }
                     if hasFlowTasks {
-                        Toggle("Группировать по цепочкам", isOn: $model.filters.groupByFlow).toggleStyle(.checkbox).font(.caption)
+                        Toggle("Группировать по цепочкам", isOn: $model.filters.groupByFlow).toggleStyle(
+                            WorkspaceToggleStyle(checkbox: true)
+                        ).font(.caption)
                             .accessibilityIdentifier("tasks.groupByFlow")
                     }
                 }

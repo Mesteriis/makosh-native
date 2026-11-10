@@ -53,7 +53,7 @@ struct TaskDetailView: View {
     private var rows: some View {
         VStack(spacing: 0) {
             TaskDetailRow(symbol: statusSymbol, label: "Статус") {
-                Picker(
+                MakoshPicker(
                     "",
                     selection: Binding(
                         get: { task.status }, set: { value in _Concurrency.Task { await model.set(status: value, id: task.id) } })
@@ -67,7 +67,7 @@ struct TaskDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 6)
             }
             TaskDetailRow(symbol: "flag", label: "Приоритет") {
-                Picker(
+                MakoshPicker(
                     "",
                     selection: Binding(
                         get: { task.priority }, set: { value in _Concurrency.Task { await model.set(priority: value, id: task.id) } })
@@ -321,7 +321,7 @@ struct TaskEditableValue: View {
     var body: some View {
         if editing == id {
             VStack(alignment: .leading, spacing: 2) {
-                TextField("", text: $draft).textFieldStyle(.roundedBorder).controlSize(.small).focused($focused)
+                TextField("", text: $draft).textFieldStyle(WorkspaceTextFieldStyle()).controlSize(.small).focused($focused)
                     .onSubmit { finish(save: true) }
                     .onKeyPress(.escape) {
                         finish(save: false)
@@ -372,8 +372,7 @@ struct TaskNoteEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Заметка", systemImage: "doc.text").font(.headline)
-            TextEditor(text: $text).font(.body).frame(minHeight: 180).padding(4)
-                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6)).accessibilityIdentifier("tasks.note.text")
+            TextEditor(text: $text).workspaceEditorSurface().font(.body).frame(minHeight: 180).accessibilityIdentifier("tasks.note.text")
             HStack {
                 Button("Удалить", role: .destructive) {
                     var value = task
@@ -414,8 +413,8 @@ struct ManualTimeSheet: View {
             Text("Записать время").font(.headline)
             Text(task.title).lineLimit(2)
             DatePicker("Начало", selection: $startedAt)
-            Stepper("Минут: \(minutes)", value: $minutes, in: 1...1440, step: 5)
-            TextField("Примечание", text: $note).textFieldStyle(.roundedBorder)
+            WorkspaceStepper("Минут: \(minutes)", value: $minutes, in: 1...1440, step: 5)
+            TextField("Примечание", text: $note).textFieldStyle(WorkspaceTextFieldStyle())
             HStack {
                 Spacer()
                 Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)

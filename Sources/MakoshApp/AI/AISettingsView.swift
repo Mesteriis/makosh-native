@@ -44,7 +44,7 @@ struct AIIndexSection: View {
                 .accessibilityIdentifier("ai.settings.indexPause")
             }
         }
-        .formStyle(.grouped)
+        .formStyle(WorkspaceFormStyle())
         .task {
             while !Task.isCancelled {
                 await host.refreshIndex()
@@ -94,6 +94,11 @@ struct AISettingsForm: View {
             }
             if page == nil || page == "Модели по ролям" {
                 Section("Модели по ролям") {
+                    HStack {
+                        Text("Роль").frame(width: 170, alignment: .leading)
+                        Text("Подключение").frame(width: 170, alignment: .leading)
+                        Text("Модель").frame(maxWidth: .infinity, alignment: .leading)
+                    }.font(.caption).foregroundStyle(.secondary)
                     ForEach(AIRole.allCases, id: \.self) { role in
                         AIRoleRow(role: role, model: model)
                     }
@@ -109,7 +114,7 @@ struct AISettingsForm: View {
             }
             if let failure = model.failure { Text(failure.message).foregroundStyle(.orange) }
         }
-        .formStyle(.grouped)
+        .formStyle(WorkspaceFormStyle())
         .frame(minWidth: 560, minHeight: 480)
         .sheet(item: $editing) { connection in AIConnectionEditor(model: model, original: connection) }
         .sheet(isPresented: $adding) { AIConnectionEditor(model: model, original: nil) }
@@ -134,7 +139,7 @@ private struct AIRoleRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(role.title).frame(width: 170, alignment: .leading)
-                Picker(
+                MakoshPicker(
                     "Подключение",
                     selection: Binding(
                         get: { assignment?.connectionID },
@@ -146,17 +151,17 @@ private struct AIRoleRow: View {
                                 let name = modelName.isEmpty ? (model.availableModels[id]?.first ?? "") : modelName
                                 await model.assign(role, connectionID: id, model: name)
                             }
-                        })
+                        }), fillsWidth: true
                 ) {
                     Text("Не назначено").tag(UUID?.none)
                     ForEach(model.connections) { Text($0.name).tag(Optional($0.id)) }
                 }.labelsHidden().frame(width: 170)
                 if let connectionID = assignment?.connectionID ?? nil, let models = model.availableModels[connectionID], !models.isEmpty {
-                    Picker(
+                    MakoshPicker(
                         "Модель",
                         selection: Binding(
                             get: { assignment?.model ?? "" },
-                            set: { name in Task { await model.assign(role, connectionID: connectionID, model: name) } })
+                            set: { name in Task { await model.assign(role, connectionID: connectionID, model: name) } }), fillsWidth: true
                     ) {
                         ForEach(models, id: \.self) { Text($0).tag($0) }
                     }.labelsHidden()
@@ -210,24 +215,36 @@ private struct AIConnectionEditor: View {
 
     var body: some View {
         Form {
-            TextField("Название", text: $name)
-            TextField("Базовый URL", text: $url, prompt: Text("https://api.openai.com/v1"))
-            SecureField(original == nil ? "Токен" : "Новый токен (пусто — без изменений)", text: $token)
-            TextField("Организация (необязательно)", text: $organization)
-            TextField("Проект (необязательно)", text: $project)
-            if invalid { Text(AIFailure.invalidConnection.message).foregroundStyle(.orange) }
-            HStack {
-                Spacer()
-                Button("Отмена") { dismiss() }
-                Button("Сохранить", action: save).keyboardShortcut(.defaultAction)
+            Section(original == nil ? "Новое подключение ИИ" : "Подключение ИИ") {
+                field("Название") { TextField("Название подключения", text: $name) }
+                field("Базовый URL") { TextField("Базовый URL", text: $url, prompt: Text("https://api.openai.com/v1")) }
+                field(original == nil ? "API-токен" : "Новый API-токен") { SecureField("API-токен", text: $token) }
+                if original != nil { Text("Оставьте токен пустым, чтобы сохранить прежний.").font(.caption).foregroundStyle(.secondary) }
+                field("Организация · необязательно") { TextField("Организация", text: $organization) }
+                field("Проект · необязательно") { TextField("Проект", text: $project) }
+                if invalid { Text(AIFailure.invalidConnection.message).foregroundStyle(.orange) }
+                HStack {
+                    Spacer()
+                    Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
+                    Button("Сохранить", action: save).keyboardShortcut(.defaultAction)
+                        .buttonStyle(WorkspaceButtonStyle(prominent: true))
+                }
             }
         }
-        .formStyle(.grouped).frame(width: 460)
+        .formStyle(WorkspaceFormStyle()).frame(width: 460)
+        .makoshAppearance()
         .onAppear {
             name = original?.name ?? ""
             url = original?.baseURL.absoluteString ?? ""
             organization = original?.organization ?? ""
             project = original?.project ?? ""
+        }
+    }
+
+    private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            content().labelsHidden()
         }
     }
 

@@ -260,7 +260,7 @@ struct AIContextAddPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Чат, письмо или персона", text: $query).textFieldStyle(.roundedBorder)
+            TextField("Чат, письмо или персона", text: $query).textFieldStyle(WorkspaceTextFieldStyle())
                 .accessibilityIdentifier("ai.context.addQuery")
             AIContextSuggestionsList(search: search, choose: choose)
         }

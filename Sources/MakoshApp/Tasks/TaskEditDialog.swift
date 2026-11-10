@@ -43,11 +43,11 @@ struct TaskEditDialog: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     field("Название") {
-                        TextField("", text: $title).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.edit.title")
+                        TextField("", text: $title).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("tasks.edit.title")
                     }
                     HStack(alignment: .top, spacing: 12) {
                         field("Статус") {
-                            Picker("", selection: $status) {
+                            MakoshPicker("", selection: $status) {
                                 ForEach(TaskStatus.allCases, id: \.self) { Text(TaskStyleText.status($0)).tag($0) }
                             }.labelsHidden()
                         }
@@ -88,8 +88,8 @@ struct TaskEditDialog: View {
                         }
                     }
                     HStack(alignment: .top, spacing: 12) {
-                        field("Ссылка") { TextField("https://…", text: $url).textFieldStyle(.roundedBorder) }
-                        field("Оценка") { TextField("1 ч / 30 мин", text: $estimate).textFieldStyle(.roundedBorder) }
+                        field("Ссылка") { TextField("https://…", text: $url).textFieldStyle(WorkspaceTextFieldStyle()) }
+                        field("Оценка") { TextField("1 ч / 30 мин", text: $estimate).textFieldStyle(WorkspaceTextFieldStyle()) }
                     }
                     field("Цепочка") { TaskCombobox(text: $flow, options: model.flows, placeholder: "без цепочки") }
                     field("Зависит от") { dependencies }
@@ -205,8 +205,7 @@ struct TaskEditDialog: View {
 
     private func noteBox(text: Binding<String>, save: @escaping () -> Void, cancel: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextEditor(text: text).font(.caption).frame(minHeight: 70).padding(4).background(
-                Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            TextEditor(text: text).workspaceEditorSurface().font(.caption).frame(minHeight: 70)
             HStack {
                 Button("Сохранить", action: save).controlSize(.small)
                 Button("Отмена", action: cancel).controlSize(.small)
@@ -280,7 +279,7 @@ struct TaskCombobox: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TextField(placeholder, text: onCommit == nil ? $text : $typed).textFieldStyle(.roundedBorder).focused($focused)
+            TextField(placeholder, text: onCommit == nil ? $text : $typed).textFieldStyle(WorkspaceTextFieldStyle()).focused($focused)
                 .onSubmit {
                     if let onCommit, !typed.trimmingCharacters(in: .whitespaces).isEmpty {
                         onCommit(typed.trimmingCharacters(in: .whitespaces))
@@ -315,7 +314,7 @@ struct TaskDateField: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            TextField("завтра, +3d, 20.04", text: $text).textFieldStyle(.roundedBorder)
+            TextField("завтра, +3d, 20.04", text: $text).textFieldStyle(WorkspaceTextFieldStyle())
             Button {
                 picking.toggle()
             } label: {

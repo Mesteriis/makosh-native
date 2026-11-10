@@ -10,7 +10,7 @@ struct CalendarTaskColumn: View {
             HStack {
                 Text("Задачи").font(.headline)
                 Spacer()
-                Picker(
+                MakoshPicker(
                     "",
                     selection: Binding(
                         get: { model.agenda },

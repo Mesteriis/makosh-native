@@ -139,8 +139,10 @@ struct JiraIssueCard: View {
                 }.accessibilityIdentifier("tasks.jira.comment.\(comment.id)")
             }
             HStack(alignment: .bottom) {
-                TextField("Ответить… (⌘↩ отправить)", text: $reply, axis: .vertical).lineLimit(1...4).textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("tasks.jira.reply")
+                TextField("Ответить… (⌘↩ отправить)", text: $reply, axis: .vertical).lineLimit(1...4).textFieldStyle(
+                    WorkspaceTextFieldStyle()
+                )
+                .accessibilityIdentifier("tasks.jira.reply")
                 Button("Отправить") { send() }.keyboardShortcut(.return, modifiers: .command).controlSize(.small)
                     .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier(
                         "tasks.jira.reply.send")
@@ -274,7 +276,7 @@ struct JiraTransitionSheet: View {
         let title = field.name + (field.required ? " *" : "")
         switch field.schemaType {
         case "option", "resolution":
-            Picker(
+            MakoshPicker(
                 title,
                 selection: Binding(
                     get: { values[field.key]?.optionID ?? "" },
@@ -294,7 +296,7 @@ struct JiraTransitionSheet: View {
                         texts[field.key] = text
                         values[field.key] = Double(text.replacingOccurrences(of: ",", with: ".")).map { .number($0) }
                     })
-            ).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.field.\(field.key)")
+            ).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("tasks.jira.field.\(field.key)")
         case "date":
             DatePicker(
                 title, selection: Binding(get: { values[field.key]?.date ?? Date() }, set: { values[field.key] = .date($0) }),
@@ -310,7 +312,7 @@ struct JiraTransitionSheet: View {
                         texts[field.key] = text
                         values[field.key] = text.isEmpty ? nil : .text(text)
                     }), axis: .vertical
-            ).lineLimit(1...4).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.field.\(field.key)")
+            ).lineLimit(1...4).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("tasks.jira.field.\(field.key)")
         }
     }
 }
@@ -339,8 +341,10 @@ struct JiraAssignSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Передать задачу").font(.headline)
             Text("Сейчас: \(current?.displayName ?? "не назначена")").font(.caption).foregroundStyle(.secondary)
-            TextField("Имя (от 2 символов)", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.assign.query")
-                .onChange(of: query) { _, value in search(value) }
+            TextField("Имя (от 2 символов)", text: $query).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                "tasks.jira.assign.query"
+            )
+            .onChange(of: query) { _, value in search(value) }
             List(users, id: \.accountID) { user in
                 Button(user.displayName) { assign(user.accountID) }.buttonStyle(.plain).accessibilityIdentifier(
                     "tasks.jira.assign.\(user.accountID)")
@@ -391,9 +395,10 @@ struct JiraFieldsSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Изменить \(issue.key)").font(.headline)
-            TextField("Название", text: $summary).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.jira.fields.summary")
+            TextField("Название", text: $summary).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                "tasks.jira.fields.summary")
             if !priorities.isEmpty {
-                Picker("Приоритет", selection: $priorityID) {
+                MakoshPicker("Приоритет", selection: $priorityID) {
                     Text("—").tag("")
                     ForEach(priorities, id: \.id) { Text($0.name).tag($0.id) }
                 }.accessibilityIdentifier("tasks.jira.fields.priority")
@@ -402,11 +407,12 @@ struct JiraFieldsSheet: View {
                 Toggle("Срок", isOn: $hasDue)
                 if hasDue { DatePicker("", selection: $due, displayedComponents: .date).labelsHidden() }
             }
-            TextField("Метки через запятую", text: $labels).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+            TextField("Метки через запятую", text: $labels).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
                 "tasks.jira.fields.labels")
             if model.canEditDescription(id: task.id) {
                 Text("Описание").font(.caption).foregroundStyle(.secondary)
-                TextEditor(text: $descriptionText).frame(minHeight: 120).accessibilityIdentifier("tasks.jira.fields.description")
+                TextEditor(text: $descriptionText).workspaceEditorSurface().frame(minHeight: 120).accessibilityIdentifier(
+                    "tasks.jira.fields.description")
             } else {
                 Label("Описание с таблицами или вложениями правится только в Jira.", systemImage: "lock").font(.caption).foregroundStyle(
                     .orange)

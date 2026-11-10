@@ -553,7 +553,7 @@ struct TaskBulkBar: View {
             Text("\(ids.count) выбрано").font(.callout.bold()).foregroundStyle(TaskStyle.selection).fixedSize()
             Spacer()
             bulkButton("Выполнить", tint: .green) { await model.bulkToggleDone(ids: ids) }
-            Menu("Ещё") {
+            MakoshMenu("Ещё") {
                 Button("Статус") { _Concurrency.Task { await model.bulkCycle(ids: ids) } }
                 Button("Сегодня") { _Concurrency.Task { await model.bulkToday(ids: ids) } }
                 Button("Отложить на день") { _Concurrency.Task { await model.bulkPostpone(ids: ids) } }

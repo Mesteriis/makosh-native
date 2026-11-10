@@ -52,11 +52,12 @@ struct CardDAVBookSheet: View {
                     }
                 }.fixedSize()
             }
-            TextField("Название", text: $name).textFieldStyle(.roundedBorder)
-            TextField("Сервер (https://carddav.yandex.ru)", text: $server).textFieldStyle(.roundedBorder).accessibilityIdentifier(
-                "persons.carddav.server")
-            TextField("Логин", text: $login).textFieldStyle(.roundedBorder).accessibilityIdentifier("persons.carddav.login")
-            SecureField("Пароль приложения", text: $password).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+            TextField("Название", text: $name).textFieldStyle(WorkspaceTextFieldStyle())
+            TextField("Сервер (https://carddav.yandex.ru)", text: $server).textFieldStyle(WorkspaceTextFieldStyle())
+                .accessibilityIdentifier(
+                    "persons.carddav.server")
+            TextField("Логин", text: $login).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("persons.carddav.login")
+            SecureField("Пароль приложения", text: $password).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
                 "persons.carddav.password")
             Text("Для Яндекса и iCloud нужен пароль приложения; почтовый пароль не подходит. Пароль хранится только в Связке ключей.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Calendar section tokens on top of the shared workspace style.
 enum CalendarStyle {
+    static let workingDayLabelWidth: CGFloat = 210
     static let hourHeight: CGFloat = 44
     static let gutterWidth: CGFloat = 48
     static let headerHeight: CGFloat = WorkspaceStyle.mailPaneHeaderHeight

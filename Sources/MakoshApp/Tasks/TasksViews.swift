@@ -165,9 +165,9 @@ struct TaskTimeDraftSheet: View {
             Text(model.task(id: draft.taskID)?.title ?? "").lineLimit(2)
             HStack {
                 DatePicker("Начало", selection: $draft.startedAt).accessibilityIdentifier("tasks.draft.started")
-                Stepper("Минут: \(minutes)", value: $minutes, in: 1...1440, step: 5).accessibilityIdentifier("tasks.draft.minutes")
+                WorkspaceStepper("Минут: \(minutes)", value: $minutes, in: 1...1440, step: 5).accessibilityIdentifier("tasks.draft.minutes")
             }
-            TextField("Примечание", text: $draft.note).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.draft.note")
+            TextField("Примечание", text: $draft.note).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("tasks.draft.note")
             if canSendToJira { Toggle("Списать в Jira", isOn: $draft.sendToJira).accessibilityIdentifier("tasks.draft.sendToJira") }
             HStack {
                 Spacer()
@@ -237,7 +237,7 @@ struct MeetingTimeChooserSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Время встречи").font(.headline)
             Text("«\(request.title)» · \(TaskStyle.duration(request.seconds)). В какую задачу записать?").font(.callout)
-            TextField("Название, код или ключ Jira", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+            TextField("Название, код или ключ Jira", text: $query).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
                 "tasks.meeting.query")
             List(candidates) { task in
                 Button {

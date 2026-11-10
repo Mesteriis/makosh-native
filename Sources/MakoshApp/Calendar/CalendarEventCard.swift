@@ -85,8 +85,9 @@ struct CalendarEventCard: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("Название", text: $title).textFieldStyle(.roundedBorder).font(.title3).accessibilityIdentifier("calendar.card.title")
-            Picker("Календарь", selection: $collectionID) {
+            TextField("Название", text: $title).textFieldStyle(WorkspaceTextFieldStyle()).font(.title3).accessibilityIdentifier(
+                "calendar.card.title")
+            MakoshPicker("Календарь", selection: $collectionID) {
                 ForEach(model.writableCollections) { collection in Text(collection.name).tag(Optional(collection.id)) }
             }.disabled(event != nil).accessibilityIdentifier("calendar.card.collection")
             Toggle("Весь день", isOn: $allDay)
@@ -94,7 +95,7 @@ struct CalendarEventCard: View {
                 DatePicker("Начало", selection: $start, displayedComponents: allDay ? [.date] : [.date, .hourAndMinute])
                 DatePicker("Конец", selection: $end, displayedComponents: allDay ? [.date] : [.date, .hourAndMinute])
             }
-            Picker("Повтор", selection: $repeatRule) {
+            MakoshPicker("Повтор", selection: $repeatRule) {
                 Text("Не повторять").tag("")
                 Text("Каждый день").tag("FREQ=DAILY")
                 Text("По будням").tag("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")
@@ -110,9 +111,9 @@ struct CalendarEventCard: View {
             if !repeatRule.isEmpty, CalendarRecurrenceExpander.unsupported(rrule: repeatRule) {
                 Text("Это правило повтора Makosh показывает только первым вхождением.").font(.caption).foregroundStyle(.orange)
             }
-            TextField("Место", text: $location).textFieldStyle(.roundedBorder)
+            TextField("Место", text: $location).textFieldStyle(WorkspaceTextFieldStyle())
             HStack {
-                TextField("Ссылка на встречу", text: $meeting).textFieldStyle(.roundedBorder)
+                TextField("Ссылка на встречу", text: $meeting).textFieldStyle(WorkspaceTextFieldStyle())
                 if let url = URL(string: meeting), url.scheme == "https" {
                     Button("Подключиться") { NSWorkspace.shared.open(url) }.accessibilityIdentifier("calendar.card.join")
                 }
@@ -127,7 +128,7 @@ struct CalendarEventCard: View {
                 }
             }
             if account?.kind != .local {
-                TextField("Участники: адреса через запятую", text: $attendees).textFieldStyle(.roundedBorder)
+                TextField("Участники: адреса через запятую", text: $attendees).textFieldStyle(WorkspaceTextFieldStyle())
                     .accessibilityIdentifier("calendar.card.attendees")
                 if !host.contactSuggestions(for: attendees).isEmpty {
                     HStack {
@@ -141,15 +142,14 @@ struct CalendarEventCard: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
             }
-            Picker("Напоминание", selection: $reminder) {
+            MakoshPicker("Напоминание", selection: $reminder) {
                 Text("По умолчанию календаря").tag(-1)
                 ForEach([0, 5, 10, 15, 30, 60, 1440], id: \.self) { minutes in
                     Text(minutes == 0 ? "В момент начала" : minutes == 1440 ? "За день" : "За \(minutes) мин").tag(minutes)
                 }
             }
             Toggle("Свободен (не давать «Занято»)", isOn: $free)
-            TextEditor(text: $notes).frame(height: 70).scrollContentBackground(.hidden)
-                .background(WorkspaceStyle.surface, in: RoundedRectangle(cornerRadius: 6))
+            TextEditor(text: $notes).workspaceEditorSurface().frame(height: 70)
             if let event, event.attendees.contains(where: \.isSelf) { responses(event) }
             if let event { attempts(event) }
             HStack {

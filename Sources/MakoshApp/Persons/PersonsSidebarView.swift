@@ -68,13 +68,13 @@ private struct PersonsSidebarBody: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Picker(
+                WorkspaceSegmentedPicker(
                     "Показывать",
                     selection: Binding(get: { model.filter == .addressBook }, set: { model.setFilter($0 ? .addressBook : .all) })
                 ) {
                     Text("Все").tag(false)
                     Text("Адресная книга").tag(true)
-                }.pickerStyle(.segmented).labelsHidden().accessibilityIdentifier("persons.scope")
+                }.labelsHidden().accessibilityIdentifier("persons.scope")
                 Menu {
                     ForEach(PersonsFilter.allCases, id: \.self) { filter in
                         Button {
@@ -87,9 +87,10 @@ private struct PersonsSidebarBody: View {
                     Image(systemName: "line.3.horizontal.decrease.circle")
                 }.menuStyle(.borderlessButton).fixedSize().help("Фильтр").accessibilityIdentifier("persons.filter")
             }.padding(.horizontal, 16)
-            TextField("Имя, компания, почта, телефон", text: $search).textFieldStyle(.roundedBorder).padding(.horizontal, 16).padding(
-                .vertical, 10
-            ).accessibilityIdentifier("persons.search")
+            TextField("Имя, компания, почта, телефон", text: $search).textFieldStyle(WorkspaceTextFieldStyle()).padding(.horizontal, 16)
+                .padding(
+                    .vertical, 10
+                ).accessibilityIdentifier("persons.search")
                 .onChange(of: search) { _, value in
                     model.setSearch(value)
                     Task { await model.refresh() }

@@ -14,7 +14,7 @@ struct CalendarWeekGrid: View {
     var body: some View {
         let days = model.period.days(calendar: model.calendar)
         VStack(spacing: 0) {
-            dayHeaders(days)
+            CalendarDayHeaders(days: days, calendar: model.calendar)
             allDayStrip(days)
             Divider()
             ScrollViewReader { proxy in
@@ -29,18 +29,6 @@ struct CalendarWeekGrid: View {
                     .overlay(alignment: .top) { Color.clear.frame(height: 1).id("eight").offset(y: CalendarStyle.hourHeight * 8) }
                 }
                 .onAppear { proxy.scrollTo("eight", anchor: .top) }
-            }
-        }
-    }
-
-    private func dayHeaders(_ days: [Date]) -> some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: CalendarStyle.gutterWidth)
-            ForEach(days, id: \.self) { day in
-                let today = model.calendar.isDateInToday(day)
-                Text(DateFormatter.calendar("EEd").string(from: day).capitalized)
-                    .font(.callout.weight(today ? .bold : .regular)).foregroundStyle(today ? WorkspaceStyle.accent : .primary)
-                    .frame(maxWidth: .infinity, minHeight: CalendarStyle.dayHeaderHeight)
             }
         }
     }
@@ -69,6 +57,7 @@ struct CalendarWeekGrid: View {
                 }.padding(2).frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }.frame(minHeight: CalendarStyle.allDayRowHeight + 4)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var gutter: some View {
@@ -79,6 +68,27 @@ struct CalendarWeekGrid: View {
                         .trailing, 4)
             }
         }
+    }
+}
+
+/// Only the timed grid scrolls/expands; header spacers never claim its height.
+struct CalendarDayHeaders: View {
+    let days: [Date]
+    let calendar: Calendar
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: CalendarStyle.gutterWidth, height: CalendarStyle.dayHeaderHeight)
+            ForEach(days, id: \.self) { day in
+                let today = calendar.isDateInToday(day)
+                Text(DateFormatter.calendar("EEd").string(from: day).capitalized)
+                    .font(.callout.weight(today ? .bold : .regular))
+                    .foregroundStyle(today ? WorkspaceStyle.accent : .primary)
+                    .lineLimit(1).frame(maxWidth: .infinity)
+            }
+        }
+        .frame(height: CalendarStyle.dayHeaderHeight)
+        .accessibilityIdentifier("calendar.grid.dayHeaders")
     }
 }
 
@@ -173,7 +183,7 @@ struct CalendarDayColumn: View {
                     Text(
                         DateFormatter.calendar("Hm").string(from: item.occurrence.start)
                             + (event.meetingURL != nil ? " · встреча" : "")
-                    ).font(.caption2).foregroundStyle(.secondary)
+                    ).font(.caption2).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8).foregroundStyle(.secondary)
                 }
             }.padding(.leading, copy ? 5 : 7).padding(.top, 3).padding(.trailing, 3)
             if !copy {

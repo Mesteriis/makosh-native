@@ -68,17 +68,35 @@ struct FilesDetailView: View {
     }
 
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                search.frame(minWidth: 220)
+                filters.fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                search
+                filters
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var search: some View {
+        TextField("Поиск по имени, чату, отправителю", text: $model.search)
+            .textFieldStyle(WorkspaceTextFieldStyle())
+            .accessibilityIdentifier("files.search")
+    }
+
+    private var filters: some View {
         HStack(spacing: 12) {
-            TextField("Поиск по имени, чату, отправителю", text: $model.search).textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("files.search")
-            Picker("Тип", selection: $model.category) {
+            MakoshPicker("Тип", selection: $model.category) {
                 Text("Все типы").tag(FileCategory?.none)
                 ForEach(FileCategory.allCases, id: \.self) { Text($0.title).tag(FileCategory?.some($0)) }
-            }.frame(width: 150).accessibilityIdentifier("files.category")
-            Picker("Порядок", selection: $model.sort) {
+            }.fixedSize().accessibilityIdentifier("files.category")
+            MakoshPicker("Порядок", selection: $model.sort) {
                 Text("Сначала новые").tag(FilesSort.dateDescending)
                 Text("По имени").tag(FilesSort.name)
-            }.frame(width: 150).accessibilityIdentifier("files.sort")
+            }.fixedSize().accessibilityIdentifier("files.sort")
             Button {
                 Task { await model.refresh() }
             } label: {
@@ -104,6 +122,8 @@ struct FilesDetailView: View {
                 Text(item.date, format: .dateTime.day().month().year().hour().minute()).monospacedDigit()
             }.width(min: 120, ideal: 150)
         }
+        .tableStyle(.inset)
+        .alternatingRowBackgrounds(.disabled)
         .contextMenu(forSelectionType: UUID.self) { ids in
             if let item = ids.count == 1 ? model.visible.first(where: { ids.contains($0.id) }) : nil { menu(item) }
         } primaryAction: { ids in

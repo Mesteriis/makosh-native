@@ -22,12 +22,12 @@ struct AIConversationListView: View {
                     Image(systemName: "square.and.pencil")
                 }.help("Новая беседа").disabled(!model.ready).accessibilityIdentifier("ai.newConversation")
             }
-            Picker("Беседы", selection: $model.filter) {
+            WorkspaceSegmentedPicker("Беседы", selection: $model.filter) {
                 Text("Все").tag(AIConversationFilter.all)
                 Text("Без привязки").tag(AIConversationFilter.unanchored)
                 Text("По чатам").tag(AIConversationFilter.anchored)
             }
-            .pickerStyle(.segmented).labelsHidden().controlSize(.small).accessibilityIdentifier("ai.conversations.filter")
+            .labelsHidden().controlSize(.small).accessibilityIdentifier("ai.conversations.filter")
             List(selection: Binding(get: { model.selectedConversationID }, set: { id in Task { await model.select(id) } })) {
                 ForEach(model.visibleConversations) { conversation in
                     VStack(alignment: .leading, spacing: 4) {
@@ -201,7 +201,7 @@ struct AIConversationView: View {
                     "Искать в моих данных",
                     isOn: Binding(get: { model.searchMyData }, set: { value in Task { await model.setSearchMyData(value) } })
                 )
-                .toggleStyle(.switch).controlSize(.mini).font(.caption)
+                .toggleStyle(WorkspaceToggleStyle()).controlSize(.mini).font(.caption)
                 .help("Подмешивать в вопрос фрагменты чатов, ящиков и персон, открытых для ИИ")
                 .disabled(model.roles[.embeddings] == nil)
                 .accessibilityIdentifier("ai.searchMyData")

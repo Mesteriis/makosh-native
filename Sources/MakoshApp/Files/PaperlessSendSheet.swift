@@ -30,7 +30,7 @@ struct PaperlessSendSheet: View {
             Section {
                 LabeledContent("Файл") { Text(request.handoff.name).lineLimit(2) }
                 if connections.count > 1 {
-                    Picker("Подключение", selection: $connectionID) {
+                    MakoshPicker("Подключение", selection: $connectionID) {
                         ForEach(connections) { Text($0.name).tag(Optional($0.id)) }
                     }.onChange(of: connectionID) { _, _ in Task { await prepare() } }
                 }
@@ -40,7 +40,7 @@ struct PaperlessSendSheet: View {
                 Toggle("Дата документа", isOn: $hasDate)
                 if hasDate { DatePicker("", selection: $created, displayedComponents: .date).labelsHidden() }
                 if let lists {
-                    Picker("Тип документа", selection: $documentType) {
+                    MakoshPicker("Тип документа", selection: $documentType) {
                         Text("Не задан").tag(Int?.none)
                         ForEach(lists.types) { Text($0.name).tag(Int?.some($0.id)) }
                     }
@@ -84,7 +84,7 @@ struct PaperlessSendSheet: View {
                 }
             }
         }
-        .formStyle(.grouped).frame(width: 520)
+        .formStyle(WorkspaceFormStyle()).frame(width: 520)
         .task {
             guard !prepared else { return }
             prepared = true

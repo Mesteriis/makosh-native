@@ -61,7 +61,7 @@ struct PersonsSettingsForm: View {
                 if page == "Обход" { collectionSection }
                 if page == "Открытые попытки" { attemptsSection }
                 if page == "OSINT", let osint = host.osintModel { OSINTSettingsSection(osint: osint) }
-            }.formStyle(.grouped)
+            }.formStyle(WorkspaceFormStyle())
         }
         .sheet(isPresented: $addingCardDAV) { CardDAVBookSheet(model: model, host: host).makoshAppearance() }
         .alert(
@@ -181,7 +181,7 @@ struct PersonsSettingsForm: View {
                             .accessibilityIdentifier("persons.settings.enrich")
                     }
                 }
-            }.toggleStyle(.checkbox).font(.callout)
+            }.toggleStyle(WorkspaceToggleStyle(checkbox: true)).font(.callout)
         }.padding(.vertical, 2)
     }
 
@@ -255,7 +255,9 @@ struct PersonsSettingsForm: View {
                 }
             }
             HStack {
-                TextField(placeholder, text: draft).textFieldStyle(.roundedBorder).onSubmit { add(items, draft: draft, save: save) }
+                TextField(placeholder, text: draft).textFieldStyle(WorkspaceTextFieldStyle()).onSubmit {
+                    add(items, draft: draft, save: save)
+                }
                 Button("Добавить") { add(items, draft: draft, save: save) }.disabled(
                     draft.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty)
             }
@@ -273,7 +275,7 @@ struct PersonsSettingsForm: View {
 
     private var collectionSection: some View {
         Section("Обход") {
-            Picker(
+            MakoshPicker(
                 "Чтение книг",
                 selection: Binding(
                     get: { preferences.pollIntervalSeconds }, set: { value in savePreferences { $0.pollIntervalSeconds = value } })
@@ -283,7 +285,7 @@ struct PersonsSettingsForm: View {
                 Text("Каждые 30 минут").tag(1800)
                 Text("Каждый час").tag(3600)
             }
-            Stepper(
+            WorkspaceStepper(
                 "Записей за проход: \(preferences.maxWritesPerPass)",
                 value: Binding(get: { preferences.maxWritesPerPass }, set: { value in savePreferences { $0.maxWritesPerPass = value } }),
                 in: 10...500, step: 10)

@@ -324,7 +324,8 @@ struct BlockedSlotEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Занятое время").font(.headline)
-            TextField("Занято", text: $title).textFieldStyle(.roundedBorder).accessibilityIdentifier("tasks.planner.blocked.title")
+            TextField("Занято", text: $title).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                "tasks.planner.blocked.title")
             Text("Повтор").font(.caption2).foregroundStyle(.secondary)
             HStack(spacing: 6) {
                 option(nil, "Нет")

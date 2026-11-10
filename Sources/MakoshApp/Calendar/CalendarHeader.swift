@@ -29,7 +29,7 @@ struct CalendarHeader: View {
                 .help("Вперёд (→)").accessibilityIdentifier("calendar.header.forward")
             Text(title).font(.title3.weight(.semibold)).lineLimit(1)
             Spacer()
-            Picker(
+            WorkspaceSegmentedPicker(
                 "",
                 selection: Binding(
                     get: { model.period.mode },
@@ -41,7 +41,7 @@ struct CalendarHeader: View {
                 Text("День").tag(CalendarViewMode.day)
                 Text("Неделя").tag(CalendarViewMode.week)
                 Text("Месяц").tag(CalendarViewMode.month)
-            }.pickerStyle(.segmented).labelsHidden().frame(width: 210).accessibilityIdentifier("calendar.header.mode")
+            }.labelsHidden().frame(width: 210).accessibilityIdentifier("calendar.header.mode")
             Menu {
                 Button("Сводный вид") { model.select(collectionID: nil) }
                 Divider()

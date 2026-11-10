@@ -59,7 +59,7 @@ struct PersonCardView: View {
                 }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 6) {
-                        Picker(
+                        WorkspaceSegmentedPicker(
                             "Доступ для ИИ",
                             selection: Binding(
                                 get: { contact.aiAccess },
@@ -73,7 +73,7 @@ struct PersonCardView: View {
                             Text("Разрешено").tag(AIContactAccess.allowed)
                             Text("Запрещено").tag(AIContactAccess.forbidden)
                         }
-                        .pickerStyle(.segmented).disabled(!model.canWrite).accessibilityIdentifier("contact.aiAccess")
+                        .disabled(!model.canWrite).accessibilityIdentifier("contact.aiAccess")
                         Text(
                             "«Запрещено» закрывает сообщения этого человека для ИИ во всех чатах и ящиках. «Разрешено» не открывает выключенный чат."
                         )
@@ -100,7 +100,7 @@ struct PersonCardView: View {
                         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(
                             .quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
                     }
-                    TextField("Новая заметка", text: $note, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
+                    TextField("Новая заметка", text: $note, axis: .vertical).lineLimit(2...5).textFieldStyle(WorkspaceTextFieldStyle())
                         .accessibilityIdentifier("contact.note")
                     HStack {
                         Spacer()

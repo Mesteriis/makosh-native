@@ -51,7 +51,7 @@ struct CalendarSettingsForm: View {
                                 }
                             }.accessibilityIdentifier("calendar.settings.loginItem")
                         if let loginError { Text(loginError).font(.caption).foregroundStyle(.orange) }
-                        Picker(
+                        MakoshPicker(
                             "Обход календарей",
                             selection: Binding(
                                 get: { model.snapshot?.preferences.pollSeconds ?? 120 },
@@ -67,7 +67,7 @@ struct CalendarSettingsForm: View {
                     }
                 }
             }
-            .formStyle(.grouped)
+            .formStyle(WorkspaceFormStyle())
         }
         .onAppear(perform: loadGroups)
         .onChange(of: model.snapshot?.collections) { _, _ in loadGroups() }
@@ -157,7 +157,7 @@ struct CalendarSettingsForm: View {
                     Text(collection.name)
                     if collection.access == .read { Text("только чтение").font(.caption).foregroundStyle(.secondary) }
                     Spacer()
-                    Picker(
+                    MakoshPicker(
                         "Напоминание",
                         selection: Binding(
                             get: { collection.defaultReminderMinutes },
@@ -283,14 +283,15 @@ struct CalendarWorkingDayRow: View {
         let names = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
         HStack {
             Toggle(names[weekday], isOn: Binding(get: { range != nil }, set: { change($0 ? 540...1080 : nil) }))
+                .frame(width: CalendarStyle.workingDayLabelWidth, alignment: .leading)
             Spacer()
             if let range {
-                Stepper(
+                WorkspaceStepper(
                     "с \(Self.time(range.lowerBound))",
                     value: Binding(get: { range.lowerBound }, set: { change(min($0, range.upperBound - 30)...range.upperBound) }),
                     in: 0...1410, step: 30
                 ).fixedSize()
-                Stepper(
+                WorkspaceStepper(
                     "до \(Self.time(range.upperBound))",
                     value: Binding(get: { range.upperBound }, set: { change(range.lowerBound...max($0, range.lowerBound + 30)) }),
                     in: 30...1440, step: 30
@@ -329,11 +330,11 @@ struct CalendarAddCalDAVSheet: View {
                     }
                 }.fixedSize()
             }
-            TextField("Название", text: $name).textFieldStyle(.roundedBorder)
-            TextField("Сервер (https://caldav.yandex.ru)", text: $server).textFieldStyle(.roundedBorder).accessibilityIdentifier(
+            TextField("Название", text: $name).textFieldStyle(WorkspaceTextFieldStyle())
+            TextField("Сервер (https://caldav.yandex.ru)", text: $server).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
                 "calendar.caldav.server")
-            TextField("Логин", text: $login).textFieldStyle(.roundedBorder)
-            SecureField("Пароль приложения", text: $password).textFieldStyle(.roundedBorder)
+            TextField("Логин", text: $login).textFieldStyle(WorkspaceTextFieldStyle())
+            SecureField("Пароль приложения", text: $password).textFieldStyle(WorkspaceTextFieldStyle())
             Text("Для Яндекса нужен пароль приложения для календаря (CalDAV): почтовый подходит не всегда.").font(.caption).foregroundStyle(
                 .secondary)
             HStack {
@@ -363,8 +364,8 @@ struct CalendarAddLinkSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Календарь по ссылке").font(.title2.bold())
-            TextField("Название", text: $name).textFieldStyle(.roundedBorder)
-            TextField("https://… или webcal://…", text: $link).textFieldStyle(.roundedBorder)
+            TextField("Название", text: $name).textFieldStyle(WorkspaceTextFieldStyle())
+            TextField("https://… или webcal://…", text: $link).textFieldStyle(WorkspaceTextFieldStyle())
             Text("Только чтение: Makosh не пишет в него, но его события могут давать «Занято» в группе.").font(.caption).foregroundStyle(
                 .secondary)
             HStack {

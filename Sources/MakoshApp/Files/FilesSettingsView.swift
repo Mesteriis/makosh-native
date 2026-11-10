@@ -52,7 +52,7 @@ struct FilesSettingsForm: View {
             }
             if let failure { Text(failure).foregroundStyle(.orange) }
         }
-        .formStyle(.grouped)
+        .formStyle(WorkspaceFormStyle())
         .frame(minWidth: 560, minHeight: 360)
         .sheet(item: $editing) { connection in FileStorageEditor(model: model, original: connection) }
         .sheet(isPresented: $adding) { FileStorageEditor(model: model, original: nil) }
@@ -81,7 +81,7 @@ struct FileStorageEditor: View {
                 .accessibilityIdentifier("files.storage.editor.token")
             if let lists {
                 Section("По умолчанию при отправке") {
-                    Picker("Тип документа", selection: $documentType) {
+                    MakoshPicker("Тип документа", selection: $documentType) {
                         Text("Не задан").tag(Int?.none)
                         ForEach(lists.types) { Text($0.name).tag(Int?.some($0.id)) }
                     }
@@ -106,7 +106,7 @@ struct FileStorageEditor: View {
                     .accessibilityIdentifier("files.storage.editor.save")
             }
         }
-        .formStyle(.grouped).frame(width: 480)
+        .formStyle(WorkspaceFormStyle()).frame(width: 480)
         .onAppear {
             name = original?.name ?? "Paperless"
             url = original?.baseURL.absoluteString ?? ""

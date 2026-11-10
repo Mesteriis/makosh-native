@@ -17,7 +17,7 @@ struct PaperlessDocumentsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                TextField("Поиск в Paperless", text: $query).textFieldStyle(.roundedBorder)
+                TextField("Поиск в Paperless", text: $query).textFieldStyle(WorkspaceTextFieldStyle())
                     .onSubmit { Task { await model.searchDocuments(query) } }.accessibilityIdentifier("files.paperless.search")
                 Button("Найти") { Task { await model.searchDocuments(query) } }.accessibilityIdentifier("files.paperless.find")
                 if model.loadingDocuments || busy { ProgressView().controlSize(.small) }

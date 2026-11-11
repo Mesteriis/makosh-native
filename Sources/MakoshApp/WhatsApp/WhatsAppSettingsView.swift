@@ -108,10 +108,10 @@ struct WhatsAppSettingsView: View {
                                 Text(info.name ?? "")
                                 Text(info.about ?? "")
                             }
-                            TextField("Имя", text: $name)
+                            WorkspaceLabeledField("Имя") { TextField("Имя", text: $name) }
                             Button("Изменить имя") { command(.init(.setName, text: name), account: scope) }
                                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            TextField("О себе", text: $about)
+                            WorkspaceLabeledField("О себе") { TextField("О себе", text: $about) }
                             Button("Изменить описание") { command(.init(.setAbout, text: about), account: scope) }
                         }
                     } else {

@@ -132,8 +132,10 @@ struct MailNavigationBar: View {
             MakoshMenuItem("Исходящие операции…") { model.outboxSheet = true }
             MakoshMenuItem("Уведомления…") { model.notificationSettingsScope = .global }
                 .accessibilityIdentifier("mail.notifications.global")
-            MakoshMenuItem("Подписи, шаблоны и правила…") { workspaceNavigation?.openSettings(.mail) }
-                .accessibilityIdentifier("mail.automation.settings")
+            MakoshMenuItem("Подписи, шаблоны и правила…") {
+                if WorkspaceNavigation.route(.mail, via: workspaceNavigation) == .sheet { model.automationSettings = true }
+            }
+            .accessibilityIdentifier("mail.automation.settings")
             #if DEBUG
             if model.synthetic {
                 Divider()

@@ -34,9 +34,11 @@ struct PaperlessSendSheet: View {
                         ForEach(connections) { Text($0.name).tag(Optional($0.id)) }
                     }.onChange(of: connectionID) { _, _ in Task { await prepare() } }
                 }
-                TextField("Название", text: $title).onChange(of: title) { _, value in
-                    if value.count > PaperlessUpload.titleLimit { title = String(value.prefix(PaperlessUpload.titleLimit)) }
-                }.accessibilityIdentifier("files.send.title")
+                WorkspaceLabeledField("Название") {
+                    TextField("Название", text: $title).onChange(of: title) { _, value in
+                        if value.count > PaperlessUpload.titleLimit { title = String(value.prefix(PaperlessUpload.titleLimit)) }
+                    }.accessibilityIdentifier("files.send.title")
+                }
                 Toggle("Дата документа", isOn: $hasDate)
                 if hasDate { DatePicker("", selection: $created, displayedComponents: .date).labelsHidden() }
                 if let lists {

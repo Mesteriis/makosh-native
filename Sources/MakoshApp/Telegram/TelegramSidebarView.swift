@@ -9,6 +9,7 @@ struct TelegramSidebarView: View {
     private let backupContext: TelegramArchiveBackupContext?
     @State private var connectionPresented = false
     @Environment(\.workspaceNavigation) private var workspaceNavigation
+    @State private var settingsPresented = false
     @State private var downloadsPresented = false
     @FocusState private var searchFocused: Bool
     init(model: TelegramModel, backupContext: TelegramArchiveBackupContext? = nil) {
@@ -52,7 +53,9 @@ struct TelegramSidebarView: View {
                 TelegramArchiveButton(archive: model.archive, backupContext: backupContext)
                 MakoshMenu {
                     MakoshMenuItem("Загрузки") { downloadsPresented = true }
-                    MakoshMenuItem("Настройки Telegram") { workspaceNavigation?.openSettings(.telegram) }
+                    MakoshMenuItem("Настройки Telegram") {
+                        if WorkspaceNavigation.route(.telegram, via: workspaceNavigation) == .sheet { settingsPresented = true }
+                    }
                     MakoshMenuItem("О подключении") { connectionPresented = true }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -171,6 +174,9 @@ struct TelegramSidebarView: View {
             }
         }.frame(maxHeight: .infinity, alignment: .top)
             .sheet(isPresented: $downloadsPresented) { TelegramDownloadsView(model: model) }
+            // Only a sidebar hosted without the workspace falls back to the former sheet.
+            .sheet(isPresented: $settingsPresented) { TelegramWorkspaceSettings(model: model) { settingsPresented = false } }
+            .onReceive(model.notifications.$activationRequest.dropFirst()) { _ in settingsPresented = false }
             .onAppear { forumTopics.setVisible(true) }
             .onDisappear { forumTopics.setVisible(false) }
             .onChange(of: model.selectedChatID) { _, _ in model.isForumTopicsListPresented = true }

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Generate only this project's local development credentials; never print them."""
+import argparse
 import json
 import os
 from pathlib import Path
 import secrets
 
 root = Path(__file__).resolve().parent.parent
-local = root / ".local"
-local.mkdir(exist_ok=True)
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--output-dir", type=Path, default=root / ".local",
+                    help="private directory for the generated files (default: the ignored repository .local)")
+local = parser.parse_args().output_dir.resolve()
+local.mkdir(mode=0o700, exist_ok=True)
 settings = local / "postgres-settings.json"
 if not settings.exists():
     descriptor = os.open(settings, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

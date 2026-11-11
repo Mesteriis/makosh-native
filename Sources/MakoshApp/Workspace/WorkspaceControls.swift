@@ -105,6 +105,25 @@ struct WorkspaceFormStyle: FormStyle {
     }
 }
 
+/// Form rows are plain views under `WorkspaceFormStyle`, so a field's title would survive only as its
+/// placeholder; this caption keeps the title visible beside a prefilled value and as the control's label.
+struct WorkspaceLabeledField<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            content.labelsHidden().accessibilityLabel(title)
+        }
+    }
+}
+
 /// Branded segments keep public container tags and their existing bindings.
 struct WorkspaceSegmentedPicker<Selection: Hashable, Content: View>: View {
     let title: String

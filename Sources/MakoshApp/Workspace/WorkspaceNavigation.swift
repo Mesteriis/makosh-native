@@ -15,6 +15,18 @@ import SwiftUI
     func openSettings(_ category: WorkspaceSettingsCategory? = nil) {
         settingsRequest = SettingsRequest(category: category)
     }
+
+    /// Where a service's settings command ends up: the shared section when a workspace is attached
+    /// to the view, otherwise the view's own sheet. A request is raised only for the workspace route.
+    static func route(_ category: WorkspaceSettingsCategory, via navigation: WorkspaceNavigation?) -> WorkspaceSettingsRoute {
+        guard let navigation else { return .sheet }
+        navigation.openSettings(category)
+        return .workspace
+    }
+}
+
+enum WorkspaceSettingsRoute: Equatable {
+    case workspace, sheet
 }
 
 private struct WorkspaceNavigationKey: EnvironmentKey {

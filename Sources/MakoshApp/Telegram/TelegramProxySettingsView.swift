@@ -115,21 +115,31 @@ private struct TelegramProxyEditor: View {
                         Text("SOCKS5").tag(TelegramProxyKind.socks5)
                         Text("MTProto").tag(TelegramProxyKind.mtproto)
                     }
-                    TextField("Сервер", text: $draft.host).accessibilityIdentifier("telegram.data.proxy.host")
-                    TextField("Порт", text: $draft.port).accessibilityIdentifier("telegram.data.proxy.port")
+                    WorkspaceLabeledField("Сервер") {
+                        TextField("Сервер", text: $draft.host).accessibilityIdentifier("telegram.data.proxy.host")
+                    }
+                    WorkspaceLabeledField("Порт") {
+                        TextField("Порт", text: $draft.port).accessibilityIdentifier("telegram.data.proxy.port")
+                    }
                 }
                 Section(draft.kind == .socks5 ? "Учётные данные (необязательно)" : "MTProto secret") {
                     if draft.kind == .socks5 {
-                        TextField("Имя пользователя", text: $draft.username).accessibilityIdentifier("telegram.data.proxy.username")
-                        SecureField("Пароль", text: $draft.password).accessibilityIdentifier("telegram.data.proxy.password")
+                        WorkspaceLabeledField("Имя пользователя") {
+                            TextField("Имя пользователя", text: $draft.username).accessibilityIdentifier("telegram.data.proxy.username")
+                        }
+                        WorkspaceLabeledField("Пароль") {
+                            SecureField("Пароль", text: $draft.password).accessibilityIdentifier("telegram.data.proxy.password")
+                        }
                     } else {
-                        SecureField("Secret", text: $draft.secret).accessibilityIdentifier("telegram.data.proxy.secret")
+                        WorkspaceLabeledField("Secret") {
+                            SecureField("Secret", text: $draft.secret).accessibilityIdentifier("telegram.data.proxy.secret")
+                        }
                     }
                 }
                 if let error = controller.error { Section { Text(error).foregroundStyle(.red) } }
                 if controller.contextID != contextID { Text("Настройки изменились. Откройте редактор заново.").foregroundStyle(.secondary) }
             }.formStyle(WorkspaceFormStyle())
-        }.frame(width: 480, height: 410)
+        }.frame(width: 480, height: 500)
             .alert(
                 "Сохранить настройки прокси?", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } })
             ) {

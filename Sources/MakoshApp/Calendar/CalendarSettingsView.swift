@@ -180,8 +180,8 @@ struct CalendarSettingsForm: View {
             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach($groups) { $group in
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        TextField("Название группы", text: $group.name)
+                    HStack(alignment: .bottom) {
+                        WorkspaceLabeledField("Название группы") { TextField("Название группы", text: $group.name) }
                         Button(role: .destructive) {
                             groups.removeAll { $0.id == group.id }
                         } label: {

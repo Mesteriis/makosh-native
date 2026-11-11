@@ -189,7 +189,9 @@ private struct TelegramPeerMemberEditor: View {
                                 right in
                                 Toggle(right.title, isOn: flag(right.id, value: $rights))
                             }
-                            TextField("Должность", text: $rank).accessibilityIdentifier("telegram.profile.member.rank")
+                            WorkspaceLabeledField("Должность") {
+                                TextField("Должность", text: $rank).accessibilityIdentifier("telegram.profile.member.rank")
+                            }
                             Text("\(rank.utf16.count)/16").font(.caption).foregroundStyle(.secondary)
                         }
                         if member.role == .administrator {

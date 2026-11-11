@@ -11,21 +11,26 @@ struct TelegramSyntheticPreviewView: View {
         self.persistentDrafts = persistentDrafts
     }
     var body: some View {
-        VStack(spacing: 0) {
-            Text(
-                persistentDrafts
-                    ? "СИНТЕТИЧЕСКАЯ ПРОВЕРКА • отдельный Postbox черновиков • личные аккаунты, PostgreSQL, сеть и отправка не используются"
-                    : "СИНТЕТИЧЕСКАЯ ПРОВЕРКА • личные аккаунты, база данных, сеть и отправка не используются"
-            )
-            .font(.caption.bold()).padding(10).frame(maxWidth: .infinity).background(.yellow.opacity(0.15))
-            Button("QA: ошибка следующего поискового запроса", action: model.search.failNextSyntheticMessageSearch)
-                .controlSize(.small).padding(6).accessibilityIdentifier("telegram.qa.failSearch")
-            HStack(spacing: 0) {
-                TelegramSidebarView(model: model).frame(width: 320)
-                Divider()
-                TelegramDetailView(model: model)
+        SyntheticWorkspaceFrame(service: .telegram) {
+            VStack(spacing: 0) {
+                Text(
+                    persistentDrafts
+                        ? "СИНТЕТИЧЕСКАЯ ПРОВЕРКА • отдельный Postbox черновиков • личные аккаунты, PostgreSQL, сеть и отправка не используются"
+                        : "СИНТЕТИЧЕСКАЯ ПРОВЕРКА • личные аккаунты, база данных, сеть и отправка не используются"
+                )
+                .font(.caption.bold()).padding(10).frame(maxWidth: .infinity).background(.yellow.opacity(0.15))
+                Button("QA: ошибка следующего поискового запроса", action: model.search.failNextSyntheticMessageSearch)
+                    .controlSize(.small).padding(6).accessibilityIdentifier("telegram.qa.failSearch")
+                HStack(spacing: 0) {
+                    TelegramSidebarView(model: model).frame(width: 320)
+                    Divider()
+                    TelegramDetailView(model: model)
+                }
             }
-        }.modifier(TelegramNotificationHost(controller: model.notifications))
+        } settings: {
+            TelegramWorkspaceSettings(model: model, embedded: true, close: {})
+        }
+        .modifier(TelegramNotificationHost(controller: model.notifications))
     }
 }
 

@@ -286,11 +286,7 @@ struct MakoshApp: App {
     }
 }
 
-/// Keys for opening Settings on a given tab.
+/// The persisted settings category of the workspace window.
 enum MakoshSettingsTab {
     static let key = "makosh.settings.tab"
-    static let files = "files"
-    static let tasks = "tasks"
-    static let calendar = "calendar"
-    static let persons = "persons"
 }

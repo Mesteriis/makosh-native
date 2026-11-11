@@ -46,18 +46,23 @@ struct PersonEditor: View {
         VStack(alignment: .leading, spacing: 20) {
             Text(title).font(.title2.bold())
             Form {
-                TextField(kind == .organization ? "Название" : "Имя (как показывать)", text: $name).accessibilityIdentifier("editor.name")
+                let displayTitle = kind == .organization ? "Название" : "Имя (как показывать)"
+                WorkspaceLabeledField(displayTitle) { TextField(displayTitle, text: $name).accessibilityIdentifier("editor.name") }
                 if kind == .person {
-                    TextField("Имя", text: $givenName).accessibilityIdentifier("editor.givenName")
-                    TextField("Фамилия", text: $familyName).accessibilityIdentifier("editor.familyName")
-                    TextField("Отчество", text: $middleName)
-                    TextField("Компания", text: $organization).accessibilityIdentifier("editor.organization")
-                    TextField("Должность", text: $job)
+                    WorkspaceLabeledField("Имя") { TextField("Имя", text: $givenName).accessibilityIdentifier("editor.givenName") }
+                    WorkspaceLabeledField("Фамилия") {
+                        TextField("Фамилия", text: $familyName).accessibilityIdentifier("editor.familyName")
+                    }
+                    WorkspaceLabeledField("Отчество") { TextField("Отчество", text: $middleName) }
+                    WorkspaceLabeledField("Компания") {
+                        TextField("Компания", text: $organization).accessibilityIdentifier("editor.organization")
+                    }
+                    WorkspaceLabeledField("Должность") { TextField("Должность", text: $job) }
                 }
-                TextField("Телефоны", text: $phones)
-                TextField("Почта", text: $emails).accessibilityIdentifier("editor.email")
-                if kind == .person { TextField("Имена пользователя", text: $usernames) }
-                TextField("Метки", text: $tags)
+                WorkspaceLabeledField("Телефоны") { TextField("Телефоны", text: $phones) }
+                WorkspaceLabeledField("Почта") { TextField("Почта", text: $emails).accessibilityIdentifier("editor.email") }
+                if kind == .person { WorkspaceLabeledField("Имена пользователя") { TextField("Имена пользователя", text: $usernames) } }
+                WorkspaceLabeledField("Метки") { TextField("Метки", text: $tags) }
             }
             Text(
                 "Несколько значений разделяйте запятой. Введённые значения будут ручными: источники добавят свои рядом, но не уберут ваши."

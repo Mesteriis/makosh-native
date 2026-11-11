@@ -19,6 +19,7 @@ struct WhatsAppWorkspaceNavigation: View {
     @ObservedObject var model: WhatsAppWorkspaceModel
     @ObservedObject var navigation: WhatsAppWorkspaceNavigationState
     @State private var adding = false
+    @State private var accountSettings = false
     @State private var statuses = false
     @Environment(\.workspaceNavigation) private var workspaceNavigation
     @State private var newChat = false
@@ -34,7 +35,9 @@ struct WhatsAppWorkspaceNavigation: View {
                     }
                     Divider()
                     MakoshMenuItem("Добавить аккаунт") { adding = true }.disabled(model.isSynthetic)
-                    MakoshMenuItem("Настройки WhatsApp") { workspaceNavigation?.openSettings(.whatsapp) }
+                    MakoshMenuItem("Настройки WhatsApp") {
+                        if WorkspaceNavigation.route(.whatsapp, via: workspaceNavigation) == .sheet { accountSettings = true }
+                    }
                     if !model.isSynthetic, model.selectedAccountID != nil {
                         if model.status.state != "logged_out" {
                             MakoshMenuItem(model.status.linked ? "Подключено" : "Подключить") { model.connect() }
@@ -112,6 +115,16 @@ struct WhatsAppWorkspaceNavigation: View {
                 if let account = model.selectedAccountID {
                     WhatsAppStatusView(worker: model.notificationWorker, accountID: account)
                 }
+            }
+            .sheet(isPresented: $accountSettings) {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Настройки WhatsApp").font(.headline)
+                        Spacer()
+                        Button("Закрыть") { accountSettings = false }
+                    }.padding()
+                    WhatsAppSettingsView(model: model)
+                }.makoshAppearance()
             }
             .sheet(isPresented: $adding) {
                 VStack(alignment: .leading, spacing: 18) {

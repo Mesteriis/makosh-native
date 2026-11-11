@@ -395,8 +395,10 @@ struct JiraFieldsSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Изменить \(issue.key)").font(.headline)
-            TextField("Название", text: $summary).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
-                "tasks.jira.fields.summary")
+            WorkspaceLabeledField("Название") {
+                TextField("Название", text: $summary).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                    "tasks.jira.fields.summary")
+            }
             if !priorities.isEmpty {
                 MakoshPicker("Приоритет", selection: $priorityID) {
                     Text("—").tag("")
@@ -407,8 +409,10 @@ struct JiraFieldsSheet: View {
                 Toggle("Срок", isOn: $hasDue)
                 if hasDue { DatePicker("", selection: $due, displayedComponents: .date).labelsHidden() }
             }
-            TextField("Метки через запятую", text: $labels).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
-                "tasks.jira.fields.labels")
+            WorkspaceLabeledField("Метки") {
+                TextField("Метки через запятую", text: $labels).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                    "tasks.jira.fields.labels")
+            }
             if model.canEditDescription(id: task.id) {
                 Text("Описание").font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $descriptionText).workspaceEditorSurface().frame(minHeight: 120).accessibilityIdentifier(

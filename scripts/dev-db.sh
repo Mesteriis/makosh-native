@@ -5,7 +5,9 @@ case "${1:-up}" in
     up)
         python3 scripts/configure-dev-db.py
         python3 scripts/configure-dev-s3.py
-        docker compose --env-file .local/postgres.env up -d --build --wait --wait-timeout 60
+        # --build is cheap from cache; without default attestations an unchanged
+        # Dockerfile yields the same image ID, so the pool container is not recreated.
+        BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose --env-file .local/postgres.env up -d --build --wait --wait-timeout 60
         python3 scripts/dev-s3.py init
         ;;
     status)

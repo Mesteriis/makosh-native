@@ -25,6 +25,7 @@ struct TelegramSettingsView: View {
             "Уведомления и звуки", data = "Данные и память", calls = "Звонки"
     }
     @State private var page: Page?
+    @FocusState private var focusedTab: Page?
     var body: some View {
         VStack(spacing: 0) {
             if embedded {
@@ -122,7 +123,7 @@ struct TelegramSettingsView: View {
                 }.formStyle(WorkspaceFormStyle())
             }
         }.frame(minWidth: 560, maxWidth: embedded ? .infinity : 560, minHeight: 500, maxHeight: embedded ? .infinity : 630)
-            .onAppear { if embedded, page == nil { page = .general } }
+            .onAppear { if embedded, page == nil { page = availablePages.first } }
             .makoshAppearance()
     }
     private var availablePages: [Page] {
@@ -145,9 +146,28 @@ struct TelegramSettingsView: View {
                         .background(
                             page == value ? WorkspaceStyle.accent.opacity(0.15) : .clear,
                             in: RoundedRectangle(cornerRadius: WorkspaceStyle.controlRadius))
-                }.buttonStyle(.plain).accessibilityValue(page == value ? "Выбрано" : "")
+                }.buttonStyle(.plain)
+                    .focusable()
+                    .focused($focusedTab, equals: value)
+                    .accessibilityAddTraits(page == value ? .isSelected : [])
+                    .onKeyPress(.leftArrow) {
+                        moveTab(from: value, by: -1)
+                        return .handled
+                    }
+                    .onKeyPress(.rightArrow) {
+                        moveTab(from: value, by: 1)
+                        return .handled
+                    }
             }
         }
+    }
+    /// Arrow keys walk the visible tabs in order, across both rows when the strip wraps.
+    private func moveTab(from value: Page, by offset: Int) {
+        let pages = availablePages
+        guard let index = pages.firstIndex(of: value) else { return }
+        let target = pages[max(0, min(pages.count - 1, index + offset))]
+        page = target
+        focusedTab = target
     }
     private func settingsRow(_ value: Page, symbol: String, id: String) -> some View {
         Button {

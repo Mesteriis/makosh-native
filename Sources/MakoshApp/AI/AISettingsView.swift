@@ -216,12 +216,12 @@ private struct AIConnectionEditor: View {
     var body: some View {
         Form {
             Section(original == nil ? "Новое подключение ИИ" : "Подключение ИИ") {
-                field("Название") { TextField("Название подключения", text: $name) }
-                field("Базовый URL") { TextField("Базовый URL", text: $url, prompt: Text("https://api.openai.com/v1")) }
-                field(original == nil ? "API-токен" : "Новый API-токен") { SecureField("API-токен", text: $token) }
+                WorkspaceLabeledField("Название") { TextField("Название подключения", text: $name) }
+                WorkspaceLabeledField("Базовый URL") { TextField("Базовый URL", text: $url, prompt: Text("https://api.openai.com/v1")) }
+                WorkspaceLabeledField(original == nil ? "API-токен" : "Новый API-токен") { SecureField("API-токен", text: $token) }
                 if original != nil { Text("Оставьте токен пустым, чтобы сохранить прежний.").font(.caption).foregroundStyle(.secondary) }
-                field("Организация · необязательно") { TextField("Организация", text: $organization) }
-                field("Проект · необязательно") { TextField("Проект", text: $project) }
+                WorkspaceLabeledField("Организация · необязательно") { TextField("Организация", text: $organization) }
+                WorkspaceLabeledField("Проект · необязательно") { TextField("Проект", text: $project) }
                 if invalid { Text(AIFailure.invalidConnection.message).foregroundStyle(.orange) }
                 HStack {
                     Spacer()
@@ -238,13 +238,6 @@ private struct AIConnectionEditor: View {
             url = original?.baseURL.absoluteString ?? ""
             organization = original?.organization ?? ""
             project = original?.project ?? ""
-        }
-    }
-
-    private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            content().labelsHidden()
         }
     }
 

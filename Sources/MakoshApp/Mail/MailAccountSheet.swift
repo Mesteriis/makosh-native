@@ -37,34 +37,50 @@ struct MailAccountSheet: View {
                     MakoshPicker("Почтовый сервис", selection: $provider) {
                         ForEach(MailProviderPreset.allCases) { Text($0.title).tag($0) }
                     }.accessibilityIdentifier("mail.account.provider")
-                    TextField("Имя отправителя", text: $name).accessibilityIdentifier("mail.account.name")
-                    TextField("Адрес почты", text: $email).accessibilityIdentifier("mail.account.email")
+                    WorkspaceLabeledField("Имя отправителя") {
+                        TextField("Имя отправителя", text: $name).accessibilityIdentifier("mail.account.name")
+                    }
+                    WorkspaceLabeledField("Адрес почты") {
+                        TextField("Адрес почты", text: $email).accessibilityIdentifier("mail.account.email")
+                    }
                     Text(provider.hint).font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Входящая почта · IMAP") {
-                    TextField("Сервер", text: $imapHost).accessibilityIdentifier("mail.account.imapHost")
-                    HStack {
-                        TextField("Порт", value: $imapPort, format: .number.grouping(.never)).frame(width: 140)
+                    WorkspaceLabeledField("Сервер") {
+                        TextField("Сервер", text: $imapHost).accessibilityIdentifier("mail.account.imapHost")
+                    }
+                    HStack(alignment: .bottom) {
+                        WorkspaceLabeledField("Порт") {
+                            TextField("Порт", value: $imapPort, format: .number.grouping(.never)).frame(width: 140)
+                        }
                         MakoshPicker("Защита", selection: $imapSecurity) {
                             Text("TLS").tag(MailConnectionSecurity.tls)
                             Text("STARTTLS").tag(MailConnectionSecurity.startTLS)
                         }
                     }
-                    TextField("Имя пользователя", text: $imapUser)
-                    SecureField("Пароль приложения", text: $imapPassword).accessibilityIdentifier("mail.account.imapPassword")
+                    WorkspaceLabeledField("Имя пользователя") { TextField("Имя пользователя", text: $imapUser) }
+                    WorkspaceLabeledField("Пароль приложения") {
+                        SecureField("Пароль приложения", text: $imapPassword).accessibilityIdentifier("mail.account.imapPassword")
+                    }
                 }
                 Section("Исходящая почта · SMTP") {
-                    TextField("Сервер", text: $smtpHost).accessibilityIdentifier("mail.account.smtpHost")
-                    HStack {
-                        TextField("Порт", value: $smtpPort, format: .number.grouping(.never)).frame(width: 140)
+                    WorkspaceLabeledField("Сервер") {
+                        TextField("Сервер", text: $smtpHost).accessibilityIdentifier("mail.account.smtpHost")
+                    }
+                    HStack(alignment: .bottom) {
+                        WorkspaceLabeledField("Порт") {
+                            TextField("Порт", value: $smtpPort, format: .number.grouping(.never)).frame(width: 140)
+                        }
                         MakoshPicker("Защита", selection: $smtpSecurity) {
                             Text("TLS").tag(MailConnectionSecurity.tls)
                             Text("STARTTLS").tag(MailConnectionSecurity.startTLS)
                         }
                     }
-                    TextField("Имя пользователя", text: $smtpUser)
+                    WorkspaceLabeledField("Имя пользователя") { TextField("Имя пользователя", text: $smtpUser) }
                     Toggle("Использовать пароль IMAP", isOn: $samePassword)
-                    if !samePassword { SecureField("Пароль приложения SMTP", text: $smtpPassword) }
+                    if !samePassword {
+                        WorkspaceLabeledField("Пароль приложения SMTP") { SecureField("Пароль приложения SMTP", text: $smtpPassword) }
+                    }
                 }
                 Text(
                     "Пароли сохраняются в Связке ключей. TLS проверяет сертификат и имя сервера. При смене адреса, сервера или пользователя будет создан отдельный аккаунт; прежняя переписка и операции сохранят свою идентичность."

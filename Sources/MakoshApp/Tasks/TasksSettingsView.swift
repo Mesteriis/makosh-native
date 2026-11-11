@@ -90,7 +90,6 @@ struct TasksSettingsForm: View {
                                 width: 160
                             )
                             .onSubmit(savePresets)
-                            .onAppear { presets = preferences.focus.presets.map(String.init).joined(separator: ", ") }
                         }
                         WorkspaceStepper("Перерыв: \(preferences.focus.breakMinutes) мин", value: binding(\.focus.breakMinutes), in: 0...60)
                     }
@@ -141,6 +140,10 @@ struct TasksSettingsForm: View {
             .formStyle(WorkspaceFormStyle())
         }
         .frame(minWidth: 560, minHeight: 480)
+        // The draft follows the stored presets, so switching tabs keeps typed but unconfirmed values.
+        .onChange(of: preferences.focus.presets, initial: true) { _, value in
+            presets = value.map(String.init).joined(separator: ", ")
+        }
         .sheet(item: $editing) { connection in JiraConnectionEditor(model: model, original: connection).makoshAppearance() }
         .sheet(isPresented: $adding) { JiraConnectionEditor(model: model, original: nil).makoshAppearance() }
     }
@@ -192,12 +195,18 @@ struct JiraConnectionEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(original == nil ? "Новое подключение Jira" : "Подключение Jira").font(.headline)
-            TextField("Название", text: $name).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier("tasks.jira.editor.name")
-            TextField("Адрес сайта, https://компания.atlassian.net", text: $origin).textFieldStyle(WorkspaceTextFieldStyle())
-                .accessibilityIdentifier(
-                    "tasks.jira.editor.origin")
-            TextField("Почта аккаунта", text: $email).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
-                "tasks.jira.editor.email")
+            WorkspaceLabeledField("Название") {
+                TextField("Название", text: $name).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                    "tasks.jira.editor.name")
+            }
+            WorkspaceLabeledField("Адрес сайта") {
+                TextField("https://компания.atlassian.net", text: $origin).textFieldStyle(WorkspaceTextFieldStyle())
+                    .accessibilityIdentifier("tasks.jira.editor.origin")
+            }
+            WorkspaceLabeledField("Почта аккаунта") {
+                TextField("Почта аккаунта", text: $email).textFieldStyle(WorkspaceTextFieldStyle()).accessibilityIdentifier(
+                    "tasks.jira.editor.email")
+            }
             SecureField(original == nil ? "API-токен" : "Новый API-токен (пусто — оставить прежний)", text: $token).textFieldStyle(
                 WorkspaceTextFieldStyle()
             )

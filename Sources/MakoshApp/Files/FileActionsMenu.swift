@@ -24,9 +24,10 @@ struct FileActionsMenu: View {
             ForEach(actions, id: \.self) { action in
                 Button(action.title) { perform(action, in: files) }.accessibilityIdentifier("files.action.\(identifier(action))")
             }
-            if !protected, !actions.contains(.sendToPaperless) {
+            // Menu items cannot host a sheet; without a workspace to show the section the command is not offered.
+            if !protected, !actions.contains(.sendToPaperless), let workspaceNavigation {
                 Button("Подключить Paperless…") {
-                    workspaceNavigation?.openSettings(.files)
+                    workspaceNavigation.openSettings(.files)
                 }.accessibilityIdentifier("files.send.connect")
             }
         }

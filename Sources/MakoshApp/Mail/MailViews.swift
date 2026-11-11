@@ -154,6 +154,7 @@ struct MailReadingView: View {
     @ObservedObject var dossier: WorkspaceModel
     @State private var details = false
     @State private var html = false
+    @State private var automationDraft = MailAutomationDraft()
     let showContact: (UUID) -> Void
     var body: some View {
         Group {
@@ -183,7 +184,10 @@ struct MailReadingView: View {
         .sheet(item: $model.notificationSettingsScope) { scope in
             MailNotificationSettingsView(model: model, scope: scope).makoshAppearance()
         }
-        .sheet(isPresented: $model.automationSettings) { MailAutomationSettingsView(model: model).makoshAppearance() }
+        // The fallback for a navigation bar hosted without the workspace; the workspace opens the settings section instead.
+        .sheet(isPresented: $model.automationSettings) {
+            MailAutomationSettingsView(model: model, draft: $automationDraft).makoshAppearance()
+        }
         .sheet(item: $model.historyLetter) { letter in MailReadingHistoryView(model: model, letter: letter).makoshAppearance() }
         .alert(
             "Почта",

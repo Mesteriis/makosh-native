@@ -91,7 +91,8 @@ struct MergeReviewView: View {
                             reviewCard(candidate.secondID)
                         }
                     }.frame(maxHeight: 240)
-                    MakoshPicker("Основная карточка", selection: $survivor) {
+                    // Both candidates stay visible for the irreversible choice, as a radio group rather than a menu.
+                    Picker("Основная карточка", selection: $survivor) {
                         Text(model.name(candidate.firstID)).tag(Optional(candidate.firstID))
                         Text(model.name(candidate.secondID)).tag(Optional(candidate.secondID))
                     }.pickerStyle(.radioGroup).accessibilityIdentifier("merge.survivor")

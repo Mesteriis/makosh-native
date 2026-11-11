@@ -111,9 +111,11 @@ struct CalendarEventCard: View {
             if !repeatRule.isEmpty, CalendarRecurrenceExpander.unsupported(rrule: repeatRule) {
                 Text("Это правило повтора Makosh показывает только первым вхождением.").font(.caption).foregroundStyle(.orange)
             }
-            TextField("Место", text: $location).textFieldStyle(WorkspaceTextFieldStyle())
-            HStack {
-                TextField("Ссылка на встречу", text: $meeting).textFieldStyle(WorkspaceTextFieldStyle())
+            WorkspaceLabeledField("Место") { TextField("Место", text: $location).textFieldStyle(WorkspaceTextFieldStyle()) }
+            HStack(alignment: .bottom) {
+                WorkspaceLabeledField("Ссылка на встречу") {
+                    TextField("Ссылка на встречу", text: $meeting).textFieldStyle(WorkspaceTextFieldStyle())
+                }
                 if let url = URL(string: meeting), url.scheme == "https" {
                     Button("Подключиться") { NSWorkspace.shared.open(url) }.accessibilityIdentifier("calendar.card.join")
                 }
@@ -128,8 +130,10 @@ struct CalendarEventCard: View {
                 }
             }
             if account?.kind != .local {
-                TextField("Участники: адреса через запятую", text: $attendees).textFieldStyle(WorkspaceTextFieldStyle())
-                    .accessibilityIdentifier("calendar.card.attendees")
+                WorkspaceLabeledField("Участники") {
+                    TextField("Адреса через запятую", text: $attendees).textFieldStyle(WorkspaceTextFieldStyle())
+                        .accessibilityIdentifier("calendar.card.attendees")
+                }
                 if !host.contactSuggestions(for: attendees).isEmpty {
                     HStack {
                         ForEach(host.contactSuggestions(for: attendees), id: \.self) { email in

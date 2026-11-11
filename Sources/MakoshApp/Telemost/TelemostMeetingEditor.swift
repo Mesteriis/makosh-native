@@ -98,8 +98,10 @@ struct TelemostMeetingEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Локальные сведения").font(.title2.bold())
-            TextField("Название", text: $value.localTitle).textFieldStyle(WorkspaceTextFieldStyle())
-            TextField("Заметки", text: $value.notes, axis: .vertical).lineLimit(4...12).textFieldStyle(WorkspaceTextFieldStyle())
+            WorkspaceLabeledField("Название") { TextField("Название", text: $value.localTitle).textFieldStyle(WorkspaceTextFieldStyle()) }
+            WorkspaceLabeledField("Заметки") {
+                TextField("Заметки", text: $value.notes, axis: .vertical).lineLimit(4...12).textFieldStyle(WorkspaceTextFieldStyle())
+            }
             Toggle("Избранное", isOn: $value.starred)
             Toggle("Скрыть из основного просмотра", isOn: $value.hidden)
             Text("Скрытие сохраняет историю. Включите «Показать скрытые» в каталоге, чтобы увидеть их снова.").font(.caption)

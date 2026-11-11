@@ -25,6 +25,13 @@ import XCTest
         XCTAssertEqual(navigation.destinationRequest, .tasks)
     }
 
+    func testServiceMenuFallsBackToItsOwnSheetOnlyWithoutAWorkspace() {
+        XCTAssertEqual(WorkspaceNavigation.route(.telegram, via: nil), .sheet)
+        let navigation = WorkspaceNavigation()
+        XCTAssertEqual(WorkspaceNavigation.route(.telegram, via: navigation), .workspace)
+        XCTAssertEqual(navigation.settingsRequest?.category, .telegram)
+    }
+
     func testPersistedCategoryCannotEscapeSyntheticServiceScope() {
         XCTAssertEqual(WorkspaceSettingsCategory.resolve("persons", allowed: [.tasks]), .tasks)
         XCTAssertEqual(WorkspaceSettingsCategory.resolve("calendar", allowed: [.calendar, .tasks]), .calendar)

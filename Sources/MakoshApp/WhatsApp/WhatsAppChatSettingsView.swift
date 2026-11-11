@@ -71,10 +71,10 @@ struct WhatsAppChatSettingsView: View {
                         }.accessibilityIdentifier("whatsapp.dossier")
                     }
                     if chat.group {
-                        TextField("Название группы", text: $name)
+                        WorkspaceLabeledField("Название группы") { TextField("Название группы", text: $name) }
                         Button("Изменить название") { command(.init(.groupName, text: name)) }.disabled(
                             name.isEmpty)
-                        TextField("Описание", text: $about)
+                        WorkspaceLabeledField("Описание") { TextField("Описание", text: $about) }
                         Button("Изменить описание") { command(.init(.groupAbout, text: about)) }
                         TextField("JID участника", text: $member)
                         MakoshMenu("Участники") {

@@ -6,19 +6,12 @@ struct MailAutomationSettingsView: View {
     @ObservedObject var model: MailWorkspaceModel
     var embedded = false
     var page: Int?
+    /// Owned by the page that hosts this view, so switching its tabs keeps unsaved drafts.
+    @Binding var draft: MailAutomationDraft
     private let ruleLabelWidth: CGFloat = 80
     private var activeSection: Int { page ?? section }
     @Environment(\.dismiss) private var dismiss
-    @State private var accountID = ""
     @State private var section = 0
-    @State private var signature = ""
-    @State private var templateID = UUID()
-    @State private var templateName = ""
-    @State private var templateBody = ""
-    @State private var field = MailIncomingRule.Field.from
-    @State private var match = ""
-    @State private var action = MailIncomingRule.Action.archive
-    @State private var label = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !embedded {
@@ -28,8 +21,8 @@ struct MailAutomationSettingsView: View {
                     Button("Закрыть") { dismiss() }
                 }
             }
-            MakoshPicker("Аккаунт", selection: $accountID) { ForEach(model.accounts) { Text($0.email).tag($0.id) } }
-                .fixedSize(horizontal: true, vertical: false)
+            MakoshPicker("Аккаунт", selection: $draft.accountID) { ForEach(model.accounts) { Text($0.email).tag($0.id) } }
+                .frame(maxWidth: 360, alignment: .leading)
             if page == nil {
                 WorkspaceSegmentedPicker("Раздел", selection: $section) {
                     Text("Подпись").tag(0)
@@ -41,13 +34,15 @@ struct MailAutomationSettingsView: View {
                 if activeSection == 0 {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Подпись добавляется к новым письмам и ответам.").font(.callout).foregroundStyle(.secondary)
-                        TextEditor(text: $signature).workspaceEditorSurface().frame(height: 150).accessibilityIdentifier(
+                        TextEditor(text: $draft.signature).workspaceEditorSurface().frame(height: 150).accessibilityIdentifier(
                             "mail.signature")
                         HStack {
                             Spacer()
-                            Button("Сохранить подпись") { Task { await model.setSignature(accountID: accountID, text: signature) } }
-                                .buttonStyle(WorkspaceButtonStyle(prominent: true))
-                                .disabled(accountID.isEmpty || model.busy)
+                            Button("Сохранить подпись") {
+                                Task { await model.setSignature(accountID: draft.accountID, text: draft.signature) }
+                            }
+                            .buttonStyle(WorkspaceButtonStyle(prominent: true))
+                            .disabled(draft.accountID.isEmpty || model.busy)
                         }
                     }
                     .padding(WorkspaceStyle.cardInset)
@@ -60,9 +55,9 @@ struct MailAutomationSettingsView: View {
                             savedRows(model.automation.templates) { template in
                                 HStack {
                                     Button(template.name) {
-                                        templateID = template.id
-                                        templateName = template.name
-                                        templateBody = template.body
+                                        draft.templateID = template.id
+                                        draft.templateName = template.name
+                                        draft.templateBody = template.body
                                     }.buttonStyle(.plain)
                                     Spacer()
                                     Button("Удалить", role: .destructive) { Task { await model.deleteTemplate(template.id) } }
@@ -70,21 +65,24 @@ struct MailAutomationSettingsView: View {
                             }
                         }
                         Text("Название").font(.caption).foregroundStyle(.secondary)
-                        TextField("Название шаблона", text: $templateName).accessibilityIdentifier("mail.template.name")
+                        TextField("Название шаблона", text: $draft.templateName).accessibilityIdentifier("mail.template.name")
                         Text("Текст шаблона").font(.caption).foregroundStyle(.secondary)
-                        TextEditor(text: $templateBody).workspaceEditorSurface().frame(height: 150).accessibilityIdentifier(
+                        TextEditor(text: $draft.templateBody).workspaceEditorSurface().frame(height: 150).accessibilityIdentifier(
                             "mail.template.body")
                         HStack {
                             Button("Новый") {
-                                templateID = UUID()
-                                templateName = ""
-                                templateBody = ""
+                                draft.templateID = UUID()
+                                draft.templateName = ""
+                                draft.templateBody = ""
                             }
                             Spacer()
                             Button("Сохранить шаблон") {
-                                Task { await model.saveTemplate(.init(id: templateID, name: templateName, body: templateBody)) }
+                                Task {
+                                    await model.saveTemplate(
+                                        .init(id: draft.templateID, name: draft.templateName, body: draft.templateBody))
+                                }
                             }.buttonStyle(WorkspaceButtonStyle(prominent: true)).disabled(
-                                templateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+                                draft.templateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
                         }
                     }.padding(WorkspaceStyle.cardInset)
                         .background { WorkspaceSurface(radius: WorkspaceStyle.cardRadius) }
@@ -93,7 +91,7 @@ struct MailAutomationSettingsView: View {
                         Text(
                             "Для новых входящих после начальной синхронизации. Корзина имеет приоритет над архивом. Сохранённая копия остаётся."
                         ).font(.caption).foregroundStyle(.secondary)
-                        let rules = model.automation.rules.filter { $0.accountID == accountID }
+                        let rules = model.automation.rules.filter { $0.accountID == draft.accountID }
                         if !rules.isEmpty {
                             savedRows(rules) { rule in
                                 HStack {
@@ -118,29 +116,30 @@ struct MailAutomationSettingsView: View {
                         }
                         HStack {
                             Text("Условие").frame(width: ruleLabelWidth, alignment: .leading)
-                            MakoshPicker("Поле", selection: $field) {
+                            MakoshPicker("Поле", selection: $draft.field) {
                                 Text("Отправитель").tag(MailIncomingRule.Field.from)
                                 Text("Тема").tag(MailIncomingRule.Field.subject)
                             }
                             .labelsHidden().fixedSize(horizontal: true, vertical: false)
-                            TextField("Содержит", text: $match)
+                            TextField("Содержит", text: $draft.match)
                         }
                         HStack {
                             Text("Действие").frame(width: ruleLabelWidth, alignment: .leading)
-                            MakoshPicker("Действие", selection: $action) {
+                            MakoshPicker("Действие", selection: $draft.action) {
                                 ForEach(MailIncomingRule.Action.allCases, id: \.self) { Text(actionTitle($0)).tag($0) }
                             }.labelsHidden().fixedSize(horizontal: true, vertical: false)
                             Spacer(minLength: 0)
                         }
-                        if action == .label { TextField("Локальная метка", text: $label) }
+                        if draft.action == .label { TextField("Локальная метка", text: $draft.label) }
                         Button("Добавить правило") {
                             Task {
                                 await model.saveIncomingRule(
                                     .init(
-                                        accountID: accountID, field: field, value: match, action: action,
-                                        label: action == .label ? label : nil))
+                                        accountID: draft.accountID, field: draft.field, value: draft.match, action: draft.action,
+                                        label: draft.action == .label ? draft.label : nil))
                             }
-                        }.disabled(accountID.isEmpty || match.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+                        }.disabled(
+                            draft.accountID.isEmpty || draft.match.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
                     }.padding(WorkspaceStyle.cardInset)
                         .background { WorkspaceSurface(radius: WorkspaceStyle.cardRadius) }
                 }
@@ -150,10 +149,12 @@ struct MailAutomationSettingsView: View {
             minWidth: 600, maxWidth: embedded ? 760 : 680, minHeight: 500, maxHeight: embedded ? .infinity : 560, alignment: .topLeading
         )
         .onAppear {
-            accountID = model.selectedFolder?.accountID ?? model.accounts.first?.id ?? ""
+            // A later appearance keeps the drafts; only the first one picks the account.
+            guard draft.accountID.isEmpty else { return }
+            draft.accountID = model.selectedFolder?.accountID ?? model.accounts.first?.id ?? ""
             loadSignature()
         }
-        .onChange(of: accountID) { loadSignature() }
+        .onChange(of: draft.accountID) { loadSignature() }
     }
     @ViewBuilder private func savedRows<Item: Identifiable, Row: View>(
         _ items: [Item], @ViewBuilder row: @escaping (Item) -> Row
@@ -165,7 +166,7 @@ struct MailAutomationSettingsView: View {
             rows
         }
     }
-    private func loadSignature() { signature = model.automation.signatures[accountID] ?? "" }
+    private func loadSignature() { draft.signature = model.automation.signatures[draft.accountID] ?? "" }
     private func actionTitle(_ value: MailIncomingRule.Action) -> String {
         switch value {
         case .archive: "Архив"
@@ -173,4 +174,17 @@ struct MailAutomationSettingsView: View {
         case .label: "Метка"
         }
     }
+}
+
+/// Unsaved signature, template and rule drafts of the mail settings page.
+struct MailAutomationDraft {
+    var accountID = ""
+    var signature = ""
+    var templateID = UUID()
+    var templateName = ""
+    var templateBody = ""
+    var field = MailIncomingRule.Field.from
+    var match = ""
+    var action = MailIncomingRule.Action.archive
+    var label = ""
 }
